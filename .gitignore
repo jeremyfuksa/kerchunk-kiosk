@@ -141,3 +141,21 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# ESP-IDF
+build/
+sdkconfig
+sdkconfig.old
+managed_components/
+dependencies.lock
+.cache/
+*.bin
+*.elf
+*.map
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
