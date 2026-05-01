@@ -153,6 +153,12 @@ dependencies.lock
 *.elf
 *.map
 
+# eim (Espressif Installation Manager) local install record
+eim_config.toml
+
+# Claude Code session state
+.claude/
+
 # Editor
 .vscode/
 .idea/
