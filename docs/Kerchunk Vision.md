@@ -57,7 +57,9 @@ Kerchunk fills that gap.
 
 ## What it is
 
-A sandwich carrier PCB, roughly Pi-sized at ~65×30 mm, that mounts a Raspberry Pi Zero 2 W on its 40-pin header. The carrier presents a USB-A receptacle oriented so the dongle slides in *parallel* to the Pi rather than perpendicular off a cable — USB D+/D- come up from the Pi's `PP22`/`PP23` test points (a well-known Pi Zero mod that bypasses the micro-USB connector entirely). A USB-C port provides power. An optional 3.5 mm TRS jack drives wired audio output as a fallback alongside the primary Bluetooth path. The Pi, the carrier, and the dongle stack into a single rigid assembly inside a 3D-printed or injection-molded case. The SMA antenna connector on the dongle is exposed on one side.
+A sandwich carrier PCB, roughly Pi-sized at ~65×30 mm, that mounts a Raspberry Pi Zero 2 W on its 40-pin header. The carrier presents a USB-A receptacle oriented so the dongle slides in *parallel* to the Pi rather than perpendicular off a cable — USB D+/D- come up from the Pi's `PP22`/`PP23` test points (a well-known Pi Zero mod that bypasses the micro-USB connector entirely). A single USB-C port provides both power input and host-side data tethering (via the Pi's USB gadget mode), so the case has one USB-C hole, not two. An optional 3.5 mm TRS jack drives wired audio output as a fallback alongside the primary Bluetooth path. The Pi, the carrier, and the dongle stack into a single rigid assembly inside a 3D-printed or injection-molded case. The SMA antenna connector on the dongle is exposed on one side.
+
+The user-facing control surface is deliberately small: a recessed pinhole reset (paperclip-actuated), a tactile pairing button, and a single RGB status LED. That's it.
 
 Final footprint: roughly playing-card sized. ~75×30×15 mm with a Nooelec Nano 3, ~120×30×15 mm with the longer RTL-SDR Blog V3/V4. The Nano 3 is the size-optimized reference dongle; the V3/V4 is the reference for users who want HF direct sampling and a bias tee at the cost of length.
 
@@ -119,12 +121,15 @@ There is no bare-PCB kit tier. The value increasingly lives in the SD card image
                          │             │
          ┌───────────────┘             └──────────────┐
          │                                            │
-  ┌──────▼────────┐      ┌──────────────┐     ┌──────▼──────┐
-  │  Bluetooth    │      │  I²S Codec   │     │  USB-C       │
-  │  Classic A2DP │      │  (optional   │     │  Power-path  │
-  │  + AVRCP +    │      │   3.5 mm     │     │  + ignition  │
-  │  BLE GATT     │      │   jack)      │     │  sense       │
-  └───────────────┘      └──────────────┘     └──────────────┘
+  ┌──────▼────────┐  ┌──────────┐  ┌────────────┐  ┌──▼──────────┐
+  │  Bluetooth    │  │  I²S     │  │  Pinhole   │  │  USB-C       │
+  │  Classic A2DP │  │  codec   │  │  reset +   │  │  (power +    │
+  │  + AVRCP +    │  │  (opt.   │  │  pairing   │  │  data via    │
+  │  BLE GATT     │  │  3.5 mm) │  │  btn + LED │  │  gadget) +   │
+  └───────────────┘  └──────────┘  │  + RTC     │  │  ignition    │
+                                   │  + coin    │  │  sense        │
+                                   │  cell      │  └──────────────┘
+                                   └────────────┘
 ```
 
 ### Component rationale
@@ -133,7 +138,7 @@ There is no bare-PCB kit tier. The value increasingly lives in the SD card image
 
 **RTL-SDR dongle** (~$30–40 retail). Any R820T2-based RTL-SDR works: enumeration is identical, the I/Q endpoint is identical. Recommended dongles: the **Nooelec Nano 3** for the smallest stacked footprint, or the **RTL-SDR Blog V3/V4** for HF direct sampling and bias tee at the cost of length. The V4 (R828D + improved front-end) is the current reference for new builds; V3 remains widely owned and works identically.
 
-**Sandwich carrier PCB** (~$8–12 BOM). Mounts the Pi via the 40-pin header. USB D+/D- come up from the Pi's `PP22`/`PP23` test points (small solder pads on the back of the Pi, or pogo contacts on the carrier), eliminating the micro-USB connector and the perpendicular cable it would otherwise require. The carrier presents a USB-A receptacle oriented parallel to the Pi so the dongle stacks alongside it in-plane. Carrier also includes USB-C input with a power-path controller (LM66200 or similar), an ignition-sense input for clean automotive shutdown, status LED, and an optional I²S codec for the 3.5 mm jack. Four-layer board, RF-aware routing on the USB pair (~5 cm differential trace; well within USB 2.0 HS budget).
+**Sandwich carrier PCB** (~$10–14 BOM). Mounts the Pi via the 40-pin header. USB D+/D- come up from the Pi's `PP22`/`PP23` test points (small solder pads on the back of the Pi, or pogo contacts on the carrier), eliminating the micro-USB connector and the perpendicular cable it would otherwise require. The carrier presents a USB-A receptacle oriented parallel to the Pi so the dongle stacks alongside it in-plane. Carrier also includes a single USB-C connector for both power input and data tethering (the Pi's USB peripheral switches to gadget mode when the host PC enumerates it), a power-path controller (LM66200 or similar), an ignition-sense input for clean automotive shutdown, an RGB status LED, a tactile pairing button, a recessed pinhole reset switch, an RTC IC with coin-cell holder for accurate scan-log timestamps when offline, and an optional I²S codec for the 3.5 mm jack. Four-layer board, RF-aware routing on the USB pair (~5 cm differential trace; well within USB 2.0 HS budget).
 
 **Why not a bare RTL-SDR module on the carrier?** Considered and rejected for v1. Bare RTL2832U + R820T2 modules exist for OEM integration and would shave ~5 mm off the stack height, but they narrow the supply chain to a single vendor and prevent users from swapping dongles. Reconsider for a v2 hardware revision once volume justifies the sourcing.
 
@@ -147,13 +152,36 @@ There is no bare-PCB kit tier. The value increasingly lives in the SD card image
 
 **USB mass storage over USB-C (Pi gadget mode).** When the assembly is plugged into a host computer, the Pi exposes its writable config partition as a USB mass storage device. User drops `channels.csv` and `config.json` in, unplugs, scanner reloads with new config. This is the fallback configuration path that works without the companion app.
 
+### Physical controls and indicators
+
+Two buttons, one RGB LED, no display. Total carrier-side cost ~$0.80 BOM.
+
+**Pairing button** (tactile, surface-accessible). Single-purpose, no hidden gestures.
+- *Short press:* Toggle Bluetooth discoverable for 60 s. LED breathes blue while discoverable; solid green when paired.
+
+**Pinhole reset** (recessed, paperclip-actuated). Two gestures, both deliberately awkward to trigger by accident.
+- *Short press:* Clean reboot. LED amber during shutdown, normal boot sequence on resume.
+- *5 s hold:* Factory reset — wipe BlueZ bonds, clear `/data/config.json` to defaults, reboot. LED solid red while held; rapid red blink during the reset; green steady on first successful boot.
+
+**RGB status LED.** Single addressable LED (WS2812-class) communicates state without a screen:
+- *Boot:* amber → blue while services come up
+- *Idle, paired, scanning:* green steady
+- *Active demod (transmission audible):* green pulse
+- *Bluetooth discoverable:* blue breathe
+- *Error / no dongle:* red breathe
+- *OTA update in progress:* magenta sweep
+
+The LED legend ships printed on the inside of the case lid so users don't have to memorize it.
+
+**Why two buttons instead of one multifunction.** Splitting "the action that wipes your config" onto a separate, recessed control eliminates the most common smart-device support call — accidental factory reset from a long-press on the only available button. The pinhole convention (every router, every smart speaker) is recognizable, paperclip-only, and signals "you meant to do this."
+
 ### What's deliberately omitted
 
 **No screen.** A 0.96" OLED would add $3 BOM, board area, a driver subsystem, and a software display abstraction layer. The phone is the screen. The car head unit is the screen. Keeping the scanner screenless is how it stays small and cheap.
 
 **No speaker.** Bluetooth audio to car stereos and earbuds is universal. Every possible use case for on-device audio is solved better by a $15 Bluetooth speaker than by a tiny tinny scanner speaker. Wired 3.5 mm is the fallback.
 
-**No keypad.** The companion app is the keypad. This is the most audience-authentic choice: the r/amateurradio and r/rtlsdr users who want this product all carry phones and prefer app-based configuration.
+**No keypad.** Two buttons (pairing + pinhole reset) cover everything that has to work without a phone. The companion app is the keypad for everything else. This is the most audience-authentic choice: the r/amateurradio and r/rtlsdr users who want this product all carry phones and prefer app-based configuration.
 
 **No battery.** USB-C power. The scanner is designed to live in a car (always on when ignition is hot) or on a desk (plugged in). Battery life is an obligation that requires charging circuitry, a battery holder, a power management IC, and software for state of charge — all of which add cost and complexity for a use case most users don't have. A battery-pack version can be a later variant or a 3D-printed case add-on with a commodity USB-C power bank.
 
@@ -297,8 +325,8 @@ User drives to work. Car starts, scanner resumes from suspend in under a second,
 1. Unbox unit (and dongle if Bundle SKU)
 2. Plug dongle into USB-A socket on the carrier
 3. Plug USB-C into any 5 V power source (phone charger, car USB port, laptop)
-4. LED indicates "discoverable" once the Pi finishes booting (~5–8 s on the production image)
-5. Open Kerchunk app on phone, scan for nearby devices, pair
+4. After ~5–8 s the LED settles to amber (booted, not yet paired). Press the pairing button — LED breathes blue, the unit is discoverable for 60 s.
+5. Open Kerchunk app on phone, scan for nearby devices, pair. LED goes solid green once paired.
 6. App prompts: "First time setup. Where are you?" — user enters ZIP code or picks from map
 7. App offers: "Import 17 local analog repeaters from RepeaterBook? [Yes] [Customize]"
 8. User accepts. App uploads channel list via BLE.
@@ -329,8 +357,8 @@ User drives to work. Car starts, scanner resumes from suspend in under a second,
 
 | SKU | Description | BOM (qty 100) | Target Retail |
 |---|---|---|---|
-| Bundle | Carrier + Pi Zero 2 W + RTL-SDR dongle + microSD + case parts; user assembles | ~$58 | $120 |
-| Assembled | Same hardware, pre-built, pre-flashed, in case, ready to power up | ~$68 | $150 |
+| Bundle | Carrier + Pi Zero 2 W + RTL-SDR dongle + microSD + case parts; user assembles | ~$60 | $120 |
+| Assembled | Same hardware, pre-built, pre-flashed, in case, ready to power up | ~$70 | $150 |
 
 Two SKUs only. A no-carrier "kit" form (Pi + right-angle OTG adapter + dongle) was considered and rejected for shipping — the resulting assembly is too long and too mechanically fragile to call a product. A bare-PCB-only "Kit" tier was also rejected: the value increasingly lives in the SD card image, and selling the PCB without it is selling the wrong half.
 
@@ -643,6 +671,6 @@ If the decision is delayed: this doc remains the single source of truth. Update 
 
 ## Revision log
 
-**2026-05-07** — Architecture, carrier strategy, SKU lineup, and CarPlay scope finalized. Single product on a Raspberry Pi Zero 2 W with a sandwich carrier PCB; USB D+/D- tapped from the Pi's `PP22`/`PP23` test points so the dongle stacks parallel to the Pi rather than hanging off a perpendicular cable. Two SKUs: Bundle ($120) and Assembled ($150) — no bare-PCB kit tier. CarPlay / Android Auto dashboard UI documented as a v1 non-goal and a v2 candidate with explicit gates (Apple Audio entitlement, audio routing rework via BLE GATT, native iOS module work). New §"v2 candidates" section captures CarPlay alongside other deferred items. Headline technical risks: cold-boot / suspend-resume latency, SD-card reliability under automotive thermal/vibration, and signal integrity at the USB test-point join. Roadmap structured around Linux userspace milestones. Build intent unchanged: "decide later." See git history for the deliberation that produced this shape.
+**2026-05-07** — Architecture, carrier strategy, SKU lineup, CarPlay scope, and physical-controls plan finalized. Single product on a Raspberry Pi Zero 2 W with a sandwich carrier PCB; USB D+/D- tapped from the Pi's `PP22`/`PP23` test points so the dongle stacks parallel to the Pi rather than hanging off a perpendicular cable. Two SKUs: Bundle ($120) and Assembled ($150) — no bare-PCB kit tier. Single USB-C connector handles both power input and host-side data tethering via Pi gadget mode. User-facing controls: tactile pairing button (toggles 60 s discoverable mode) and recessed pinhole reset (short = reboot, 5 s hold = factory reset). Single RGB status LED communicates boot, pairing, scan, error, and OTA states; legend printed inside the case lid. RTC + coin cell on the carrier so scan logs have correct timestamps when offline. CarPlay / Android Auto dashboard UI documented as a v1 non-goal and a v2 candidate with explicit gates. New §"v2 candidates" section captures CarPlay alongside other deferred items. Headline technical risks: cold-boot / suspend-resume latency, SD-card reliability under automotive thermal/vibration, and signal integrity at the USB test-point join. Roadmap structured around Linux userspace milestones. Build intent unchanged: "decide later." See git history for the deliberation that produced this shape.
 
 **2026-04-16** — Initial capture. Five-city RF coverage analysis (KC, Seattle, Chicago, LA, Manhattan KS) complete. Parallel-monitoring architectural insight, audience analysis, and naming confirmed. Build intent: "decide later." Filed in 🧠 Tism/Kerchunk/ as active project folder.
