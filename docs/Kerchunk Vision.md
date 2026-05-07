@@ -160,6 +160,8 @@ The single-SKU story is also a marketing simplification. There is one Kerchunk. 
 
 **No built-in CTCSS/DCS encoder.** It's a scanner, not a transceiver. Receive-only, by design.
 
+**No CarPlay or Android Auto UI in v1.** Kerchunk presents to the head unit as a Bluetooth Classic A2DP audio source — the same protocol a phone uses to stream music — which works on essentially every modern head unit including those that also support CarPlay/Auto. A *CarPlay dashboard UI* (showing scan activity, channel list, and metadata on the head unit screen rather than just AVRCP track info) is gated by three barriers Apple controls and is documented as a v2 candidate, not a v1 deliverable. See §"v2 candidates" for the gates.
+
 ---
 
 ## Software architecture
@@ -382,6 +384,8 @@ Two SKUs only. A no-carrier "kit" form (Pi + right-angle OTG adapter + dongle) w
 
 **5. Car head unit AVRCP metadata compatibility.** AVRCP display behavior varies across head units. Some show only title, some truncate to 16 chars, some refresh slowly. Risk: marketing material promises "frequency shown on your dashboard" and some users see nothing. Mitigation: Milestone 2 tests across 5+ different car stereos and documents compatibility explicitly.
 
+**5a. CarPlay / Android Auto coexistence on the same head unit.** Most target users drive a vehicle where CarPlay or Android Auto is already paired to their phone. Adding Kerchunk as a second Bluetooth A2DP source can produce three different head-unit behaviors: clean source switching with audio ducking, manual source-select required, or refusal to maintain two A2DP pairings simultaneously. AVRCP metadata also competes — both sources fight for the "now playing" line. Risk: a user assumes Kerchunk works alongside CarPlay and gets a worse-than-expected experience that's actually the head unit's fault. Mitigation: Milestone 2 explicitly tests the multi-source case across the same 3–5 head units used for AVRCP validation; documentation calls out per-make behavior; the companion app surfaces a "head unit compatibility" note during pairing setup.
+
 **6. Pi Zero 2 W supply.** Pi Foundation has had multi-month outages on Zero-class boards in the past. Risk: production stalls because the core part is unobtainable. Mitigation: Pi Foundation's 2024+ supply commitments are stronger; design the carrier so a Pi Zero 2 W can be substituted by a Compute Module 4 IO breakout if needed (~30% larger, otherwise drop-in via I²S/USB).
 
 **7. Scope creep.** The feature list grows naturally (trunked P25 Phase 2, DMR, POCSAG, digital voice ID, recording, etc.). Risk: never shipping because always adding features. Mitigation: ruthless v1 scoping to analog-only at launch; P25 Phase 1 in v1.1; everything else v2+.
@@ -450,7 +454,7 @@ Two SKUs only. A no-carrier "kit" form (Pi + right-angle OTG adapter + dongle) w
 1. Replace `rtl_fm` with custom `kerchunk-rxd` running 4 parallel FM demodulators
 2. Add energy-detection channel allocation across a 2.4 MHz window
 3. Implement AVRCP target with dynamic metadata updates via BlueZ
-4. Test with real car head units (3–5 different makes)
+4. Test with real car head units (3–5 different makes), including the CarPlay / Android Auto multi-source coexistence case (Kerchunk + iPhone or Android phone paired to the same head unit simultaneously)
 5. Measure actual end-to-end latency
 
 **Success:** Park in car, hear parallel channel activity, see frequency display update correctly on dashboard.
@@ -541,6 +545,35 @@ Two SKUs only. A no-carrier "kit" form (Pi + right-angle OTG adapter + dongle) w
 
 ---
 
+## v2 candidates
+
+Items deliberately deferred past v1. Each carries explicit gates so a future build/no-build decision is informed.
+
+### CarPlay / Android Auto dashboard UI
+
+The pitch: instead of (or in addition to) showing scan activity on the companion phone app, surface a live dashboard on the car's CarPlay or Android Auto screen — channel list, currently active demods, recent transmissions, priority flags. Same data the phone app shows, on the head unit instead of the dock-mounted phone.
+
+**Why deferred:**
+- **Apple gating.** A CarPlay UI requires an entitlement Apple grants individually by app category. The closest fit ("Audio") is historically reserved for commercial streaming services; hobbyist hardware accessories rarely receive it. Google's Android Auto has analogous gating.
+- **Audio routing rework.** CarPlay Audio expects audio to come from the iPhone app, not directly from external hardware. To fit, Kerchunk would have to stream compressed audio to the iPhone over a custom BLE GATT path (Opus ~24 kbps fits BLE 4.2; the Pi Zero 2 W's BT 4.2 doesn't support LE Audio). The iPhone app then plays through CarPlay Audio. This trades the simple universal A2DP path for a phone-mediated path with worse audio quality and an iOS-only premium tier.
+- **App-side complexity.** Flutter has limited CarPlay support; the CarPlay layer would likely need a native iOS module. Estimated +200 hours on top of the M3 Flutter app baseline.
+
+**Gates to proceed:**
+1. Apple grants the CarPlay Audio entitlement (or Apple opens a more permissive category that fits a scanner dashboard). Without this, the rest is moot.
+2. Hardware revision retains BT 4.2 BLE bandwidth or moves to a chip with LE Audio — confirm BLE GATT audio streaming hits acceptable quality and battery cost in bench tests.
+3. v1 has shipped and the user base is large enough that the engineering effort pays back.
+
+**v1 stance:** The companion phone app shows the dashboard on the phone screen. Users mount the phone in a holder near the head unit, exactly as they already do. Audio flows scanner → Bluetooth A2DP → head unit, independent of whether the phone is connected to CarPlay/Auto. This is the path that works without any Apple/Google gating.
+
+### Other v2 candidates
+
+- **Bare-RTL-SDR-module carrier** for a smaller, fully-integrated v2 form factor (rejected for v1 to keep dongles user-replaceable; reconsider once volume justifies single-vendor sourcing).
+- **Trunked P25 Phase 2, DMR, NXDN, POCSAG** decoding — each gated on demand from the user base and DSP headroom validation.
+- **Battery-pack variant** as either a separate SKU or a 3D-printed-case-plus-USB-power-bank kit.
+- **"Home base" Wi-Fi mode** — local web UI and Icecast streaming for desk use, leveraging the Pi's existing Wi-Fi.
+
+---
+
 ## Success criteria
 
 **Short term (12 months from first build):**
@@ -608,6 +641,8 @@ If the decision is delayed: this doc remains the single source of truth. Update 
 ---
 
 ## Revision log
+
+**2026-05-07 (CarPlay scope)** — CarPlay / Android Auto dashboard UI documented as an explicit v1 non-goal and a v2 candidate with explicit gates: Apple CarPlay Audio entitlement (the rate-limiting step), audio routing rework to a phone-mediated path (BLE GATT audio streaming, since the Pi Zero 2 W's BT 4.2 doesn't support LE Audio), and ~200 hours of native iOS module work on top of the Flutter baseline. v1 stance: Bluetooth A2DP direct to head unit + companion phone app on the dock. Added a CarPlay/Auto multi-source coexistence risk to Technical risks; M2 acceptance test now explicitly includes the dual-A2DP case. New §"v2 candidates" section captures CarPlay alongside other deferred items (bare-module carrier, additional digital modes, battery variant, Wi-Fi home mode).
 
 **2026-05-07 (carrier refinement)** — Carrier-PCB strategy committed: sandwich form-factor with USB D+/D- tapped from the Pi's `PP22`/`PP23` test points, USB-A receptacle oriented so the dongle stacks parallel/in-plane with the Pi rather than hanging off a perpendicular cable. Bare-RTL-SDR-module path considered and rejected for v1 (narrows supply chain, prevents user dongle swap). No-PCB right-angle-adapter form demoted to prototype-only — too long and mechanically fragile to ship. SKU lineup simplified to Bundle / Assembled (no PCB-less kit). Milestone 4 updated to call out the test-point USB tap as the key SI risk to bench-validate before fab.
 
