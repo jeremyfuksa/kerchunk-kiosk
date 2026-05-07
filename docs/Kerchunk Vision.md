@@ -57,11 +57,11 @@ Kerchunk fills that gap.
 
 ## What it is
 
-A bare carrier PCB approximately 70×35mm that hosts a Raspberry Pi Zero 2 W and exposes a USB-A socket for an RTL-SDR dongle. A USB-C port provides power. An optional 3.5mm TRS jack supports wired audio output alongside the primary Bluetooth path. The Pi mounts to the carrier via the standard 40-pin header (or a soldered subset of it for the production SKU).
+A sandwich carrier PCB roughly Pi-sized (~65×30 mm) hosts a Raspberry Pi Zero 2 W on its 40-pin header and presents a USB-A receptacle oriented so the dongle slides in *parallel* to the Pi rather than perpendicular off a cable. USB D+/D- come up from the Pi's `PP22`/`PP23` test points (a well-known Pi Zero mod that bypasses the micro-USB connector entirely), so the dongle stacks cleanly in-plane with the Pi. A USB-C port provides power. An optional 3.5mm TRS jack supports wired audio output alongside the primary Bluetooth path.
 
-Assembled with the dongle plugged in, the final footprint is roughly playing-card sized (~75×40×15mm). A 3D-printed or injection-molded case unifies the Pi, the carrier, and the dongle into a single unit with the SMA antenna connector exposed on one side.
+Assembled, the final footprint is roughly playing-card sized: ~75×30×15 mm with a Nooelec Nano 3, ~120×30×15 mm with the longer RTL-SDR Blog V3/V4. A 3D-printed or injection-molded case unifies the Pi, the carrier, and the dongle into a single unit with the SMA antenna connector exposed on one side.
 
-Recommended dongle: any R820T2-based RTL-SDR. The RTL-SDR Blog V3/V4 is the reference for direct-sampling HF and bias tee. The Nooelec Nano 3 is the reference for thermal and form factor. Both work identically at the USB layer.
+Recommended dongle: any R820T2-based RTL-SDR. The Nooelec Nano 3 is the reference for the smallest stacked footprint. The RTL-SDR Blog V3/V4 is the reference for direct-sampling HF and bias tee at the cost of length. Both work identically at the USB layer.
 
 ### The user's product experience
 
@@ -100,10 +100,11 @@ The single-SKU story is also a marketing simplification. There is one Kerchunk. 
                              │ (~4.8 MB/s I/Q)
                   ┌──────────▼──────────────────┐
                   │   USB-A Host Socket         │
-                  │   (carrier PCB)             │
+                  │   (carrier PCB, parallel    │
+                  │    to Pi for in-plane stack)│
                   └──────────┬──────────────────┘
-                             │ via Pi micro-USB OTG
-                             │ or pogo pads
+                             │ tapped from Pi USB
+                             │ test points (PP22/PP23)
                   ┌──────────▼──────────────────┐
                   │   Raspberry Pi Zero 2 W     │
                   │   Quad-core A53 @ 1 GHz     │
@@ -133,7 +134,11 @@ The single-SKU story is also a marketing simplification. There is one Kerchunk. 
 
 **RTL-SDR Blog V3/V4 or Nooelec Nano 3** (~$30–40 retail): R820T2 tuner with 25–1750 MHz range, TCXO for low drift, 2.4 MHz stable sampling bandwidth. The V4 (R828D + improved front-end) is the current recommended reference; V3 remains widely owned and works identically. Nano 3 is the smaller-form-factor alternative. All three are mature, in-production, and supported by upstream librtlsdr.
 
-**Carrier PCB** (~$8–12 BOM): Hosts the USB-A right-angle socket for the dongle, USB-C input with a power-path controller (LM66200 or similar) that handles ignition-sense power gating, status LED, optional I²S codec for the 3.5mm jack, and the 40-pin header connection to the Pi. Four-layer board, RF-aware routing around the USB pair.
+**Sandwich carrier PCB** (~$8–12 BOM): Mounts the Pi via the 40-pin header. USB D+/D- come up from the Pi's `PP22`/`PP23` test points (small solder pads on the back of the Pi, or pogo contacts on the carrier), eliminating the micro-USB connector and the perpendicular cable it would otherwise require. The carrier presents a USB-A receptacle oriented parallel to the Pi so the dongle stacks alongside it in-plane. Carrier also includes USB-C input with a power-path controller (LM66200 or similar) that handles ignition-sense power gating, status LED, and an optional I²S codec for the 3.5mm jack. Four-layer board, RF-aware routing on the USB pair (~5 cm differential trace; well within USB 2.0 HS budget).
+
+**Why not a bare RTL-SDR module on the carrier?** Considered and rejected for v1. Bare RTL2832U + R820T2 modules exist for OEM integration and would shave ~5 mm off the stack height, but they narrow the supply chain (single-vendor) and prevent users from swapping dongles. Reconsider for a v2 hardware revision once volume justifies the sourcing.
+
+**Why not just plug into the Pi's micro-USB OTG port?** That works mechanically only with a right-angle adapter and even then the dongle hangs off the Pi's edge in an awkward L. The test-point USB tap costs essentially nothing on the carrier and gets the dongle in-plane.
 
 **USB-C + power-path controller** (~$1.50): 5V power input. The Zero 2 W draws ~150–250 mA idle and peaks higher under load; combined with the dongle's ~280–300 mA, plan for ~700 mA peak. A power-path IC plus an ignition-sense input from the car's accessory line cleanly handles "car off → scanner off" without leaving the Pi running on a dead 12V rail.
 
@@ -324,11 +329,10 @@ User drives to work. Car starts, scanner resumes from suspend in < 1 second, aut
 
 | SKU | Description | BOM (qty 100) | Target Retail |
 |---|---|---|---|
-| Kit | Carrier PCB only | ~$25 | $60 |
-| Bundle | Carrier + Pi Zero 2 W + RTL-SDR dongle | ~$58 | $120 |
-| Assembled | Bundle + case, pre-flashed SD | ~$68 | $150 |
+| Bundle | Carrier + Pi Zero 2 W + RTL-SDR dongle, user assembles | ~$58 | $120 |
+| Assembled | Bundle + case, pre-flashed SD, ready to power up | ~$68 | $150 |
 
-Compared to the prior two-tier Classic/Delta pricing, the Bundle slots between the old Classic Bundle ($80) and Delta Bundle ($130). Customers get analog + P25 in the single SKU, no upgrade path required.
+Two SKUs only. A no-carrier "kit" form (Pi + right-angle OTG adapter + dongle) was considered and rejected for shipping — the resulting assembly is too long and too mechanically fragile to call a product. Compared to the prior two-tier Classic/Delta pricing, the Bundle slots between the old Classic Bundle ($80) and Delta Bundle ($130). Customers get analog + P25 in the single SKU, no upgrade path required.
 
 ### Competitive landscape
 
@@ -412,7 +416,7 @@ Compared to the prior two-tier Classic/Delta pricing, the Bundle slots between t
 
 **Goal:** Prove the Zero 2 W can host an RTL-SDR, demod one channel, and stream over Bluetooth A2DP to a paired sink. Most of this is already-working open source; the milestone is integration, not invention.
 
-**Hardware:** Pi Zero 2 W, RTL-SDR Blog V3 (or any R820T2 dongle), USB OTG adapter, USB-C power, microSD with Raspberry Pi OS Lite.
+**Hardware:** Pi Zero 2 W, RTL-SDR Blog V3 (or any R820T2 dongle), right-angle micro-USB OTG adapter (used for prototype only — keeps the dongle in-plane with the Pi for handling, even though no carrier PCB exists yet), USB-C-to-micro-USB power adapter, microSD with Raspberry Pi OS Lite.
 
 **Tasks:**
 1. Boot stock Raspberry Pi OS Lite, install `rtl-sdr`, `bluez`, `bluez-alsa` packages
@@ -471,14 +475,15 @@ Compared to the prior two-tier Classic/Delta pricing, the Bundle slots between t
 **Goal:** First custom carrier PCB, populated by hand, in a 3D-printed case.
 
 **Tasks:**
-1. KiCad schematic: Pi Zero 2 W 40-pin header, USB-A host (right-angle), USB-C input with power-path IC, ignition-sense input, optional I²S codec, status LED
-2. Four-layer PCB layout with RF-aware routing on the USB pair
-3. JLCPCB fabrication (5 boards, ~$50 total)
-4. Hand-populate with reflow oven or hot air
-5. Solder Pi to carrier (or use the 40-pin header), flash SD with custom image, validate operation
-6. 3D-print case around it
+1. KiCad schematic: 40-pin header for the Pi, USB-A receptacle oriented for parallel dongle stacking, USB-C input with power-path IC, ignition-sense input, optional I²S codec, status LED
+2. USB D+/D- routed from the carrier's USB-A pins to short pogo contacts (or solder pads + flying wires for v0.1) aligned with the Pi's `PP22`/`PP23` test points; bench-validate continuity and HS signal integrity on a hand-wired prototype before fabbing the carrier
+3. Four-layer PCB layout with RF-aware routing on the USB pair
+4. JLCPCB fabrication (5 boards, ~$50 total)
+5. Hand-populate with reflow oven or hot air
+6. Mount Pi to carrier via the 40-pin header, attach the USB tap (pogo or wire), flash SD with custom image, validate operation
+7. 3D-print case around the stack
 
-**Success:** One functional Kerchunk prototype that matches dev-board performance.
+**Success:** One functional Kerchunk prototype, dongle stacked in-plane with the Pi, that matches dev-board performance.
 
 ### Milestone 5: Custom OS image (3–4 weeks, can run parallel to M4)
 
@@ -603,6 +608,8 @@ If the decision is delayed: this doc remains the single source of truth. Update 
 ---
 
 ## Revision log
+
+**2026-05-07 (carrier refinement)** — Carrier-PCB strategy committed: sandwich form-factor with USB D+/D- tapped from the Pi's `PP22`/`PP23` test points, USB-A receptacle oriented so the dongle stacks parallel/in-plane with the Pi rather than hanging off a perpendicular cable. Bare-RTL-SDR-module path considered and rejected for v1 (narrows supply chain, prevents user dongle swap). No-PCB right-angle-adapter form demoted to prototype-only — too long and mechanically fragile to ship. SKU lineup simplified to Bundle / Assembled (no PCB-less kit). Milestone 4 updated to call out the test-point USB tap as the key SI risk to bench-validate before fab.
 
 **2026-05-07** — Architecture pivot: ESP32-S3 → Raspberry Pi Zero 2 W. The S3's USB peripheral is Full-Speed only (12 Mbps) and cannot carry the RTL2832U's 2.4 MSPS / ~4.8 MB/s I/Q stream — a silicon-level ceiling that no firmware effort can clear. Pivoted to the Zero 2 W, which has High-Speed USB host, on-chip Bluetooth Classic + BLE, and a quad-core A53 with ample DSP headroom. Side effects: the previous Classic/Delta two-tier split collapses into a single SKU (Pi handles both analog and P25); firmware risk drops materially because most of the SDR + Bluetooth stack is off-the-shelf Linux userspace; new headline risk is Linux boot/resume latency rather than CPU feasibility. Pricing rebalanced: Bundle at $120, Assembled at $150. Roadmap rewritten around Linux userspace milestones. Prior firmware scaffold (`firmware/m1-feasibility/`, ESP-IDF) removed.
 
