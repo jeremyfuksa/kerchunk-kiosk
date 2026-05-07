@@ -1,13 +1,13 @@
 ---
 title: "Kerchunk — Product Vision"
 created: 2026-04-16
-updated: 2026-04-16
+updated: 2026-05-07
 vault: Tism
 topic: kerchunk-vision
 ---
-Summary:: A pocket-sized Bluetooth scanner brain PCB that turns an RTL-SDR dongle into a headless, car-optimized analog and P25 scanner with parallel channel monitoring.
-Next:: Decide whether to prototype. Validate ESP32-S3 USB OTG host + librtlsdr + A2DP concurrency before committing to PCB design.
-Context:: Emerged from an April 2026 hyperfocus cycle on ham radio hardware gaps. Scanner category hasn't been meaningfully rethought since the Uniden BC125AT (2002). Kerchunk addresses that by reframing scanning as a parallel-SDR problem rather than a serial-hardware problem. Build intent is "decide later" — this doc captures the thinking so the decision is informed whether it's made in a week or a year.
+Summary:: A pocket-sized Bluetooth scanner built around a Raspberry Pi Zero 2 W and an RTL-SDR dongle. Headless, car-optimized, parallel multi-channel monitoring with analog and P25 in a single SKU.
+Next:: Build the M1 prototype on a stock Pi Zero 2 W: rtl_fm + bluealsa A2DP source, one channel, 60 seconds clean.
+Context:: Originally architected around an ESP32-S3 USB host. May 2026 investigation found the S3's USB peripheral is Full-Speed only (12 Mbps) and cannot carry the RTL2832U's 2.4 MSPS / ~4.8 MB/s I/Q stream. Pivoted to Raspberry Pi Zero 2 W, which has High-Speed USB host, on-chip Bluetooth Classic + BLE, a quad-core A53 with ample DSP headroom, and a mature SDR userspace. The pivot collapses the previous Classic/Delta tier split — one chip handles both analog and P25 — and trades MCU instant-on for a Linux boot-time engineering problem.
 
 ---
 
@@ -15,7 +15,7 @@ Context:: Emerged from an April 2026 hyperfocus cycle on ham radio hardware gaps
 
 > *Kerchunk: ham radio slang for briefly keying up a repeater to verify it's there. The sound a repeater makes when someone checks in without saying anything. Also: what this scanner does continuously, across every channel in your list, simultaneously.*
 
-A bare PCB kit that turns any RTL-SDR dongle into a Bluetooth car scanner. Pocket-sized. No screen. No speaker. No buttons. Pairs with your car's stereo, streams audio over Bluetooth, displays channel metadata on your head unit. Monitors multiple channels in parallel. Built for hams and scanner hobbyists who want something the commercial market hasn't made in 20 years.
+A bare carrier PCB and a Raspberry Pi Zero 2 W that turn any RTL-SDR dongle into a Bluetooth car scanner. Pocket-sized. No screen. No speaker. No buttons. Pairs with your car's stereo, streams audio over Bluetooth, displays channel metadata on your head unit. Monitors multiple channels in parallel. Built for hams and scanner hobbyists who want something the commercial market hasn't made in 20 years.
 
 ---
 
@@ -35,7 +35,7 @@ Traditional scanners scan. They hop from frequency to frequency, checking each i
 
 An SDR doesn't scan. It captures a wide slice of spectrum continuously and demodulates channels in software. Within a 2.4 MHz window, it can monitor 4 to 24 channels simultaneously depending on processor headroom. The concept of "scan speed" dissolves — there is no scanning, just listening.
 
-For typical US ham repeater layouts, this is an architectural match. Most metros cluster their repeaters into 2-5 band windows of 2.4 MHz each. Kansas City's 17 analog repeaters fit in 3 windows. Seattle's 21 fit in 5. Chicago's 32 fit in 4. Even Los Angeles with 309 repeaters fits in 11 windows, though with real demodulator pressure in the densest 70cm slice. For rural areas like Manhattan KS (3 repeaters, 2 windows), the entire channel list can be monitored continuously with zero cycling.
+For typical US ham repeater layouts, this is an architectural match. Most metros cluster their repeaters into 2-5 band windows of 2.4 MHz each. Kansas City's 17 analog repeaters fit in 3 windows. Seattle's 21 fit in 5. Chicago's 32 fit in 4. Even Los Angeles with 309 repeaters fits in 11 windows. For rural areas like Manhattan KS (3 repeaters, 2 windows), the entire channel list can be monitored continuously with zero cycling.
 
 This is the feature no hardware scanner can offer. It's not a better version of the BC125AT's architecture — it's a different architecture entirely.
 
@@ -44,8 +44,8 @@ This is the feature no hardware scanner can offer. It's not a better version of 
 The target user is a ham operator or scanner hobbyist who:
 - Already owns at least one RTL-SDR dongle (roughly 400,000 sold globally; the r/rtlsdr subreddit has 80,000+ members)
 - Drives regularly and would benefit from hands-free Bluetooth audio
-- Runs homebrew projects on ESP32, Raspberry Pi, or Arduino
-- Shops at Mouser, Digi-Key, LCSC, or directly from Nooelec
+- Runs homebrew projects on Raspberry Pi, ESP32, or Arduino
+- Shops at Mouser, Digi-Key, LCSC, Adafruit, or directly from Nooelec / RTL-SDR Blog
 - Reads Hackaday, follows QRP Labs, has a Tindie wishlist
 - Is frustrated by commercial scanner UX but hasn't found a better option
 
@@ -57,31 +57,33 @@ Kerchunk fills that gap.
 
 ## What it is
 
-A bare PCB kit, approximately 45×30mm, centered on an ESP32-S3 microcontroller. A USB-A socket on one edge accepts a Nooelec Nano 3 RTL-SDR dongle (17×20×8mm, aluminum-cased, 0.5 PPM TCXO, recommended but any R820T2-based dongle works). A USB-C port provides power. An optional 3.5mm TRS jack supports wired audio output alongside the primary Bluetooth path.
+A bare carrier PCB approximately 70×35mm that hosts a Raspberry Pi Zero 2 W and exposes a USB-A socket for an RTL-SDR dongle. A USB-C port provides power. An optional 3.5mm TRS jack supports wired audio output alongside the primary Bluetooth path. The Pi mounts to the carrier via the standard 40-pin header (or a soldered subset of it for the production SKU).
 
-Assembled with the Nano 3 plugged in, the final footprint is roughly Tic Tac box sized (~55×30×12mm). A 3D-printed or injection-molded case unifies the two pieces into a single unit with the SMA antenna connector exposed on one side.
+Assembled with the dongle plugged in, the final footprint is roughly playing-card sized (~75×40×15mm). A 3D-printed or injection-molded case unifies the Pi, the carrier, and the dongle into a single unit with the SMA antenna connector exposed on one side.
+
+Recommended dongle: any R820T2-based RTL-SDR. The RTL-SDR Blog V3/V4 is the reference for direct-sampling HF and bias tee. The Nooelec Nano 3 is the reference for thermal and form factor. Both work identically at the USB layer.
 
 ### The user's product experience
 
-The user receives the PCB (optionally pre-assembled, optionally bundled with a Nano 3 and a case). They plug the dongle into the USB-A socket and connect power via USB-C. They pair their phone and their car stereo with the scanner's Bluetooth identity. They open the companion iOS or Android app and either import a channel list (RepeaterBook CSV, Chirp-compatible format, or manual entry) or pick from curated presets for their area. The app displays the channel list, lets them tag priority channels, and uploads the configuration over BLE.
+The user receives the assembled unit (or a kit and assembles it). They plug the dongle into the USB-A socket and connect power via USB-C. They pair their phone and their car stereo with the scanner's Bluetooth identity. They open the companion iOS or Android app and either import a channel list (RepeaterBook CSV, Chirp-compatible format, or manual entry) or pick from curated presets for their area. The app displays the channel list, lets them tag priority channels, and uploads the configuration over BLE.
 
 From that point forward, the scanner runs headlessly. In the car, they pair it with their head unit as a Bluetooth audio source. The head unit's track display shows the current active frequency's alpha tag and frequency. When a transmission ends, the display reverts to a scanning indicator. When the car is off, the scanner powers down. When the car is on, it resumes where it left off.
 
 No screen. No buttons. No headphone jack to break. No proprietary programming cable. No firmware CDROM. No fighting with Uniden's Windows software that hasn't been updated since 2014.
 
-### Product tiers
+### Single SKU
 
-**Base — Kerchunk Classic.** ESP32-S3 only. 4-6 parallel channels within the active 2.4 MHz window. Analog FM/NFM/AM demodulation. Covers 25-1750 MHz via the RTL-SDR. Sufficient for 95% of US ham operators and non-trunked scanner users. Target retail: $50 kit, $80 with Nano 3 bundle, $110 assembled-with-case.
+The Pi Zero 2 W's quad-core A53 has more than enough headroom to run analog FM/NFM/AM and P25 Phase 1 decode on the same chip without a coprocessor. The previous Classic/Delta two-tier split (ESP32-S3 vs. STM32H7+S3) collapses into one product:
 
-**Pro — Kerchunk Delta.** STM32H743 primary DSP plus ESP32-S3 Bluetooth coprocessor. 16-24 parallel channels. P25 Phase 1 digital decoding via open-source mbelib-neo. Targets dense metros (LA, NYC, SF Bay, Chicago, DFW) and public-safety monitoring. Target retail: $100 kit, $130 with Nano 3, $160 assembled-with-case.
+**Kerchunk.** Pi Zero 2 W + RTL-SDR dongle on a carrier PCB. 4–12 parallel channels within the active 2.4 MHz window depending on demod cost. Analog FM/NFM/AM at launch; P25 Phase 1 via DSD-FME or OP25 in a follow-up firmware release. Covers 25–1750 MHz via the RTL-SDR. Target retail: $90 kit, $120 assembled-with-case.
 
-The Pro variant's name "Delta" references the callsign letter D (for Digital, for Decoder) and carries phonetic weight without cuteness. Classic and Delta feel like siblings in a product family.
+The single-SKU story is also a marketing simplification. There is one Kerchunk. The capability ceiling is "what this CPU can do," and improvements arrive as software updates rather than hardware tier changes.
 
 ---
 
 ## Hardware architecture
 
-### Block diagram — Base (Classic)
+### Block diagram
 
 ```
                   ┌─────────────────────────────┐
@@ -89,56 +91,57 @@ The Pro variant's name "Delta" references the callsign letter D (for Digital, fo
                   └──────────┬──────────────────┘
                              │
                   ┌──────────▼──────────────────┐
-                  │   Nooelec Nano 3 RTL-SDR    │
-                  │   R820T2 tuner + RTL2832U   │
-                  │   0.5 PPM TCXO              │
+                  │   RTL-SDR Blog V3/V4 or     │
+                  │   Nooelec Nano 3            │
+                  │   R820T2 + RTL2832U         │
+                  │   2.4 MSPS 8-bit complex    │
                   └──────────┬──────────────────┘
-                             │ USB 2.0 (I/Q stream,
-                             │  2.4 MSPS, 8-bit complex)
+                             │ USB 2.0 High-Speed
+                             │ (~4.8 MB/s I/Q)
                   ┌──────────▼──────────────────┐
                   │   USB-A Host Socket         │
+                  │   (carrier PCB)             │
                   └──────────┬──────────────────┘
-                             │
+                             │ via Pi micro-USB OTG
+                             │ or pogo pads
                   ┌──────────▼──────────────────┐
-                  │   ESP32-S3-WROOM-1-N8R2     │
-                  │   Dual-core @ 240 MHz       │
-                  │   8 MB PSRAM, 8 MB Flash    │
+                  │   Raspberry Pi Zero 2 W     │
+                  │   Quad-core A53 @ 1 GHz     │
+                  │   512 MB LPDDR2             │
+                  │   On-chip BT Classic + BLE  │
+                  │   On-chip 2.4 GHz Wi-Fi     │
                   │                             │
-                  │   Core 0: USB host + SDR    │
-                  │           driver + FFT      │
-                  │   Core 1: Parallel demod +  │
-                  │           A2DP + BLE config │
+                  │   librtlsdr → DSP pipeline  │
+                  │   → BlueZ A2DP source       │
                   └──────┬─────────────┬────────┘
                          │             │
          ┌───────────────┘             └──────────────┐
          │                                            │
   ┌──────▼────────┐      ┌──────────────┐     ┌──────▼──────┐
-  │  Bluetooth    │      │  I²S Codec   │     │  USB-C       │
-  │  Classic +    │      │  (optional   │     │  Power +     │
-  │  BLE radio    │      │   3.5mm jack)│     │  Config      │
-  │  (on-chip)    │      └──────────────┘     │  Storage     │
-  └───────────────┘                            └──────────────┘
+  │  Bluetooth    │      │  USB sound   │     │  USB-C       │
+  │  Classic      │      │  card or     │     │  Power +     │
+  │  A2DP +       │      │  PWM audio   │     │  Power-path  │
+  │  AVRCP target │      │  (optional   │     │  controller  │
+  │  + BLE GATT   │      │   3.5mm jack)│     │  (ignition   │
+  └───────────────┘      └──────────────┘     │   sense)     │
+                                              └──────────────┘
 ```
-
-### Block diagram — Pro (Delta)
-
-Same as Classic, but with an additional STM32H743 Cortex-M7 processor between the RTL-SDR and the ESP32-S3. The STM32 handles the heavy DSP (FFT, C4FM demod, P25 framing, IMBE vocoding) and passes decoded audio to the ESP32-S3 over I²S. The ESP32-S3 is reduced to its best-at role: Bluetooth coprocessor plus companion app interface.
 
 ### Component rationale
 
-**ESP32-S3-WROOM-1-N8R2** (~$4.50 at qty 100): Only hobbyist-accessible part with mature Bluetooth Classic (A2DP source + AVRCP target) plus BLE concurrent, USB OTG host capability, DSP-capable dual-core with vector extensions, and 8 MB external PSRAM for I/Q buffering and channel list storage. Modular FCC certification already done. ESP32-C6 is BLE-only (no Classic). Nordic nRF parts are BLE-only. The S3 is the only answer for Bluetooth Classic hobbyist work.
+**Raspberry Pi Zero 2 W** (~$15 retail): Quad-core Cortex-A53 at 1 GHz, 512 MB LPDDR2, on-chip 2.4 GHz Wi-Fi and Bluetooth 4.2 (Classic + BLE), micro-USB OTG with full High-Speed (480 Mbps) host capability. The High-Speed USB is the binding requirement — the RTL2832U streams ~4.8 MB/s of I/Q data, which a Full-Speed (12 Mbps) host like the ESP32-S3 cannot carry. The Zero 2 W has existing FCC/CE/IC modular approvals, simplifying certification on the radio side. Pi Foundation has held the $15 price point through three generations and maintains long-term availability commitments.
 
-**Nooelec Nano 3 RTL-SDR** (~$30-35 retail, recommended): R820T2 tuner with 25-1750 MHz range, 0.5 PPM TCXO for drift-free operation, 2.4 MHz sampling bandwidth, aluminum enclosure for automotive thermal management. Nooelec's own marketing language positions this product for "EMI sensitive environments like automotive applications" — they've already validated the automotive use case. Any R820T2-based RTL-SDR works; the Nano 3 is the reference dongle for its thermal and TCXO specs.
+**RTL-SDR Blog V3/V4 or Nooelec Nano 3** (~$30–40 retail): R820T2 tuner with 25–1750 MHz range, TCXO for low drift, 2.4 MHz stable sampling bandwidth. The V4 (R828D + improved front-end) is the current recommended reference; V3 remains widely owned and works identically. Nano 3 is the smaller-form-factor alternative. All three are mature, in-production, and supported by upstream librtlsdr.
 
-**STM32H743VIT6** (Pro only, ~$12): Cortex-M7 at 480 MHz with DSP extensions, FPU, 2 MB flash, 1 MB RAM. Only commonly-available MCU that can run full P25 Phase 1 decode (C4FM + Reed-Solomon + IMBE) in real-time alongside parallel channel monitoring. Mature open-source toolchain, cheap Blue Pill-class dev boards for prototyping.
+**Carrier PCB** (~$8–12 BOM): Hosts the USB-A right-angle socket for the dongle, USB-C input with a power-path controller (LM66200 or similar) that handles ignition-sense power gating, status LED, optional I²S codec for the 3.5mm jack, and the 40-pin header connection to the Pi. Four-layer board, RF-aware routing around the USB pair.
 
-**USB-A right-angle socket** (~$0.80): Accepts any standard USB dongle, right-angle orientation keeps the assembly flat.
+**USB-C + power-path controller** (~$1.50): 5V power input. The Zero 2 W draws ~150–250 mA idle and peaks higher under load; combined with the dongle's ~280–300 mA, plan for ~700 mA peak. A power-path IC plus an ignition-sense input from the car's accessory line cleanly handles "car off → scanner off" without leaving the Pi running on a dead 12V rail.
 
-**USB-C + PD controller** (~$0.50): Power only. No negotiation needed; 5V USB power is sufficient for the ESP32-S3 and the RTL-SDR combined (peak ~500mA).
+**Optional I²S audio codec** (WM8960 or similar, ~$2): Wired audio output via 3.5mm TRS jack. Kept cheap so it can be included by default rather than as an upgrade.
 
-**I²S audio codec** (WM8960 or similar, ~$2): Optional path for wired audio output via 3.5mm TRS jack. Kept cheap so it can be included by default rather than as an upgrade.
+**SD card path: read-only rootfs.** The Pi boots from microSD. The production image runs the rootfs read-only with a tmpfs overlay for `/var` and a small writable partition for `channels.csv`, `config.json`, scan logs, and firmware updates. This sidesteps SD-card corruption from sudden power loss in automotive use.
 
-**Mass storage over USB-C**: The ESP32-S3's TinyUSB stack can expose a FAT32 mass storage device containing `channels.csv`, `config.json`, and firmware update files. User drops files in, unplugs, scanner restarts with new config. This is the fallback configuration path that works without the companion app.
+**USB mass storage over USB-C**: The carrier exposes the Pi's writable config partition as a USB mass storage device when plugged into a host computer. User drops `channels.csv` and `config.json` in, unplugs, scanner reboots with new config. This is the fallback configuration path that works without the companion app.
 
 ### What's deliberately omitted
 
@@ -148,58 +151,62 @@ Same as Classic, but with an additional STM32H743 Cortex-M7 processor between th
 
 **No keypad.** The companion app is the keypad. This is the most audience-authentic choice: the r/amateurradio and r/rtlsdr users who want this product all carry phones and prefer app-based configuration.
 
-**No battery on the base model.** USB-C power. The scanner is designed to live in a car (always on when engine runs) or on a desk (plugged in). Battery life is an obligation that requires charging circuitry, a battery holder, a power management IC, and firmware for state of charge — all of which add cost and complexity for a use case most users don't have. A battery pack version can be a later variant or a 3D-printed case add-on with a commodity LiPo pack.
+**No battery.** USB-C power. The scanner is designed to live in a car (always on when ignition is hot) or on a desk (plugged in). Battery life is an obligation that requires charging circuitry, a battery holder, a power management IC, and firmware for state of charge — all of which add cost and complexity for a use case most users don't have. A battery-pack version can be a later variant or a 3D-printed case add-on with a commodity USB-C power bank.
 
 **No built-in CTCSS/DCS encoder.** It's a scanner, not a transceiver. Receive-only, by design.
 
 ---
 
-## Firmware architecture
+## Software architecture
 
-This is the highest-risk portion of the design. It's also the least-prototyped. The following is a reasoned plan, not validated code.
+This is now a Linux userspace application running on Raspberry Pi OS (or a buildroot-derived minimal image for production). The previous bare-metal firmware story is gone, and with it most of the firmware risk.
 
-### Real-time task map (Base / Classic)
+### Process layout
 
-ESP32-S3 has two Xtensa LX7 cores at 240 MHz. Task allocation:
-
-**Core 0 (SDR pipeline):**
-- USB host driver (TinyUSB + custom RTL2832U bulk endpoint handler)
-- I/Q buffer management (ring buffer in PSRAM, 512KB)
-- Real-time FFT on 2.4 MSPS I/Q stream (2048-point, every 10ms, via ESP-DSP library)
+**`kerchunk-rxd`** — the SDR pipeline daemon. Written in C++ (or Rust) for the hot path, with a small Python control surface during prototyping.
+- Opens the dongle via librtlsdr, sets sample rate to 2.4 MSPS
+- Continuous I/Q ring buffer (512 KB in RAM)
+- Real-time FFT every 10 ms via FFTW or a NEON-tuned alternative
 - Energy detection across FFT bins → triggers channel demod allocation
+- Pool of N parallel FM/NFM/AM demodulators (N=4 at launch, target N=8–12)
+- Per-demod squelch, CTCSS/DCS decode, 400 ms pre-buffer ring
+- Outputs PCM audio on a Unix socket or a named ALSA device
 
-**Core 1 (demod + Bluetooth):**
-- Parallel FM/NFM demodulators (up to 6 active)
-- Squelch evaluation per demod
-- CTCSS/DCS decoders per demod
-- Audio buffer pre-squelch ring (400ms, per demod)
-- Active demod audio mix and routing
-- A2DP SBC encoder and stream
-- AVRCP metadata updates
-- BLE GATT server for companion app
+**`kerchunk-btd`** — the Bluetooth daemon.
+- BlueZ 5 + bluez-alsa (or PipeWire's bluetooth module) provides the A2DP source
+- Reads PCM from `kerchunk-rxd`, encodes SBC, transmits to the paired sink
+- AVRCP target updates current frequency, alpha tag, and active channel count
+- BLE GATT server for the companion app: channel list R/W, priority flags, status telemetry
 
-**Shared:**
-- PSRAM for channel list (up to 1000 channels), scan logs, config
-- Wake-on-activity logic (power saving when no channels active for N seconds)
-- OTA firmware update handler (over BLE or USB mass storage)
+**`kerchunk-cfgd`** — the config + USB mass storage daemon.
+- Watches `/boot/kerchunk/channels.csv` and `/boot/kerchunk/config.json` for changes
+- When the unit is plugged into a host PC, exposes those files as USB mass storage via the Pi's USB gadget mode
+- Hot-reloads `kerchunk-rxd` on config change without losing Bluetooth pairing state
 
-### Critical risk: does this fit on an S3?
+All three communicate via D-Bus (the native BlueZ idiom) and a small set of Unix sockets. Systemd manages service lifecycle; a `kerchunk.target` ties them together.
 
-**Honest answer: unknown.** No published project runs the full pipeline on a bare ESP32-S3. Individual pieces have been demonstrated:
-- ESP32-S3 as USB host for other USB devices: proven
-- ESP32 running librtlsdr-compatible drivers: partial, experimental projects exist
-- ESP32-S3 A2DP source with AVRCP: proven (pschatzmann's library, ESP-ADF examples)
-- ESP32-S3 running FFT at 2.4 MSPS: borderline, depends on implementation
-- ESP32-S3 running multiple FM demodulators in parallel: theoretical
+### What's already solved upstream
 
-The integration of all of these simultaneously is the question. The first prototype milestone (see Prototyping Roadmap) is specifically designed to answer it.
+Most of the previously-risky firmware work is now off-the-shelf:
+- **USB host + RTL-SDR enumeration:** librtlsdr, kernel-managed.
+- **2.4 MSPS I/Q streaming:** librtlsdr's standard async read path.
+- **FFT and FM demod:** GNU Radio blocks, or rtl_fm as a reference implementation.
+- **A2DP source + AVRCP target:** BlueZ 5 + bluez-alsa, well-documented, ships in Raspberry Pi OS.
+- **BLE GATT server:** BlueZ 5 with python-dbus or sd-bus.
+- **USB mass storage gadget:** kernel `g_mass_storage` module on the Pi's OTG controller.
+- **OTA-style updates:** A/B partition layout via standard tools (rauc, swupdate).
 
-**Contingency:** If the S3 can't handle the full base pipeline, three fallback options exist:
-1. Reduce to 2-3 parallel demods instead of 6 (acceptable for most users, bad for LA)
-2. Move to ESP32-P4 when widely available (newer Espressif chip with dedicated DSP, reduces risk)
-3. Base model adopts the Pro architecture (STM32H7 + ESP32-S3), eliminating the two-tier distinction and pushing base price to $75-85
+The remaining custom work is the orchestration: parallel demod scheduling across 2.4 MHz windows, the rolling-window scanning strategy, the metadata-vs-audio timing for AVRCP, and the companion app.
 
-Option 3 is the safest but eliminates the $50 entry point. Decision comes after Milestone 1 prototyping.
+### Critical risk: boot time
+
+Linux boot replaces "S3 USB feasibility" as the highest-priority technical risk. Stock Raspberry Pi OS on a Zero 2 W boots in 15–30 seconds. The Vision UX is "car starts → scanner is ready," which wants ≤ 5 seconds from cold and ≤ 1 second from suspend. Mitigations, in increasing engineering cost:
+
+1. **Suspend-to-RAM, not poweroff.** When ignition drops, suspend instead of shutting down. Resume is sub-second. The carrier PCB's power-path controller maintains a low standby current from the always-hot 12V line. This is the primary plan.
+2. **Custom buildroot or Yocto image.** Trim to the kernel modules and userspace actually needed. 5–8 second cold boot is achievable with effort.
+3. **Initramfs-only operation.** Aggressive: everything in initramfs, no rootfs pivot. Sub-3-second boot is documented in industrial Pi deployments.
+
+If suspend-to-RAM works reliably across thermal and voltage variation, the cold-boot path matters mainly on first power-up and after firmware updates — both acceptable to be slow.
 
 ### Rolling window scanning strategy
 
@@ -215,29 +222,30 @@ The parallel monitoring architecture creates a fundamentally different scanning 
 
 **At runtime:**
 1. Continuously monitor priority channels using dedicated demod slots (up to 4)
-2. Remaining demod slots (2 on base, 12-20 on Pro) cycle through non-priority windows
+2. Remaining demod slots cycle through non-priority windows
 3. Each window dwell: FFT the full 2.4 MHz, identify active channels via energy threshold, assign available demod slots to active channels in priority order
 4. On squelch-close, free the demod slot
 5. On window timeout, retune to next window (weighted by density)
 
-**Firmware-exposed metrics (for companion app display):**
+**Exposed metrics (for companion app display):**
 - Current cycle time (ms)
 - Window occupancy (% of time each window is being monitored)
 - Missed activity log (when more active channels than demod slots, which were skipped)
 - Active demod slot count (real-time)
+- CPU and thermal headroom
 
 This transparency is genuinely novel. No hardware scanner tells you what it missed; they can't, because they don't know.
 
 ### Bluetooth audio pipeline and latency handling
 
-A2DP SBC has 150-400ms end-to-end latency. This is inherent to Bluetooth Classic and car head units' jitter buffers. Kerchunk's strategy:
+A2DP SBC has 150–400 ms end-to-end latency. This is inherent to Bluetooth Classic and car head units' jitter buffers. Kerchunk's strategy:
 
-1. Maintain a continuous A2DP stream (never stop transmitting, fill gaps with comfort noise or silence)
-2. Pre-buffer 400ms of RF audio per demod (ring buffer, overwritten when squelch stays closed)
+1. Maintain a continuous A2DP stream (never stop transmitting; fill gaps with comfort noise or silence)
+2. Pre-buffer 400 ms of RF audio per demod (ring buffer, overwritten when squelch stays closed)
 3. On squelch open, flush the pre-buffer to A2DP stream first, then live audio
-4. User experiences a constant ~300ms delay but never hears a clipped transmission start
+4. User experiences a constant ~300 ms delay but never hears a clipped transmission start
 
-This is the same trick aftermarket Bluetooth dongles use on BC125AT scanners. The ham/scanner audience already accepts 300ms latency from that workflow.
+This is the same trick aftermarket Bluetooth dongles use on BC125AT scanners. The ham/scanner audience already accepts 300 ms latency from that workflow.
 
 **Design note:** The AVRCP metadata update should happen at squelch-open, not at flush-complete, so the user sees "145.130 MHz — KC0KW" slightly before they hear audio. This keeps the head unit display responsive rather than laggy.
 
@@ -245,20 +253,20 @@ This is the same trick aftermarket Bluetooth dongles use on BC125AT scanners. Th
 
 Three ways to configure Kerchunk, in priority order:
 
-**1. iOS/Android companion app over BLE (primary):** Full channel list management, priority tagging, window visualization, scan activity log, firmware updates. Written in Flutter for single-codebase iOS + Android support. Estimated 150-200 hours of dev time.
+**1. iOS/Android companion app over BLE (primary):** Full channel list management, priority tagging, window visualization, scan activity log, firmware updates. Written in Flutter for single-codebase iOS + Android support. Estimated 150–200 hours of dev time.
 
 **2. Web Bluetooth config page (alternate):** A static HTML/JS page hosted on GitHub Pages. Users visit the URL in Chrome or Edge, pair the scanner over Web Bluetooth, configure. No installation required. Does not work on iOS Safari or iOS Chrome (no Web Bluetooth support). Good fallback for desktop users who don't want an app.
 
-**3. USB-C mass storage CSV (fallback):** Plug the scanner into any computer via USB-C, it mounts as a disk, user edits `channels.csv` with any text editor or spreadsheet, saves, ejects, scanner reboots with new config. Works offline, no pairing required, no app needed. Compatible with Chirp-exported CSV format.
+**3. USB-C mass storage CSV (fallback):** Plug the scanner into any computer via USB-C, it mounts as a disk via the Pi's USB gadget mode, user edits `channels.csv` with any text editor or spreadsheet, saves, ejects, scanner reloads with new config. Works offline, no pairing required, no app needed. Compatible with Chirp-exported CSV format.
 
-All three paths read and write the same underlying configuration file format. The app is the primary path but every user can fall back to USB mass storage if Bluetooth isn't working.
+All three paths read and write the same underlying configuration files. The app is the primary path but every user can fall back to USB mass storage if Bluetooth isn't working.
 
-### Firmware update strategy
+### Update strategy
 
-- OTA updates over BLE via the companion app (primary)
-- USB-C mass storage drop-in firmware files (fallback)
-- Dual-partition flash layout for safe rollback if update fails
-- Semantic versioning, firmware pinned to hardware revision
+- A/B rootfs partitions managed by `rauc` or `swupdate`
+- Updates delivered over Wi-Fi (when the Pi joins a known network) or via USB mass storage drop-in
+- OTA via the BLE companion app for the writable config partition, not for the rootfs
+- Semantic versioning, image pinned to hardware revision
 - Public changelog, public roadmap
 
 ---
@@ -267,7 +275,7 @@ All three paths read and write the same underlying configuration file format. Th
 
 ### Primary use case: car scanner
 
-User drives to work. Car starts, scanner powers on, auto-connects to car's Bluetooth (previously paired). Scanner resumes monitoring the channel list configured for the user's area. User hears no audio until a repeater activates; when one does, the car's speakers play the transmission and the head unit shows "145.130 MHz — KC0KW Gibbs Rd." User drives, listens, occasionally hears nets. Car stops, scanner sleeps. Car starts again tomorrow, same thing.
+User drives to work. Car starts, scanner resumes from suspend in < 1 second, auto-connects to car's Bluetooth (previously paired). Scanner resumes monitoring the channel list configured for the user's area. User hears no audio until a repeater activates; when one does, the car's speakers play the transmission and the head unit shows "145.130 MHz — KC0KW Gibbs Rd." User drives, listens, occasionally hears nets. Car stops, scanner suspends. Car starts again tomorrow, same thing.
 
 **This is the 95% use case.** Every design decision defers to making this work reliably.
 
@@ -277,13 +285,14 @@ User drives to work. Car starts, scanner powers on, auto-connects to car's Bluet
 - **Travel:** Scanner in a bag with earbuds, used on trips to monitor local repeaters without bringing a full radio.
 - **Scanner test bench:** Scanner tethered to a laptop via USB-C (mass storage mode), used for quick channel list experimentation while testing.
 - **Multi-scanner setup:** Multiple Kerchunks running in parallel, each configured for a different band or geographic area, via a central BLE app dashboard.
+- **Network mode (bonus):** The Pi has Wi-Fi. A "home base" mode could expose a local web UI on the user's home network, stream audio over Icecast, or push scan logs to a server. Out of scope for v1; tracked for v1.x.
 
 ### First-time setup flow
 
-1. Unbox PCB (and Nano 3 if bundled)
-2. Plug Nano 3 into USB-A socket on PCB
+1. Unbox unit (and dongle if bundled)
+2. Plug dongle into USB-A socket
 3. Plug USB-C into any 5V power source (phone charger, car USB port, laptop)
-4. LED indicates "discoverable" state
+4. LED indicates "discoverable" state once boot completes (~5–8 s)
 5. Open Kerchunk app on phone, scan for nearby devices, pair
 6. App prompts: "First time setup. Where are you?" — user enters ZIP code or picks from map
 7. App offers: "Import 17 local analog repeaters from RepeaterBook? [Yes] [Customize]"
@@ -315,37 +324,33 @@ User drives to work. Car starts, scanner powers on, auto-connects to car's Bluet
 
 | SKU | Description | BOM (qty 100) | Target Retail |
 |---|---|---|---|
-| Classic Kit | PCB only | ~$17 | $50 |
-| Classic Bundle | PCB + Nano 3 | ~$47 | $80 |
-| Classic Assembled | PCB + Nano 3 + case | ~$58 | $110 |
-| Delta Kit | PCB only (Pro) | ~$33 | $100 |
-| Delta Bundle | PCB + Nano 3 | ~$63 | $130 |
-| Delta Assembled | PCB + Nano 3 + case | ~$74 | $160 |
+| Kit | Carrier PCB only | ~$25 | $60 |
+| Bundle | Carrier + Pi Zero 2 W + RTL-SDR dongle | ~$58 | $120 |
+| Assembled | Bundle + case, pre-flashed SD | ~$68 | $150 |
+
+Compared to the prior two-tier Classic/Delta pricing, the Bundle slots between the old Classic Bundle ($80) and Delta Bundle ($130). Customers get analog + P25 in the single SKU, no upgrade path required.
 
 ### Competitive landscape
 
 | Product | Price | Scan Architecture | Bluetooth | Kerchunk Advantage |
 |---|---|---|---|---|
 | Quansheng UV-K5 | $25 | Serial | None | Parallel monitoring, automotive integration |
-| Uniden BC125AT | $130 | Serial @ 100 ch/s | None | Parallel, car Bluetooth, pocket form factor |
-| Uniden SR30C | $130 | Serial | None | Better coverage, modern UX, smaller |
-| Uniden BCD325P2 | $380 | Serial | None | Parallel, $250 cheaper, P25 in Delta at $160 |
-| Uniden SDS100 | $650 | Serial | None | Parallel, $490 cheaper (Delta), modern UX |
+| Uniden BC125AT | $130 | Serial @ 100 ch/s | None | Parallel, car Bluetooth, smaller, P25 included |
+| Uniden SR30C | $130 | Serial | None | Better coverage, modern UX, P25 included |
+| Uniden BCD325P2 | $380 | Serial | None | Parallel, $260 cheaper, P25 included |
+| Uniden SDS100 | $650 | Serial | None | Parallel, $530 cheaper, P25 included |
 | SDRTrunk on laptop | Free | Parallel | N/A | Portable, standalone, no laptop required |
-| kv4p HT | $90 DIY | N/A (transceiver) | No A2DP | Receive-only scanner specialization |
 
-**Classic's competitive story:** You can get a BC125AT for the same price ($130 vs Classic Bundle at $80). But Classic is half the size, has parallel monitoring, works with your car's Bluetooth, and doesn't have a speaker to blow out in a hot car. For $80.
-
-**Delta's competitive story:** You can get a BCD325P2 for $380 or an SDS100 for $650 to monitor P25. Or you can spend $130 on Delta Bundle and get parallel P25 monitoring in a device that fits in your center console, streams to your car stereo, and configures via your phone. Delta saves $250-$520 versus its direct competition.
+**Competitive story:** Kerchunk Bundle at $120 sits below every Uniden P25-capable scanner ($380–$650) while also undercutting the BC125AT analog-only at $130. Compared to a laptop running SDRTrunk, it's a fixed-function, car-installable, hands-free device that doesn't need a tethered host.
 
 ### Audience segmentation
 
 **Primary (first 100 units):**
-- Active hams on r/amateurradio, r/rtlsdr, r/scanner
+- Active hams on r/amateurradio, r/rtlsdr, r/scanner, r/raspberry_pi
 - Members of regional ham clubs who already mentor newer ops
 - QRP Labs / (tr)uSDX / uBITX kit-building community crossover
 - Tindie and Hackaday early adopters
-- Expected: 60-80% Classic, 20-40% Delta
+- Pi-Hole / home-server tinkerer crossover (familiarity with Pi tooling)
 
 **Secondary (post-launch, after validation):**
 - Non-ham public safety monitoring enthusiasts
@@ -363,84 +368,97 @@ User drives to work. Car starts, scanner powers on, auto-connects to car's Bluet
 
 ### Technical risks
 
-**1. ESP32-S3 feasibility for full Base pipeline.** Highest-priority risk. Mitigation: Milestone 1 prototype validates this before PCB design. If it fails, Base becomes Pro-architecture ($75-85 entry) or waits for ESP32-P4 availability.
+**1. Cold boot and resume latency.** Highest-priority risk now. Stock Raspberry Pi OS boots in 15–30 s; the UX wants suspend-resume in under 1 s and cold boot under 5–8 s. Mitigation: suspend-to-RAM as the primary path (validated in Milestone 1.5), custom buildroot image for cold-boot path. Decision gate: if neither path hits target, reconsider the always-on-with-low-power-mode approach (Pi stays running on a small standby current with the radio gated off).
 
-**2. Bluetooth audio latency in practice.** The 300ms pre-buffer approach is theoretically sound but untested in combination with AVRCP metadata timing. Risk: user experience feels laggy or metadata lags audio. Mitigation: Milestone 2 validates with real car head units.
+**2. SD card reliability in automotive thermal/vibration.** Pi runs from microSD. Repeated power cuts and thermal cycling can corrupt cards. Mitigation: read-only rootfs with tmpfs overlay; small dedicated config partition; recommended SD card in BOM (industrial-grade SLC-mode card, ~$10).
 
-**3. RTL-SDR sensitivity in fringe conditions.** RTL-SDR is noisier than a dedicated scanner superhet. Users in rural areas monitoring distant repeaters may be disappointed. Mitigation: recommend external LNA (Nooelec SAWbird, RTL-SDR Blog LNA) in documentation. Consider LNA as an accessory in later product waves.
+**3. Bluetooth audio latency in practice.** The 300 ms pre-buffer approach is theoretically sound but untested in combination with AVRCP metadata timing across BlueZ. Risk: user experience feels laggy or metadata lags audio. Mitigation: Milestone 2 validates with real car head units.
 
-**4. Car head unit AVRCP metadata compatibility.** AVRCP display behavior varies across head units. Some show only title, some truncate to 16 chars, some refresh slowly. Risk: marketing material promises "frequency shown on your dashboard" and some users see nothing. Mitigation: Milestone 2 tests across 5+ different car stereos and documents compatibility explicitly.
+**4. RTL-SDR sensitivity in fringe conditions.** RTL-SDR is noisier than a dedicated scanner superhet. Users in rural areas monitoring distant repeaters may be disappointed. Mitigation: recommend external LNA (Nooelec SAWbird, RTL-SDR Blog LNA) in documentation. Consider LNA as an accessory in later product waves.
 
-**5. Firmware scope creep.** The feature list grows naturally (trunked P25, DMR, POCSAG, digital voice ID, recording, etc.). Risk: never shipping because always adding features. Mitigation: ruthless v1 scoping to analog-only Classic first. Everything else is v2+.
+**5. Car head unit AVRCP metadata compatibility.** AVRCP display behavior varies across head units. Some show only title, some truncate to 16 chars, some refresh slowly. Risk: marketing material promises "frequency shown on your dashboard" and some users see nothing. Mitigation: Milestone 2 tests across 5+ different car stereos and documents compatibility explicitly.
+
+**6. Pi Zero 2 W supply.** Pi Foundation has had multi-month outages on Zero-class boards in the past. Risk: production stalls because the core part is unobtainable. Mitigation: Pi Foundation's 2024+ supply commitments are stronger; design the carrier so a Pi Zero 2 W can be substituted by a Compute Module 4 IO breakout if needed (~30% larger, otherwise drop-in via I²S/USB).
+
+**7. Scope creep.** The feature list grows naturally (trunked P25 Phase 2, DMR, POCSAG, digital voice ID, recording, etc.). Risk: never shipping because always adding features. Mitigation: ruthless v1 scoping to analog-only at launch; P25 Phase 1 in v1.1; everything else v2+.
 
 ### Regulatory risks
 
-**1. FCC §15.101 certification requirement.** Even kit-form receivers may require FCC Part 15B testing when sold commercially in the US. Historical "kit exemptions" (§15.37) were largely deleted in FCC 25-85 (2026). Risk: $5,000-$8,000 testing cost before legal US sale, or legal exposure if skipped. Mitigation: budget $5-8K for testing, or limit initial runs to "fewer than 5 personal-use units" and evaluate after first batch. Consider launching as assembled product via a partner with existing FCC certification.
+**1. FCC §15.101 certification requirement.** Even kit-form receivers may require FCC Part 15B testing when sold commercially in the US. Historical "kit exemptions" (§15.37) were largely deleted in FCC 25-85 (2026). Risk: $5,000–$8,000 testing cost before legal US sale, or legal exposure if skipped. Mitigation: budget $5–8K for testing, or limit initial runs to "fewer than 5 personal-use units" and evaluate after first batch. The Pi Zero 2 W carries existing FCC modular approval for its radios; the carrier PCB needs §15.101 testing for the unintentional radiator side and overall receiver performance.
 
-**2. ESP32-S3-WROOM modular approval.** The WROOM module carries its own FCC modular approval, which simplifies the intentional-radiator side of certification. The scanner PCB as a whole still needs §15.101 testing for the unintentional radiator and receiver performance.
-
-**3. International compliance.** ETSI (EU), IC (Canada), ACMA (Australia) each have their own requirements. Not addressed in v1. US-only launch.
+**2. International compliance.** ETSI (EU), IC (Canada), ACMA (Australia) each have their own requirements. Not addressed in v1. US-only launch.
 
 ### Business risks
 
-**1. Base model market squeeze.** Classic Kit at $50 sits uncomfortably close to the UV-K5 ($25 hackable transceiver) below and BC125AT ($130 assembled scanner) above. Risk: "why wouldn't I just buy a BC125AT" from customers who don't value the Bluetooth or parallel monitoring. Mitigation: marketing lead with the parallel monitoring + automotive integration story; de-emphasize direct BC125AT comparison.
+**1. Pi-based products feel less "premium" to some buyers.** Some hobbyists discount Pi-based products as "just a Pi in a box." Risk: perceived as a Raspberry Pi project, not a product. Mitigation: emphasize the carrier PCB and integrated case in marketing; the Pi is an implementation detail, not the brand story.
 
-**2. Delta variant as the actual product.** Realistic analysis suggests Delta has a much stronger competitive position ($130 vs $380+ P25 scanners) than Classic does. Risk: you spend engineering effort on Classic when Delta is the real product. Mitigation: consider making Delta the launch SKU and Classic a later lower-cost variant. Revisit after Milestone 1.
+**2. Firmware dev time vs hyperfocus cycle length.** Linux userspace cuts the firmware estimate roughly in half versus the prior bare-metal plan: ~250–400 hours total to launch (was 400–600 for Classic alone, 1000–1500 for Delta). Historical hyperfocus cycles last 2–6 months. Risk remains real but is materially smaller. Mitigation: structure software in shippable increments, accept "analog-only at launch, P25 follows" staging, accept that a cycle ending mid-project is a valid outcome (the doc itself is the archived artifact).
 
-**3. Firmware dev time vs hyperfocus cycle length.** Estimated 400-600 hours for Classic firmware, 1000-1500 for Delta. Historical hyperfocus cycles last 2-6 months. Risk: cycle ends before firmware ships. Mitigation: structure firmware in shippable increments, embrace "Classic first, Delta later" staging, accept that a cycle-ending mid-project is a valid outcome (the doc itself is the archived artifact).
-
-**4. Support burden for kit buyers.** Every kit seller underestimates the support time per unit. Reddit/Discord support for 100 users of a kit they partially assembled can consume 10+ hours/week. Mitigation: launch assembled SKU as primary, offer kit as optional advanced tier. Consider Tindie seller fees as a trade for their built-in support infrastructure.
+**3. Support burden for kit buyers.** Every kit seller underestimates the support time per unit. Reddit/Discord support for 100 users of a kit they partially assembled can consume 10+ hours/week. Mitigation: launch Assembled as primary, offer Kit as optional advanced tier. Consider Tindie seller fees as a trade for their built-in support infrastructure.
 
 ### Open questions
 
-- Will Nooelec engage in a partnership or wholesale conversation?
-- Should the first production run be 20 units (Reddit experiment) or 50-100 (serious product launch)?
-- Is there a case design that makes Classic feel like a finished product rather than a kit?
-- Does the audience actually want Delta's P25 capability, or is analog-only Classic enough?
+- Pi Foundation partnership / volume pricing — worth pursuing once 100+ unit/month volume is plausible?
+- Should the first production run be 20 units (Reddit experiment) or 50–100 (serious product launch)?
+- Is there a case design that makes Kerchunk feel like a finished product rather than a Pi project?
 - Is a Discord or forum the right community channel, or should this be a mailing list?
+- Does the Wi-Fi capability change the product story enough to expose a "home mode" in v1, or strictly v1.x?
 
 ---
 
 ## Prototyping roadmap
 
-### Milestone 1: Feasibility (2-4 weeks of evening work)
+### Milestone 1: Feasibility (1 weekend)
 
-**Goal:** Prove the ESP32-S3 can host an RTL-SDR, pull I/Q samples, demod one channel, and simultaneously stream audio over Bluetooth A2DP.
+**Goal:** Prove the Zero 2 W can host an RTL-SDR, demod one channel, and stream over Bluetooth A2DP to a paired sink. Most of this is already-working open source; the milestone is integration, not invention.
 
-**Hardware:** ESP32-S3-DevKitC-1 (~$15), existing Nano 3, USB OTG adapter cable.
+**Hardware:** Pi Zero 2 W, RTL-SDR Blog V3 (or any R820T2 dongle), USB OTG adapter, USB-C power, microSD with Raspberry Pi OS Lite.
 
 **Tasks:**
-1. ESP-IDF project with TinyUSB host + classic Bluedroid A2DP source
-2. Custom USB driver for RTL2832U (port from librtlsdr, adapt for ESP-IDF)
-3. Pull 2.4 MSPS I/Q stream into a ring buffer
-4. Basic FM demodulator on one fixed frequency
-5. Feed demodulated audio to A2DP SBC encoder
-6. Pair with phone, verify audio
+1. Boot stock Raspberry Pi OS Lite, install `rtl-sdr`, `bluez`, `bluez-alsa` packages
+2. Confirm `rtl_test` succeeds and prints sample stream stats
+3. `rtl_fm` tuned to a local 2m repeater piped through `aplay` to a USB sound card — confirm audio
+4. Pair Pi with Bluetooth earbuds; configure bluez-alsa as default sink
+5. `rtl_fm | bluez-alsa-aplay` to the paired earbuds
+6. Run for 60 seconds, listen for glitches
 
 **Success:** Stream a local 2m repeater to Bluetooth earbuds for 60 seconds without glitches.
-**Failure decision:** If S3 can't sustain this, pivot to STM32H7+ESP32-S3 architecture for Base.
+**Failure decision:** If this doesn't work, the underlying assumption that off-the-shelf Linux SDR + BlueZ A2DP works on Zero 2 W is wrong, which would be surprising. Investigate; do not pivot architecture without strong evidence.
 
-### Milestone 2: Multi-channel and metadata (2-4 weeks)
+### Milestone 1.5: Suspend-resume validation (3–5 days)
+
+**Goal:** Validate that suspend-to-RAM hits the < 1 s resume target and that Bluetooth pairing survives the suspend cycle.
+
+**Tasks:**
+1. Configure systemd to suspend on a GPIO trigger (simulating ignition drop)
+2. Resume on a separate GPIO trigger (simulating ignition wake)
+3. Measure resume time to "first audio packet sent over A2DP"
+4. Cycle 100+ times, watch for failures (Bluetooth radio not coming back, USB host not re-enumerating dongle, etc.)
+
+**Success:** < 1 s perceived resume, > 95% reliability over 100 cycles.
+**Failure decision:** If suspend-to-RAM is unreliable, fall back to the always-on-with-low-power-mode approach and accept ~50–100 mA continuous standby on the always-hot 12V line.
+
+### Milestone 2: Multi-channel and metadata (3–5 weeks)
 
 **Goal:** Prove parallel monitoring + AVRCP metadata displays correctly on a car head unit.
 
 **Tasks:**
-1. Extend to 4 parallel FM demodulators
-2. Add energy-detection channel allocation
-3. Implement AVRCP target with dynamic metadata updates
-4. Test with real car head units (3-5 different makes)
+1. Replace `rtl_fm` with custom `kerchunk-rxd` running 4 parallel FM demodulators
+2. Add energy-detection channel allocation across a 2.4 MHz window
+3. Implement AVRCP target with dynamic metadata updates via BlueZ
+4. Test with real car head units (3–5 different makes)
 5. Measure actual end-to-end latency
 
 **Success:** Park in car, hear parallel channel activity, see frequency display update correctly on dashboard.
-**Adjustments:** Calibrate firmware metrics against measured performance. Update vision doc with reality.
+**Adjustments:** Calibrate metrics against measured performance. Update vision doc with reality.
 
-### Milestone 3: Companion app MVP (4-6 weeks)
+### Milestone 3: Companion app MVP (4–6 weeks)
 
 **Goal:** Ship a Flutter app that configures the prototype via BLE.
 
 **Tasks:**
-1. Flutter project with BLE library
-2. BLE GATT service on ESP32-S3 side with defined characteristics
+1. Flutter project with BLE library (flutter_blue_plus)
+2. BLE GATT service in `kerchunk-btd` with defined characteristics
 3. Channel list import from RepeaterBook CSV
 4. Priority channel flagging
 5. Window visualization
@@ -448,75 +466,101 @@ User drives to work. Car starts, scanner powers on, auto-connects to car's Bluet
 
 **Success:** New user can go from unbox → scanning in under 10 minutes via the app.
 
-### Milestone 4: PCB v0.1 (4-8 weeks)
+### Milestone 4: Carrier PCB v0.1 (4–8 weeks)
 
-**Goal:** First custom PCB, populated by hand, in a 3D-printed case.
+**Goal:** First custom carrier PCB, populated by hand, in a 3D-printed case.
 
 **Tasks:**
-1. KiCad schematic matching dev board architecture
-2. 4-layer PCB layout with RF-aware routing
-3. JLCPCB fabrication (5 boards, $50 total)
-4. Hand populate with reflow oven or hot air
-5. Flash firmware, validate operation
-6. 3D print case around it
+1. KiCad schematic: Pi Zero 2 W 40-pin header, USB-A host (right-angle), USB-C input with power-path IC, ignition-sense input, optional I²S codec, status LED
+2. Four-layer PCB layout with RF-aware routing on the USB pair
+3. JLCPCB fabrication (5 boards, ~$50 total)
+4. Hand-populate with reflow oven or hot air
+5. Solder Pi to carrier (or use the 40-pin header), flash SD with custom image, validate operation
+6. 3D-print case around it
 
-**Success:** One functional Kerchunk Classic prototype that matches or exceeds dev board performance.
+**Success:** One functional Kerchunk prototype that matches dev-board performance.
 
-### Milestone 5: Pilot production (8-12 weeks)
+### Milestone 5: Custom OS image (3–4 weeks, can run parallel to M4)
+
+**Goal:** Replace Raspberry Pi OS with a buildroot-derived minimal image: read-only rootfs, fast boot, A/B partitions for OTA.
+
+**Tasks:**
+1. Buildroot configuration targeting the Pi Zero 2 W
+2. Trim to required kernel modules (USB host, RTL2832U-relevant, brcmfmac for Wi-Fi/BT, USB gadget)
+3. Read-only rootfs, tmpfs overlay, dedicated `/data` partition
+4. `rauc` or `swupdate` for A/B updates
+5. Cold-boot benchmark < 8 s
+
+**Success:** Cold boot in < 8 s, suspend-resume in < 1 s, OTA updates work.
+
+### Milestone 6: Pilot production (8–12 weeks)
 
 **Goal:** 20 units shipped to beta testers.
 
 **Tasks:**
-1. JLCPCB PCBA service for 20 boards (~$800 total)
-2. Bundle with Nooelec Nano 3 (purchased at retail, no partnership yet)
-3. Ship in small boxes with QR code to setup docs
-4. Recruit 20 beta testers from r/amateurradio and personal network
-5. Gather feedback for 30 days
+1. JLCPCB PCBA service for 20 carrier boards (~$600 total)
+2. Source 20 Pi Zero 2 W (~$300) and 20 RTL-SDR dongles (~$700)
+3. Pre-flash SD cards with custom image
+4. Ship in small boxes with QR code to setup docs
+5. Recruit 20 beta testers from r/amateurradio and personal network
+6. Gather feedback for 30 days
 
 **Success:** 15+ of 20 units reach "working in a car" state with user-acceptable UX.
 **Launch gate:** Proceed to public launch if success, iterate if not.
 
-### Milestone 6: Public launch (1-2 weeks after pilot)
+### Milestone 7: Public launch (1–2 weeks after pilot)
 
 **Goal:** Open orders for 100 more units on a simple storefront (Tindie, Lemonsqueezy, or a Shopify store).
 
 **Tasks:**
 1. Product listing with photos, specs, clear docs
-2. Reddit announcement on r/amateurradio and r/rtlsdr
+2. Reddit announcement on r/amateurradio, r/rtlsdr, and r/raspberry_pi
 3. Hackaday submission
-4. Engage Nooelec about partnership if traction justifies
+4. Engage Pi Foundation / Nooelec / RTL-SDR Blog about partnerships if traction justifies
 5. Accept orders, fulfill from pilot supply + second production run
 
 **Success:** First 100 units sell through in 90 days.
-**Ongoing:** Delta variant development kicks off in parallel once Classic is shipping.
+
+### Milestone 8 (post-launch): P25 Phase 1
+
+**Goal:** Add P25 Phase 1 digital decode to the existing hardware via firmware update.
+
+**Tasks:**
+1. Integrate DSD-FME or OP25 decoder into `kerchunk-rxd` demod pool
+2. Validate CPU headroom — A53 should handle 2–4 P25 channels alongside analog
+3. Update channel list schema to flag P25 channels
+4. Update companion app to support P25 talkgroup display
+5. Ship as v1.1 over OTA
+
+**Success:** Existing customers receive P25 decode via update with no hardware change. This is the strongest argument for the single-SKU pivot.
 
 ---
 
 ## Success criteria
 
 **Short term (12 months from first build):**
-- 100 Classic units shipped to paying customers
-- Documented firmware in public repo under permissive license
+- 100 units shipped to paying customers
+- Documented software in public repo under permissive license
 - Companion app on iOS and Android app stores
 - Three positive Hackaday writeups
 - Discord or forum with 200+ active users
 
 **Medium term (24 months):**
-- Delta variant shipping
-- 500+ total units across both SKUs
-- Nooelec partnership (co-marketing or wholesale)
+- P25 Phase 1 shipping in v1.1 firmware
+- 500+ total units
+- Pi Foundation or Nooelec partnership (co-marketing or wholesale)
 - First international customers (via user-reported compliance workarounds or intentional cert pursuit)
-- Community-contributed firmware features
+- Community-contributed software features
 
 **Long term (36 months+):**
 - Kerchunk is the reference hobbyist Bluetooth scanner
-- A v2 hardware revision with integrated RTL-SDR (if Nooelec partnership allows)
+- A v2 hardware revision (CM4-based for industrial, or a custom SoC carrier if volume justifies)
 - Adjacent products (Kerchunk Desk — non-automotive desk-optimized variant?)
 - Exit or continuation decision made on real data
 
 **Alternative success criteria:**
 - Project archived to tism with thinking captured (this doc) and zero units shipped
-- Partial completion (firmware open-sourced but no commercial product) accepted as valuable contribution to the RTL-SDR ecosystem
+- Partial completion (software open-sourced but no commercial product) accepted as valuable contribution to the RTL-SDR + Pi ecosystems
 
 Any of these outcomes is acceptable. The product exists to exist, not to dominate a category. Commercial success is a nice-to-have, not the point.
 
@@ -526,9 +570,7 @@ Any of these outcomes is acceptable. The product exists to exist, not to dominat
 
 **Kerchunk.** Ham radio slang for briefly keying up a repeater to verify it's there. Onomatopoeic. Unapologetically authentic to the hobby. Communicates insider status immediately to the target audience.
 
-**Product tiers:**
-- **Kerchunk Classic** — Base model. Analog FM/NFM/AM. Entry tier.
-- **Kerchunk Delta** — Pro model. Classic features plus P25 Phase 1 digital. Delta references the D phonetic (Digital, Decoder) and carries technical weight.
+**Single product:** "Kerchunk." No Classic/Delta tier split — the Pi Zero 2 W handles both analog and P25 in one chip, so the previous tier distinction is no longer meaningful. Future variants (battery-pack, desk-optimized, CM4-based industrial) get their own names if they ship.
 
 **Tagline candidates:**
 - "Pocket scanner. Modern stack."
@@ -536,9 +578,9 @@ Any of these outcomes is acceptable. The product exists to exist, not to dominat
 - "The scanner your car deserves."
 - "Finally, a scanner that admits it's 2026."
 
-The last one is the most on-brand. It's dry, direct, Gen-X, and tells you what's wrong with the competition without naming them.
+The last one remains the most on-brand. It's dry, direct, Gen-X, and tells you what's wrong with the competition without naming them.
 
-**Visual identity:** Minimal. Brushed aluminum to match the Nano 3's aesthetic. Monospace typeface for anything printed on the board or case. Single-color silkscreen. The product shouldn't look like a toy or a cosplay radio; it should look like a tool.
+**Visual identity:** Minimal. Brushed aluminum or matte black to match the dongle's aesthetic. Monospace typeface for anything printed on the carrier or case. Single-color silkscreen. The product shouldn't look like a toy or a cosplay radio; it should look like a tool.
 
 **Community:**
 - Reddit: `r/Kerchunk`
@@ -550,16 +592,18 @@ The last one is the most on-brand. It's dry, direct, Gen-X, and tells you what's
 
 ## What this doc is not
 
-This is not a commitment to build Kerchunk. This is the captured thinking from the April 2026 hyperfocus cycle, preserved in sufficient detail that the decision to build or not-build can be made later with full context.
+This is not a commitment to build Kerchunk. This is the captured thinking from the April 2026 hyperfocus cycle plus the May 2026 architecture pivot, preserved in sufficient detail that the decision to build or not-build can be made later with full context.
 
 If the decision is to build: this doc is the starting point. Everything in it is debatable, but nothing is unaddressed.
 
 If the decision is to archive: this doc is the artifact. The intellectual work has value whether the product ships or not. The parallel-monitoring architectural insight (five US metros validated, windowing strategy worked out, BOM economics priced) is transferable to any future SDR scanner project, Kerchunk or otherwise.
 
-If the decision is delayed: this doc remains the single source of truth. Update the frontmatter `updated:` field when revised. Add a revision log at the bottom when meaningful changes happen.
+If the decision is delayed: this doc remains the single source of truth. Update the frontmatter `updated:` field when revised. Add a revision log entry below.
 
 ---
 
 ## Revision log
+
+**2026-05-07** — Architecture pivot: ESP32-S3 → Raspberry Pi Zero 2 W. The S3's USB peripheral is Full-Speed only (12 Mbps) and cannot carry the RTL2832U's 2.4 MSPS / ~4.8 MB/s I/Q stream — a silicon-level ceiling that no firmware effort can clear. Pivoted to the Zero 2 W, which has High-Speed USB host, on-chip Bluetooth Classic + BLE, and a quad-core A53 with ample DSP headroom. Side effects: the previous Classic/Delta two-tier split collapses into a single SKU (Pi handles both analog and P25); firmware risk drops materially because most of the SDR + Bluetooth stack is off-the-shelf Linux userspace; new headline risk is Linux boot/resume latency rather than CPU feasibility. Pricing rebalanced: Bundle at $120, Assembled at $150. Roadmap rewritten around Linux userspace milestones. Prior firmware scaffold (`firmware/m1-feasibility/`, ESP-IDF) removed.
 
 **2026-04-16** — Initial capture. Conversation in Claude consolidated into full vision doc. Five-city RF coverage analysis (KC, Seattle, Chicago, LA, Manhattan KS) complete. BOM validated for Classic and Delta tiers. Naming confirmed (Kerchunk / Classic / Delta). Build intent: "decide later." Filed in 🧠 Tism/Kerchunk/ as active project folder.
