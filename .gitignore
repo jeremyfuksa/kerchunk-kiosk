@@ -151,6 +151,7 @@ build/
 
 # Claude Code session state
 .claude/
+.superpowers/
 
 # Editor
 .vscode/
