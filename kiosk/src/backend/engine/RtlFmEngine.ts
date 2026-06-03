@@ -4,6 +4,7 @@ import type {
 } from "./ScannerEngine.js";
 import type { Channel } from "../config/schema.js";
 import { rmsAmplitude, amplitudeToDbfs, SquelchDetector } from "./pcmEnergy.js";
+import { setVolume as amixerVolume, setMuted as amixerMuted } from "../audio.js";
 
 // Node-driven sequential-dwell scanner.
 //
@@ -269,6 +270,10 @@ export class RtlFmEngine implements ScannerEngine {
     this.setState("stopped");
   }
 
-  async setVolume(_percent: number): Promise<void> {}
-  async setMuted(_muted: boolean): Promise<void> {}
+  async setVolume(percent: number): Promise<void> {
+    await amixerVolume(percent);
+  }
+  async setMuted(muted: boolean): Promise<void> {
+    await amixerMuted(muted);
+  }
 }
