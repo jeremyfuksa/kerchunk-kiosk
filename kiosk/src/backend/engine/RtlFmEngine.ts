@@ -99,6 +99,12 @@ export class RtlFmEngine implements ScannerEngine {
   }
 
   async start(config: ScanConfig): Promise<void> {
+    // Calling start() while already running would orphan the existing pipeline;
+    // tear it down first.
+    if (this._state !== "stopped") {
+      await this.stop();
+    }
+
     this.config = config;
     this.enabled = config.channels.filter((c) => c.enabled);
     this.index = 0;
@@ -187,7 +193,7 @@ export class RtlFmEngine implements ScannerEngine {
       if (this.now() - this.channelStartedAt >= this.hopIntervalMs) {
         this.hop();
       }
-    }, Math.max(20, Math.floor(this.hopIntervalMs / 3)));
+    }, Math.max(20, Math.floor(this.hopIntervalMs / 3))); // poll at ~3x the hop rate, min 20ms
   }
 
   private clearHopTimer(): void {
@@ -231,8 +237,13 @@ export class RtlFmEngine implements ScannerEngine {
   }
 
   private handleUnexpectedExit(channel: Channel): void {
-    this.clearHopTimer();
-    this.rtl = null;
+    // Tear down BOTH children (rtl_fm and sink) and remove listeners before we
+    // (maybe) respawn. Without this the dead rtl_fm's sink is orphaned when
+    // spawnForChannel later overwrites this.sink. killChildren() nulls this.rtl
+    // first, so any exit event fired by its own SIGKILL hits the
+    // `this.rtl !== rtl` stale-guard in the rtl.on("exit") handler and is
+    // ignored — no recursive unexpected-exit, no double restart.
+    this.killChildren();
     if (this.autoRestart) {
       this.emit({
         type: "error", code: "RTL_EXITED",
