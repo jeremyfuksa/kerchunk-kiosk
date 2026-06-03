@@ -1,0 +1,14 @@
+:root { color-scheme: dark; }
+body { margin: 0; font-family: ui-monospace, monospace; background: #0d1117; color: #e6edf3; }
+.dash { display: flex; height: 100vh; }
+.now { flex: 1.4; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #161b22; border-right: 1px solid #30363d; }
+.now .active { color: #3fb950; letter-spacing: 3px; font-size: 1.2rem; }
+.now .freq { font-size: 6rem; font-weight: 700; line-height: 1.1; }
+.now .tag { color: #8b949e; font-size: 1.6rem; }
+.now .scanning { color: #8b949e; font-size: 2rem; }
+.now .err { color: #f85149; font-size: 1.8rem; text-align: center; padding: 1rem; }
+.log { flex: 1; padding: 1.5rem; overflow-y: auto; }
+.log h2 { color: #8b949e; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 2px; }
+.log ul { list-style: none; padding: 0; margin: 0; }
+.log li { padding: 0.4rem 0; border-bottom: 1px solid #21262d; font-size: 1.1rem; }
+.log .t { color: #8b949e; margin-right: 0.6rem; }

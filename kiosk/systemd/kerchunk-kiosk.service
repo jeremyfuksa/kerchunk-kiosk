@@ -1,0 +1,22 @@
+# kiosk/systemd/kerchunk-kiosk.service
+[Unit]
+Description=Kerchunk Kiosk backend
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=kerchunk
+Group=kerchunk
+SupplementaryGroups=audio plugdev
+WorkingDirectory=/opt/kerchunk-kiosk
+Environment=PORT=8080
+Environment=KERCHUNK_CONFIG=/var/lib/kerchunk-kiosk/config.json
+Environment=KERCHUNK_STATIC=/opt/kerchunk-kiosk/dist/frontend
+ExecStart=/usr/bin/node /opt/kerchunk-kiosk/dist/backend/index.js
+Restart=on-failure
+RestartSec=2
+StateDirectory=kerchunk-kiosk
+
+[Install]
+WantedBy=multi-user.target
