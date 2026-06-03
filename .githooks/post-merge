@@ -43,10 +43,13 @@ fi
 # Non-blocking so `git pull` returns immediately and an offline Pi never hangs
 # the pull. Output goes to a log file the user can tail.
 repo_root="$(git rev-parse --show-toplevel)"
-log="$(mktemp -t kerchunk-deploy.XXXXXX.log)"
+# XXXXXX must be at the END of the template for mktemp to substitute it on both
+# macOS and Linux (a trailing .log suffix would be left literal). The deploy's
+# stdout/stderr (success or failure) lands in this file.
+log="$(mktemp "${TMPDIR:-/tmp}/kerchunk-deploy.XXXXXX")"
 echo "[post-merge] main advanced ($orig -> $head); starting background deploy."
 echo "[post-merge] logging to $log  (tail -f to watch)"
 nohup "$repo_root/kiosk/scripts/deploy.sh" >"$log" 2>&1 &
-disown || true
+disown
 
 exit 0
