@@ -266,35 +266,47 @@ describe("RtlFmEngine auto-restart", () => {
       e.on((ev) => events.push(ev));
       await e.start(cfg([c]));
 
-      // Let it crash & restart roughly twice.
-      await new Promise((r) => setTimeout(r, 350));
+      const countSpawns = () =>
+        existsSync(argsFile)
+          ? readFileSync(argsFile, "utf8").trim().split("\n").filter(Boolean).length
+          : 0;
+      const readSinkPids = () =>
+        existsSync(sinkFile)
+          ? readFileSync(sinkFile, "utf8")
+              .trim()
+              .split("\n")
+              .filter(Boolean)
+              .map((l) => Number(l.replace(/^start\s+/, "")))
+              .filter((n) => Number.isFinite(n) && n > 0)
+          : [];
+
+      // Drive the crash/restart loop until it has respawned at least twice.
+      // Poll for the spawn count rather than sleeping a fixed window: under CPU
+      // contention (full suite / loaded Pi) the crash-respawn cycle lags well
+      // past any fixed wall-clock guess, which is what made the old
+      // setTimeout(350)-then-count check flake.
+      const restarted = await waitFor(() => countSpawns() > 1, 4000);
       await e.stop();
       active = null;
 
       // Allow killed sinks to flush their exit; give a moment for fs writes.
       await new Promise((r) => setTimeout(r, 150));
 
-      const spawns = existsSync(argsFile)
-        ? readFileSync(argsFile, "utf8").trim().split("\n").filter(Boolean).length
-        : 0;
-      const sinkPids = existsSync(sinkFile)
-        ? readFileSync(sinkFile, "utf8")
-            .trim()
-            .split("\n")
-            .filter(Boolean)
-            .map((l) => Number(l.replace(/^start\s+/, "")))
-            .filter((n) => Number.isFinite(n) && n > 0)
-        : [];
+      // spawnForChannel starts a sink BEFORE rtl_fm, so the engine issues at most
+      // one sink spawn per rtl_fm spawn (=> sinkPids <= spawns + 1; the +1
+      // tolerates a final sink started after the last rtl_fm args line). We do
+      // NOT assert a lower bound: under the fast crash/restart cycle
+      // (restartDelayMs is tiny) killChildren() can SIGKILL a freshly-spawned
+      // sink before its shell reaches the line that logs "start $$", so a sink
+      // can legitimately exist without ever appearing in the log. The invariant
+      // this test actually guards is "no sink leaks across restarts", asserted
+      // below: every sink that DID log must be dead after stop().
+      const spawns = countSpawns();
+      const sinkPids = readSinkPids();
 
-      // Each rtl_fm spawn pairs with one sink start. spawnForChannel starts the
-      // sink BEFORE rtl_fm and writes the two log files from independent
-      // processes, so if stop() lands mid-restart the sink-start line can be
-      // recorded while the matching rtl_fm args line is still in flight — that
-      // yields at most one extra sink start. Allow that off-by-one; the strict
-      // invariant we care about (no orphans) is asserted below.
-      expect(sinkPids.length).toBeGreaterThanOrEqual(spawns);
-      expect(sinkPids.length).toBeLessThanOrEqual(spawns + 1);
+      expect(restarted).toBe(true);
       expect(spawns).toBeGreaterThan(1);
+      expect(sinkPids.length).toBeLessThanOrEqual(spawns + 1);
 
       // No orphans: every sink the engine ever started must be dead now. Before
       // the fix, handleUnexpectedExit overwrote this.sink without killing the
