@@ -90,4 +90,62 @@ describe("HTTP API", () => {
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body)).toBe(true);
   });
+
+  const WX = { freq: 162550000, alphaTag: "NOAA WX", mode: "nfm", enabled: true };
+
+  it("PUT /api/weather-channel saves and assigns an id", async () => {
+    const { server } = makeApp();
+    const res = await request(server).put("/api/weather-channel").send(WX);
+    expect(res.status).toBe(200);
+    expect(res.body.weatherChannel.id).toMatch(/^wx_/);
+    expect(res.body.weatherChannel.freq).toBe(162550000);
+    const cfg = await request(server).get("/api/config");
+    expect(cfg.body.weatherChannel.freq).toBe(162550000);
+  });
+
+  it("PUT /api/weather-channel rejects an invalid body with 400", async () => {
+    const { server } = makeApp();
+    const res = await request(server).put("/api/weather-channel").send({ freq: -1, alphaTag: "x", mode: "fm", enabled: true });
+    expect(res.status).toBe(400);
+  });
+
+  it("POST /api/mode weather holds the weather channel (engine restarted, single channel)", async () => {
+    const { server, engine } = makeApp();
+    await request(server).put("/api/weather-channel").send(WX);
+    let lastStartChannels: any[] | null = null;
+    const realStart = engine.start.bind(engine);
+    engine.start = async (cfg) => { lastStartChannels = cfg.channels; return realStart(cfg); };
+    const res = await request(server).post("/api/mode").send({ mode: "weather" });
+    expect(res.status).toBe(200);
+    expect(res.body.mode).toBe("weather");
+    expect(lastStartChannels).toHaveLength(1);
+    expect(lastStartChannels![0].freq).toBe(162550000);
+    expect(lastStartChannels![0].enabled).toBe(true);
+  });
+
+  it("POST /api/mode weather with NO weather channel returns 400 and does not switch", async () => {
+    const { server } = makeApp();
+    const res = await request(server).post("/api/mode").send({ mode: "weather" });
+    expect(res.status).toBe(400);
+    const st = await request(server).get("/api/status");
+    expect(st.body.mode).toBe("scan");
+  });
+
+  it("POST /api/mode scan restarts the engine with the scan channel list", async () => {
+    const { server, engine } = makeApp();
+    await request(server).post("/api/channels").send({ freq: 145130000, alphaTag: "A", mode: "nfm", enabled: true });
+    let lastStartChannels: any[] | null = null;
+    const realStart = engine.start.bind(engine);
+    engine.start = async (cfg) => { lastStartChannels = cfg.channels; return realStart(cfg); };
+    const res = await request(server).post("/api/mode").send({ mode: "scan" });
+    expect(res.status).toBe(200);
+    expect(res.body.mode).toBe("scan");
+    expect(lastStartChannels![0].freq).toBe(145130000);
+  });
+
+  it("POST /api/mode rejects an invalid mode value with 400", async () => {
+    const { server } = makeApp();
+    const res = await request(server).post("/api/mode").send({ mode: "banana" });
+    expect(res.status).toBe(400);
+  });
 });

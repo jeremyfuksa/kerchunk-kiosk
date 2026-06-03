@@ -152,6 +152,31 @@ export function createServer(deps: ServerDeps): { server: Server } {
       return json(res, 200, { muted: config.audio.muted });
     }
 
+    if (method === "GET" && path === "/api/weather-channel") {
+      return json(res, 200, { weatherChannel: config.weatherChannel ?? null });
+    }
+    if (method === "PUT" && path === "/api/weather-channel") {
+      const body = await readBody(req);
+      const parsed = channelSchema.omit({ id: true }).safeParse(body);
+      if (!parsed.success) return json(res, 400, { error: "invalid weather channel", issues: parsed.error.issues });
+      const weatherChannel: Channel = { id: `wx_${randomUUID().slice(0, 8)}`, ...parsed.data };
+      config = { ...config, weatherChannel };
+      configStore.save(config);
+      return json(res, 200, { weatherChannel });
+    }
+    if (method === "POST" && path === "/api/mode") {
+      const body = await readBody(req);
+      const next = body?.mode;
+      if (next !== "scan" && next !== "weather") return json(res, 400, { error: "invalid mode" });
+      if (next === "weather" && !config.weatherChannel) {
+        return json(res, 400, { error: "no weather channel configured" });
+      }
+      mode = next;
+      await engine.stop();
+      await engine.start(toScanConfig(config, mode));
+      return json(res, 200, { mode, state: engine.state });
+    }
+
     if (method === "GET" && path === "/api/status") return json(res, 200, { state: engine.state, mode, config });
     if (method === "GET" && path === "/api/logs") return json(res, 200, activityLog.entries());
 
