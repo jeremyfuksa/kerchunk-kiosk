@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formToChannel, mhzToHz } from "../src/frontend/admin/admin.js";
+import { formToChannel, mhzToHz, weatherFormToChannel } from "../src/frontend/admin/admin.js";
 
 describe("admin form helpers", () => {
   it("mhzToHz converts MHz string to integer Hz", () => {
@@ -14,5 +14,16 @@ describe("admin form helpers", () => {
 
   it("formToChannel throws on a non-numeric frequency", () => {
     expect(() => formToChannel({ mhz: "abc", alphaTag: "x", mode: "fm" })).toThrow();
+  });
+});
+
+describe("weather form helper", () => {
+  it("weatherFormToChannel builds a valid weather-channel payload", () => {
+    const payload = weatherFormToChannel({ mhz: "162.550", alphaTag: "NOAA WX", mode: "nfm" });
+    expect(payload).toEqual({ freq: 162550000, alphaTag: "NOAA WX", mode: "nfm", enabled: true });
+  });
+
+  it("weatherFormToChannel throws on a non-numeric frequency", () => {
+    expect(() => weatherFormToChannel({ mhz: "x", alphaTag: "y", mode: "fm" })).toThrow();
   });
 });

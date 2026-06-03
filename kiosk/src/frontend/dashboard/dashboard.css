@@ -14,3 +14,12 @@ body { margin: 0; font-family: ui-monospace, monospace; background: #0d1117; col
 .log ul { list-style: none; padding: 0; margin: 0; }
 .log li { padding: 0.4rem 0; border-bottom: 1px solid #21262d; font-size: 1.1rem; }
 .log .t { color: #8b949e; margin-right: 0.6rem; }
+/* Weather-only mode indicator. Empty when scanning (no text => nothing shown);
+   shows a prominent badge in the top-left when mode === "weather". Positioned
+   fixed so it overlays the flex layout regardless of which pane it sits in. */
+.modeBadge:not(:empty) {
+  position: fixed; top: 1rem; left: 1rem; z-index: 10;
+  padding: 0.4rem 0.9rem; border-radius: 4px;
+  background: #1f6feb; color: #ffffff;
+  font-size: 1.1rem; font-weight: 700; letter-spacing: 3px;
+}

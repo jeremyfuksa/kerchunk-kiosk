@@ -28,6 +28,9 @@ export const configSchema = z.object({
     mixerCard: z.number().int().nonnegative().optional(),
     mixerControl: z.string().min(1).optional(),
   }),
+  // One channel designated as "the weather channel", stored separately from the
+  // scan list. Weather-only mode (server runtime) holds this channel.
+  weatherChannel: channelSchema.optional(),
   channels: z.array(channelSchema),
 });
 

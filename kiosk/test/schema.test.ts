@@ -46,3 +46,19 @@ describe("configSchema", () => {
     expect(defaultConfig().scan.squelchLevel).toBeGreaterThanOrEqual(1500);
   });
 });
+
+describe("weatherChannel", () => {
+  it("is optional — a config without it still parses", () => {
+    expect(configSchema.safeParse(defaultConfig()).success).toBe(true);
+  });
+
+  it("accepts a valid weather channel", () => {
+    const cfg = { ...defaultConfig(), weatherChannel: { id: "wx_1", freq: 162550000, alphaTag: "NOAA", mode: "nfm", enabled: true } };
+    expect(configSchema.safeParse(cfg).success).toBe(true);
+  });
+
+  it("rejects a weather channel with a bad mode", () => {
+    const cfg = { ...defaultConfig(), weatherChannel: { id: "wx_1", freq: 162550000, alphaTag: "NOAA", mode: "ssb", enabled: true } };
+    expect(configSchema.safeParse(cfg).success).toBe(false);
+  });
+});
