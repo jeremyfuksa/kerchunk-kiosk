@@ -31,7 +31,10 @@ export type Config = z.infer<typeof configSchema>;
 export function defaultConfig(): Config {
   return {
     version: 1,
-    scan: { sampleRate: 12000, squelchLevel: 150, gain: "auto", dwellMs: 2000 },
+    // squelchLevel is an RMS open-threshold. Bench-measured noise floor ~150,
+    // noise spikes ~1436, real signal ~2900. 1800 clears the noise spikes with
+    // margin while staying below signal, avoiding constant false squelch-opens.
+    scan: { sampleRate: 12000, squelchLevel: 1800, gain: "auto", dwellMs: 2000 },
     audio: { sink: "hdmi:CARD=vc4hdmi0", volume: 70, muted: false },
     channels: [],
   };
