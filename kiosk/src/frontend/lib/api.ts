@@ -15,6 +15,11 @@ export const api = {
     fetch("/api/audio/volume", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ percent }) }),
   setMuted: (muted: boolean) =>
     fetch("/api/audio/mute", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ muted }) }),
-  getStatus: () => fetch("/api/status").then(j<{ state: string; config: Config }>),
+  getStatus: () => fetch("/api/status").then(j<{ state: string; mode: "scan" | "weather"; config: Config }>),
+  getWeatherChannel: () => fetch("/api/weather-channel").then(j<{ weatherChannel: Channel | null }>),
+  setWeatherChannel: (c: Omit<Channel, "id">) =>
+    fetch("/api/weather-channel", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(c) }).then(j<{ weatherChannel: Channel }>),
+  setMode: (mode: "scan" | "weather") =>
+    fetch("/api/mode", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ mode }) }).then(j<{ mode: "scan" | "weather"; state: string }>),
   getLogs: () => fetch("/api/logs").then(j<{ freq: number; alphaTag: string; ts: number }[]>),
 };
