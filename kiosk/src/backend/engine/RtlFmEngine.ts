@@ -55,7 +55,8 @@ export class RtlFmEngine implements ScannerEngine {
   private readonly restartDelayMs: number;
   private readonly openThreshold: number;
   private readonly hangMs: number;
-  private readonly hopIntervalMs: number;
+  /** Effective per-channel hop interval (ms). Exposed for tests/diagnostics. */
+  readonly hopIntervalMs: number;
   private readonly now: () => number;
 
   private listeners = new Set<EngineListener>();
@@ -91,7 +92,12 @@ export class RtlFmEngine implements ScannerEngine {
     this.restartDelayMs = opts.restartDelayMs ?? 1000;
     this.openThreshold = opts.openThreshold ?? 2000;
     this.hangMs = opts.hangMs ?? 1500;
-    this.hopIntervalMs = opts.hopIntervalMs ?? 400;
+    // Default hop interval. Each hop fully kills + respawns rtl_fm, which
+    // re-opens the USB SDR. A small interval (the old 400ms) re-opened the
+    // dongle ~2.5x/sec and wedged it off the bus (write_reg -7 / error -71 /
+    // disconnect loop), so multi-channel scanning killed audio entirely while
+    // single-channel (no hopping) worked. 2000ms keeps device churn low.
+    this.hopIntervalMs = opts.hopIntervalMs ?? 2000;
     this.now = opts.now ?? Date.now;
   }
 
