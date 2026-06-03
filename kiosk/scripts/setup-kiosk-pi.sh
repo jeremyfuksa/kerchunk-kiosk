@@ -30,7 +30,21 @@ if [ -x /usr/bin/node ] && [ "$(/usr/bin/node -p 'process.versions.node.split(".
   need_node=0
 fi
 if [ "$need_node" -eq 1 ]; then
-  curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+  # Avoid piping a remote script straight into a root shell. Fetch it, verify a
+  # pinned SHA-256, then run it without -E (don't leak this shell's env into root).
+  # Update NODESOURCE_SHA256 when bumping the Node major; get it from the file you
+  # intend to trust: `curl -fsSL https://deb.nodesource.com/setup_20.x | sha256sum`.
+  NODESOURCE_SHA256="${NODESOURCE_SHA256:-}"
+  tmp_ns="$(mktemp)"
+  curl -fsSL https://deb.nodesource.com/setup_20.x -o "$tmp_ns"
+  if [ -n "$NODESOURCE_SHA256" ]; then
+    echo "${NODESOURCE_SHA256}  ${tmp_ns}" | sha256sum -c - || { echo "[setup] NodeSource setup script failed checksum verification" >&2; exit 1; }
+  else
+    echo "[setup] WARNING: NODESOURCE_SHA256 not pinned; running the NodeSource setup script unverified." >&2
+    echo "[setup] Set NODESOURCE_SHA256=<sha> to enforce, or install Debian's own nodejs (>=20) instead." >&2
+  fi
+  sudo bash "$tmp_ns"
+  rm -f "$tmp_ns"
   sudo apt-get install -y nodejs
 fi
 echo "[setup] system node: $(/usr/bin/node --version)"
@@ -40,8 +54,8 @@ echo 'blacklist dvb_usb_rtl28xxu' | sudo tee /etc/modprobe.d/blacklist-rtl.conf 
 
 echo "[setup] Installing RTL-SDR udev rule (plugdev access, no root needed)..."
 sudo tee /etc/udev/rules.d/20-rtlsdr.rules >/dev/null <<'RULE'
-SUBSYSTEM=="usb", ATTRS{idVendor}=="0bda", ATTRS{idProduct}=="2838", GROUP="plugdev", MODE="0666"
-SUBSYSTEM=="usb", ATTRS{idVendor}=="0bda", ATTRS{idProduct}=="2832", GROUP="plugdev", MODE="0666"
+SUBSYSTEM=="usb", ATTRS{idVendor}=="0bda", ATTRS{idProduct}=="2838", GROUP="plugdev", MODE="0660"
+SUBSYSTEM=="usb", ATTRS{idVendor}=="0bda", ATTRS{idProduct}=="2832", GROUP="plugdev", MODE="0660"
 RULE
 sudo udevadm control --reload-rules
 
@@ -49,7 +63,10 @@ echo "[setup] Creating the kerchunk service user..."
 if ! id kerchunk >/dev/null 2>&1; then
   sudo useradd --system --create-home --shell /usr/sbin/nologin kerchunk
 fi
-sudo usermod -aG audio,plugdev,video,render,input kerchunk
+# No `input` group: it grants read of ALL /dev/input/* (keyboards/mice) — a
+# keyboard-sniffing risk for a service user. cage gets input via seatd/logind,
+# and the dashboard is output-only, so the kiosk does not need it.
+sudo usermod -aG audio,plugdev,video,render kerchunk
 
 echo "[setup] Building the app (using whatever node is on PATH for the build)..."
 ( cd "$REPO_DIR" && npm ci && npm run build )
