@@ -77,6 +77,13 @@ describe("HTTP API", () => {
     expect(res.body.state).toBeTruthy();
   });
 
+  it("GET /api/status includes the current mode (defaults to scan)", async () => {
+    const { server } = makeApp();
+    const res = await request(server).get("/api/status");
+    expect(res.status).toBe(200);
+    expect(res.body.mode).toBe("scan");
+  });
+
   it("GET /api/logs returns an array", async () => {
     const { server } = makeApp();
     const res = await request(server).get("/api/logs");

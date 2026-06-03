@@ -22,9 +22,13 @@ const MIME: Record<string, string> = {
   ".json": "application/json", ".svg": "image/svg+xml",
 };
 
-function toScanConfig(cfg: Config): ScanConfig {
+function toScanConfig(cfg: Config, mode: "scan" | "weather"): ScanConfig {
+  const channels =
+    mode === "weather"
+      ? (cfg.weatherChannel ? [{ ...cfg.weatherChannel, enabled: true }] : [])
+      : cfg.channels;
   return {
-    channels: cfg.channels,
+    channels,
     sampleRate: cfg.scan.sampleRate,
     squelchLevel: cfg.scan.squelchLevel,
     dwellMs: cfg.scan.dwellMs,
@@ -49,13 +53,16 @@ function json(res: ServerResponse, status: number, body: unknown): void {
 export function createServer(deps: ServerDeps): { server: Server } {
   const { configStore, engine, activityLog, staticDir } = deps;
   let config = configStore.load();
+  // Runtime scan/weather mode. Deliberately not read from or written to config:
+  // the kiosk always boots into scan mode.
+  let mode: "scan" | "weather" = "scan";
 
   // Persist config AND restart the scanner so changes (e.g. editing channels in
   // the admin) take effect immediately, instead of only after a service restart.
   async function persistAndReload(): Promise<void> {
     configStore.save(config);
     await engine.stop();
-    await engine.start(toScanConfig(config));
+    await engine.start(toScanConfig(config, mode));
   }
 
   // amixer target from config: volume/mute must hit the card+control that
@@ -91,7 +98,7 @@ export function createServer(deps: ServerDeps): { server: Server } {
       config = parsed.data;
       configStore.save(config);
       await engine.stop();
-      await engine.start(toScanConfig(config));
+      await engine.start(toScanConfig(config, mode));
       return json(res, 200, config);
     }
 
@@ -125,7 +132,7 @@ export function createServer(deps: ServerDeps): { server: Server } {
       }
     }
 
-    if (method === "POST" && path === "/api/scan/start") { await engine.start(toScanConfig(config)); return json(res, 200, { state: engine.state }); }
+    if (method === "POST" && path === "/api/scan/start") { await engine.start(toScanConfig(config, mode)); return json(res, 200, { state: engine.state }); }
     if (method === "POST" && path === "/api/scan/stop") { await engine.stop(); return json(res, 200, { state: engine.state }); }
 
     if (method === "POST" && path === "/api/audio/volume") {
@@ -145,7 +152,7 @@ export function createServer(deps: ServerDeps): { server: Server } {
       return json(res, 200, { muted: config.audio.muted });
     }
 
-    if (method === "GET" && path === "/api/status") return json(res, 200, { state: engine.state, config });
+    if (method === "GET" && path === "/api/status") return json(res, 200, { state: engine.state, mode, config });
     if (method === "GET" && path === "/api/logs") return json(res, 200, activityLog.entries());
 
     return json(res, 404, { error: "not found" });
