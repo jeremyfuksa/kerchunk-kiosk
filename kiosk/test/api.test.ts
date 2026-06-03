@@ -103,6 +103,22 @@ describe("HTTP API", () => {
     expect(cfg.body.weatherChannel.freq).toBe(162550000);
   });
 
+  it("GET /api/weather-channel returns null when none is configured", async () => {
+    const { server } = makeApp();
+    const res = await request(server).get("/api/weather-channel");
+    expect(res.status).toBe(200);
+    expect(res.body.weatherChannel).toBeNull();
+  });
+
+  it("GET /api/weather-channel returns the saved channel after a PUT", async () => {
+    const { server } = makeApp();
+    await request(server).put("/api/weather-channel").send({ freq: 162550000, alphaTag: "NOAA WX", mode: "nfm", enabled: true });
+    const res = await request(server).get("/api/weather-channel");
+    expect(res.status).toBe(200);
+    expect(res.body.weatherChannel.freq).toBe(162550000);
+    expect(res.body.weatherChannel.id).toMatch(/^wx_/);
+  });
+
   it("PUT /api/weather-channel rejects an invalid body with 400", async () => {
     const { server } = makeApp();
     const res = await request(server).put("/api/weather-channel").send({ freq: -1, alphaTag: "x", mode: "fm", enabled: true });
