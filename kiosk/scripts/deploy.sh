@@ -24,10 +24,13 @@ if ! ssh -o BatchMode=yes -o ConnectTimeout=5 "$PI_HOST" true 2>/dev/null; then
   exit 1
 fi
 
-# All remote work in one session. The remote runs its own strict bash; the
-# heredoc is quoted ('REMOTE') so it is sent verbatim, not expanded locally.
-ssh "$PI_HOST" "INSTALL_DIR='$INSTALL_DIR' PI_REPO='$PI_REPO' bash -s" <<'REMOTE'
+# All remote work in one session. The heredoc is quoted ('REMOTE') so it is sent
+# verbatim; PI_REPO and INSTALL_DIR are passed as positional args ($1, $2) to the
+# remote bash, so no value is interpolated into a command string (no injection).
+ssh "$PI_HOST" bash -s -- "$PI_REPO" "$INSTALL_DIR" <<'REMOTE'
 set -euo pipefail
+PI_REPO="$1"
+INSTALL_DIR="$2"
 
 cd "$PI_REPO"
 
@@ -53,6 +56,13 @@ deployed="$(git -C "$PI_REPO" rev-parse --short HEAD)"
 echo "[deploy] deployed commit: $deployed"
 echo "[deploy] kerchunk-kiosk:   $(systemctl is-active kerchunk-kiosk.service)"
 echo "[deploy] kerchunk-display: $(systemctl is-active kerchunk-display.service)"
+
+# Fail loudly if a service did not come back up, so a broken deploy is not
+# reported as success (the remote non-zero exit propagates through ssh).
+ok=0
+systemctl is-active --quiet kerchunk-kiosk.service || { echo "[deploy] ERROR: kerchunk-kiosk.service is not active" >&2; ok=1; }
+systemctl is-active --quiet kerchunk-display.service || { echo "[deploy] ERROR: kerchunk-display.service is not active" >&2; ok=1; }
+exit "$ok"
 REMOTE
 
 echo "[deploy] done."
