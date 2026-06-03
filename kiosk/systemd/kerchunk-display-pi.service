@@ -32,6 +32,15 @@ StandardError=journal
 Environment=XDG_RUNTIME_DIR=/run/user/999
 Environment=XDG_SEAT=seat0
 Environment=LIBSEAT_BACKEND=seatd
+# Hide cage's compositor cursor. CSS `cursor: none` only hides the pointer
+# inside web content; cage (Wayland) draws its own pointer on top — visible on
+# the kiosk even with no mouse, because the HDMI-CEC link makes the display
+# register as a pointer device. cage 0.2.0 has no hide-cursor flag, so we point
+# XCursor at a fully-transparent "blank" theme installed by setup-kiosk-pi.sh.
+# XCURSOR_PATH lists where to find it; XCURSOR_THEME selects it.
+Environment=XCURSOR_PATH=/usr/share/icons
+Environment=XCURSOR_THEME=blank
+Environment=XCURSOR_SIZE=24
 # cage runs one fullscreen app; chromium in Wayland/kiosk mode.
 # --password-store=basic stops chromium prompting to unlock the gnome-keyring
 # (the kerchunk nologin user has none) — that was the on-screen "keyring" dialog.

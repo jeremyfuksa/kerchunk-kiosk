@@ -109,6 +109,14 @@ echo "[setup] Disabling appliance-useless services (kiosk needs no Bluetooth / r
 sudo systemctl disable --now bluetooth.service 2>/dev/null || true
 sudo systemctl disable --now udisks2.service 2>/dev/null || true
 
+echo "[setup] Installing the blank cursor theme (hides cage's compositor pointer)..."
+# The display unit sets XCURSOR_THEME=blank / XCURSOR_PATH=/usr/share/icons so
+# cage renders an invisible cursor (CSS cursor:none can't reach the compositor
+# pointer). Install the theme tree to /usr/share/icons/blank. -a preserves the
+# cursor-name symlinks.
+sudo rm -rf /usr/share/icons/blank
+sudo cp -a "$REPO_DIR/kiosk-assets/blank-cursor" /usr/share/icons/blank
+
 echo "[setup] Installing systemd units (Pi-hardened display: seatd, memory caps, no cursor)..."
 sudo cp "$REPO_DIR/systemd/kerchunk-kiosk.service" /etc/systemd/system/kerchunk-kiosk.service
 sudo cp "$REPO_DIR/systemd/kerchunk-display-pi.service" /etc/systemd/system/kerchunk-display.service
