@@ -292,7 +292,7 @@ export class RtlFmEngine implements ScannerEngine {
     // (maybe) respawn. Without this the dead rtl_fm's sink is orphaned when
     // spawnForChannel later overwrites this.sink. killChildren() nulls this.rtl
     // first, so any exit event fired by its own SIGKILL hits the
-    // `this.rtl !== rtl` stale-guard in the rtl.on("exit") handler and is
+    // `this.rtl !== rtl` stale-guard in the rtl.on("close") handler and is
     // ignored — no recursive unexpected-exit, no double restart.
     this.killChildren();
 
