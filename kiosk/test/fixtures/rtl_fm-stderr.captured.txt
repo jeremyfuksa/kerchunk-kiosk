@@ -1,0 +1,38 @@
+# CAPTURED FROM rtl_fm 2.0.2 (rtl-sdr 2.0.2-2+b1) on Raspberry Pi 4, 2026-06-02.
+# Tuner: Rafael Micro R820T (RTL2838UHIDIR). Captured by bench/capture-stderr.sh
+# scanning NOAA weather-radio freqs (162.4-162.55 MHz, always-on, squelch opens).
+#
+# CRITICAL FINDING: this rtl_fm version emits ONLY startup banner lines on stderr.
+# It does NOT print any per-event lines while squelch-scanning — no per-channel
+# 'Tuned to' line on squelch-open, no 'Signal level:' line, no 'Squelch closed'.
+# Verified across squelch levels (-l 0, 50, 150) and single- vs multi-freq scans.
+#
+# Line meanings (startup only):
+#   'Tuned to <hz> Hz.'  -> the INITIAL tuner CENTER frequency (offset-tuned, one-shot
+#                           at startup; NOT a per-channel squelch-open indicator).
+#   'Signal caught, exiting!' / 'User cancel, exiting...' -> shutdown (from our timeout).
+#   All other lines are device/sampling banner.
+#
+# IMPLICATION: active-channel detection cannot come from rtl_fm stderr in this version.
+# See escalation note — the parser/engine design needs an alternative signal source.
+# Raw capture follows:
+#
+Found 1 device(s):
+  0:  Realtek, RTL2838UHIDIR, SN: 00000001
+
+Using device 0: Generic RTL2832U OEM
+Detached kernel driver
+Found Rafael Micro R820T tuner
+Tuner gain set to automatic.
+Tuned to 162652000 Hz.
+Oversampling input by: 84x.
+Oversampling output by: 1x.
+Buffer size: 8.13ms
+Exact sample rate is: 1008000.009613 Hz
+Allocating 15 zero-copy buffers
+Sampling at 1008000 S/s.
+Output at 12000 Hz.
+Signal caught, exiting!
+
+User cancel, exiting...
+Reattached kernel driver
