@@ -22,9 +22,16 @@ KERCHUNK_PI_HOST=admin@kerchunk-kiosk.local ./kiosk/scripts/deploy.sh
 ```
 
 The script prints the deployed commit and the post-restart status of both
-units, and exits non-zero if either service fails to come back up. Requires:
-SSH key access to the Pi (already set up) and that `origin/main` is what you
-want live — it deploys `origin/main`, not your local working tree.
+units (`kerchunk-kiosk.service` and `kerchunk-display.service`), and exits
+non-zero if either service fails to come back up. Requires: SSH key access to
+the Pi (already set up) and that `origin/main` is what you want live — it
+deploys `origin/main`, not your local working tree.
+
+Check the live services independently at any time:
+
+```bash
+ssh admin@192.168.1.54 'systemctl is-active kerchunk-kiosk.service kerchunk-display.service'
+```
 
 ## Auto-deploy on pull
 

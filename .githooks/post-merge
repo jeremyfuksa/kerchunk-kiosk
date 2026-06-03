@@ -50,6 +50,6 @@ log="$(mktemp "${TMPDIR:-/tmp}/kerchunk-deploy.XXXXXX")"
 echo "[post-merge] main advanced ($orig -> $head); starting background deploy."
 echo "[post-merge] logging to $log  (tail -f to watch)"
 nohup "$repo_root/kiosk/scripts/deploy.sh" >"$log" 2>&1 &
-disown
+disown || true
 
 exit 0
