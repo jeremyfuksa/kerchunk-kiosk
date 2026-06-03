@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+#
+# Repo-scoped post-merge hook for kerchunk-kiosk.
+#
+# This repo sets core.hooksPath=.githooks, which makes Git ignore both the
+# global hooks dir AND .git/hooks. So we must:
+#   1. chain the global post-merge (branch-prune) so that still runs, then
+#   2. fire a background deploy when a pull advanced local `main`.
+#
+# Disable auto-deploy without removing the hook:
+#   git config hook.kerchunk-deploy false
+#
+set -euo pipefail
+
+# --- 1. Chain the global branch-prune hook (if present) -------------------
+GLOBAL_HOOK="$HOME/.config/git/hooks/post-merge"
+if [ -x "$GLOBAL_HOOK" ]; then
+  # Pass through the same args Git gave us ($1 = is-squash flag).
+  "$GLOBAL_HOOK" "$@" || true
+fi
+
+# --- 2. Auto-deploy guard -------------------------------------------------
+# Opt-out switch (defaults on).
+if [ "$(git config --get hook.kerchunk-deploy || echo true)" = "false" ]; then
+  exit 0
+fi
+
+# Only deploy from main.
+branch="$(git symbolic-ref --short -q HEAD || true)"
+if [ "$branch" != "main" ]; then
+  exit 0
+fi
+
+# Only deploy if the merge actually advanced HEAD. git pull/merge set ORIG_HEAD
+# to the pre-merge tip; if it's missing or unchanged, there's nothing new.
+orig="$(git rev-parse -q --verify ORIG_HEAD || true)"
+head="$(git rev-parse -q --verify HEAD || true)"
+if [ -z "$orig" ] || [ "$orig" = "$head" ]; then
+  exit 0
+fi
+
+# --- 3. Fire deploy in the background -------------------------------------
+# Non-blocking so `git pull` returns immediately and an offline Pi never hangs
+# the pull. Output goes to a log file the user can tail.
+repo_root="$(git rev-parse --show-toplevel)"
+log="$(mktemp -t kerchunk-deploy.XXXXXX.log)"
+echo "[post-merge] main advanced ($orig -> $head); starting background deploy."
+echo "[post-merge] logging to $log  (tail -f to watch)"
+nohup "$repo_root/kiosk/scripts/deploy.sh" >"$log" 2>&1 &
+disown || true
+
+exit 0
