@@ -91,6 +91,20 @@ describe("defaultSink", () => {
     const ri = defaultSink(22050).indexOf("-r");
     expect(defaultSink(22050)[ri + 1]).toBe("22050");
   });
+
+  it("routes to the configured device with -D when one is given", () => {
+    const argv = defaultSink(12000, "hdmi:CARD=vc4hdmi1");
+    const di = argv.indexOf("-D");
+    expect(di).toBeGreaterThanOrEqual(0);
+    expect(argv[di + 1]).toBe("hdmi:CARD=vc4hdmi1");
+    // Rate assertion still holds with a device present.
+    const ri = argv.indexOf("-r");
+    expect(argv[ri + 1]).toBe("12000");
+  });
+
+  it("omits -D when no device is given (default playback device)", () => {
+    expect(defaultSink(12000)).not.toContain("-D");
+  });
 });
 
 describe("RtlFmEngine signal detection", () => {

@@ -32,8 +32,15 @@ export interface RtlFmEngineOptions {
 // or audio plays at the wrong pitch and the energy threshold drifts. When the
 // default sink is used, its -r is derived from the configured rate at spawn time;
 // an explicitly-provided sinkCmd is used verbatim (the caller owns its rate).
-export function defaultSink(rate: number): string[] {
-  return ["aplay", "-r", String(rate), "-f", "S16_LE", "-t", "raw", "-c", "1"];
+export function defaultSink(rate: number, device?: string): string[] {
+  const argv = ["aplay"];
+  // Route to the configured ALSA sink when one is provided; otherwise aplay
+  // plays to the system default device (current behavior).
+  if (device && device.length > 0) {
+    argv.push("-D", device);
+  }
+  argv.push("-r", String(rate), "-f", "S16_LE", "-t", "raw", "-c", "1");
+  return argv;
 }
 
 export class RtlFmEngine implements ScannerEngine {
@@ -156,7 +163,7 @@ export class RtlFmEngine implements ScannerEngine {
     // Audio sink (optional). "default" derives aplay's rate from the configured
     // sample rate so playback matches what rtl_fm produces.
     const sinkArgv = this.sinkCmd === "default"
-      ? defaultSink(this.config.sampleRate)
+      ? defaultSink(this.config.sampleRate, this.config.audioSink)
       : this.sinkCmd;
     if (sinkArgv) {
       this.sink = spawn(sinkArgv[0]!, sinkArgv.slice(1), {
