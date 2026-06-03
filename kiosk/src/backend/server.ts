@@ -49,6 +49,14 @@ export function createServer(deps: ServerDeps): { server: Server } {
   const { configStore, engine, activityLog, staticDir } = deps;
   let config = configStore.load();
 
+  // Persist config AND restart the scanner so changes (e.g. editing channels in
+  // the admin) take effect immediately, instead of only after a service restart.
+  async function persistAndReload(): Promise<void> {
+    configStore.save(config);
+    await engine.stop();
+    await engine.start(toScanConfig(config));
+  }
+
   const server = httpCreateServer(async (req, res) => {
     try {
       const url = new URL(req.url ?? "/", "http://localhost");
@@ -87,7 +95,7 @@ export function createServer(deps: ServerDeps): { server: Server } {
       if (!parsed.success) return json(res, 400, { error: "invalid channel", issues: parsed.error.issues });
       const channel: Channel = { id: `ch_${randomUUID().slice(0, 8)}`, ...parsed.data };
       config = { ...config, channels: [...config.channels, channel] };
-      configStore.save(config);
+      await persistAndReload();
       return json(res, 201, channel);
     }
 
@@ -99,12 +107,12 @@ export function createServer(deps: ServerDeps): { server: Server } {
         const parsed = channelSchema.partial().safeParse(body);
         if (!parsed.success) return json(res, 400, { error: "invalid channel" });
         config = { ...config, channels: config.channels.map((c) => c.id === id ? { ...c, ...parsed.data, id } : c) };
-        configStore.save(config);
+        await persistAndReload();
         return json(res, 200, config.channels.find((c) => c.id === id));
       }
       if (method === "DELETE") {
         config = { ...config, channels: config.channels.filter((c) => c.id !== id) };
-        configStore.save(config);
+        await persistAndReload();
         return json(res, 204, null);
       }
     }

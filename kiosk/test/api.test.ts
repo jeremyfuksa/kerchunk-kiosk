@@ -40,6 +40,20 @@ describe("HTTP API", () => {
     expect(after.body.length).toBe(1);
   });
 
+  it("restarts the scanner when channels change so edits take effect live", async () => {
+    const { server, engine } = makeApp();
+    let starts = 0;
+    const realStart = engine.start.bind(engine);
+    engine.start = async (cfg) => { starts++; return realStart(cfg); };
+    await request(server)
+      .post("/api/channels")
+      .send({ freq: 162400000, alphaTag: "WX", mode: "nfm", enabled: true });
+    expect(starts).toBeGreaterThan(0); // engine was (re)started with the new list
+    // The freshly added channel is what the engine would scan.
+    const chans = (await request(server).get("/api/channels")).body;
+    expect(chans[0].freq).toBe(162400000);
+  });
+
   it("PUT /api/config rejects an invalid body with 400", async () => {
     const { server } = makeApp();
     const res = await request(server).put("/api/config").send({ nope: true });
