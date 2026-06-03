@@ -16,6 +16,9 @@
 Description=Kerchunk Kiosk display (cage + Chromium)
 After=kerchunk-kiosk.service seatd.service systemd-user-sessions.service
 Wants=kerchunk-kiosk.service seatd.service
+# Pull in the cursor-park oneshot whenever the display starts (it is After= +
+# PartOf= this unit, so it runs once cage is up and re-fires on every restart).
+Wants=kerchunk-cursor-park.service
 Conflicts=getty@tty1.service
 After=getty@tty1.service
 
@@ -32,12 +35,13 @@ StandardError=journal
 Environment=XDG_RUNTIME_DIR=/run/user/999
 Environment=XDG_SEAT=seat0
 Environment=LIBSEAT_BACKEND=seatd
-# Hide cage's compositor cursor. CSS `cursor: none` only hides the pointer
-# inside web content; cage (Wayland) draws its own pointer on top — visible on
-# the kiosk even with no mouse, because the HDMI-CEC link makes the display
-# register as a pointer device. cage 0.2.0 has no hide-cursor flag, so we point
-# XCursor at a fully-transparent "blank" theme installed by setup-kiosk-pi.sh.
-# XCURSOR_PATH lists where to find it; XCURSOR_THEME selects it.
+# Cursor handling. CSS `cursor: none` only hides the pointer inside web content;
+# cage (Wayland) draws its own compositor pointer on top, which CSS can't touch
+# and cage 0.2.0 has no flag to suppress. Pointing XCursor at a transparent
+# "blank" theme (installed by setup-kiosk-pi.sh) did NOT hide it on this cage
+# build, so the active mitigation is ExecStartPost below, which shoves the
+# pointer into the bottom-right corner with wlrctl. The blank theme env is kept
+# as a harmless best-effort; remove if it ever proves to interfere.
 Environment=XCURSOR_PATH=/usr/share/icons
 Environment=XCURSOR_THEME=blank
 Environment=XCURSOR_SIZE=24
@@ -52,6 +56,10 @@ Environment=XCURSOR_SIZE=24
 ExecStart=/usr/bin/cage -- /usr/bin/chromium --kiosk --noerrdialogs --disable-infobars --ozone-platform=wayland --password-store=basic --no-first-run --disable-session-crashed-bubble --disable-features=Translate --renderer-process-limit=1 --js-flags=--max-old-space-size=128 --disk-cache-size=10485760 --app=http://localhost:8080/dashboard
 Restart=always
 RestartSec=3
+# The cursor is parked off-screen by a separate oneshot unit
+# (kerchunk-cursor-park.service), NOT by an ExecStartPost here: ExecStartPost
+# blocks this unit's activation and racing it against cage's own startup
+# prevented chromium from launching.
 
 [Install]
 WantedBy=graphical.target

@@ -1,0 +1,28 @@
+# kiosk/systemd/kerchunk-cursor-park.service
+#
+# Parks cage's compositor cursor in the bottom-right corner after the display is
+# up. A SEPARATE oneshot unit on purpose: doing this as the display unit's
+# ExecStartPost blocks cage's activation and prevented chromium from launching.
+# This unit runs After= the display and polls until cage accepts Wayland clients,
+# so it never races or holds back the kiosk.
+[Unit]
+Description=Park the kiosk cursor off-screen (cage has no hide-cursor flag)
+# Ordering + lifecycle binding to the display: After= so cage is up first;
+# PartOf= so a display restart/stop propagates here and re-parks on every cage
+# (re)start (After= alone only orders, it does not re-trigger). The display unit
+# carries the matching Wants= so starting the display also pulls this in.
+After=kerchunk-display.service
+PartOf=kerchunk-display.service
+
+[Service]
+Type=oneshot
+User=kerchunk
+Group=kerchunk
+SupplementaryGroups=video render input
+# Match the display unit's session env so wlrctl can reach cage's socket.
+Environment=XDG_RUNTIME_DIR=/run/user/999
+Environment=WAYLAND_DISPLAY=wayland-0
+ExecStart=/opt/kerchunk-kiosk/scripts/park-cursor.sh
+
+[Install]
+WantedBy=graphical.target
