@@ -114,16 +114,20 @@ describe("RtlFmEngine hopping", () => {
       e.on((ev) => events.push(ev));
       await e.start(cfg([c1, c2]));
 
-      await new Promise((r) => setTimeout(r, 800));
+      // Poll for the second spawn rather than asserting after a fixed sleep:
+      // on a loaded Pi the hop timer + process spawn can lag well past a fixed
+      // window, which made the old fixed-800ms-then-count check flake.
+      const countSpawns = () =>
+        existsSync(argsFile)
+          ? readFileSync(argsFile, "utf8").trim().split("\n").filter(Boolean).length
+          : 0;
+      const hopped = await waitFor(() => countSpawns() > 1, 4000);
 
       expect(e.state).toBe("running");
       expect(events.some((ev) => ev.type === "active")).toBe(false);
-
-      // Count spawns by reading the argv log; should have hopped at least twice.
-      const spawns = existsSync(argsFile)
-        ? readFileSync(argsFile, "utf8").trim().split("\n").filter(Boolean).length
-        : 0;
-      expect(spawns).toBeGreaterThan(1);
+      // Hopped at least twice (silence never holds a channel).
+      expect(hopped).toBe(true);
+      expect(countSpawns()).toBeGreaterThan(1);
     } finally {
       delete process.env.FAKE_RTL_ARGS_FILE;
     }
