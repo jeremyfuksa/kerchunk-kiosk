@@ -23,7 +23,9 @@ AUDIO_SINK="kerchunk"
 
 echo "[setup] Installing packages..."
 sudo apt-get update
-sudo apt-get install -y rtl-sdr alsa-utils cage chromium curl ca-certificates
+# wlrctl: warps cage's compositor cursor into the corner (the display unit's
+# ExecStartPost) — cage 0.2.0 has no flag to hide the pointer.
+sudo apt-get install -y rtl-sdr alsa-utils cage chromium curl ca-certificates wlrctl
 
 echo "[setup] Ensuring a SYSTEM Node >=20 at /usr/bin/node (NodeSource)..."
 # The systemd unit runs ExecStart=/usr/bin/node, which must exist independent of
@@ -109,13 +111,30 @@ echo "[setup] Disabling appliance-useless services (kiosk needs no Bluetooth / r
 sudo systemctl disable --now bluetooth.service 2>/dev/null || true
 sudo systemctl disable --now udisks2.service 2>/dev/null || true
 
+echo "[setup] Installing the blank cursor theme (best-effort) + corner-park script..."
+# The display unit sets XCURSOR_THEME=blank / XCURSOR_PATH=/usr/share/icons as a
+# best-effort hide. On cage 0.2.0 this did not actually hide the pointer, so the
+# active mitigation is park-cursor.sh (ExecStartPost) shoving the cursor into the
+# corner via wlrctl. -a preserves the theme's cursor-name symlinks.
+sudo rm -rf /usr/share/icons/blank
+sudo cp -a "$REPO_DIR/kiosk-assets/blank-cursor" /usr/share/icons/blank
+# park-cursor.sh lives under the /opt install at the path the cursor-park unit's
+# ExecStart expects (deploy.sh only syncs dist/node_modules, so install the
+# script here explicitly).
+sudo mkdir -p "$INSTALL_DIR/scripts"
+sudo cp "$REPO_DIR/scripts/park-cursor.sh" "$INSTALL_DIR/scripts/park-cursor.sh"
+sudo chmod +x "$INSTALL_DIR/scripts/park-cursor.sh"
+
 echo "[setup] Installing systemd units (Pi-hardened display: seatd, memory caps, no cursor)..."
 sudo cp "$REPO_DIR/systemd/kerchunk-kiosk.service" /etc/systemd/system/kerchunk-kiosk.service
 sudo cp "$REPO_DIR/systemd/kerchunk-display-pi.service" /etc/systemd/system/kerchunk-display.service
+sudo cp "$REPO_DIR/systemd/kerchunk-cursor-park.service" /etc/systemd/system/kerchunk-cursor-park.service
 sudo systemctl daemon-reload
 sudo systemctl enable --now kerchunk-kiosk.service
 # Enable the local display only if a screen is attached; safe to enable anyway.
 sudo systemctl enable --now kerchunk-display.service || true
+# Park the cursor off-screen after the display is up (oneshot; non-fatal).
+sudo systemctl enable --now kerchunk-cursor-park.service || true
 
 echo "[setup] Done. Admin: http://$(hostname -I | awk '{print $1}'):8080/admin"
 echo "[setup] If the dongle was plugged in before blacklisting, reboot once."
