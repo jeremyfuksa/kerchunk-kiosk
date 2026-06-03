@@ -1,15 +1,15 @@
-# Kerchunk kiosk audio: software volume over a generously-buffered HDMI sink.
-# HDMI has no hardware volume control (softvol provides one) and needs stereo
-# (plughw upmixes rtl_fm's 12kHz mono). The large buffer absorbs the bursty
-# delivery from the Node audio tap, which otherwise underran -> choppy audio.
-pcm.kerchunk_softvol {
-    type softvol
-    slave.pcm "plughw:CARD=vc4hdmi1,DEV=0"
-    control { name "Kerchunk"; card 1 }
-}
+# Kerchunk kiosk audio (install to /etc/asound.conf).
+#
+# The connected HDMI display on this Pi reports NO audio sink (empty EDID/ELD)
+# and its speakers sounded terrible, so audio is routed to the 3.5mm headphone
+# jack (ALSA card "Headphones"), which has a real hardware volume control ('PCM',
+# set via `amixer -c <card> sset PCM <pct>%` and persisted with `alsactl store`).
+# `plug` upmixes rtl_fm's 12kHz mono to the jack's format/rate.
+#
+# To use HDMI audio instead (only if your display actually supports it — check
+# that `cat /proc/asound/card<N>/eld#0.0` is non-empty), point slave.pcm at
+# `plughw:CARD=vc4hdmiN,DEV=0`.
 pcm.kerchunk {
     type plug
-    slave.pcm "kerchunk_softvol"
+    slave.pcm "plughw:CARD=Headphones,DEV=0"
 }
-# Default buffering for the plug chain: ~500ms buffer, ~100ms periods.
-defaults.pcm.dmix.buffer_size 0

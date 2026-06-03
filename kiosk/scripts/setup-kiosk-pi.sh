@@ -14,13 +14,12 @@ set -euo pipefail
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # the kiosk/ dir
 INSTALL_DIR=/opt/kerchunk-kiosk
 STATE_DIR=/var/lib/kerchunk-kiosk
-# Connected display's ALSA sink on this Pi (verified: card 1 = vc4hdmi1).
-# Use the `kerchunk` softvol device defined in systemd/asound.conf.pi (installed
-# to /etc/asound.conf). It layers a software volume control over `plughw` — HDMI
-# exposes no hardware volume control, and `plughw` upmixes rtl_fm's mono to the
-# stereo HDMI requires (raw `hdmi:` fails with "Channels count non available").
-# (A plain `plughw:CARD=vc4hdmi1,DEV=0` also plays, but without a volume knob.)
-HDMI_SINK="kerchunk"
+# Audio sink: the `kerchunk` ALSA device defined in systemd/asound.conf.pi
+# (installed to /etc/asound.conf). On this Pi it routes to the 3.5mm headphone
+# jack — the connected HDMI display reported no audio sink (empty EDID/ELD) and
+# its speakers sounded bad. Set the headphone level with
+# `amixer -c <Headphones-card> sset PCM 65%` then `sudo alsactl store`.
+AUDIO_SINK="kerchunk"
 
 echo "[setup] Installing packages..."
 sudo apt-get update
@@ -85,12 +84,12 @@ echo "[setup] Preparing state dir $STATE_DIR..."
 sudo mkdir -p "$STATE_DIR"
 # Seed config only if absent, so reboots/re-runs keep the operator's channels.
 if [ ! -f "$STATE_DIR/config.json" ]; then
-  echo "[setup] Seeding default config (HDMI sink $HDMI_SINK, NOAA test channel)..."
+  echo "[setup] Seeding default config (audio sink $AUDIO_SINK, NOAA test channel)..."
   sudo tee "$STATE_DIR/config.json" >/dev/null <<JSON
 {
   "version": 1,
   "scan": { "sampleRate": 12000, "squelchLevel": 1800, "gain": "auto", "dwellMs": 1500 },
-  "audio": { "sink": "$HDMI_SINK", "volume": 70, "muted": false },
+  "audio": { "sink": "$AUDIO_SINK", "volume": 70, "muted": false },
   "channels": [
     { "id": "noaa", "freq": 162550000, "alphaTag": "NOAA WX", "mode": "nfm", "enabled": true }
   ]
@@ -98,6 +97,9 @@ if [ ! -f "$STATE_DIR/config.json" ]; then
 JSON
 fi
 sudo chown -R kerchunk:kerchunk "$STATE_DIR"
+
+echo "[setup] Installing ALSA config (defines the '$AUDIO_SINK' sink)..."
+sudo cp "$REPO_DIR/systemd/asound.conf.pi" /etc/asound.conf
 
 echo "[setup] Installing systemd units..."
 sudo cp "$REPO_DIR/systemd/kerchunk-kiosk.service" /etc/systemd/system/
