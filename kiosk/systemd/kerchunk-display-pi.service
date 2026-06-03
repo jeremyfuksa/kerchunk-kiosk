@@ -33,7 +33,10 @@ Environment=XDG_RUNTIME_DIR=/run/user/999
 Environment=XDG_SEAT=seat0
 Environment=LIBSEAT_BACKEND=seatd
 # cage runs one fullscreen app; chromium in Wayland/kiosk mode.
-ExecStart=/usr/bin/cage -- /usr/bin/chromium --kiosk --noerrdialogs --disable-infobars --ozone-platform=wayland --app=http://localhost:8080/dashboard
+# --password-store=basic stops chromium prompting to unlock the gnome-keyring
+# (the kerchunk nologin user has none) — that was the on-screen "keyring" dialog.
+# The other flags suppress first-run / session-restore / default-browser nags.
+ExecStart=/usr/bin/cage -- /usr/bin/chromium --kiosk --noerrdialogs --disable-infobars --ozone-platform=wayland --password-store=basic --no-first-run --disable-session-crashed-bubble --disable-features=Translate --app=http://localhost:8080/dashboard
 Restart=always
 RestartSec=3
 

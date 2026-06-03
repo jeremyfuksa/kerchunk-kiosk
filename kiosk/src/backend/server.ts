@@ -7,6 +7,7 @@ import { ConfigStore } from "./config/ConfigStore.js";
 import { ActivityLog } from "./activityLog.js";
 import { WsHub } from "./ws.js";
 import type { ScannerEngine, ScanConfig } from "./engine/ScannerEngine.js";
+import { setVolume as amixerVolume, setMuted as amixerMuted, type AmixerOpts } from "./audio.js";
 
 export interface ServerDeps {
   configStore: ConfigStore;
@@ -55,6 +56,13 @@ export function createServer(deps: ServerDeps): { server: Server } {
     configStore.save(config);
     await engine.stop();
     await engine.start(toScanConfig(config));
+  }
+
+  // amixer target from config: volume/mute must hit the card+control that
+  // actually drives the configured sink (e.g. headphone jack = card 2 / "PCM";
+  // HDMI typically has none). Undefined fields fall back to amixer's defaults.
+  function mixerOpts(): AmixerOpts {
+    return { card: config.audio.mixerCard, control: config.audio.mixerControl };
   }
 
   const server = httpCreateServer(async (req, res) => {
@@ -122,15 +130,17 @@ export function createServer(deps: ServerDeps): { server: Server } {
 
     if (method === "POST" && path === "/api/audio/volume") {
       const body = await readBody(req);
-      await engine.setVolume(Number(body?.percent));
-      config = { ...config, audio: { ...config.audio, volume: Number(body?.percent) } };
+      const percent = Number(body?.percent);
+      config = { ...config, audio: { ...config.audio, volume: percent } };
+      await amixerVolume(percent, mixerOpts());
       configStore.save(config);
       return json(res, 200, { volume: config.audio.volume });
     }
     if (method === "POST" && path === "/api/audio/mute") {
       const body = await readBody(req);
-      await engine.setMuted(Boolean(body?.muted));
-      config = { ...config, audio: { ...config.audio, muted: Boolean(body?.muted) } };
+      const muted = Boolean(body?.muted);
+      config = { ...config, audio: { ...config.audio, muted } };
+      await amixerMuted(muted, mixerOpts());
       configStore.save(config);
       return json(res, 200, { muted: config.audio.muted });
     }
