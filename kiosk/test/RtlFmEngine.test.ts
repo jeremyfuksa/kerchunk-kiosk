@@ -172,7 +172,14 @@ describe("RtlFmEngine hold/dwell", () => {
       e.on((ev) => events.push(ev));
       await e.start(cfg([c]));
 
-      // Wait several hop intervals while the channel is held open.
+      // First wait until the channel is actually held open. Polling (rather than
+      // asserting after a fixed sleep) tolerates spawn/PCM latency under load,
+      // which is what made the fixed-window version flaky on the Pi.
+      const opened = await waitFor(() => events.some((ev) => ev.type === "active"), 3000);
+      expect(opened).toBe(true);
+
+      // Now hold for several hop intervals and assert the invariant: while a
+      // signal holds the channel, the engine must NOT hop or re-emit active.
       await new Promise((r) => setTimeout(r, TIMING.hopIntervalMs * 3 + 100));
 
       const activeCount = events.filter((ev) => ev.type === "active").length;
