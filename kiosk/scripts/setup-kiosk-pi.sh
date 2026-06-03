@@ -101,9 +101,17 @@ sudo chown -R kerchunk:kerchunk "$STATE_DIR"
 echo "[setup] Installing ALSA config (defines the '$AUDIO_SINK' sink)..."
 sudo cp "$REPO_DIR/systemd/asound.conf.pi" /etc/asound.conf
 
-echo "[setup] Installing systemd units..."
-sudo cp "$REPO_DIR/systemd/kerchunk-kiosk.service" /etc/systemd/system/
-sudo cp "$REPO_DIR/systemd/kerchunk-display.service" /etc/systemd/system/
+echo "[setup] Tuning VM for zram swap on this low-RAM Pi..."
+sudo cp "$REPO_DIR/systemd/99-kerchunk-zram.conf" /etc/sysctl.d/99-kerchunk-zram.conf
+sudo sysctl --system >/dev/null 2>&1 || true
+
+echo "[setup] Disabling appliance-useless services (kiosk needs no Bluetooth / removable-media mgmt)..."
+sudo systemctl disable --now bluetooth.service 2>/dev/null || true
+sudo systemctl disable --now udisks2.service 2>/dev/null || true
+
+echo "[setup] Installing systemd units (Pi-hardened display: seatd, memory caps, no cursor)..."
+sudo cp "$REPO_DIR/systemd/kerchunk-kiosk.service" /etc/systemd/system/kerchunk-kiosk.service
+sudo cp "$REPO_DIR/systemd/kerchunk-display-pi.service" /etc/systemd/system/kerchunk-display.service
 sudo systemctl daemon-reload
 sudo systemctl enable --now kerchunk-kiosk.service
 # Enable the local display only if a screen is attached; safe to enable anyway.

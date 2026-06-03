@@ -36,7 +36,11 @@ Environment=LIBSEAT_BACKEND=seatd
 # --password-store=basic stops chromium prompting to unlock the gnome-keyring
 # (the kerchunk nologin user has none) — that was the on-screen "keyring" dialog.
 # The other flags suppress first-run / session-restore / default-browser nags.
-ExecStart=/usr/bin/cage -- /usr/bin/chromium --kiosk --noerrdialogs --disable-infobars --ozone-platform=wayland --password-store=basic --no-first-run --disable-session-crashed-bubble --disable-features=Translate --app=http://localhost:8080/dashboard
+# Memory-bounded for a 2GB Pi showing ONE static dashboard page:
+#   --renderer-process-limit=1  one renderer (no multi-tab needs)
+#   --js-flags=--max-old-space-size=128  cap V8 heap (dashboard is tiny)
+#   --disk-cache-size  small cache (less RAM-mapped cache + SD wear)
+ExecStart=/usr/bin/cage -- /usr/bin/chromium --kiosk --noerrdialogs --disable-infobars --ozone-platform=wayland --password-store=basic --no-first-run --disable-session-crashed-bubble --disable-features=Translate --renderer-process-limit=1 --js-flags=--max-old-space-size=128 --disk-cache-size=10485760 --app=http://localhost:8080/dashboard
 Restart=always
 RestartSec=3
 
