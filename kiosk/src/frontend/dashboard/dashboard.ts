@@ -45,11 +45,16 @@ export function renderDashboard(root: HTMLElement): void {
 
   root.innerHTML = `
     <div class="dash">
+      <div id="modeBadge" class="modeBadge"></div>
       <section class="now" id="now"></section>
       <aside class="log"><h2>Recent</h2><ul id="logList"></ul></aside>
     </div>`;
   const nowEl = root.querySelector<HTMLElement>("#now")!;
   const logEl = root.querySelector<HTMLElement>("#logList")!;
+  const modeBadge = root.querySelector<HTMLElement>("#modeBadge")!;
+  api.getStatus()
+    .then((s) => { modeBadge.textContent = s.mode === "weather" ? "WEATHER" : ""; })
+    .catch(() => {});
 
   function paint(): void {
     if (state.error) {
