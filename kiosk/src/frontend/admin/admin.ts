@@ -1,4 +1,5 @@
 import type { Channel } from "../../backend/config/schema.js";
+import { NOAA_CHANNELS } from "../../backend/config/noaa.js";
 import { api } from "../lib/api.js";
 import "./admin.css";
 
@@ -45,7 +46,7 @@ export function renderAdmin(root: HTMLElement): void {
       <section><h2>Channels</h2><ul id="chList"></ul></section>
       <section class="weather">
         <h2>Weather</h2>
-        <label>Freq (MHz) <input id="wxMhz" type="text" placeholder="162.550" /></label>
+        <label>Channel <select id="wxFreq">${NOAA_CHANNELS.map((c) => `<option value="${c.mhz}">${c.label} — ${c.mhz} MHz</option>`).join("")}</select></label>
         <label>Tag <input id="wxTag" type="text" placeholder="NOAA WX" /></label>
         <select id="wxMode"><option value="nfm">nfm</option><option value="fm">fm</option><option value="am">am</option></select>
         <button id="wxSave">Save weather channel</button>
@@ -89,7 +90,7 @@ export function renderAdmin(root: HTMLElement): void {
 
   refresh();
 
-  const wxMhz = root.querySelector<HTMLInputElement>("#wxMhz")!;
+  const wxFreq = root.querySelector<HTMLSelectElement>("#wxFreq")!;
   const wxTag = root.querySelector<HTMLInputElement>("#wxTag")!;
   const wxMode = root.querySelector<HTMLSelectElement>("#wxMode")!;
   const wxSave = root.querySelector<HTMLButtonElement>("#wxSave")!;
@@ -104,7 +105,7 @@ export function renderAdmin(root: HTMLElement): void {
 
   api.getWeatherChannel().then(({ weatherChannel }) => {
     if (weatherChannel) {
-      wxMhz.value = (weatherChannel.freq / 1e6).toFixed(3);
+      wxFreq.value = (weatherChannel.freq / 1e6).toFixed(3);
       wxTag.value = weatherChannel.alphaTag;
       wxMode.value = weatherChannel.mode;
     }
@@ -114,7 +115,7 @@ export function renderAdmin(root: HTMLElement): void {
   wxSave.addEventListener("click", async () => {
     wxErr.textContent = "";
     try {
-      await api.setWeatherChannel(weatherFormToChannel({ mhz: wxMhz.value, alphaTag: wxTag.value, mode: wxMode.value }));
+      await api.setWeatherChannel(weatherFormToChannel({ mhz: wxFreq.value, alphaTag: wxTag.value, mode: wxMode.value }));
     } catch (e) {
       wxErr.textContent = (e as Error).message;
     }
