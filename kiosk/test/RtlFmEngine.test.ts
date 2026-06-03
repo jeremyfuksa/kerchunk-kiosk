@@ -30,6 +30,21 @@ function cfg(channels: Channel[], over: Partial<ScanConfig> = {}): ScanConfig {
 
 const TIMING = { openThreshold: 2000, hangMs: 200, hopIntervalMs: 150, autoRestart: false };
 
+describe("RtlFmEngine hop interval default", () => {
+  it("defaults to a gentle hop interval (>=2000ms) so the SDR isn't re-opened many times/sec", () => {
+    // Each hop fully kills + respawns rtl_fm, which re-opens the USB device.
+    // A tiny default (the old 400ms) re-opens the dongle ~2.5x/sec and wedges it
+    // off the USB bus (write_reg -7 / error -71). The default must be gentle.
+    const e = new RtlFmEngine();
+    expect(e.hopIntervalMs).toBeGreaterThanOrEqual(2000);
+  });
+
+  it("still honors an explicit hopIntervalMs", () => {
+    const e = new RtlFmEngine({ hopIntervalMs: 150 });
+    expect(e.hopIntervalMs).toBe(150);
+  });
+});
+
 // Collect events while running `fn`, then stop the engine and resolve.
 async function collect(
   engine: RtlFmEngine,
