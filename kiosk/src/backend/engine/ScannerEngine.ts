@@ -4,6 +4,7 @@ export interface ScanConfig {
   channels: Channel[];
   sampleRate: number;
   squelchLevel: number;
+  dwellMs: number;
   gain: number | "auto";
   audioSink: string;
 }

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterEach } from "vitest";
 import { join } from "node:path";
 import { chmodSync, mkdtempSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { RtlFmEngine } from "../src/backend/engine/RtlFmEngine.js";
+import { RtlFmEngine, defaultSink } from "../src/backend/engine/RtlFmEngine.js";
 import type { ScanConfig, EngineEvent } from "../src/backend/engine/ScannerEngine.js";
 import type { Channel } from "../src/backend/config/schema.js";
 
@@ -23,7 +23,7 @@ function ch(over: Partial<Channel> = {}): Channel {
 }
 
 function cfg(channels: Channel[], over: Partial<ScanConfig> = {}): ScanConfig {
-  return { channels, sampleRate: 12000, squelchLevel: 150, gain: "auto", audioSink: "test", ...over };
+  return { channels, sampleRate: 12000, squelchLevel: 150, dwellMs: 2000, gain: "auto", audioSink: "test", ...over };
 }
 
 const TIMING = { openThreshold: 2000, hangMs: 200, hopIntervalMs: 150, autoRestart: false };
@@ -78,6 +78,16 @@ describe("RtlFmEngine.buildArgs", () => {
     expect(args[gi + 1]).toBe("30");
     // -g still appears before the trailing "-"
     expect(args[args.length - 1]).toBe("-");
+  });
+});
+
+describe("defaultSink", () => {
+  it("derives aplay's playback rate from the configured sample rate", () => {
+    // The sink must play raw PCM at the same rate rtl_fm produces it, or audio
+    // pitch and the energy threshold drift. Rate must track config, not a constant.
+    expect(defaultSink(12000)).toEqual(["aplay", "-r", "12000", "-f", "S16_LE", "-t", "raw", "-c", "1"]);
+    const ri = defaultSink(22050).indexOf("-r");
+    expect(defaultSink(22050)[ri + 1]).toBe("22050");
   });
 });
 

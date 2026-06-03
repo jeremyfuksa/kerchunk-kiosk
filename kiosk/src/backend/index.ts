@@ -19,7 +19,14 @@ const configStore = new ConfigStore(CONFIG_PATH);
 const config = configStore.load();
 const activityLog = new ActivityLog(500);
 const wsHub = new WsHub();
-const engine = useFake ? new FakeEngine() : new RtlFmEngine();
+// Map persisted scan tuning onto the engine's PCM-energy squelch: squelchLevel
+// is the RMS open-threshold, dwellMs is the silence hang time before hopping.
+const engine = useFake
+  ? new FakeEngine()
+  : new RtlFmEngine({
+      openThreshold: config.scan.squelchLevel,
+      hangMs: config.scan.dwellMs,
+    });
 
 engine.on((ev: EngineEvent) => {
   if (ev.type === "active") {
@@ -39,9 +46,15 @@ server.listen(PORT, () => {
     channels: config.channels,
     sampleRate: config.scan.sampleRate,
     squelchLevel: config.scan.squelchLevel,
+    dwellMs: config.scan.dwellMs,
     gain: config.scan.gain,
     audioSink: config.audio.sink,
-  }).catch((err) => console.error("engine start failed:", err));
+  })
+    // Re-apply persisted volume/mute to the hardware mixer on boot, so the saved
+    // setting actually takes effect instead of inheriting the OS mixer state.
+    .then(() => engine.setVolume(config.audio.volume))
+    .then(() => engine.setMuted(config.audio.muted))
+    .catch((err) => console.error("engine start failed:", err));
 });
 
 process.on("SIGTERM", async () => { await engine.stop(); server.close(); process.exit(0); });

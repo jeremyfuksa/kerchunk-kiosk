@@ -26,6 +26,7 @@ function toScanConfig(cfg: Config): ScanConfig {
     channels: cfg.channels,
     sampleRate: cfg.scan.sampleRate,
     squelchLevel: cfg.scan.squelchLevel,
+    dwellMs: cfg.scan.dwellMs,
     gain: cfg.scan.gain,
     audioSink: cfg.audio.sink,
   };

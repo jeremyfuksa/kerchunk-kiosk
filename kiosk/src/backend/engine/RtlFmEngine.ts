@@ -27,11 +27,18 @@ export interface RtlFmEngineOptions {
   now?: () => number;
 }
 
-const DEFAULT_SINK = ["aplay", "-r", "12000", "-f", "S16_LE", "-t", "raw", "-c", "1"];
+// aplay must play raw PCM at the SAME rate rtl_fm produces it (config.sampleRate),
+// or audio plays at the wrong pitch and the energy threshold drifts. When the
+// default sink is used, its -r is derived from the configured rate at spawn time;
+// an explicitly-provided sinkCmd is used verbatim (the caller owns its rate).
+export function defaultSink(rate: number): string[] {
+  return ["aplay", "-r", String(rate), "-f", "S16_LE", "-t", "raw", "-c", "1"];
+}
 
 export class RtlFmEngine implements ScannerEngine {
   private readonly rtlFmCmd: string;
-  private readonly sinkCmd: string[] | null;
+  // null = no sink; "default" = derive aplay from config.sampleRate at spawn; else verbatim.
+  private readonly sinkCmd: string[] | null | "default";
   private readonly autoRestart: boolean;
   private readonly restartDelayMs: number;
   private readonly openThreshold: number;
@@ -61,7 +68,7 @@ export class RtlFmEngine implements ScannerEngine {
 
   constructor(opts: RtlFmEngineOptions = {}) {
     this.rtlFmCmd = opts.rtlFmCmd ?? "rtl_fm";
-    this.sinkCmd = opts.sinkCmd === undefined ? DEFAULT_SINK : opts.sinkCmd;
+    this.sinkCmd = opts.sinkCmd === undefined ? "default" : opts.sinkCmd;
     this.autoRestart = opts.autoRestart ?? true;
     this.restartDelayMs = opts.restartDelayMs ?? 1000;
     this.openThreshold = opts.openThreshold ?? 2000;
@@ -139,9 +146,13 @@ export class RtlFmEngine implements ScannerEngine {
     });
     this.channelStartedAt = this.now();
 
-    // Audio sink (optional).
-    if (this.sinkCmd) {
-      this.sink = spawn(this.sinkCmd[0]!, this.sinkCmd.slice(1), {
+    // Audio sink (optional). "default" derives aplay's rate from the configured
+    // sample rate so playback matches what rtl_fm produces.
+    const sinkArgv = this.sinkCmd === "default"
+      ? defaultSink(this.config.sampleRate)
+      : this.sinkCmd;
+    if (sinkArgv) {
+      this.sink = spawn(sinkArgv[0]!, sinkArgv.slice(1), {
         stdio: ["pipe", "ignore", "ignore"],
       });
       this.sink.on("error", () => { /* sink failure is non-fatal for scanning */ });

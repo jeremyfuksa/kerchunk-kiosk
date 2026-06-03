@@ -4,7 +4,7 @@ import type { ScanConfig, EngineEvent } from "../src/backend/engine/ScannerEngin
 
 const cfg: ScanConfig = {
   channels: [{ id: "c1", freq: 145130000, alphaTag: "KC0KW", mode: "nfm", enabled: true }],
-  sampleRate: 12000, squelchLevel: 150, gain: "auto", audioSink: "test",
+  sampleRate: 12000, squelchLevel: 150, dwellMs: 2000, gain: "auto", audioSink: "test",
 };
 
 describe("FakeEngine", () => {
