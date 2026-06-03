@@ -20,6 +20,22 @@ describe("audio", () => {
     expect(run).toHaveBeenCalledWith("amixer", ["-c", "0", "sset", "Master", "unmute"]);
   });
 
+  it("setVolume does not throw when amixer reports no simple control", async () => {
+    // HDMI cards on real Pi may expose NO amixer control. A non-zero exit must
+    // degrade to a safe no-op, never reject (which could crash the boot chain).
+    const run = vi.fn().mockResolvedValue({
+      stdout: "", stderr: "amixer: Unable to find simple control", code: 1,
+    });
+    await expect(setVolume(70, { run })).resolves.toBeUndefined();
+  });
+
+  it("setMuted does not throw when amixer reports no simple control", async () => {
+    const run = vi.fn().mockResolvedValue({
+      stdout: "", stderr: "amixer: Unable to find simple control", code: 1,
+    });
+    await expect(setMuted(true, { run })).resolves.toBeUndefined();
+  });
+
   it("listSinks parses aplay -L output into device ids", async () => {
     const aplayOut = [
       "null",

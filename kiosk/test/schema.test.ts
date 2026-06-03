@@ -37,4 +37,12 @@ describe("configSchema", () => {
   it("defaultConfig() is itself valid", () => {
     expect(() => configSchema.parse(defaultConfig())).not.toThrow();
   });
+
+  it("defaults squelchLevel above the measured noise floor", () => {
+    // Bench measurement: RMS noise floor ~150, noise spikes ~1436, real signal
+    // ~2900. A default of 150 sits on the noise floor and causes constant false
+    // squelch-opens. The default must clear the noise spikes with margin while
+    // staying below the signal level, so >= 1500 documents that rationale.
+    expect(defaultConfig().scan.squelchLevel).toBeGreaterThanOrEqual(1500);
+  });
 });

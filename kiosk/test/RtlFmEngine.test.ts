@@ -9,12 +9,14 @@ import type { Channel } from "../src/backend/config/schema.js";
 const LOUD = join(__dirname, "fakes", "fake-rtl_fm-loud.sh");
 const SILENT = join(__dirname, "fakes", "fake-rtl_fm-silent.sh");
 const CRASH = join(__dirname, "fakes", "fake-rtl_fm-crash.sh");
+const NODEVICE = join(__dirname, "fakes", "fake-rtl_fm-nodevice.sh");
 const SINK = join(__dirname, "fakes", "fake-sink.sh");
 
 beforeAll(() => {
   chmodSync(LOUD, 0o755);
   chmodSync(SILENT, 0o755);
   chmodSync(CRASH, 0o755);
+  chmodSync(NODEVICE, 0o755);
   chmodSync(SINK, 0o755);
 });
 
@@ -89,6 +91,20 @@ describe("defaultSink", () => {
     const ri = defaultSink(22050).indexOf("-r");
     expect(defaultSink(22050)[ri + 1]).toBe("22050");
   });
+
+  it("routes to the configured device with -D when one is given", () => {
+    const argv = defaultSink(12000, "hdmi:CARD=vc4hdmi1");
+    const di = argv.indexOf("-D");
+    expect(di).toBeGreaterThanOrEqual(0);
+    expect(argv[di + 1]).toBe("hdmi:CARD=vc4hdmi1");
+    // Rate assertion still holds with a device present.
+    const ri = argv.indexOf("-r");
+    expect(argv[ri + 1]).toBe("12000");
+  });
+
+  it("omits -D when no device is given (default playback device)", () => {
+    expect(defaultSink(12000)).not.toContain("-D");
+  });
 });
 
 describe("RtlFmEngine signal detection", () => {
@@ -156,7 +172,14 @@ describe("RtlFmEngine hold/dwell", () => {
       e.on((ev) => events.push(ev));
       await e.start(cfg([c]));
 
-      // Wait several hop intervals while the channel is held open.
+      // First wait until the channel is actually held open. Polling (rather than
+      // asserting after a fixed sleep) tolerates spawn/PCM latency under load,
+      // which is what made the fixed-window version flaky on the Pi.
+      const opened = await waitFor(() => events.some((ev) => ev.type === "active"), 3000);
+      expect(opened).toBe(true);
+
+      // Now hold for several hop intervals and assert the invariant: while a
+      // signal holds the channel, the engine must NOT hop or re-emit active.
       await new Promise((r) => setTimeout(r, TIMING.hopIntervalMs * 3 + 100));
 
       const activeCount = events.filter((ev) => ev.type === "active").length;
@@ -276,6 +299,28 @@ describe("RtlFmEngine auto-restart", () => {
       delete process.env.FAKE_RTL_ARGS_FILE;
       delete process.env.FAKE_SINK_FILE;
     }
+  });
+});
+
+describe("RtlFmEngine device errors", () => {
+  it("surfaces a NO_DEVICE error (with the rtl_fm stderr reason) when the dongle is missing", async () => {
+    const c = ch({ id: "nodev", freq: 145130000 });
+    const e = new RtlFmEngine({ rtlFmCmd: NODEVICE, sinkCmd: null, ...TIMING });
+    active = e;
+    const events: EngineEvent[] = [];
+    e.on((ev) => events.push(ev));
+    await e.start(cfg([c]));
+
+    const got = await waitFor(
+      () => events.some((ev) => ev.type === "error" && ev.code === "NO_DEVICE"),
+      1500,
+    );
+    expect(got).toBe(true);
+
+    const errEv = events.find((ev) => ev.type === "error" && ev.code === "NO_DEVICE");
+    expect(errEv && errEv.type === "error" && errEv.message).toContain(
+      "No supported devices found",
+    );
   });
 });
 
