@@ -15,7 +15,10 @@ REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # the kiosk/ dir
 INSTALL_DIR=/opt/kerchunk-kiosk
 STATE_DIR=/var/lib/kerchunk-kiosk
 # Connected display's ALSA sink on this Pi (verified: card 1 = vc4hdmi1).
-HDMI_SINK="hdmi:CARD=vc4hdmi1,DEV=0"
+# Use the `plughw:` plugin, NOT raw `hdmi:`/`hw:` — HDMI audio requires stereo,
+# but rtl_fm produces mono; `plughw` auto-upmixes mono->stereo (and converts
+# rate). Raw hdmi: fails with "Channels count non available" and aplay dies.
+HDMI_SINK="plughw:CARD=vc4hdmi1,DEV=0"
 
 echo "[setup] Installing packages..."
 sudo apt-get update
