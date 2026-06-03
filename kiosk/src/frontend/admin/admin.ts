@@ -15,6 +15,13 @@ export function formToChannel(form: { mhz: string; alphaTag: string; mode: strin
 
 function fmtFreq(hz: number): string { return (hz / 1e6).toFixed(3); }
 
+// Channel fields (alphaTag especially) are operator-typed and rendered via
+// innerHTML, so escape them to prevent stored XSS.
+function esc(s: string): string {
+  return s.replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
+}
+
 export function renderAdmin(root: HTMLElement): void {
   root.innerHTML = `
     <main class="admin">
@@ -42,8 +49,8 @@ export function renderAdmin(root: HTMLElement): void {
   async function refresh(): Promise<void> {
     const channels = await api.getChannels();
     chList.innerHTML = channels
-      .map((c) => `<li>${fmtFreq(c.freq)} — ${c.alphaTag} (${c.mode})
-        <button data-id="${c.id}" class="del">delete</button></li>`)
+      .map((c) => `<li>${fmtFreq(c.freq)} — ${esc(c.alphaTag)} (${esc(c.mode)})
+        <button data-id="${esc(c.id)}" class="del">delete</button></li>`)
       .join("");
     chList.querySelectorAll<HTMLButtonElement>(".del").forEach((b) =>
       b.addEventListener("click", async () => { await api.deleteChannel(b.dataset.id!); refresh(); }));

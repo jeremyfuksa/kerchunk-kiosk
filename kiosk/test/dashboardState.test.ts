@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { reduce, initialState } from "../src/frontend/dashboard/dashboard.js";
+import { reduce, initialState, esc } from "../src/frontend/dashboard/dashboard.js";
 
 describe("dashboard reduce", () => {
   it("active sets nowPlaying and prepends to log", () => {
@@ -26,5 +26,18 @@ describe("dashboard reduce", () => {
     let s = reduce(initialState(), { type: "error", code: "X", message: "boom", ts: 1 });
     s = reduce(s, { type: "status", state: "running", ts: 2 });
     expect(s.error).toBeNull();
+  });
+});
+
+describe("esc (XSS guard for innerHTML interpolation)", () => {
+  it("escapes HTML-significant characters", () => {
+    expect(esc(`<img src=x onerror="alert(1)">`)).toBe(
+      "&lt;img src=x onerror=&quot;alert(1)&quot;&gt;",
+    );
+    expect(esc("Tom & Jerry's")).toBe("Tom &amp; Jerry&#39;s");
+  });
+
+  it("leaves plain text unchanged", () => {
+    expect(esc("KC0KW Gibbs Rd")).toBe("KC0KW Gibbs Rd");
   });
 });

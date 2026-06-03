@@ -33,6 +33,13 @@ export function reduce(s: DashState, ev: EngineEvent): DashState {
 function fmtFreq(hz: number): string { return (hz / 1e6).toFixed(3); }
 function fmtTime(ts: number): string { return new Date(ts).toLocaleTimeString(); }
 
+// alphaTag and error messages are operator-supplied (typed in admin, persisted
+// to config) and rendered via innerHTML, so escape them to prevent stored XSS.
+export function esc(s: string): string {
+  return s.replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
+}
+
 export function renderDashboard(root: HTMLElement): void {
   let state = initialState();
 
@@ -46,16 +53,16 @@ export function renderDashboard(root: HTMLElement): void {
 
   function paint(): void {
     if (state.error) {
-      nowEl.innerHTML = `<div class="err">${state.error}</div>`;
+      nowEl.innerHTML = `<div class="err">${esc(state.error)}</div>`;
     } else if (state.nowPlaying) {
       nowEl.innerHTML = `<div class="active">● ACTIVE</div>
         <div class="freq">${fmtFreq(state.nowPlaying.freq)}</div>
-        <div class="tag">${state.nowPlaying.alphaTag}</div>`;
+        <div class="tag">${esc(state.nowPlaying.alphaTag)}</div>`;
     } else {
       nowEl.innerHTML = `<div class="scanning">scanning…</div>`;
     }
     logEl.innerHTML = state.log
-      .map((r) => `<li><span class="t">${fmtTime(r.ts)}</span> ${fmtFreq(r.freq)} ${r.alphaTag}</li>`)
+      .map((r) => `<li><span class="t">${fmtTime(r.ts)}</span> ${fmtFreq(r.freq)} ${esc(r.alphaTag)}</li>`)
       .join("");
   }
 
