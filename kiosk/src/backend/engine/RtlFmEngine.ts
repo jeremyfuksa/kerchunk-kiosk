@@ -40,6 +40,10 @@ export function defaultSink(rate: number, device?: string): string[] {
     argv.push("-D", device);
   }
   argv.push("-r", String(rate), "-f", "S16_LE", "-t", "raw", "-c", "1");
+  // Generous buffer/period: the PCM is delivered in bursts via the Node tap
+  // (rtl_fm stdout -> Node -> aplay stdin), so a small ALSA buffer underruns and
+  // playback turns choppy. ~500ms buffer / ~100ms periods absorbs the jitter.
+  argv.push("--buffer-time=500000", "--period-time=100000");
   return argv;
 }
 

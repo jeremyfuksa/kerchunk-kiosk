@@ -1,0 +1,48 @@
+# kiosk/systemd/kerchunk-display-pi.service
+#
+# Pi-specific display unit (adapted from kerchunk-display.service). Runs the
+# dashboard fullscreen via cage (Wayland kiosk compositor) + Chromium on the
+# attached HDMI. Unlike the portable unit, this one is hardened to actually
+# acquire the screen as a system service on this Pi:
+#   - takes over /dev/tty1 and starts after the display-manager is gone;
+#   - PAMName=login so logind opens a real session + creates XDG_RUNTIME_DIR
+#     and registers the seat for the kerchunk user;
+#   - uses seatd (LIBSEAT_BACKEND) for GPU/seat access; kerchunk is in `video`
+#     (seatd -g video) plus render/input.
+# Boots into the kiosk only when lightdm is disabled (see setup-kiosk-pi.sh),
+# so seat0 / tty1 is free.
+
+[Unit]
+Description=Kerchunk Kiosk display (cage + Chromium)
+After=kerchunk-kiosk.service seatd.service systemd-user-sessions.service
+Wants=kerchunk-kiosk.service seatd.service
+Conflicts=getty@tty1.service
+After=getty@tty1.service
+
+[Service]
+Type=simple
+User=kerchunk
+Group=kerchunk
+SupplementaryGroups=video render input
+PAMName=login
+TTYPath=/dev/tty1
+StandardInput=tty
+StandardOutput=journal
+StandardError=journal
+Environment=XDG_RUNTIME_DIR=/run/user/999
+Environment=XDG_SEAT=seat0
+Environment=LIBSEAT_BACKEND=seatd
+# cage runs one fullscreen app; chromium in Wayland/kiosk mode.
+# --password-store=basic stops chromium prompting to unlock the gnome-keyring
+# (the kerchunk nologin user has none) — that was the on-screen "keyring" dialog.
+# The other flags suppress first-run / session-restore / default-browser nags.
+# Memory-bounded for a 2GB Pi showing ONE static dashboard page:
+#   --renderer-process-limit=1  one renderer (no multi-tab needs)
+#   --js-flags=--max-old-space-size=128  cap V8 heap (dashboard is tiny)
+#   --disk-cache-size  small cache (less RAM-mapped cache + SD wear)
+ExecStart=/usr/bin/cage -- /usr/bin/chromium --kiosk --noerrdialogs --disable-infobars --ozone-platform=wayland --password-store=basic --no-first-run --disable-session-crashed-bubble --disable-features=Translate --renderer-process-limit=1 --js-flags=--max-old-space-size=128 --disk-cache-size=10485760 --app=http://localhost:8080/dashboard
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=graphical.target

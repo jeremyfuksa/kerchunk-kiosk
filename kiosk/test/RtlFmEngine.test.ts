@@ -87,9 +87,18 @@ describe("defaultSink", () => {
   it("derives aplay's playback rate from the configured sample rate", () => {
     // The sink must play raw PCM at the same rate rtl_fm produces it, or audio
     // pitch and the energy threshold drift. Rate must track config, not a constant.
-    expect(defaultSink(12000)).toEqual(["aplay", "-r", "12000", "-f", "S16_LE", "-t", "raw", "-c", "1"]);
-    const ri = defaultSink(22050).indexOf("-r");
-    expect(defaultSink(22050)[ri + 1]).toBe("22050");
+    const argv = defaultSink(12000);
+    expect(argv[0]).toBe("aplay");
+    expect(argv).toContain("S16_LE");
+    expect(argv[argv.indexOf("-r") + 1]).toBe("12000");
+    const a22 = defaultSink(22050);
+    expect(a22[a22.indexOf("-r") + 1]).toBe("22050");
+  });
+
+  it("requests a generous buffer so the bursty Node audio tap doesn't underrun", () => {
+    const argv = defaultSink(12000);
+    expect(argv.some((a) => a.startsWith("--buffer-time="))).toBe(true);
+    expect(argv.some((a) => a.startsWith("--period-time="))).toBe(true);
   });
 
   it("routes to the configured device with -D when one is given", () => {

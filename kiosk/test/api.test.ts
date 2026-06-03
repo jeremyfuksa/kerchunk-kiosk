@@ -40,19 +40,34 @@ describe("HTTP API", () => {
     expect(after.body.length).toBe(1);
   });
 
+  it("restarts the scanner when channels change so edits take effect live", async () => {
+    const { server, engine } = makeApp();
+    let starts = 0;
+    const realStart = engine.start.bind(engine);
+    engine.start = async (cfg) => { starts++; return realStart(cfg); };
+    await request(server)
+      .post("/api/channels")
+      .send({ freq: 162400000, alphaTag: "WX", mode: "nfm", enabled: true });
+    expect(starts).toBeGreaterThan(0); // engine was (re)started with the new list
+    // The freshly added channel is what the engine would scan.
+    const chans = (await request(server).get("/api/channels")).body;
+    expect(chans[0].freq).toBe(162400000);
+  });
+
   it("PUT /api/config rejects an invalid body with 400", async () => {
     const { server } = makeApp();
     const res = await request(server).put("/api/config").send({ nope: true });
     expect(res.status).toBe(400);
   });
 
-  it("POST /api/audio/volume calls the engine", async () => {
-    const { server, engine } = makeApp();
-    let got = -1;
-    engine.setVolume = async (p: number) => { got = p; };
+  it("POST /api/audio/volume accepts and persists the level", async () => {
+    const { server } = makeApp();
     const res = await request(server).post("/api/audio/volume").send({ percent: 55 });
     expect(res.status).toBe(200);
-    expect(got).toBe(55);
+    expect(res.body.volume).toBe(55);
+    // Persisted: a fresh read reflects the new level.
+    const cfg = await request(server).get("/api/config");
+    expect(cfg.body.audio.volume).toBe(55);
   });
 
   it("GET /api/status returns engine state", async () => {

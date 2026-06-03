@@ -21,6 +21,12 @@ export const configSchema = z.object({
     sink: z.string().min(1),
     volume: z.number().int().min(0).max(100),
     muted: z.boolean(),
+    // ALSA mixer target for volume/mute. amixer addresses controls by card
+    // INDEX + control NAME, which differ per device (e.g. HDMI exposes no
+    // volume control; the Pi headphone jack is card 2 / "PCM"). Optional so
+    // existing configs default to card 0 / "Master".
+    mixerCard: z.number().int().nonnegative().optional(),
+    mixerControl: z.string().min(1).optional(),
   }),
   channels: z.array(channelSchema),
 });

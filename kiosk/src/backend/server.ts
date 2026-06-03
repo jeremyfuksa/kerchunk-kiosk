@@ -7,6 +7,7 @@ import { ConfigStore } from "./config/ConfigStore.js";
 import { ActivityLog } from "./activityLog.js";
 import { WsHub } from "./ws.js";
 import type { ScannerEngine, ScanConfig } from "./engine/ScannerEngine.js";
+import { setVolume as amixerVolume, setMuted as amixerMuted, type AmixerOpts } from "./audio.js";
 
 export interface ServerDeps {
   configStore: ConfigStore;
@@ -49,6 +50,21 @@ export function createServer(deps: ServerDeps): { server: Server } {
   const { configStore, engine, activityLog, staticDir } = deps;
   let config = configStore.load();
 
+  // Persist config AND restart the scanner so changes (e.g. editing channels in
+  // the admin) take effect immediately, instead of only after a service restart.
+  async function persistAndReload(): Promise<void> {
+    configStore.save(config);
+    await engine.stop();
+    await engine.start(toScanConfig(config));
+  }
+
+  // amixer target from config: volume/mute must hit the card+control that
+  // actually drives the configured sink (e.g. headphone jack = card 2 / "PCM";
+  // HDMI typically has none). Undefined fields fall back to amixer's defaults.
+  function mixerOpts(): AmixerOpts {
+    return { card: config.audio.mixerCard, control: config.audio.mixerControl };
+  }
+
   const server = httpCreateServer(async (req, res) => {
     try {
       const url = new URL(req.url ?? "/", "http://localhost");
@@ -87,7 +103,7 @@ export function createServer(deps: ServerDeps): { server: Server } {
       if (!parsed.success) return json(res, 400, { error: "invalid channel", issues: parsed.error.issues });
       const channel: Channel = { id: `ch_${randomUUID().slice(0, 8)}`, ...parsed.data };
       config = { ...config, channels: [...config.channels, channel] };
-      configStore.save(config);
+      await persistAndReload();
       return json(res, 201, channel);
     }
 
@@ -99,12 +115,12 @@ export function createServer(deps: ServerDeps): { server: Server } {
         const parsed = channelSchema.partial().safeParse(body);
         if (!parsed.success) return json(res, 400, { error: "invalid channel" });
         config = { ...config, channels: config.channels.map((c) => c.id === id ? { ...c, ...parsed.data, id } : c) };
-        configStore.save(config);
+        await persistAndReload();
         return json(res, 200, config.channels.find((c) => c.id === id));
       }
       if (method === "DELETE") {
         config = { ...config, channels: config.channels.filter((c) => c.id !== id) };
-        configStore.save(config);
+        await persistAndReload();
         return json(res, 204, null);
       }
     }
@@ -114,15 +130,17 @@ export function createServer(deps: ServerDeps): { server: Server } {
 
     if (method === "POST" && path === "/api/audio/volume") {
       const body = await readBody(req);
-      await engine.setVolume(Number(body?.percent));
-      config = { ...config, audio: { ...config.audio, volume: Number(body?.percent) } };
+      const percent = Number(body?.percent);
+      config = { ...config, audio: { ...config.audio, volume: percent } };
+      await amixerVolume(percent, mixerOpts());
       configStore.save(config);
       return json(res, 200, { volume: config.audio.volume });
     }
     if (method === "POST" && path === "/api/audio/mute") {
       const body = await readBody(req);
-      await engine.setMuted(Boolean(body?.muted));
-      config = { ...config, audio: { ...config.audio, muted: Boolean(body?.muted) } };
+      const muted = Boolean(body?.muted);
+      config = { ...config, audio: { ...config.audio, muted } };
+      await amixerMuted(muted, mixerOpts());
       configStore.save(config);
       return json(res, 200, { muted: config.audio.muted });
     }
