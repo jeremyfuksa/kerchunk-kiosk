@@ -9,12 +9,14 @@ import type { Channel } from "../src/backend/config/schema.js";
 const LOUD = join(__dirname, "fakes", "fake-rtl_fm-loud.sh");
 const SILENT = join(__dirname, "fakes", "fake-rtl_fm-silent.sh");
 const CRASH = join(__dirname, "fakes", "fake-rtl_fm-crash.sh");
+const NODEVICE = join(__dirname, "fakes", "fake-rtl_fm-nodevice.sh");
 const SINK = join(__dirname, "fakes", "fake-sink.sh");
 
 beforeAll(() => {
   chmodSync(LOUD, 0o755);
   chmodSync(SILENT, 0o755);
   chmodSync(CRASH, 0o755);
+  chmodSync(NODEVICE, 0o755);
   chmodSync(SINK, 0o755);
 });
 
@@ -276,6 +278,28 @@ describe("RtlFmEngine auto-restart", () => {
       delete process.env.FAKE_RTL_ARGS_FILE;
       delete process.env.FAKE_SINK_FILE;
     }
+  });
+});
+
+describe("RtlFmEngine device errors", () => {
+  it("surfaces a NO_DEVICE error (with the rtl_fm stderr reason) when the dongle is missing", async () => {
+    const c = ch({ id: "nodev", freq: 145130000 });
+    const e = new RtlFmEngine({ rtlFmCmd: NODEVICE, sinkCmd: null, ...TIMING });
+    active = e;
+    const events: EngineEvent[] = [];
+    e.on((ev) => events.push(ev));
+    await e.start(cfg([c]));
+
+    const got = await waitFor(
+      () => events.some((ev) => ev.type === "error" && ev.code === "NO_DEVICE"),
+      1500,
+    );
+    expect(got).toBe(true);
+
+    const errEv = events.find((ev) => ev.type === "error" && ev.code === "NO_DEVICE");
+    expect(errEv && errEv.type === "error" && errEv.message).toContain(
+      "No supported devices found",
+    );
   });
 });
 
