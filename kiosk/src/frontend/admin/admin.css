@@ -1,0 +1,9 @@
+body { font-family: system-ui, sans-serif; background: #0d1117; color: #e6edf3; margin: 0; }
+.admin { max-width: 640px; margin: 0 auto; padding: 2rem; }
+.admin h1 { font-size: 1.3rem; }
+.admin section { margin: 1.5rem 0; padding: 1rem; background: #161b22; border: 1px solid #30363d; border-radius: 8px; }
+.admin input, .admin select, .admin button { font-size: 1rem; padding: 0.4rem; margin: 0.2rem; }
+.admin ul { list-style: none; padding: 0; }
+.admin li { padding: 0.5rem 0; border-bottom: 1px solid #21262d; }
+.admin .err { color: #f85149; margin-left: 0.5rem; }
+.admin .del { background: #21262d; color: #f85149; border: 1px solid #30363d; border-radius: 4px; cursor: pointer; }
