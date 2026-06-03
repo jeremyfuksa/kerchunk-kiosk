@@ -15,10 +15,12 @@ REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # the kiosk/ dir
 INSTALL_DIR=/opt/kerchunk-kiosk
 STATE_DIR=/var/lib/kerchunk-kiosk
 # Connected display's ALSA sink on this Pi (verified: card 1 = vc4hdmi1).
-# Use the `plughw:` plugin, NOT raw `hdmi:`/`hw:` — HDMI audio requires stereo,
-# but rtl_fm produces mono; `plughw` auto-upmixes mono->stereo (and converts
-# rate). Raw hdmi: fails with "Channels count non available" and aplay dies.
-HDMI_SINK="plughw:CARD=vc4hdmi1,DEV=0"
+# Use the `kerchunk` softvol device defined in systemd/asound.conf.pi (installed
+# to /etc/asound.conf). It layers a software volume control over `plughw` — HDMI
+# exposes no hardware volume control, and `plughw` upmixes rtl_fm's mono to the
+# stereo HDMI requires (raw `hdmi:` fails with "Channels count non available").
+# (A plain `plughw:CARD=vc4hdmi1,DEV=0` also plays, but without a volume knob.)
+HDMI_SINK="kerchunk"
 
 echo "[setup] Installing packages..."
 sudo apt-get update

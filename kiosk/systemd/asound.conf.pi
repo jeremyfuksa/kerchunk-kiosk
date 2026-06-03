@@ -1,0 +1,15 @@
+# Kerchunk kiosk audio: software volume over a generously-buffered HDMI sink.
+# HDMI has no hardware volume control (softvol provides one) and needs stereo
+# (plughw upmixes rtl_fm's 12kHz mono). The large buffer absorbs the bursty
+# delivery from the Node audio tap, which otherwise underran -> choppy audio.
+pcm.kerchunk_softvol {
+    type softvol
+    slave.pcm "plughw:CARD=vc4hdmi1,DEV=0"
+    control { name "Kerchunk"; card 1 }
+}
+pcm.kerchunk {
+    type plug
+    slave.pcm "kerchunk_softvol"
+}
+# Default buffering for the plug chain: ~500ms buffer, ~100ms periods.
+defaults.pcm.dmix.buffer_size 0
