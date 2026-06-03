@@ -13,6 +13,10 @@ export function formToChannel(form: { mhz: string; alphaTag: string; mode: strin
   return { freq: mhzToHz(form.mhz), alphaTag: form.alphaTag, mode, enabled: true };
 }
 
+export function weatherFormToChannel(form: { mhz: string; alphaTag: string; mode: string }): Omit<Channel, "id"> {
+  return formToChannel(form);
+}
+
 function fmtFreq(hz: number): string { return (hz / 1e6).toFixed(3); }
 
 // Channel fields (alphaTag especially) are operator-typed and rendered via
@@ -39,6 +43,15 @@ export function renderAdmin(root: HTMLElement): void {
         <span id="addErr" class="err"></span>
       </section>
       <section><h2>Channels</h2><ul id="chList"></ul></section>
+      <section class="weather">
+        <h2>Weather</h2>
+        <label>Freq (MHz) <input id="wxMhz" type="text" placeholder="162.550" /></label>
+        <label>Tag <input id="wxTag" type="text" placeholder="NOAA WX" /></label>
+        <select id="wxMode"><option value="nfm">nfm</option><option value="fm">fm</option><option value="am">am</option></select>
+        <button id="wxSave">Save weather channel</button>
+        <label class="modeToggle"><input id="wxToggle" type="checkbox" /> Weather-only mode</label>
+        <span id="modeLabel"></span>
+      </section>
     </main>`;
 
   const vol = root.querySelector<HTMLInputElement>("#vol")!;
@@ -74,4 +87,36 @@ export function renderAdmin(root: HTMLElement): void {
   });
 
   refresh();
+
+  const wxMhz = root.querySelector<HTMLInputElement>("#wxMhz")!;
+  const wxTag = root.querySelector<HTMLInputElement>("#wxTag")!;
+  const wxMode = root.querySelector<HTMLSelectElement>("#wxMode")!;
+  const wxSave = root.querySelector<HTMLButtonElement>("#wxSave")!;
+  const wxToggle = root.querySelector<HTMLInputElement>("#wxToggle")!;
+  const modeLabel = root.querySelector<HTMLElement>("#modeLabel")!;
+
+  function paintMode(mode: "scan" | "weather"): void {
+    wxToggle.checked = mode === "weather";
+    modeLabel.textContent = mode === "weather" ? "WEATHER-ONLY" : "scanning";
+  }
+
+  api.getWeatherChannel().then(({ weatherChannel }) => {
+    if (weatherChannel) {
+      wxMhz.value = (weatherChannel.freq / 1e6).toFixed(3);
+      wxTag.value = weatherChannel.alphaTag;
+      wxMode.value = weatherChannel.mode;
+    }
+  }).catch(() => {});
+  api.getStatus().then((s) => paintMode(s.mode)).catch(() => {});
+
+  wxSave.addEventListener("click", () => {
+    try {
+      api.setWeatherChannel(weatherFormToChannel({ mhz: wxMhz.value, alphaTag: wxTag.value, mode: wxMode.value }));
+    } catch { /* invalid freq: leave as-is */ }
+  });
+  wxToggle.addEventListener("change", () => {
+    api.setMode(wxToggle.checked ? "weather" : "scan")
+      .then((r) => paintMode(r.mode))
+      .catch(() => { wxToggle.checked = !wxToggle.checked; }); // revert on failure (e.g. no weather channel)
+  });
 }
