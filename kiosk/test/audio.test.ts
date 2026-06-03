@@ -2,10 +2,15 @@ import { describe, it, expect, vi } from "vitest";
 import { setVolume, setMuted, listSinks } from "../src/backend/audio.js";
 
 describe("audio", () => {
-  it("setVolume calls amixer with a percent", async () => {
+  it("setVolume calls amixer with mapped volume (-M) and a percent", async () => {
+    // -M (mapped-volume) is REQUIRED: amixer's default raw mode maps the percent
+    // linearly over the control's raw dB-scaled range. On the bcm2835 headphone
+    // jack the PCM control spans -102.39..+4.00 dB, so raw "70%" lands at ~-28 dB
+    // (near silent) — i.e. moving the slider mutes the audio. Mapped mode makes
+    // the percent perceptually correct.
     const run = vi.fn().mockResolvedValue({ stdout: "", stderr: "", code: 0 });
     await setVolume(70, { run, control: "Master", card: 0 });
-    expect(run).toHaveBeenCalledWith("amixer", ["-c", "0", "sset", "Master", "70%"]);
+    expect(run).toHaveBeenCalledWith("amixer", ["-M", "-c", "0", "sset", "Master", "70%"]);
   });
 
   it("setMuted true calls amixer mute", async () => {

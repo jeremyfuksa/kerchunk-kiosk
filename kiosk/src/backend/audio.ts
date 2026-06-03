@@ -42,8 +42,15 @@ export async function setVolume(percent: number, opts: AmixerOpts = {}): Promise
   const clamped = Math.max(0, Math.min(100, Math.round(percent)));
   // Never reject: a non-zero exit (e.g. HDMI cards exposing no mixer control)
   // or a spawn error must degrade to a safe no-op, not crash the boot chain.
+  //
+  // -M (mapped-volume) is essential, not cosmetic. amixer's default raw mode
+  // maps the percent LINEARLY over the control's raw value range, which is a dB
+  // scale. The bcm2835 headphone PCM control spans -102.39..+4.00 dB, so a raw
+  // "70%" lands near -28 dB — inaudible. Mapped mode applies ALSA's perceptual
+  // curve so the slider percent matches perceived loudness. Without it, moving
+  // the volume slider silences the audio (it looks like a crash but isn't).
   try {
-    const result = await run("amixer", ["-c", String(card), "sset", control, `${clamped}%`]);
+    const result = await run("amixer", ["-M", "-c", String(card), "sset", control, `${clamped}%`]);
     if (result.code !== 0) return; // no mixer control available; swallow
   } catch {
     /* spawn/runner failure -> no-op */
