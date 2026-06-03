@@ -49,6 +49,7 @@ export function renderAdmin(root: HTMLElement): void {
         <label>Tag <input id="wxTag" type="text" placeholder="NOAA WX" /></label>
         <select id="wxMode"><option value="nfm">nfm</option><option value="fm">fm</option><option value="am">am</option></select>
         <button id="wxSave">Save weather channel</button>
+        <span id="wxErr" class="err"></span>
         <label class="modeToggle"><input id="wxToggle" type="checkbox" /> Weather-only mode</label>
         <span id="modeLabel"></span>
       </section>
@@ -92,6 +93,7 @@ export function renderAdmin(root: HTMLElement): void {
   const wxTag = root.querySelector<HTMLInputElement>("#wxTag")!;
   const wxMode = root.querySelector<HTMLSelectElement>("#wxMode")!;
   const wxSave = root.querySelector<HTMLButtonElement>("#wxSave")!;
+  const wxErr = root.querySelector<HTMLElement>("#wxErr")!;
   const wxToggle = root.querySelector<HTMLInputElement>("#wxToggle")!;
   const modeLabel = root.querySelector<HTMLElement>("#modeLabel")!;
 
@@ -109,14 +111,18 @@ export function renderAdmin(root: HTMLElement): void {
   }).catch(() => {});
   api.getStatus().then((s) => paintMode(s.mode)).catch(() => {});
 
-  wxSave.addEventListener("click", () => {
+  wxSave.addEventListener("click", async () => {
+    wxErr.textContent = "";
     try {
-      api.setWeatherChannel(weatherFormToChannel({ mhz: wxMhz.value, alphaTag: wxTag.value, mode: wxMode.value }));
-    } catch { /* invalid freq: leave as-is */ }
+      await api.setWeatherChannel(weatherFormToChannel({ mhz: wxMhz.value, alphaTag: wxTag.value, mode: wxMode.value }));
+    } catch (e) {
+      wxErr.textContent = (e as Error).message;
+    }
   });
   wxToggle.addEventListener("change", () => {
-    api.setMode(wxToggle.checked ? "weather" : "scan")
+    const intended = wxToggle.checked;
+    api.setMode(intended ? "weather" : "scan")
       .then((r) => paintMode(r.mode))
-      .catch(() => { wxToggle.checked = !wxToggle.checked; }); // revert on failure (e.g. no weather channel)
+      .catch(() => { wxToggle.checked = !intended; });
   });
 }
