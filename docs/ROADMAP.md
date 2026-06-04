@@ -74,7 +74,8 @@ to model it:
 
 **Why it's high-value.** It's the connective tissue for Ideas 2 and 4 — "show
 all of Rail on the map but only let Public Safety touch the speaker" only makes
-sense once banks exist.
+sense once banks exist. It's also the unit that eventually binds to a physical
+radio: assigning a bank to its own SDR is the endpoint of this track (Idea 10).
 
 ---
 
@@ -334,6 +335,65 @@ almost entirely queries — no new capture path.
 
 ---
 
+## Idea 10 — Multi-SDR: bind a bank to a radio
+
+**The pitch.** Eventually each bank should be assignable to a *physical SDR*.
+Plug in a second (third…) dongle, hand Air to one and VHF to another, and those
+banks are monitored **continuously and in parallel** — no group-hop between
+distant bands. This is the natural endpoint of the banks concept (Idea 1) and the
+README's existing post-MVP line, "second SDR (eliminates group-hop)."
+
+**Why banks are the right unit.** A single dongle's ~2.4 MHz window can't span
+airband AM (~118–137 MHz), VHF marine/rail (~150–162 MHz), and UHF (~450 MHz) at
+once, so today's engine *group-hops* one radio across those windows and you miss
+whatever fires on the bands it isn't parked on. Services cluster far apart in
+frequency — which is exactly the boundary banks already draw. Assigning a bank to
+its own radio turns "hop between services" into "watch every service at once."
+It also unlocks **per-bank antennas**: an airband antenna on the airband dongle,
+a UHF whip on the UHF dongle — each SDR has its own SMA.
+
+**What we have (and what blocks this today).**
+- The DSP helper opens `soapy.source("driver=rtlsdr", …)` (`wideband_helper.py`)
+  with **no serial** — it grabs the first dongle it finds. Multi-device needs
+  explicit addressing (`driver=rtlsdr,serial=…`; serials are settable via
+  `rtl_eeprom`).
+- `WidebandEngine` spawns exactly **one** helper and owns **one** group-hop loop
+  (`groups` / `groupIndex`). Multi-SDR means N helpers, each on a distinct
+  device, each hopping only within its assigned banks' windows.
+- Speaker ownership / priority arbitration is currently within one engine. With
+  several radios able to open a channel simultaneously, arbitration becomes
+  **cross-device** (one speaker, N candidate audibles) — the part that needs the
+  most thought.
+
+**Build shape.**
+1. Schema: a `radios` list (`{ id, serial, label, gain?, antenna? }`) and an
+   optional `radioId` on each bank. Unassigned banks share a default radio and
+   keep hopping among themselves — so one dongle still works exactly as today.
+2. Engine: promote the single helper to a **pool**, one helper per configured
+   radio, each fed only its banks' channels through the existing `groupChannels`
+   path. Each helper retunes/hops independently; a bank that owns a radio and
+   fits one window never hops at all.
+3. A cross-device **audio arbiter** in front of the ALSA sink: collects audibles
+   from every helper, applies priority + Close Call preempt across radios, and
+   grants the speaker to one. (Today each helper plays straight to ALSA — that
+   has to move behind the arbiter, or each radio gets its own sink/output.)
+4. Admin: a radios panel (detect connected dongles by serial, label them) and a
+   radio dropdown on each bank.
+
+**Cost / limits to be honest about.** Each dongle is another ~4.8 MB/s of USB I/Q
+*and* another full channelizer flowgraph — CPU and USB bandwidth are the ceiling,
+and the appliance is a 2014 laptop. Realistically 2–3 radios, not ten. This is
+also the feature that makes **per-bank gain (Idea 7)** fully real: gain is a
+hardware property of a *device*, so per-bank gain is only truly independent once
+a bank owns its radio (on a shared, hopping radio it's still per-group).
+
+**Sequencing note.** This is the heaviest item here and the natural *long-term*
+target of the banks line of work — it wants banks (Idea 1) and per-bank profiles
+(Idea 7) in place first, and the cross-device audio arbiter is net-new. Park it at
+the end of the banks track, not the start.
+
+---
+
 ## Stretch items (named, not obvious-tier)
 
 - **Transcription.** Speech-to-text over captured audio → a searchable log of
@@ -364,6 +424,10 @@ These interlock; a sensible order:
 6. **Artistic mode (Idea 3)** — an ambient/screensaver mode that reuses the same
    event stream (and Idea 9's queries for the data-poster skin); ship one skin,
    grow the gallery.
+7. **Multi-SDR (Idea 10)** — the long-term endpoint of the banks track: bind a
+   bank to its own radio for true parallel, hop-free coverage. Heaviest item
+   (a cross-device audio arbiter is net-new); wants banks + per-bank profiles
+   first.
 
 ## Open questions for the operator
 
