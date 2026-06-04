@@ -17,7 +17,9 @@ lives in dist-packages; mise pythons cannot import it). Protocol
 
 Audio goes straight to ALSA (gr audio.sink); Node never touches PCM. Audible
 selection is first-active-wins: hold until that channel closes, then hand off
-to any other open channel, else silence. Group-hop is Node's job — it just
+to any other open channel, else silence. The audio gate itself follows
+INSTANTANEOUS carrier power (~50 ms mute on carrier drop — no squelch-tail
+static), while open/close hold semantics ride hang_ms for scan behavior. Group-hop is Node's job — it just
 sends another "tune"; the device is NEVER re-opened (spike-proven:
 set_frequency on the running soapy source retunes VHF<->UHF cleanly).
 
@@ -97,6 +99,7 @@ class Chain:
     def reset_detection(self):
         self.floor_db = None
         self.open = False
+        self.carrier = False   # instantaneous carrier presence (fast audio gate)
         self.above_polls = 0
         self.below_since = None
         self.warmup = WARMUP_POLLS
@@ -169,7 +172,10 @@ class Helper(gr.top_block):
             self.audible.gate.set_k(0.0)
         self.audible = chain
         if chain is not None:
-            chain.gate.set_k(1.0)
+            # Gate follows the chain's carrier, not just audibility: an open
+            # chain whose carrier already dropped (riding its hang time) must
+            # not blast squelch noise.
+            chain.gate.set_k(1.0 if chain.carrier else 0.0)
         emit({"ev": "audible",
               "id": chain.channel_id if chain else None})
 
@@ -212,6 +218,17 @@ class Helper(gr.top_block):
             if chain.channel_id is None or chain.channel_id not in readings:
                 continue
             db = readings[chain.channel_id]
+
+            # Fast audio gate (static mute). An FM carrier holds steady power
+            # while keyed, so the moment power falls to the close threshold the
+            # transmission is OVER — demodulated output from here on is loud
+            # squelch noise. Mute NOW (one poll, ~50 ms) instead of riding
+            # hang_ms; hang only governs the logical open/hold (so the scanner
+            # doesn't hop away between replies). A re-key inside the hang
+            # reopens the gate on the next poll, no event churn.
+            chain.carrier = db > floor + open_db - CLOSE_HYST_DB
+            if self.audible is chain:
+                chain.gate.set_k(1.0 if chain.carrier else 0.0)
 
             if not chain.open:
                 if db > floor + open_db:
