@@ -75,7 +75,10 @@ export const configSchema = z.object({
       appKey: z.string().min(1),
       username: z.string().min(1),
       password: z.string().min(1),
-      countyIds: z.array(z.number().int().positive()).min(1),
+      // Empty = configured but dormant (counties not resolved yet). A min(1)
+      // here once silently invalidated an operator's whole hand-edited
+      // config (load fell back to .bak and ate his credentials — twice).
+      countyIds: z.array(z.number().int().positive()),
     }).optional(),
   }).optional(),
   // Close Call discoveries pending operator review — deliberately SEPARATE

@@ -30,7 +30,11 @@ export class ConfigStore {
     try {
       const parsed = JSON.parse(readFileSync(p, "utf8"));
       return configSchema.parse(parsed);
-    } catch {
+    } catch (err) {
+      // LOUD on purpose: a rejected config file silently falling back to
+      // .bak once ate an operator's hand-edited credentials. The journal
+      // must say exactly what was rejected and why.
+      console.error(`[config] REJECTED ${p} — falling back: ${(err as Error).message?.slice(0, 500)}`);
       return null;
     }
   }
