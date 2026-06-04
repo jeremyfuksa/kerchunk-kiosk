@@ -165,3 +165,22 @@ describe("HTTP API", () => {
     expect(res.status).toBe(400);
   });
 });
+
+describe("wideband config passthrough", () => {
+  it("passes scan.windowBandwidthHz/groupDwellMs/openAboveFloorDb through to engine.start", async () => {
+    const { server, engine } = makeApp();
+    const cfg = (await request(server).get("/api/config")).body;
+    cfg.scan.windowBandwidthHz = 1_500_000;
+    cfg.scan.groupDwellMs = 4000;
+    cfg.scan.openAboveFloorDb = 12;
+    expect((await request(server).put("/api/config").send(cfg)).status).toBe(200);
+
+    let lastStart: any = null;
+    const realStart = engine.start.bind(engine);
+    engine.start = async (sc) => { lastStart = sc; return realStart(sc); };
+    await request(server).post("/api/scan/start");
+    expect(lastStart.windowBandwidthHz).toBe(1_500_000);
+    expect(lastStart.groupDwellMs).toBe(4000);
+    expect(lastStart.openAboveFloorDb).toBe(12);
+  });
+});
