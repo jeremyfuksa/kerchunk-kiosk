@@ -16,6 +16,15 @@ export const configSchema = z.object({
     squelchLevel: z.number().int().nonnegative(),
     gain: z.union([z.number(), z.literal("auto")]),
     dwellMs: z.number().int().positive(),
+    // Wideband engine tuning (optional; RtlFmEngine ignores these).
+    // Usable I/Q window for grouping — keep under the dongle's ~2.4 MHz
+    // instantaneous bandwidth to leave guard band.
+    windowBandwidthHz: z.number().int().positive().optional(),
+    // Dwell per group before hopping to the next (hold-through overrides).
+    groupDwellMs: z.number().int().positive().optional(),
+    // Squelch: open when channel power exceeds its learned noise floor by
+    // this many dB (close threshold sits 3 dB lower for hysteresis).
+    openAboveFloorDb: z.number().positive().optional(),
   }),
   audio: z.object({
     sink: z.string().min(1),
