@@ -1,10 +1,12 @@
 # Kerchunk Kiosk — Roadmap of Ideas
 
 > Status: brainstorm / idea backlog (2026-06-04). Nothing here is committed
-> scope. This captures four directions the operator wants to explore on top of
-> the shipped v1.0 appliance, grounded in what the code actually exposes today.
-> Each idea has a "what we have," a "what's missing," and a rough build shape so
-> a later build/no-build call is informed.
+> scope. This captures the directions the operator wants to explore on top of
+> the shipped v1.0 appliance — four headline ideas (banks, live map, artistic
+> mode, hear-vs-see) plus the adjacent items that fall out of them (Ideas 5–9) —
+> grounded in what the code actually exposes today. Each idea has a "what we
+> have," a "what's missing," and a rough build shape so a later build/no-build
+> call is informed.
 
 ## Where v1.0 stands (the substrate these ideas build on)
 
@@ -214,18 +216,154 @@ all," which the hardware can't always afford.
 
 ---
 
+## Idea 5 — Persistent activity history (the keystone)
+
+**The pitch.** Keep a durable record of every channel opening that survives a
+reboot, so the map can replay, stats can be computed, and alerts can be reviewed.
+
+**What we have.** `ActivityLog` (`kiosk/src/backend/activityLog.ts`) is a pure
+in-memory ring buffer — `add()` unshifts onto an array capped at `capacity`, and
+the whole thing is lost on restart. The events it records (`freq`, `alphaTag`,
+`ts`) already flow from the engine; nothing persists them.
+
+**Why it's the keystone.** Map replay (Idea 8), stats (Idea 9), and "review the
+alert that fired while I was away" (Idea 6) all need history that outlives the
+process. Build this first and the rest become mostly queries.
+
+**Build shape.**
+1. A small append-only store on the appliance's writable partition — SQLite is
+   the obvious fit (one file, queryable, no server, already the right shape for
+   "events with a timestamp, freq, bank, location"). Row per opening:
+   `{ ts, freq, alphaTag, bank, lat, lon, durationMs?, audible }`.
+2. Tee the existing `active`/`audible`/`closecall` event path into the store
+   alongside the in-memory ring buffer — the ring buffer stays as the hot "recent
+   activity" cache for the dashboard; the store is the durable tail.
+3. Retention policy (rolling N days, or cap by row count) so an always-on kiosk
+   doesn't grow the card without bound — matters given the read-only-rootfs /
+   small-writable-partition appliance design.
+4. A read API (`/api/history?since=…&bank=…`) the map, stats, and admin consume.
+
+---
+
+## Idea 6 — Alerts / notifications
+
+**The pitch.** The counterpart to "see-only" (Idea 4): some channels you don't
+listen to live but still want to be *pulled into* when they key up — a watched
+tac channel, a Close Call discovery, a weather alert. Flash the dashboard, chirp
+the speaker, and/or push to a phone.
+
+**What we have.** Close Call already preempts the speaker for discoveries, so the
+"interrupt me" plumbing partly exists. The event stream carries everything an
+alert rule needs (channel, bank, freq, signal). No persistence required for the
+fire itself, but reviewing missed alerts wants Idea 5.
+
+**Build shape.**
+1. Per-channel / per-bank `alert` flag (a third axis alongside hear/see, or a
+   property of a bank).
+2. Alert actions, escalating in cost: visual (dashboard flash / toast), audible
+   (brief tone or unmute-and-listen), push (a notification channel — ntfy,
+   webhook, or the session's push path).
+3. Rule conditions worth having: "any hit," "first hit in N minutes," "signal
+   over X dB," "this specific bank only." Keep it small — a couple of conditions,
+   not a rules engine.
+4. An alert feed in the admin (backed by Idea 5) so the operator can see what
+   fired while they were away.
+
+---
+
+## Idea 7 — Per-bank scan profiles
+
+**The pitch.** Different services genuinely want different radio settings:
+airband is AM with its own squelch/gain regime; marine VHF wants its own volume;
+public-safety might warrant tighter Close Call. Once banks exist (Idea 1),
+attach settings *per bank* instead of only the single global `scan` block.
+
+**What we have.** `configSchema.scan` is one global block (`squelchLevel`, `gain`,
+`dwellMs`, `openAboveFloorDb`, `noiseQuietDb`, Close Call knobs). Channels carry a
+learned per-channel `levelTrimDb` already, so per-group audio normalization has
+precedent — but squelch/gain/dwell are global today.
+
+**Build shape.**
+1. Optional per-bank overrides: `{ squelch?, gain?, volume?, priority?,
+   dwellWeight?, closeCall? }`, falling back to the global `scan` block when
+   unset (so existing configs are unaffected).
+2. Engine: when a group is assembled from a bank's channels, apply that bank's
+   overrides at tune/squelch time. `dwellWeight` feeds the group-hop scheduler so
+   a busy bank (e.g. public safety) gets more dwell than a quiet one.
+3. Admin: per-bank settings drawer next to the bank toggle (Idea 1).
+
+**Caveat.** A DSP window can span channels from more than one bank (grouping is
+by RF proximity, not bank), so per-bank squelch/gain has to resolve sensibly when
+a window is mixed — likely "apply per-channel where the override is squelch-like,
+per-group for tune-time settings." Worth a design pass, not free.
+
+---
+
+## Idea 8 — Map history, replay & click-to-listen
+
+**The pitch.** Deepen the map (Idea 2) with time: a scrubber to replay the last
+hour, a heatmap of busy transmitter sites, and click-a-blip-to-hear-it — which is
+the hear/see toggle (Idea 4) applied to a pin.
+
+**What we have.** Live blips come from Idea 2; persisted positions come from Idea
+5 (lat/lon are already stored per opening). Click-to-listen reuses the same
+audible/visibility switch Idea 4 introduces.
+
+**Build shape.**
+1. Time scrubber over `/api/history` — slide back, blips re-animate for the
+   chosen window.
+2. Heatmap layer from per-site hit counts (a `GROUP BY lat,lon` over the store).
+3. Click a blip → channel detail + a "listen" control that flips that channel
+   (or bank) to audible for a session. Closes the loop between map and speaker.
+
+---
+
+## Idea 9 — Stats & insights
+
+**The pitch.** "Busiest channel today, busiest bank, quietest hours, first Close
+Call of the day." A quiet analytics surface over the persisted history.
+
+**What we have.** Nothing today (history is RAM-only). Once Idea 5 lands, this is
+almost entirely queries — no new capture path.
+
+**Build shape.**
+1. A handful of aggregate queries over the history store (counts by channel /
+   bank / hour, longest silence, discovery timeline).
+2. An admin "Insights" panel; numbers double as the data source for the artistic
+   "daily poster" skin in Idea 3 — same queries, two presentations.
+
+---
+
+## Stretch items (named, not obvious-tier)
+
+- **Transcription.** Speech-to-text over captured audio → a searchable log of
+  *what was said*, not just when. Powerful and modern, but heavier (a model on the
+  appliance or an off-box API) and depends on capturing audio, so it sits well
+  past the obvious tier.
+- **Remote audio streaming.** Stream the live demod to a phone/browser
+  (Icecast-style) — the old "home base Wi-Fi mode" from the vision doc. Lets the
+  operator listen away from the kiosk.
+
+---
+
 ## Suggested sequencing
 
 These interlock; a sensible order:
 
 1. **Banks (Idea 1)** — the data backbone; banks + tags + derived band. Unlocks
-   bulk control and gives Ideas 2/4 something to pivot on.
-2. **Hear-vs-see (Idea 4)** — small schema change once banks exist; immediately
+   bulk control and gives the map and hear/see something to pivot on.
+2. **Persistent history (Idea 5)** — the keystone infrastructure. Unblocks map
+   replay, stats, and alert review; build it early so the rest are mostly queries.
+3. **Hear-vs-see (Idea 4)** — small schema change once banks exist; immediately
    useful on its own (mute noisy channels but keep logging them).
-3. **Map (Idea 2)** — the first big visual payoff; color blips by bank,
-   visibility-gated by Idea 4. Decide the tile-provider question first.
-4. **Artistic mode (Idea 3)** — an ambient/screensaver mode that reuses the same
-   event stream; ship one skin, grow the gallery.
+4. **Map + map history (Ideas 2 & 8)** — the first big visual payoff; color blips
+   by bank, visibility-gated by Idea 4, replay/heatmap backed by Idea 5. Decide
+   the tile-provider question first.
+5. **Per-bank profiles, alerts, stats (Ideas 7, 6, 9)** — layered refinements that
+   ride on banks + history; each is small once its dependencies exist.
+6. **Artistic mode (Idea 3)** — an ambient/screensaver mode that reuses the same
+   event stream (and Idea 9's queries for the data-poster skin); ship one skin,
+   grow the gallery.
 
 ## Open questions for the operator
 
