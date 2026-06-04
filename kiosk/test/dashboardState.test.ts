@@ -22,6 +22,22 @@ describe("dashboard reduce", () => {
     expect(s.error).toBe("No RTL-SDR");
   });
 
+  it("active clears a stale error (engine demonstrably working again)", () => {
+    // A dashboard that missed the status:running event (WS was reconnecting
+    // during a backend restart) must not show the old error forever once
+    // traffic proves the engine recovered.
+    const ch = { id: "c1", freq: 1, alphaTag: "x", mode: "fm" as const, enabled: true };
+    let s = reduce(initialState(), { type: "error", code: "X", message: "boom", ts: 1 });
+    s = reduce(s, { type: "active", channel: ch, freq: 1, ts: 2 });
+    expect(s.error).toBeNull();
+  });
+
+  it("idle clears a stale error too", () => {
+    let s = reduce(initialState(), { type: "error", code: "X", message: "boom", ts: 1 });
+    s = reduce(s, { type: "idle", ts: 2 });
+    expect(s.error).toBeNull();
+  });
+
   it("status running clears any error", () => {
     let s = reduce(initialState(), { type: "error", code: "X", message: "boom", ts: 1 });
     s = reduce(s, { type: "status", state: "running", ts: 2 });

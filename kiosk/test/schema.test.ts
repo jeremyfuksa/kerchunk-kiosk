@@ -88,3 +88,19 @@ describe("wideband scan fields", () => {
     expect(configSchema.safeParse(cfg).success).toBe(false);
   });
 });
+
+describe("mixerCard by name", () => {
+  it("accepts an ALSA card NAME (stable across boots, unlike indices)", () => {
+    const cfg = structuredClone(defaultConfig()) as Record<string, unknown> & { audio: Record<string, unknown> };
+    cfg.audio.mixerCard = "PCH";
+    const parsed = configSchema.safeParse(cfg);
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.data.audio.mixerCard).toBe("PCH");
+  });
+
+  it("still accepts a numeric index", () => {
+    const cfg = structuredClone(defaultConfig()) as Record<string, unknown> & { audio: Record<string, unknown> };
+    cfg.audio.mixerCard = 1;
+    expect(configSchema.safeParse(cfg).success).toBe(true);
+  });
+});

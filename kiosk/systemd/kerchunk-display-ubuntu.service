@@ -1,0 +1,50 @@
+# Ubuntu laptop appliance display unit (adapted from kerchunk-display-pi.service).
+# cage (Wayland kiosk compositor) + SNAP Chromium fullscreen on the HDMI out.
+#
+# Differences from the Pi unit:
+#   - User=kiosk (the machine's real user — the Chromium snap wants a normal
+#     home directory and snapd access; a nologin system user fights snapd);
+#   - no seatd: with PAMName=login on a TTY, libseat's logind backend gives
+#     cage the seat — Ubuntu has no lightdm/seatd in the way here;
+#   - chromium is /snap/bin/chromium;
+#   - the Pi's tight memory caps (renderer limit / 128MB V8 heap) are dropped —
+#     this machine has 16GB;
+#   - the internal panel is disabled at BOOT (video=eDP-1:d on the kernel
+#     cmdline, set by setup-kiosk-ubuntu.sh), so cage only ever sees the HDMI
+#     output. Lid switch is ignored via logind drop-in — closed lid is the
+#     normal operating posture.
+#
+# Installed by setup-kiosk-ubuntu.sh as /etc/systemd/system/kerchunk-display.service.
+
+[Unit]
+Description=Kerchunk Kiosk display (cage + Chromium)
+After=kerchunk-kiosk.service systemd-user-sessions.service
+Wants=kerchunk-kiosk.service
+Wants=kerchunk-cursor-park.service
+Conflicts=getty@tty1.service
+After=getty@tty1.service
+
+[Service]
+Type=simple
+User=kiosk
+Group=kiosk
+SupplementaryGroups=video render input
+PAMName=login
+TTYPath=/dev/tty1
+StandardInput=tty
+StandardOutput=journal
+StandardError=journal
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+Environment=XDG_SEAT=seat0
+Environment=HOME=/home/kiosk
+# --password-store=basic stops chromium poking at a keyring; the other flags
+# suppress first-run / session-restore / default-browser nags (same rationale
+# as the Pi unit, see kerchunk-display-pi.service).
+ExecStart=/usr/bin/cage -- /snap/bin/chromium --kiosk --noerrdialogs --disable-infobars --ozone-platform=wayland --password-store=basic --no-first-run --disable-session-crashed-bubble --disable-features=Translate --app=http://localhost:8080/dashboard
+Restart=always
+RestartSec=3
+# Cursor parking is a separate oneshot (kerchunk-cursor-park.service) — an
+# ExecStartPost here blocks activation and raced cage's startup on the Pi.
+
+[Install]
+WantedBy=graphical.target

@@ -13,7 +13,9 @@ const defaultRun: Runner = (cmd, args) =>
     p.on("error", () => resolve({ stdout, stderr, code: 1 }));
   });
 
-export interface AmixerOpts { run?: Runner; control?: string; card?: number; }
+// `card` may be a numeric index or an ALSA card NAME ("PCH") — amixer accepts
+// both, and names are stable across boots while indices can swap probe order.
+export interface AmixerOpts { run?: Runner; control?: string; card?: number | string; }
 
 // Best-effort ALSA card index from a sink string like "hdmi:CARD=vc4hdmi1" or
 // "plughw:CARD=Headphones,DEV=0".

@@ -31,10 +31,13 @@ export const configSchema = z.object({
     volume: z.number().int().min(0).max(100),
     muted: z.boolean(),
     // ALSA mixer target for volume/mute. amixer addresses controls by card
-    // INDEX + control NAME, which differ per device (e.g. HDMI exposes no
-    // volume control; the Pi headphone jack is card 2 / "PCM"). Optional so
-    // existing configs default to card 0 / "Master".
-    mixerCard: z.number().int().nonnegative().optional(),
+    // INDEX or NAME + control NAME, which differ per device (e.g. HDMI exposes
+    // no volume control; the Pi headphone jack is card 2 / "PCM"). Prefer the
+    // NAME ("PCH"): card indices are assigned in probe order and can swap
+    // across boots when multiple controllers race (bit the Ubuntu laptop on
+    // its first appliance boot). Optional so existing configs default to
+    // card 0 / "Master".
+    mixerCard: z.union([z.number().int().nonnegative(), z.string().min(1)]).optional(),
     mixerControl: z.string().min(1).optional(),
   }),
   // One channel designated as "the weather channel", stored separately from the

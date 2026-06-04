@@ -13,14 +13,18 @@ export function initialState(): DashState {
 
 export function reduce(s: DashState, ev: EngineEvent): DashState {
   switch (ev.type) {
+    // active/idle prove the engine is working, so they also clear any stale
+    // error: a page whose WS was reconnecting during a backend restart misses
+    // the status:running event and would otherwise show the old error forever.
     case "active":
       return {
         ...s,
+        error: null,
         nowPlaying: { freq: ev.freq, alphaTag: ev.channel.alphaTag },
         log: [{ freq: ev.freq, alphaTag: ev.channel.alphaTag, ts: ev.ts }, ...s.log].slice(0, 100),
       };
     case "idle":
-      return { ...s, nowPlaying: null };
+      return { ...s, error: null, nowPlaying: null };
     case "error":
       return { ...s, error: ev.message };
     case "status":
