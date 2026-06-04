@@ -85,10 +85,12 @@ NOISE_HPF_HZ = 8_000     # HF-noise band for the quieting squelch: voice lives
                          # and LOUD up here. This is how hardware scanners
                          # tell a transmission from junk power.
 QUIET_HYST_DB = 2.0      # +-1 dB around the quieting threshold
-FADE_STEPS = 6           # gate fade: 6 steps x 2 ms = ~12 ms ramp. A hard
-FADE_STEP_S = 0.002      # 0/1 flip on 48 kHz audio is an audible click/thump
-                         # (operator's residual squelch "tick"); a short ramp
-                         # is below perception but kills the transient.
+FADE_STEPS = 6           # gate fade: 6 steps x 1 ms = ~6 ms ramp. A hard 0/1
+FADE_STEP_S = 0.001      # flip on 48 kHz audio is an audible click/thump; a
+                         # short ramp kills the transient. 12 ms was still a
+                         # hair audible at squelch close (operator), 6 ms is
+                         # the next stop — don't go much lower or the click
+                         # comes back.
 FLOOR_ALPHA_UP = 0.02    # floor rises slowly
 FLOOR_ALPHA_DOWN = 0.2   # floor falls fast
 
