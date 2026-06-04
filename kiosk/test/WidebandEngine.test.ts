@@ -308,3 +308,27 @@ describe("skip + lockout", () => {
     expect(got).toBe(true);
   });
 });
+
+describe("leveler trim persistence", () => {
+  it("tune seeds each channel's levelDb from config (trims survive hops/restarts)", async () => {
+    const tunes = tmpFile("tunes");
+    const { engine } = makeEngine({ FAKE_WB_TUNES_FILE: tunes });
+    await engine.start(cfg([{ ...VHF_A, levelTrimDb: -8.5 }, VHF_B]));
+    await waitFor(() => lines(tunes).length >= 1, 1000);
+    await engine.stop();
+    const first = JSON.parse(lines(tunes)[0]!);
+    expect(first.channels.map((c: { levelDb: number }) => c.levelDb)).toEqual([-8.5, 0]);
+  });
+
+  it("helper level events surface as level EngineEvents", async () => {
+    const { engine, events } = makeEngine({
+      FAKE_WB_SCRIPT: `{"ev":"level","id":"${VHF_A.id}","db":-6.3}`,
+    });
+    await engine.start(cfg([VHF_A, VHF_B]));
+    await waitFor(() => events.some((e) => e.type === "level"), 1000);
+    await engine.stop();
+    const lv = events.find((e) => e.type === "level");
+    expect(lv && lv.type === "level" && lv.channelId).toBe(VHF_A.id);
+    expect(lv && lv.type === "level" && lv.db).toBe(-6.3);
+  });
+});

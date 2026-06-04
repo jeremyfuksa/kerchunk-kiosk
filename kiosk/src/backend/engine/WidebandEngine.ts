@@ -226,6 +226,11 @@ export class WidebandEngine implements ScannerEngine {
           this.groupStartedAt = this.now();
         }
         break;
+      case "level":
+        if (typeof ev.id === "string" && typeof ev.db === "number") {
+          this.emit({ type: "level", channelId: ev.id, db: ev.db, ts: this.now() });
+        }
+        break;
       case "closecall":
         if (typeof ev.freqHz === "number") {
           this.emit({ type: "closecall", freqHz: ev.freqHz, ts: this.now() });
@@ -279,7 +284,10 @@ export class WidebandEngine implements ScannerEngine {
     const cmd = {
       cmd: "tune",
       centerHz: group.centerHz,
-      channels: group.channels.map((c) => ({ id: c.id, freqHz: c.freq, priority: c.priority ?? false })),
+      channels: group.channels.map((c) => ({
+        id: c.id, freqHz: c.freq, priority: c.priority ?? false,
+        levelDb: c.levelTrimDb ?? 0,
+      })),
       monitor: this.config?.monitor ?? false,
       // Close Call: ON by default for this engine; knownHz carries EVERY
       // configured channel (enabled or not) so disabled discoveries and

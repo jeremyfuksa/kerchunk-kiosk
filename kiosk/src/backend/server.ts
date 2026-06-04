@@ -75,6 +75,21 @@ export function createServer(deps: ServerDeps): { server: Server } {
   // Saved WITHOUT persistAndReload: a disabled channel doesn't affect
   // scanning, and an engine restart here would kill the live discovery audio
   // (the helper is playing the find on a spare lane right now).
+  // Leveler trims: persist so they survive hops/restarts. Saved WITHOUT
+  // reload — a trim is telemetry, not a scan-config change. cc lanes have no
+  // config channel and are skipped.
+  engine.on((ev) => {
+    if (ev.type !== "level") return;
+    const ch = config.channels.find((c) => c.id === ev.channelId);
+    if (!ch || ch.levelTrimDb === ev.db) return;
+    config = {
+      ...config,
+      channels: config.channels.map((c) =>
+        c.id === ev.channelId ? { ...c, levelTrimDb: ev.db } : c),
+    };
+    configStore.save(config);
+  });
+
   engine.on((ev) => {
     if (ev.type !== "closecall") return;
     if (config.channels.some((c) => c.freq === ev.freqHz)) return;

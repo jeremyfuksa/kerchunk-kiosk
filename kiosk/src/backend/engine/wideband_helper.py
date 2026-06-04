@@ -174,6 +174,7 @@ class Chain:
 
         self.gain = 0.0          # current gate value (fade_to bookkeeping)
         self.level_db = 0.0      # learned per-channel loudness correction (dB)
+        self.level_emitted = 0.0 # last trim value reported to Node
         self.priority = False    # preempts non-priority audible when it opens
         self.channel_id = None   # None = parked (no channel assigned)
         self.reset_detection()
@@ -208,13 +209,17 @@ class Chain:
         self.skip_until = 0.0
         self.warmup = WARMUP_POLLS
 
-    def assign(self, channel_id, offset_hz, priority=False):
+    def assign(self, channel_id, offset_hz, priority=False, level_db=0.0):
         self.channel_id = channel_id
         self.priority = priority
         self.xlate.set_center_freq(offset_hz)
         self.gate.set_k(0.0)   # hard cut is fine: we just retuned, no audio context
         self.gain = 0.0
-        self.level_db = 0.0    # new channel on this lane: forget the old gain
+        # Seed the leveler with the channel's PERSISTED trim (tune carries it
+        # back from config) so audio resumes at the learned loudness instead
+        # of jumping unleveled after every hop/restart.
+        self.level_db = float(level_db)
+        self.level_emitted = self.level_db
         self.reset_detection()
 
     def park(self):
@@ -315,7 +320,8 @@ class Helper(gr.top_block):
             if i < len(channels):
                 c = channels[i]
                 chain.assign(c["id"], c["freqHz"] - center_hz,
-                             bool(c.get("priority", False)))
+                             bool(c.get("priority", False)),
+                             float(c.get("levelDb", 0.0)))
             else:
                 chain.park()
         emit({"ev": "tuned", "centerHz": center_hz})
@@ -423,6 +429,12 @@ class Helper(gr.top_block):
                         step = max(-LEVEL_SLEW_DB, min(LEVEL_SLEW_DB,
                                    desired - chain.level_db))
                         chain.level_db += step
+                        # Report meaningful trim movement so Node persists it
+                        # (>=0.5 dB hysteresis keeps the event rate trivial).
+                        if abs(chain.level_db - chain.level_emitted) >= 0.5:
+                            chain.level_emitted = chain.level_db
+                            emit({"ev": "level", "id": chain.channel_id,
+                                  "db": round(chain.level_db, 1)})
                 chain.fade_to(chain.level_gain() if open_now else 0.0)
 
             if not chain.open:
