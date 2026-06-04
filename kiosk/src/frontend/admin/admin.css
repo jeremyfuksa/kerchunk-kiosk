@@ -1,44 +1,243 @@
-body { font-family: system-ui, sans-serif; background: #0d1117; color: #e6edf3; margin: 0; }
-.admin { max-width: 640px; margin: 0 auto; padding: 2rem; }
-.admin h1 { font-size: 1.3rem; }
-.admin section { margin: 1.5rem 0; padding: 1rem; background: #161b22; border: 1px solid #30363d; border-radius: 8px; }
-.admin input, .admin select, .admin button { font-size: 1rem; padding: 0.4rem; margin: 0.2rem; }
-.admin ul { list-style: none; padding: 0; }
-.admin li { padding: 0.5rem 0; border-bottom: 1px solid #21262d; }
-.admin .err { color: #f85149; margin-left: 0.5rem; }
-.admin .del { background: #21262d; color: #f85149; border: 1px solid #30363d; border-radius: 4px; cursor: pointer; }
+/* ── Kerchunk admin: instrument faceplate ─────────────────────────────────
+   Same rack-gear family as the dashboard: silkscreen module labels, phosphor
+   amber for live data, color-coded industrial buttons. Operator ergonomics
+   first — this page gets used from a phone next to a radio. */
 
-/* Channels CRUD table */
-.admin .chTable { width: 100%; border-collapse: collapse; margin-top: 0.5rem; }
-.admin .chTable th { text-align: left; font-size: 0.85rem; color: #8b949e; padding: 0.3rem 0.5rem; border-bottom: 1px solid #30363d; }
-.admin .chTable td { padding: 0.4rem 0.5rem; border-bottom: 1px solid #21262d; }
-.admin .chTable td:nth-child(4), .admin .chTable td:nth-child(5),
-.admin .chTable th:nth-child(4), .admin .chTable th:nth-child(5) { text-align: center; }
-.admin .chTable tr.editing td { background: #1c2128; }
+:root {
+  color-scheme: dark;
+  --bg: #07090b;
+  --panel: #0d1115;
+  --panel-edge: #1d242c;
+  --etch: #11161c;
+  --ink: #e8e4d8;
+  --dim: #6e7681;
+  --label: #8b949e;
+  --amber: #ffb000;
+  --amber-soft: rgba(255, 176, 0, 0.55);
+  --green: #3ddc84;
+  --red: #ff5b4d;
+  --blue: #58a6ff;
+  --mono: "IBM Plex Mono", ui-monospace, monospace;
+  --cond: "Barlow Condensed", "Arial Narrow", sans-serif;
+}
+
+body {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 0.92rem;
+  background:
+    radial-gradient(ellipse 70% 40% at 50% 0%, rgba(255, 176, 0, 0.04), transparent 70%),
+    var(--bg);
+  color: var(--ink);
+}
+
+.admin { max-width: 760px; margin: 0 auto; padding: 1.6rem 1.2rem 4rem; }
+
+.admin h1 {
+  font-family: var(--cond);
+  font-weight: 700; font-size: 1.5rem;
+  letter-spacing: 0.35em; text-indent: 0.35em;
+  text-transform: uppercase;
+  color: var(--amber);
+  text-shadow: 0 0 12px rgba(255, 176, 0, 0.3);
+  text-align: center;
+  margin: 0.4rem 0 1.6rem;
+}
+
+/* Module: each section is a faceplate panel with a silkscreen legend */
+.admin section {
+  position: relative;
+  margin: 1.8rem 0;
+  padding: 1.4rem 1.1rem 1.1rem;
+  background: var(--panel);
+  border: 1px solid var(--panel-edge);
+  border-radius: 6px;
+}
+.admin section h2 {
+  position: absolute; top: -0.72em; left: 0.9rem;
+  margin: 0;
+  padding: 0 0.6rem;
+  background: var(--bg);
+  font-family: var(--cond);
+  font-weight: 600; font-size: 0.92rem;
+  text-transform: uppercase;
+  letter-spacing: 0.32em;
+  color: var(--label);
+}
+.admin .hint {
+  font-size: 0.72rem; font-weight: 500;
+  letter-spacing: 0.08em; text-transform: none;
+  color: var(--dim);
+  margin-left: 0.5rem;
+}
+
+/* Controls */
+.admin input, .admin select, .admin button {
+  font-family: var(--mono);
+  font-size: 0.92rem;
+  padding: 0.38rem 0.55rem;
+  margin: 0.15rem;
+  background: var(--etch);
+  color: var(--ink);
+  border: 1px solid var(--panel-edge);
+  border-radius: 4px;
+}
+.admin input:focus, .admin select:focus {
+  outline: none;
+  border-color: var(--amber-soft);
+  box-shadow: 0 0 0 1px var(--amber-soft);
+}
+.admin label { color: var(--label); font-size: 0.88rem; }
+
+.admin button {
+  font-family: var(--cond);
+  font-weight: 600;
+  font-size: 0.88rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s, transform 0.06s;
+}
+.admin button:hover:not(:disabled) { border-color: var(--label); background: #161d25; }
+.admin button:active:not(:disabled) { transform: translateY(1px); }
+.admin button:disabled { opacity: 0.35; cursor: default; }
+
+/* Color-coded actions: green = adopt, amber = caution, red = destructive */
+.admin .save, .admin .dAdd { color: var(--green); border-color: rgba(61, 220, 132, 0.35); }
+.admin .del, .admin #lockBtn { color: var(--red); border-color: rgba(255, 91, 77, 0.35); }
+.admin .lock, .admin .dLock, .admin .dDismiss, .admin #tlockBtn { color: var(--amber); border-color: rgba(255, 176, 0, 0.3); }
+.admin .listen, .admin .dListen { color: var(--blue); border-color: rgba(88, 166, 255, 0.35); }
+.admin .err { color: var(--red); margin-left: 0.5rem; font-size: 0.85rem; }
+
+/* ── Now Playing card: the hero module ── */
+.admin .nowCard {
+  border-color: rgba(255, 176, 0, 0.35);
+  background:
+    radial-gradient(ellipse 90% 100% at 50% 0%, rgba(255, 176, 0, 0.05), transparent 70%),
+    var(--panel);
+}
+.admin .nowCard h2 { color: var(--amber-soft); }
+.admin .nowCard .npWhat { margin: 0.3rem 0 0.9rem; }
+.admin .nowCard .npName {
+  font-family: var(--cond);
+  font-weight: 600; font-size: 1.55rem;
+  letter-spacing: 0.04em;
+  color: var(--ink);
+}
+.admin .nowCard .npFreq {
+  color: var(--amber);
+  font-variant-numeric: tabular-nums;
+  font-size: 1.05rem;
+  margin-left: 0.7rem;
+  text-shadow: 0 0 10px rgba(255, 176, 0, 0.3);
+}
+.admin .nowCard .npControls {
+  display: flex; flex-wrap: wrap; gap: 0.55rem; align-items: center;
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--etch);
+}
+.admin .nowCard .resume {
+  background: rgba(88, 166, 255, 0.12);
+  color: var(--blue);
+  border-color: rgba(88, 166, 255, 0.5);
+}
+
+/* Volume: amber fader */
+.admin input[type="range"] {
+  -webkit-appearance: none; appearance: none;
+  width: 150px; height: 4px;
+  padding: 0; margin: 0 0.4rem;
+  background: var(--etch);
+  border: none; border-radius: 2px;
+  vertical-align: middle;
+}
+.admin input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 14px; height: 22px;
+  border-radius: 3px;
+  background: var(--amber);
+  border: 1px solid #c98a00;
+  box-shadow: 0 0 8px rgba(255, 176, 0, 0.4);
+  cursor: pointer;
+}
+.admin input[type="checkbox"] { accent-color: var(--amber); }
+
+/* ── Tables (channels + discoveries) ── */
+.admin .chTable { width: 100%; border-collapse: collapse; margin-top: 0.4rem; }
+.admin .chTable th {
+  text-align: left;
+  font-family: var(--cond);
+  font-weight: 600; font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--dim);
+  padding: 0.3rem 0.5rem;
+  border-bottom: 1px solid var(--panel-edge);
+}
+.admin .chTable td {
+  padding: 0.45rem 0.5rem;
+  border-bottom: 1px solid var(--etch);
+  font-variant-numeric: tabular-nums;
+}
+.admin .chTable td:first-child { color: var(--amber); }
+.admin .discoveries .chTable td:first-child { color: var(--ink); }
+.admin .discoveries .chTable td:nth-child(2) { color: var(--amber); }
+.admin .chTable tbody tr:hover td { background: rgba(255, 255, 255, 0.015); }
+.admin .channels .chTable td:nth-child(4), .admin .channels .chTable td:nth-child(5),
+.admin .channels .chTable th:nth-child(4), .admin .channels .chTable th:nth-child(5) { text-align: center; }
+.admin .chTable tr.editing td { background: rgba(255, 176, 0, 0.04); }
 .admin .chTable input.fMhz { width: 6.5rem; }
 .admin .chTable input.fTag { width: 100%; box-sizing: border-box; }
-.admin .chTable .empty { color: #8b949e; font-style: italic; text-align: center; }
-.admin .chTable button { background: #21262d; color: #e6edf3; border: 1px solid #30363d; border-radius: 4px; cursor: pointer; }
-.admin .chTable .del { color: #f85149; }
-.admin .chTable .save { color: #3fb950; }
-.admin #addBtn { font-size: 0.85rem; margin-left: 0.75rem; }
+.admin .chTable .empty {
+  color: var(--dim); font-style: italic; text-align: center;
+  padding: 1rem; font-size: 0.85rem;
+}
+.admin .chTable button { padding: 0.22rem 0.5rem; font-size: 0.78rem; }
+.admin #addBtn { font-size: 0.8rem; margin-left: 0.75rem; vertical-align: middle; }
 
-/* Now Playing card */
-.admin .nowCard .npWhat { margin: 0.4rem 0 0.8rem; }
-.admin .nowCard .npName { font-size: 1.4rem; font-weight: 600; }
-.admin .nowCard .npFreq { color: #8b949e; margin-left: 0.6rem; }
-.admin .nowCard .npControls { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; }
-.admin .nowCard #tlockBtn, .admin .nowCard #lockBtn { color: #d29922; }
-.admin .nowCard #lockBtn { color: #f85149; }
-.admin .nowCard button:disabled { opacity: 0.4; cursor: default; }
+/* Location chip: "Olathe, KS" */
+.admin .loc {
+  font-family: var(--cond);
+  font-size: 0.78rem; font-weight: 500;
+  letter-spacing: 0.05em;
+  color: var(--blue);
+  opacity: 0.85;
+  margin-left: 0.4rem;
+  white-space: nowrap;
+}
 
-/* Discoveries + monitoring */
-.admin .hint { font-size: 0.8rem; font-weight: 400; color: #8b949e; margin-left: 0.5rem; }
-.admin .discoveries .dAdd { color: #3fb950; }
-.admin .discoveries .dLock, .admin .discoveries .dDismiss { color: #d29922; }
-.admin .nowCard .resume { background: #1f6feb; color: #fff; border: none; border-radius: 4px; padding: 0.4rem 0.8rem; cursor: pointer; }
+/* Discoveries toolbar */
+.admin .dcToolbar { display: flex; gap: 0.6rem; align-items: center; margin: 0.2rem 0 0.5rem; }
 
-.admin .dcToolbar { display: flex; gap: 0.6rem; align-items: center; margin: 0.4rem 0; }
-.admin .dcToolbar button:disabled { opacity: 0.4; }
+/* Lockouts */
+.admin ul { list-style: none; padding: 0; margin: 0.2rem 0 0; }
+.admin li {
+  display: flex; align-items: center; gap: 0.8rem;
+  padding: 0.45rem 0.2rem;
+  border-bottom: 1px solid var(--etch);
+  font-variant-numeric: tabular-nums;
+}
+.admin li.empty { color: var(--dim); font-style: italic; border: none; }
+.admin .unlock { font-size: 0.75rem; padding: 0.18rem 0.5rem; }
 
-.admin .loc { font-size: 0.78rem; color: #58a6ff; opacity: 0.8; margin-left: 0.3rem; }
+/* Tuning + weather: stacked label rows */
+.admin .tuning label, .admin .weather label {
+  display: inline-flex; align-items: center; gap: 0.45rem;
+  margin: 0.25rem 0.8rem 0.25rem 0;
+}
+.admin .tuning input[type="number"] { width: 6rem; }
+.admin .modeToggle { color: var(--ink); }
+#modeLabel {
+  font-family: var(--cond);
+  font-weight: 600; letter-spacing: 0.2em; text-transform: uppercase;
+  color: var(--amber); margin-left: 0.5rem;
+}
+
+/* Phone ergonomics */
+@media (max-width: 560px) {
+  .admin { padding: 1.2rem 0.6rem 3rem; }
+  .admin section { padding: 1.3rem 0.7rem 0.9rem; }
+  .admin .chTable { display: block; overflow-x: auto; }
+  .admin .nowCard .npControls { gap: 0.4rem; }
+  .admin input[type="range"] { width: 110px; }
+}
