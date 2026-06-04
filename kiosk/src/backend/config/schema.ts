@@ -67,6 +67,10 @@ export const configSchema = z.object({
   // string REGISTERED with RepeaterBook; states are full names ("Missouri").
   lookup: z.object({
     userAgent: z.string().min(1),
+    // Bearer token issued on RepeaterBook API approval (March 2026 policy:
+    // token + approved User-Agent are BOTH required). Absent = provider
+    // stays dormant (their endpoint 401s without it).
+    apiToken: z.string().optional(),
     states: z.array(z.string().min(1)).min(1),
     // RadioReference fallback (business band / public safety). Requires an
     // approved developer appKey + the OPERATOR'S premium credentials; all

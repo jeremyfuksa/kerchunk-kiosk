@@ -53,3 +53,16 @@ describe("RepeaterBook", () => {
     expect(await rb.lookup(145130000)).toBeNull();
   });
 });
+
+describe("bearer token (March 2026 policy)", () => {
+  it("sends Authorization when a token is configured", async () => {
+    const fetcher = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => EXPORT });
+    const dir = mkdtempSync(join(tmpdir(), "rb-"));
+    const rb = new RepeaterBook({
+      userAgent: "Kerchunk/1.0 (test)", apiToken: "app_abc123",
+      states: ["Kansas"], cacheDir: dir, fetcher,
+    });
+    await rb.lookup(145130000);
+    expect(fetcher.mock.calls[0][1].headers["Authorization"]).toBe("Bearer app_abc123");
+  });
+});

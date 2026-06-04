@@ -55,6 +55,7 @@ const providers: LookupProvider[] = [];
 if (config.lookup) {
   providers.push(new RepeaterBook({
     userAgent: config.lookup.userAgent,
+    apiToken: config.lookup.apiToken,
     states: config.lookup.states,
     cacheDir: dirname(CONFIG_PATH),
   }));

@@ -34,6 +34,8 @@ export type Fetcher = (url: string, init: { headers: Record<string, string> })
 
 export interface RepeaterBookOptions {
   userAgent: string;
+  /** Bearer token issued with API approval (required since March 2026). */
+  apiToken?: string;
   states: string[];
   cacheDir: string;
   fetcher?: Fetcher;
@@ -66,6 +68,7 @@ export class RepeaterBook {
     this.opts = {
       ttlMs: 7 * 24 * 3600 * 1000,
       fetcher: (url, init) => fetch(url, init),
+      apiToken: undefined as unknown as string,
       ...opts,
     };
   }
@@ -110,9 +113,9 @@ export class RepeaterBook {
     try {
       const url = "https://www.repeaterbook.com/api/export.php?country=United%20States&state="
         + encodeURIComponent(state);
-      const res = await this.opts.fetcher(url, {
-        headers: { "User-Agent": this.opts.userAgent },
-      });
+      const headers: Record<string, string> = { "User-Agent": this.opts.userAgent };
+      if (this.opts.apiToken) headers["Authorization"] = `Bearer ${this.opts.apiToken}`;
+      const res = await this.opts.fetcher(url, { headers });
       if (!res.ok) return this.mem.get(state) ?? [];
       const body = await res.json() as { results?: RbRecord[] };
       const records = body.results ?? [];
