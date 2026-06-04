@@ -114,8 +114,34 @@ channel has a location, pulse at that lat/lon." No new backend data path.
 5. Optional heat accumulation: a per-site hit counter drives a heatmap layer so
    "the busy corners of the band" emerge over a session.
 
+**Weather radar overlay.** The map can carry a live NEXRAD radar layer — a
+semi-transparent raster tile layer drawn above the base map and below the blips.
+Mechanically small: both the open stack (`L.tileLayer.wms(...)` / an XYZ layer in
+Leaflet/MapLibre) and Google Maps (`ImageMapType`) take it in a few lines, and
+everything's Web Mercator (EPSG:3857) so it aligns automatically. Source options,
+ranked by fit:
+
+- **NOAA / NWS NEXRAD (most on-brand).** `weather.ts` already pulls keyless NWS
+  data (its comment: *"free, keyless, government data — exactly right for an
+  appliance"*). The **Iowa Environmental Mesonet (IEM) NEXRAD WMS** is the
+  keyless, free, US-wide radar service hobby maps use; NOAA nowCOAST is the
+  official WMS equivalent. No key, US coverage (fits the US-only framing).
+- **RainViewer** — best for *animation*: a free tile API that returns timestamped
+  past frames (and short-range forecast frames) for "last hour of rain" loops.
+  Global, simple URLs, free tier (optional key).
+- **OpenWeatherMap** precipitation layer — works but needs a key; least aligned
+  with the keyless ethos.
+
+Caveats: **online-only** — unlike base tiles (cacheable for offline kiosk use),
+radar is live and can't meaningfully be cached, so it degrades to "not shown"
+without WAN. **Refresh cadence** ~4–6 min (NEXRAD volume scans); re-fetch on a
+timer. Plus attribution. The payoff is the cross-tie to **SAME alerts
+(Idea 11)**: when a warning decodes for the operator's county, pin the affected
+FIPS county *and* show it under live radar — the overlay makes the alert spatial
+instead of just text.
+
 **Phasing.** Static map + live decaying blips is the MVP. Heatmap, history
-scrubbing, and clustering are follow-ons.
+scrubbing, the radar overlay, and clustering are follow-ons.
 
 ---
 
@@ -482,7 +508,8 @@ on its window. Three tiers of reliability:
      SAME End-Of-Message / operator dismiss).
 4. Event-code → human-label table (TOR/SVR/FFW/…); persist alerts to **history
    (Idea 5)**, optionally fan out to **alerts/notifications (Idea 6)** and pin the
-   affected county on the **map (Ideas 2/8)**.
+   affected county on the **map (Ideas 2/8)** — under the map's weather-radar
+   overlay (Idea 2), so the alert shows spatially against live precipitation.
 
 **Honest scope note.** "Tune to weather on alert" only works if the radio can get
 to the NWR channel at decode time — trivial once weather has a held/dedicated slot
