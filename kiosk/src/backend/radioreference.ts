@@ -154,11 +154,20 @@ export class RadioReference implements LookupProvider {
 function leaf(xml: string, name: string): string | null {
   const m = new RegExp(`<${name}(?:\\s[^>]*)?>([\\s\\S]*?)</${name}>`).exec(xml);
   if (!m) return null;
-  return m[1]!
-    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
-    .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'").replace(/&amp;/g, "&")
-    .trim() || null;
+  return decodeXml(m[1]!.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")).trim() || null;
+}
+
+// Full XML entity decoding — RR data is rich in named (&apos;) and numeric
+// (&#8211;) references; "Harrah&apos;s ..." reached the operator's screen
+// when only a hand-picked subset was decoded. &amp; goes LAST so encoded
+// ampersands can't re-trigger earlier replacements.
+function decodeXml(s: string): string {
+  return s
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, h) => String.fromCodePoint(parseInt(h, 16)))
+    .replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(Number(d)))
+    .replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"').replace(/&apos;/g, "'")
+    .replace(/&amp;/g, "&");
 }
 
 function esc(s: string): string {
