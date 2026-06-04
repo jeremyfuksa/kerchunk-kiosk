@@ -387,6 +387,40 @@ also the feature that makes **per-bank gain (Idea 7)** fully real: gain is a
 hardware property of a *device*, so per-bank gain is only truly independent once
 a bank owns its radio (on a shared, hopping radio it's still per-group).
 
+**Antenna sharing — how many SDRs can feed off one antenna.** A decision that's
+easy to forget until three dongles are already on the bench. Short answer:
+*passively ~2 (maybe 4 with compromises); actively 4–8–16 cleanly.* Two separate
+problems cap the passive case:
+
+- **Split loss (physics).** A passive splitter divides power: every 2-way split
+  is ~3.5 dB down, a 4-way ~6–7 dB. RTL-SDR front-ends are already noisy, so
+  throwing away signal before the dongle hurts exactly the weak/fringe reception
+  this radio is weakest at.
+- **LO leakage / port isolation (the sneaky one).** An RTL-SDR isn't a silent
+  passive load — the R820T2 tuner leaks local-oscillator energy back *out* the
+  antenna port. Through a dumb splitter (poor port-to-port isolation) each
+  dongle's LO leaks into the others, producing spurs/"birdies" that move as you
+  retune. Two dongles is usually tolerable; more gets messy.
+
+**The clean fix is an active multicoupler** (antenna distribution amplifier): one
+antenna in → internal LNA → N *isolated* outputs. The amp recovers the split
+loss; 20+ dB of port-to-port isolation kills the LO cross-talk. This is the
+standard way monitoring posts run one antenna into many receivers; the
+scanner-hobby reference part is the **Stridsberg multicoupler** (4 / 8 / 16-port,
+~25 MHz–1.3 GHz). Two project-specific caveats: (1) **bias-tee DC** — if any
+dongle powers an external LNA over the coax, you can't passively combine (DC
+back-feeds the others); multicouplers isolate DC per port and supply their own
+gain. (2) **Intermod** — gain ahead of several receivers can worsen intermod near
+a strong transmitter (FM broadcast, paging, a local cell site); budget for an
+FM-trap / band filter.
+
+So the hardware fork under this idea is: **per-bank antennas** (each SDR its own
+optimized antenna — best RF, but multiple feedlines/mounts) **vs. one wideband
+antenna + active multicoupler** (single mount/feedline, clean isolation, costs a
+~$100+ multicoupler, less optimal per band). Rule of thumb to carry forward:
+**plan for an active multicoupler the moment more than ~2 SDRs share an
+antenna.**
+
 **Sequencing note.** This is the heaviest item here and the natural *long-term*
 target of the banks line of work — it wants banks (Idea 1) and per-bank profiles
 (Idea 7) in place first, and the cross-device audio arbiter is net-new. Park it at
