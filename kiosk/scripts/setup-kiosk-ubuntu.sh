@@ -82,7 +82,12 @@ REPO_OWNER="$(stat -c %U "$REPO_DIR")"
 sudo -u "$REPO_OWNER" -H bash -c "cd '$REPO_DIR' && /usr/bin/npm install --silent && /usr/bin/npm run build" >/dev/null
 
 if ! sudo test -f "$STATE_DIR/config.json"; then
-  echo "[setup] Seeding default config (audio sink $AUDIO_SINK, NOAA test channel)..."
+  echo "[setup] Seeding default config (audio sink $AUDIO_SINK, all 7 NOAA WX channels)..."
+  # ALL SEVEN WX channels, not just one: they fit a single wideband group, and
+  # the wideband squelch needs quiet neighbors to learn the noise floor — a
+  # single continuously-keyed NOAA channel alone can never open (documented
+  # limitation in wideband_helper.py). Seven also makes a great first-boot
+  # demo: the live stations open, the rest hold the floor.
   sudo mkdir -p "$STATE_DIR"
   sudo tee "$STATE_DIR/config.json" >/dev/null <<JSON
 {
@@ -90,7 +95,13 @@ if ! sudo test -f "$STATE_DIR/config.json"; then
   "scan": { "sampleRate": 12000, "squelchLevel": 1800, "gain": "auto", "dwellMs": 2000 },
   "audio": { "sink": "$AUDIO_SINK", "volume": 70, "muted": false, "mixerCard": 1, "mixerControl": "Master" },
   "channels": [
-    { "id": "noaa", "freq": 162550000, "alphaTag": "NOAA WX", "mode": "nfm", "enabled": true }
+    { "id": "wx2", "freq": 162400000, "alphaTag": "WX2", "mode": "nfm", "enabled": true },
+    { "id": "wx4", "freq": 162425000, "alphaTag": "WX4", "mode": "nfm", "enabled": true },
+    { "id": "wx5", "freq": 162450000, "alphaTag": "WX5", "mode": "nfm", "enabled": true },
+    { "id": "wx3", "freq": 162475000, "alphaTag": "WX3", "mode": "nfm", "enabled": true },
+    { "id": "wx6", "freq": 162500000, "alphaTag": "WX6", "mode": "nfm", "enabled": true },
+    { "id": "wx7", "freq": 162525000, "alphaTag": "WX7", "mode": "nfm", "enabled": true },
+    { "id": "wx1", "freq": 162550000, "alphaTag": "WX1 KID77", "mode": "nfm", "enabled": true }
   ]
 }
 JSON
