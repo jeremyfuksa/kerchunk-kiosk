@@ -27,3 +27,24 @@ describe("normalizeMode", () => {
     expect(normalizeMode("p25")).toBe("P25");
   });
 });
+
+
+describe("mode inference from identified names", () => {
+  it("fills a missing mode from system-name tokens (RR trunked rows have nil mode)", async () => {
+    const provider = { lookup: async () => ({ tag: "MotoNet CP+ (DMR) Site 013 KCI" }) };
+    const hit = await composeLookups([provider]).lookup(463737500);
+    expect(hit?.mode).toBe("DMR");
+  });
+
+  it("recognizes LTR and P25 tokens; leaves unhinted names alone", async () => {
+    const ltr = await composeLookups([{ lookup: async () => ({ tag: "KC Wireless (LTR) Site 010" }) }]).lookup(1);
+    expect(ltr?.mode).toBe("LTR");
+    const plain = await composeLookups([{ lookup: async () => ({ tag: "Unigard Security" }) }]).lookup(1);
+    expect(plain?.mode).toBeUndefined();
+  });
+
+  it("never overrides a mode the source actually provided", async () => {
+    const hit = await composeLookups([{ lookup: async () => ({ tag: "Something (DMR)", mode: "NFM" }) }]).lookup(1);
+    expect(hit?.mode).toBe("NFM");
+  });
+});
