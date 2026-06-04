@@ -58,6 +58,12 @@ export const configSchema = z.object({
     mixerCard: z.union([z.number().int().nonnegative(), z.string().min(1)]).optional(),
     mixerControl: z.string().min(1).optional(),
   }),
+  // RepeaterBook lookup (Close Call enrichment). userAgent must be the
+  // string REGISTERED with RepeaterBook; states are full names ("Missouri").
+  lookup: z.object({
+    userAgent: z.string().min(1),
+    states: z.array(z.string().min(1)).min(1),
+  }).optional(),
   // One channel designated as "the weather channel", stored separately from the
   // scan list. Weather-only mode (server runtime) holds this channel.
   weatherChannel: channelSchema.optional(),

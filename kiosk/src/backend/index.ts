@@ -9,6 +9,8 @@ import { RtlFmEngine } from "./engine/RtlFmEngine.js";
 import { FakeEngine } from "./engine/FakeEngine.js";
 import { WidebandEngine } from "./engine/WidebandEngine.js";
 import { setVolume, setMuted } from "./audio.js";
+import { RepeaterBook } from "./repeaterbook.js";
+import { dirname } from "node:path";
 import type { EngineEvent } from "./engine/ScannerEngine.js";
 
 const PORT = Number(process.env.PORT ?? 8080);
@@ -44,7 +46,18 @@ engine.on((ev: EngineEvent) => {
   wsHub.broadcast(ev);
 });
 
-const { server } = createServer({ configStore, engine, activityLog, wsHub, staticDir: STATIC_DIR });
+// RepeaterBook enrichment for Close Call discoveries — only when the
+// operator configured a REGISTERED User-Agent (config.lookup). The state
+// export cache lives next to the config file.
+const lookup = config.lookup
+  ? new RepeaterBook({
+      userAgent: config.lookup.userAgent,
+      states: config.lookup.states,
+      cacheDir: dirname(CONFIG_PATH),
+    })
+  : undefined;
+
+const { server } = createServer({ configStore, engine, activityLog, wsHub, staticDir: STATIC_DIR, lookup });
 
 const wss = new WebSocketServer({ server, path: "/ws" });
 wss.on("connection", (ws) => wsHub.attach(ws));

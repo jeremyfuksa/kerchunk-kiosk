@@ -159,3 +159,17 @@ describe("close call lockouts", () => {
     if (parsed.success) expect(parsed.data.scan.lockoutHz).toEqual([462887500, 463100000]);
   });
 });
+
+describe("lookup config (RepeaterBook)", () => {
+  it("accepts userAgent + states", () => {
+    const cfg = structuredClone(defaultConfig()) as Record<string, unknown>;
+    cfg.lookup = { userAgent: "Kerchunk/1.0 (JeremyFuksa, hello@jeremyfuksa.com)", states: ["Missouri", "Kansas"] };
+    const parsed = configSchema.safeParse(cfg);
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.data.lookup?.states).toEqual(["Missouri", "Kansas"]);
+  });
+
+  it("is optional", () => {
+    expect(configSchema.safeParse(defaultConfig()).success).toBe(true);
+  });
+});

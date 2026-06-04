@@ -5,11 +5,14 @@ import { randomUUID } from "node:crypto";
 import { configSchema, channelSchema, type Config, type Channel } from "./config/schema.js";
 import { ConfigStore } from "./config/ConfigStore.js";
 import { ActivityLog } from "./activityLog.js";
+import type { RepeaterBook } from "./repeaterbook.js";
 import { WsHub } from "./ws.js";
 import type { ScannerEngine, ScanConfig } from "./engine/ScannerEngine.js";
 import { setVolume as amixerVolume, setMuted as amixerMuted, type AmixerOpts } from "./audio.js";
 
 export interface ServerDeps {
+  /** Optional RepeaterBook service — enriches Close Call channel names. */
+  lookup?: Pick<RepeaterBook, "lookup">;
   configStore: ConfigStore;
   engine: ScannerEngine;
   activityLog: ActivityLog;
@@ -85,6 +88,20 @@ export function createServer(deps: ServerDeps): { server: Server } {
     };
     config = { ...config, channels: [...config.channels, channel] };
     configStore.save(config);
+    // Best-effort identification (RepeaterBook): rename the filed channel if
+    // the frequency matches a known ham/GMRS repeater. Fire-and-forget — a
+    // miss or API failure leaves the plain "Close Call <MHz>" name.
+    if (deps.lookup) {
+      void deps.lookup.lookup(ev.freqHz).then((hit) => {
+        if (!hit) return;
+        config = {
+          ...config,
+          channels: config.channels.map((c) =>
+            c.id === channel.id ? { ...c, alphaTag: `${hit.tag} (Close Call)` } : c),
+        };
+        configStore.save(config);
+      }).catch(() => { /* enrichment is optional */ });
+    }
   });
 
   // Persist config AND restart the scanner so changes (e.g. editing channels in
