@@ -11,6 +11,7 @@ export interface ScanConfig {
   windowBandwidthHz?: number;
   groupDwellMs?: number;
   openAboveFloorDb?: number;
+  noiseQuietDb?: number;
 }
 
 export type EngineState = "stopped" | "starting" | "running" | "error";

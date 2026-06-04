@@ -139,6 +139,9 @@ export class WidebandEngine implements ScannerEngine {
       "--open-db", String(cfg.openAboveFloorDb ?? 9),
     ];
     if (cfg.gain !== "auto") args.push("--gain", String(cfg.gain));
+    // Quieting squelch threshold: only passed when configured — the helper's
+    // default is bench-calibrated for this hardware.
+    if (cfg.noiseQuietDb !== undefined) args.push("--quiet-db", String(cfg.noiseQuietDb));
     return args;
   }
 
