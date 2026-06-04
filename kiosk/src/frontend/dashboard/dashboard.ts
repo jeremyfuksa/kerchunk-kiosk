@@ -28,7 +28,12 @@ export function reduce(s: DashState, ev: EngineEvent): DashState {
     case "error":
       return { ...s, error: ev.message };
     case "status":
-      return ev.state === "running" ? { ...s, error: null } : s;
+      // Any engine state transition means playback context reset: a restart
+      // (e.g. channel edit) kills the helper without squelch-close events, so
+      // now-playing must not survive it — a fresh "active" re-establishes it.
+      return ev.state === "running"
+        ? { ...s, error: null, nowPlaying: null }
+        : { ...s, nowPlaying: null };
     default:
       return s;
   }

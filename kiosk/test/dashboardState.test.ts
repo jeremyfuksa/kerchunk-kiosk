@@ -57,3 +57,18 @@ describe("esc (XSS guard for innerHTML interpolation)", () => {
     expect(esc("KC0KW Gibbs Rd")).toBe("KC0KW Gibbs Rd");
   });
 });
+
+describe("status resets nowPlaying", () => {
+  it("an engine restart (status event) clears now-playing — nothing is audible during/after a restart until a new active arrives", () => {
+    // Deleting the active channel restarts the engine with no idle event
+    // (the helper is killed, not squelch-closed), so now-playing must not
+    // survive a status transition.
+    const ch = { id: "c1", freq: 162550000, alphaTag: "WXTEST", mode: "nfm" as const, enabled: true };
+    let s = reduce(initialState(), { type: "active", channel: ch, freq: ch.freq, ts: 1 });
+    s = reduce(s, { type: "status", state: "stopped", ts: 2 });
+    expect(s.nowPlaying).toBeNull();
+    s = reduce(s, { type: "active", channel: ch, freq: ch.freq, ts: 3 });
+    s = reduce(s, { type: "status", state: "running", ts: 4 });
+    expect(s.nowPlaying).toBeNull();
+  });
+});
