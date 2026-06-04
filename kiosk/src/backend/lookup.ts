@@ -8,6 +8,14 @@
 export interface LookupHit {
   /** Display tag for the channel table / dashboard. */
   tag: string;
+  /** Transmitter location when the source knows it. */
+  location?: {
+    lat?: number;
+    lon?: number;
+    city?: string;
+    state?: string;
+    source: string;
+  };
 }
 
 export interface LookupProvider {

@@ -468,3 +468,46 @@ describe("review fixes: engine lifecycle", () => {
     expect(st.state).toBeDefined();
   });
 });
+
+describe("location capture", () => {
+  it("a closecall discovery stores the lookup hit's location", async () => {
+    dir = mkdtempSync(join(tmpdir(), "ksrv-"));
+    const configStore = new ConfigStore(join(dir, "config.json"));
+    const engine = new FakeEngine();
+    const lookup = { lookup: async () => ({
+      tag: "W0ABC Olathe KS",
+      location: { lat: 38.88, lon: -94.82, city: "Olathe", state: "KS", source: "repeaterbook" },
+    }) };
+    const { server } = createServer({ configStore, engine, activityLog: new ActivityLog(10), wsHub: new WsHub(), staticDir: dir, lookup });
+    engine.emitCloseCall(462887500);
+    await new Promise((r) => setTimeout(r, 30));
+    const d = (await request(server).get("/api/config")).body.discoveries[0];
+    expect(d.location).toEqual({ lat: 38.88, lon: -94.82, city: "Olathe", state: "KS", source: "repeaterbook" });
+  });
+
+  it("the boot pass enriches existing channels missing location and stamps lookedUpAt", async () => {
+    dir = mkdtempSync(join(tmpdir(), "ksrv-"));
+    const configStore = new ConfigStore(join(dir, "config.json"));
+    const seed = configStore.load();
+    seed.channels.push(
+      { id: "c1", freq: 145130000, alphaTag: "W0ABC", mode: "nfm", enabled: true },
+      { id: "c2", freq: 464175000, alphaTag: "no match", mode: "nfm", enabled: true },
+    );
+    configStore.save(seed);
+    const engine = new FakeEngine();
+    const lookup = { lookup: async (f: number) =>
+      f === 145130000 ? { tag: "x", location: { city: "Olathe", state: "KS", source: "repeaterbook" } } : null };
+    const { server } = createServer({
+      configStore, engine, activityLog: new ActivityLog(10), wsHub: new WsHub(), staticDir: dir,
+      lookup, lookupPass: { initialDelayMs: 1, spacingMs: 1 },
+    });
+    await new Promise((r) => setTimeout(r, 100));
+    const channels = (await request(server).get("/api/channels")).body;
+    const hit = channels.find((c: { id: string }) => c.id === "c1");
+    const miss = channels.find((c: { id: string }) => c.id === "c2");
+    expect(hit.location?.city).toBe("Olathe");
+    expect(hit.lookedUpAt).toBeGreaterThan(0);
+    expect(miss.location).toBeUndefined();
+    expect(miss.lookedUpAt).toBeGreaterThan(0); // miss recorded: no re-query every boot
+  });
+});

@@ -19,6 +19,9 @@ export interface RepeaterHit {
   pl: string | null;
   /** Display tag for the channel table / dashboard. */
   tag: string;
+  location?: {
+    lat?: number; lon?: number; city?: string; state?: string; source: string;
+  };
 }
 
 interface RbRecord {
@@ -27,6 +30,8 @@ interface RbRecord {
   "Nearest City"?: string;
   State?: string;
   PL?: string;
+  Lat?: string | number;
+  Long?: string | number;
 }
 
 export type Fetcher = (url: string, init: { headers: Record<string, string> })
@@ -85,7 +90,17 @@ export class RepeaterBook {
         const st = STATE_ABBR[r.State ?? ""] ?? r.State ?? "";
         const pl = r.PL && r.PL.trim() !== "" ? r.PL.trim() : null;
         const tag = `${callsign} ${city} ${st}`.trim() + (pl ? ` · PL ${pl}` : "");
-        return { callsign, city, state: st, pl, tag };
+        const lat = Number(r.Lat), lon = Number(r.Long);
+        return {
+          callsign, city, state: st, pl, tag,
+          location: {
+            ...(Number.isFinite(lat) && lat !== 0 ? { lat } : {}),
+            ...(Number.isFinite(lon) && lon !== 0 ? { lon } : {}),
+            ...(city ? { city } : {}),
+            ...(st ? { state: st } : {}),
+            source: "repeaterbook",
+          },
+        };
       }
     }
     return null;

@@ -13,6 +13,8 @@ import { setVolume as amixerVolume, setMuted as amixerMuted, type AmixerOpts } f
 export interface ServerDeps {
   /** Optional identification chain — enriches Close Call channel names. */
   lookup?: LookupProvider;
+  /** Boot enrichment pass pacing (tests shrink these). */
+  lookupPass?: { initialDelayMs?: number; spacingMs?: number };
   configStore: ConfigStore;
   engine: ScannerEngine;
   activityLog: ActivityLog;
@@ -108,6 +110,38 @@ export function createServer(deps: ServerDeps): { server: Server } {
     }
   }
 
+  // Boot enrichment pass: fill location (and stamp lookedUpAt) for channels
+  // that have never been identified. Sequential and paced — the providers
+  // cache hard, but RadioReference still sees up to one query per county for
+  // each NEW frequency, and their guidance is "don't hammer". Misses are
+  // stamped too, so a frequency that matches nothing is asked about at most
+  // once per 30 days, not on every boot.
+  if (deps.lookup) {
+    const LOOKUP_RETRY_MS = 30 * 24 * 3600 * 1000;
+    const initialDelayMs = deps.lookupPass?.initialDelayMs ?? 15_000;
+    const spacingMs = deps.lookupPass?.spacingMs ?? 1_000;
+    const passTimer = setTimeout(async () => {
+      const now = Date.now();
+      const pending = config.channels.filter((c) =>
+        !c.location && (!c.lookedUpAt || now - c.lookedUpAt > LOOKUP_RETRY_MS));
+      for (const ch of pending) {
+        try {
+          const hit = await deps.lookup!.lookup(ch.freq);
+          config = {
+            ...config,
+            channels: config.channels.map((c) =>
+              c.id === ch.id
+                ? { ...c, lookedUpAt: Date.now(), ...(hit?.location ? { location: hit.location } : {}) }
+                : c),
+          };
+          configStore.save(config);
+        } catch { /* provider failure: try again next boot */ }
+        await new Promise((r) => setTimeout(r, spacingMs));
+      }
+    }, initialDelayMs);
+    passTimer.unref?.();
+  }
+
   // Close Call discoveries persist as DISABLED channels for operator review.
   // Saved WITHOUT persistAndReload: a disabled channel doesn't affect
   // scanning, and an engine restart here would kill the live discovery audio
@@ -157,7 +191,9 @@ export function createServer(deps: ServerDeps): { server: Server } {
         config = {
           ...config,
           discoveries: (config.discoveries ?? []).map((d) =>
-            d.id === discovery.id ? { ...d, alphaTag: hit.tag } : d),
+            d.id === discovery.id
+              ? { ...d, alphaTag: hit.tag, ...(hit.location ? { location: hit.location } : {}) }
+              : d),
         };
         configStore.save(config);
       }).catch(() => { /* enrichment is optional */ });

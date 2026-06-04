@@ -96,6 +96,13 @@ export function renderAdmin(root: HTMLElement): void {
   const chErr = root.querySelector<HTMLElement>("#chErr")!;
   const addBtn = root.querySelector<HTMLButtonElement>("#addBtn")!;
 
+  // "Olathe, KS" chip for anything an identification source located.
+  function locChip(loc?: { city?: string; state?: string }): string {
+    if (!loc || (!loc.city && !loc.state)) return "";
+    const txt = [loc.city, loc.state].filter(Boolean).join(", ");
+    return ` <span class="loc">${esc(txt)}</span>`;
+  }
+
   // Single lockout path for all three entry points (channel row, discovery
   // row, now-playing card) — they drifted when each had its own copy.
   async function lockoutFreq(freq: number, label: string): Promise<void> {
@@ -129,7 +136,7 @@ export function renderAdmin(root: HTMLElement): void {
   function displayRow(c: Channel): string {
     return `<tr data-id="${esc(c.id)}">
       <td>${fmtFreq(c.freq)}</td>
-      <td>${esc(c.alphaTag)}</td>
+      <td>${esc(c.alphaTag)}${locChip(c.location)}</td>
       <td>${esc(c.mode.toUpperCase())}</td>
       <td><input type="checkbox" class="prio" ${c.priority ? "checked" : ""} /></td>
       <td><input type="checkbox" class="en" ${c.enabled ? "checked" : ""} /></td>
@@ -264,7 +271,7 @@ export function renderAdmin(root: HTMLElement): void {
       : ds.map((d) => `<tr data-id="${esc(d.id)}">
           <td><input type="checkbox" class="dSel" ${dcSelected.has(d.id) ? "checked" : ""} /></td>
           <td>${fmtFreq(d.freq)}</td>
-          <td>${esc(d.alphaTag)}</td>
+          <td>${esc(d.alphaTag)}${locChip(d.location)}</td>
           <td>${new Date(d.ts).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</td>
           <td>
             <button class="dListen">listen</button>
@@ -307,6 +314,7 @@ export function renderAdmin(root: HTMLElement): void {
         mutate(id, (cfg2, d) => cfg2.channels.push({
           id: `ch_${d.id.replace(/^cc_/, "")}`, freq: d.freq, alphaTag: d.alphaTag,
           mode: "nfm", enabled: true,
+          ...(d.location ? { location: d.location, lookedUpAt: Date.now() } : {}),
         })));
       if (b.classList.contains("dLock")) b.addEventListener("click", () =>
         mutate(id, (cfg2, d) => {
