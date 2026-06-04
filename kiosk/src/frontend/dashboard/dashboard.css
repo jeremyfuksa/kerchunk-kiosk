@@ -26,3 +26,8 @@ body { margin: 0; font-family: ui-monospace, monospace; background: #0d1117; col
   background: #1f6feb; color: #ffffff;
   font-size: 1.1rem; font-weight: 700; letter-spacing: 3px;
 }
+
+/* Signal meter under now-playing */
+.dash .meter { width: 60%; max-width: 420px; height: 14px; margin: 0.8rem auto 0; background: #21262d; border: 1px solid #30363d; border-radius: 7px; overflow: hidden; }
+.dash .meterFill { height: 100%; background: linear-gradient(90deg, #3fb950, #d29922 75%, #f85149); transition: width 0.25s linear; }
+.dash .meterDb { font-size: 0.9rem; color: #8b949e; margin-top: 0.3rem; }

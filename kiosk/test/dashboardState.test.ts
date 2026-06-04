@@ -118,3 +118,23 @@ describe("audible events own now-playing (wideband)", () => {
     expect(s.nowPlaying?.alphaTag).toBe("GMRS 22");
   });
 });
+
+describe("signal meter", () => {
+  const ch = { id: "c1", freq: 464275000, alphaTag: "WoF", mode: "nfm" as const, enabled: true };
+
+  it("signal events set signalDb while something plays", () => {
+    let s = reduce(initialState(), { type: "audible", channel: ch, ts: 1 });
+    s = reduce(s, { type: "signal", dbfs: -7.5, ts: 2 });
+    expect(s.signalDb).toBe(-7.5);
+  });
+
+  it("signalDb clears when the speaker goes silent or the engine restarts", () => {
+    let s = reduce(initialState(), { type: "audible", channel: ch, ts: 1 });
+    s = reduce(s, { type: "signal", dbfs: -7.5, ts: 2 });
+    s = reduce(s, { type: "audible", channel: null, ts: 3 });
+    expect(s.signalDb).toBeNull();
+    s = reduce(s, { type: "signal", dbfs: -3, ts: 4 });
+    s = reduce(s, { type: "status", state: "running", ts: 5 });
+    expect(s.signalDb).toBeNull();
+  });
+});
