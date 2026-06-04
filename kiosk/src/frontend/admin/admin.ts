@@ -244,7 +244,7 @@ export function renderAdmin(root: HTMLElement): void {
       const id = tr.dataset.id;
       if (!id) return;
       tr.querySelectorAll<HTMLElement>(".rowOpen").forEach((cell) =>
-        cell.addEventListener("click", () => openDrawer(id)));
+        cell.addEventListener("click", () => openDrawer("channel", id)));
       tr.querySelector<HTMLButtonElement>(".listen")?.addEventListener("click", () => {
         const c = channels.find((x) => x.id === id);
         if (c) api.monitor(c.freq, c.alphaTag || fmtFreq(c.freq));
@@ -289,6 +289,7 @@ export function renderAdmin(root: HTMLElement): void {
   const drawer = root.querySelector<HTMLElement>("#chDrawer")!;
   const scrim = root.querySelector<HTMLElement>("#drawerScrim")!;
   let drawerId: string | null = null;
+  let drawerKind: "channel" | "discovery" = "channel";
 
   function closeDrawer(): void {
     drawerId = null;
@@ -296,7 +297,8 @@ export function renderAdmin(root: HTMLElement): void {
     scrim.classList.remove("open");
   }
 
-  function openDrawer(id: string): void {
+  function openDrawer(kind: "channel" | "discovery", id: string): void {
+    drawerKind = kind;
     drawerId = id;
     renderDrawer();
     drawer.classList.add("open");
@@ -304,6 +306,7 @@ export function renderAdmin(root: HTMLElement): void {
   }
 
   function renderDrawer(): void {
+    if (drawerKind === "discovery") { renderDiscoveryDrawer(); return; }
     const c = channels.find((x) => x.id === drawerId);
     if (!c) { closeDrawer(); return; }
     const loc = c.location;
@@ -368,6 +371,50 @@ export function renderAdmin(root: HTMLElement): void {
     });
   }
 
+  function renderDiscoveryDrawer(): void {
+    const d = discoveries.find((x) => x.id === drawerId);
+    if (!d) { closeDrawer(); return; }
+    const loc = d.location;
+    const digital = d.mode && DIGITAL.some((x) => d.mode!.toUpperCase().includes(x));
+    drawer.innerHTML = `
+      <header class="dwHead">
+        <h3>${esc(d.alphaTag)}</h3>
+        ${iconBtn("dwClose", "dismiss", "Close")}
+      </header>
+      <div class="dwFreq">${fmtFreq(d.freq)}<span class="dwUnit">MHz</span></div>
+      <dl class="dwInfo">
+        <dt>mode</dt><dd${digital ? ' class="dwDigital"' : ""}>${d.mode ? esc(d.mode.toUpperCase()) : "not identified"}${digital ? " · digital — not decodable here" : ""}</dd>
+        <dt>exact</dt><dd>${d.freq.toLocaleString()} Hz</dd>
+        <dt>found</dt><dd>${new Date(d.ts).toLocaleString()}</dd>
+        <dt>location</dt><dd>${loc
+          ? `${esc([loc.city, loc.state].filter(Boolean).join(", ") || "—")}${loc.lat != null ? ` · ${loc.lat}, ${loc.lon}` : ""} <span class="dwVia">via ${esc(loc.source)}</span>`
+          : "not identified"}</dd>
+        <dt>looked up</dt><dd>${d.lookedUpAt ? new Date(d.lookedUpAt).toLocaleString() : "pending"}</dd>
+        <dt>id</dt><dd>${esc(d.id)}</dd>
+      </dl>
+      <div class="dwActions">
+        <button id="dwListen" class="listen">Listen</button>
+        <button id="dwAdd" class="dAdd">Add</button>
+        <button id="dwLock" class="lock">Lockout</button>
+        <button id="dwDismiss" class="dDismiss">Dismiss</button>
+      </div>`;
+    drawer.querySelector<HTMLButtonElement>(".dwClose")!.addEventListener("click", closeDrawer);
+    drawer.querySelector<HTMLButtonElement>("#dwListen")!.addEventListener("click", () =>
+      api.monitor(d.freq, d.alphaTag));
+    drawer.querySelector<HTMLButtonElement>("#dwAdd")!.addEventListener("click", async () => {
+      await mutateDiscovery(d.id, promoteDiscovery);
+      closeDrawer();
+    });
+    drawer.querySelector<HTMLButtonElement>("#dwLock")!.addEventListener("click", async () => {
+      await lockoutFreq(d.freq, d.alphaTag);
+      closeDrawer();
+    });
+    drawer.querySelector<HTMLButtonElement>("#dwDismiss")!.addEventListener("click", async () => {
+      await mutateDiscovery(d.id, () => {});
+      closeDrawer();
+    });
+  }
+
   scrim.addEventListener("click", closeDrawer);
   document.addEventListener("keydown", (ev) => {
     if (ev.key === "Escape" && drawerId) closeDrawer();
@@ -388,9 +435,32 @@ export function renderAdmin(root: HTMLElement): void {
   // Selection survives the 15 s auto-refresh (a triage session shouldn't
   // lose its checkmarks because a new discovery arrived).
   const dcSelected = new Set<string>();
-  // Progressive disclosure: per-row drill-in for the data-dense fields
-  // (timestamps, exact Hz, coordinates) that don't earn a column.
-  const dcExpanded = new Set<string>();
+  type Discovery = NonNullable<Awaited<ReturnType<typeof api.getConfig>>["discoveries"]>[number];
+  let discoveries: Discovery[] = [];
+
+  async function mutateDiscovery(id: string, fn: (cfg2: Awaited<ReturnType<typeof api.getConfig>>, d: Discovery) => void): Promise<void> {
+    const cfg2 = await api.getConfig();
+    const d = (cfg2.discoveries ?? []).find((x) => x.id === id);
+    if (!d) return;
+    cfg2.discoveries = (cfg2.discoveries ?? []).filter((x) => x.id !== id);
+    fn(cfg2, d);
+    await api.putConfig(cfg2);
+    await refresh();
+    renderDiscoveries();
+    renderLockouts();
+  }
+
+  function promoteDiscovery(cfg2: Awaited<ReturnType<typeof api.getConfig>>, d: Discovery): void {
+    // Map the identified modulation onto our demod modes; digital and
+    // unknown fall back to nfm (all we can demodulate).
+    const m = (d.mode ?? "").toUpperCase();
+    const mode = m === "FM" ? "fm" as const : m === "AM" ? "am" as const : "nfm" as const;
+    cfg2.channels.push({
+      id: `ch_${d.id.replace(/^cc_/, "")}`, freq: d.freq, alphaTag: d.alphaTag,
+      mode, enabled: true,
+      ...(d.location ? { location: d.location, lookedUpAt: Date.now() } : {}),
+    });
+  }
 
   function paintDcToolbar(): void {
     dcDismissSel.disabled = dcSelected.size === 0;
@@ -402,32 +472,26 @@ export function renderAdmin(root: HTMLElement): void {
     const cfg = await api.getConfig();
     syncAudioControls(cfg); // one poll feeds both (was a separate 5s loop)
     const ds = [...(cfg.discoveries ?? [])].sort((a, b) => b.ts - a.ts);
+    discoveries = ds;
     root.querySelector<HTMLElement>("#dcCount")!.textContent = String(ds.length);
     const present = new Set(ds.map((d) => d.id));
     for (const id of dcSelected) if (!present.has(id)) dcSelected.delete(id);
     dcRows.innerHTML = ds.length === 0
       ? `<tr><td colspan="5" class="empty">nothing pending — Close Call is hunting</td></tr>`
-      : ds.map((d) => `<tr data-id="${esc(d.id)}" class="dcRow${dcExpanded.has(d.id) ? " open" : ""}">
+      : ds.map((d) => `<tr data-id="${esc(d.id)}" class="dcRow">
           <td><input type="checkbox" class="dSel" ${dcSelected.has(d.id) ? "checked" : ""} /></td>
-          <td><button class="dToggle" aria-label="Details"><span class="chev"></span></button>${fmtFreq(d.freq)}</td>
-          <td>${esc(d.alphaTag)}${locChip(d.location)}</td>
-          <td class="dMode${d.mode && DIGITAL.some((x) => d.mode!.toUpperCase().includes(x)) ? " digital" : ""}">${d.mode ? esc(d.mode.toUpperCase()) : "—"}</td>
+          <td class="rowOpen">${fmtFreq(d.freq)}</td>
+          <td class="rowOpen">${esc(d.alphaTag)}${locChip(d.location)}</td>
+          <td class="rowOpen dMode${d.mode && DIGITAL.some((x) => d.mode!.toUpperCase().includes(x)) ? " digital" : ""}">${d.mode ? esc(d.mode.toUpperCase()) : "—"}</td>
           <td class="actions">${iconBtn("dListen", "listen", "Listen — audition this discovery")}${iconBtn("dAdd", "add", "Add as an enabled channel")}${iconBtn("dLock", "lockout", "Lockout — never Close-Call this frequency again")}${iconBtn("dDismiss", "dismiss", "Dismiss (may be rediscovered later)")}</td>
-        </tr>${dcExpanded.has(d.id) ? `<tr class="dcDetail"><td></td><td colspan="4">
-          <span class="dl">found</span> ${new Date(d.ts).toLocaleString()}
-          ${d.mode ? `<span class="dl">mode</span> ${esc(d.mode)}` : ""}
-          <span class="dl">freq</span> ${d.freq.toLocaleString()} Hz
-          ${d.location ? `<span class="dl">location</span> ${esc([d.location.city, d.location.state].filter(Boolean).join(", "))}${d.location.lat != null ? ` (${d.location.lat}, ${d.location.lon})` : ""} <span class="dl">via</span> ${esc(d.location.source)}` : ""}
-        </td></tr>` : ""}`).join("");
+        </tr>`).join("");
     dcAll.checked = ds.length > 0 && dcSelected.size === ds.length;
     paintDcToolbar();
-    dcRows.querySelectorAll<HTMLButtonElement>(".dToggle").forEach((b) => {
-      const id = (b.closest("tr") as HTMLElement).dataset.id!;
-      b.addEventListener("click", () => {
-        if (dcExpanded.has(id)) dcExpanded.delete(id); else dcExpanded.add(id);
-        renderDiscoveries();
-      });
+    dcRows.querySelectorAll<HTMLElement>(".rowOpen").forEach((cell) => {
+      const id = (cell.closest("tr") as HTMLElement).dataset.id!;
+      cell.addEventListener("click", () => openDrawer("discovery", id));
     });
+    if (drawerId && drawerKind === "discovery") renderDrawer();
     dcRows.querySelectorAll<HTMLInputElement>(".dSel").forEach((cb) => {
       const id = (cb.closest("tr") as HTMLElement).dataset.id!;
       cb.addEventListener("change", () => {
@@ -437,18 +501,6 @@ export function renderAdmin(root: HTMLElement): void {
       });
     });
 
-    async function mutate(id: string, fn: (cfg2: Awaited<ReturnType<typeof api.getConfig>>, d: NonNullable<Awaited<ReturnType<typeof api.getConfig>>["discoveries"]>[number]) => void): Promise<void> {
-      const cfg2 = await api.getConfig();
-      const d = (cfg2.discoveries ?? []).find((x) => x.id === id);
-      if (!d) return;
-      cfg2.discoveries = (cfg2.discoveries ?? []).filter((x) => x.id !== id);
-      fn(cfg2, d);
-      await api.putConfig(cfg2);
-      await refresh();
-      renderDiscoveries();
-      renderLockouts();
-    }
-
     dcRows.querySelectorAll<HTMLButtonElement>("tr [class^=d]").forEach((b) => {
       const id = (b.closest("tr") as HTMLElement).dataset.id!;
       if (b.classList.contains("dListen")) b.addEventListener("click", async () => {
@@ -457,22 +509,12 @@ export function renderAdmin(root: HTMLElement): void {
         if (d) api.monitor(d.freq, d.alphaTag);
       });
       if (b.classList.contains("dAdd")) b.addEventListener("click", () =>
-        mutate(id, (cfg2, d) => {
-          // Map the identified modulation onto our demod modes; digital and
-          // unknown fall back to nfm (all we can demodulate).
-          const m = (d.mode ?? "").toUpperCase();
-          const mode = m === "FM" ? "fm" as const : m === "AM" ? "am" as const : "nfm" as const;
-          cfg2.channels.push({
-            id: `ch_${d.id.replace(/^cc_/, "")}`, freq: d.freq, alphaTag: d.alphaTag,
-            mode, enabled: true,
-            ...(d.location ? { location: d.location, lookedUpAt: Date.now() } : {}),
-          });
-        }));
+        mutateDiscovery(id, promoteDiscovery));
       if (b.classList.contains("dLock")) b.addEventListener("click", () =>
-        mutate(id, (cfg2, d) => {
+        mutateDiscovery(id, (cfg2, d) => {
           cfg2.scan.lockoutHz = [...new Set([...(cfg2.scan.lockoutHz ?? []), d.freq])];
         }));
-      if (b.classList.contains("dDismiss")) b.addEventListener("click", () => mutate(id, () => {}));
+      if (b.classList.contains("dDismiss")) b.addEventListener("click", () => mutateDiscovery(id, () => {}));
     });
   }
   dcAll.addEventListener("change", async () => {
