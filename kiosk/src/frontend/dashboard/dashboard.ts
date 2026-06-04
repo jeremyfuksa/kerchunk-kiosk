@@ -75,6 +75,11 @@ export function renderDashboard(root: HTMLElement): void {
   root.innerHTML = `
     <div class="dash">
       <div id="modeBadge" class="modeBadge"></div>
+      <div class="skyline">
+        <div id="clock" class="clock"></div>
+        <div id="clockDate" class="clockDate"></div>
+        <div id="wx" class="wx"></div>
+      </div>
       <section class="now" id="now"></section>
       <aside class="log"><h2>Recent</h2><ul id="logList"></ul></aside>
     </div>`;
@@ -118,6 +123,32 @@ export function renderDashboard(root: HTMLElement): void {
       .map((r) => `<li><span class="t">${fmtTime(r.ts)}</span> ${fmtFreq(r.freq)} ${esc(r.alphaTag)}</li>`)
       .join("");
   }
+
+  // Clock: tick on the minute boundary (kiosk readout, no seconds noise).
+  const clockEl = root.querySelector<HTMLElement>("#clock")!;
+  const dateEl = root.querySelector<HTMLElement>("#clockDate")!;
+  function paintClock(): void {
+    const now = new Date();
+    clockEl.textContent = now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    dateEl.textContent = now.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
+  }
+  paintClock();
+  setInterval(paintClock, 5000);
+
+  // Weather: NWS via the backend cache; absent/failed = the line just hides.
+  const wxEl = root.querySelector<HTMLElement>("#wx")!;
+  function paintWeather(): void {
+    fetch("/api/weather")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((wx: { tempF: number; condition: string; wind: string } | null) => {
+        wxEl.innerHTML = wx
+          ? `<span class="wxTemp">${Math.round(wx.tempF)}°</span> ${esc(wx.condition)}${wx.wind ? `<span class="wxWind">${esc(wx.wind)}</span>` : ""}`
+          : "";
+      })
+      .catch(() => {});
+  }
+  paintWeather();
+  setInterval(paintWeather, 10 * 60 * 1000);
 
   api.getLogs().then((rows) => { state = { ...state, log: rows }; paint(); }).catch(() => {});
   const proto = location.protocol === "https:" ? "wss" : "ws";
