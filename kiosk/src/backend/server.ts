@@ -6,6 +6,7 @@ import { configSchema, channelSchema, type Config, type Channel } from "./config
 import { ConfigStore } from "./config/ConfigStore.js";
 import { ActivityLog } from "./activityLog.js";
 import type { LookupProvider } from "./lookup.js";
+import type { NwsWeather } from "./weather.js";
 import { WsHub } from "./ws.js";
 import type { ScannerEngine, ScanConfig } from "./engine/ScannerEngine.js";
 import { setVolume as amixerVolume, setMuted as amixerMuted, type AmixerOpts } from "./audio.js";
@@ -15,6 +16,8 @@ export interface ServerDeps {
   lookup?: LookupProvider;
   /** Boot enrichment pass pacing (tests shrink these). */
   lookupPass?: { initialDelayMs?: number; spacingMs?: number };
+  /** Optional current-conditions provider for the kiosk header. */
+  weather?: Pick<NwsWeather, "current">;
   configStore: ConfigStore;
   engine: ScannerEngine;
   activityLog: ActivityLog;
@@ -398,6 +401,11 @@ export function createServer(deps: ServerDeps): { server: Server } {
       await engine.stop();
       await engine.start(toScanConfig(config, mode));
       return json(res, 200, { mode, state: engine.state });
+    }
+
+    if (method === "GET" && path === "/api/weather") {
+      if (!deps.weather) return json(res, 404, { error: "no weather configured" });
+      return json(res, 200, await deps.weather.current());
     }
 
     if (method === "GET" && path === "/api/status") return json(res, 200, { state: engine.state, mode, monitor: monitorChannel });

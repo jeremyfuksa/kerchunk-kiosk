@@ -78,6 +78,13 @@ export const configSchema = z.object({
     mixerCard: z.union([z.number().int().nonnegative(), z.string().min(1)]).optional(),
     mixerControl: z.string().min(1).optional(),
   }),
+  // Kiosk header extras: clock is always on; weather needs a location
+  // (NWS gridpoint resolution wants lat/lon — the operator's zip resolved
+  // once at config time).
+  display: z.object({
+    weatherLat: z.number(),
+    weatherLon: z.number(),
+  }).optional(),
   // RepeaterBook lookup (Close Call enrichment). userAgent must be the
   // string REGISTERED with RepeaterBook; states are full names ("Missouri").
   lookup: z.object({

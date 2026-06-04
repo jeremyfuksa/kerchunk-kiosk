@@ -544,3 +544,20 @@ describe("discovery mode capture", () => {
     expect(d.lookedUpAt).toBeGreaterThan(0);
   });
 });
+
+describe("GET /api/weather", () => {
+  it("serves current conditions from the injected provider", async () => {
+    dir = mkdtempSync(join(tmpdir(), "ksrv-"));
+    const configStore = new ConfigStore(join(dir, "config.json"));
+    const weather = { current: async () => ({ tempF: 38, condition: "Partly Cloudy", wind: "NW 10 mph", isDaytime: false }) };
+    const { server } = createServer({ configStore, engine: new FakeEngine(), activityLog: new ActivityLog(10), wsHub: new WsHub(), staticDir: dir, weather });
+    const res = await request(server).get("/api/weather");
+    expect(res.status).toBe(200);
+    expect(res.body.tempF).toBe(38);
+  });
+
+  it("404s when no weather provider is configured", async () => {
+    const { server } = makeApp();
+    expect((await request(server).get("/api/weather")).status).toBe(404);
+  });
+});

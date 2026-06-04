@@ -12,6 +12,7 @@ import { setVolume, setMuted } from "./audio.js";
 import { RepeaterBook } from "./repeaterbook.js";
 import { RadioReference } from "./radioreference.js";
 import { composeLookups, type LookupProvider } from "./lookup.js";
+import { NwsWeather } from "./weather.js";
 import { dirname } from "node:path";
 import type { EngineEvent } from "./engine/ScannerEngine.js";
 
@@ -65,7 +66,17 @@ if (config.lookup) {
 }
 const lookup = providers.length > 0 ? composeLookups(providers) : undefined;
 
-const { server } = createServer({ configStore, engine, activityLog, wsHub, staticDir: STATIC_DIR, lookup });
+// Kiosk header weather (NWS). Identified with the registered UA when one is
+// configured; absent display coords = no weather line, clock still shows.
+const weather = config.display
+  ? new NwsWeather({
+      lat: config.display.weatherLat,
+      lon: config.display.weatherLon,
+      userAgent: config.lookup?.userAgent ?? "Kerchunk/1.0 (kiosk appliance)",
+    })
+  : undefined;
+
+const { server } = createServer({ configStore, engine, activityLog, wsHub, staticDir: STATIC_DIR, lookup, weather });
 
 const wss = new WebSocketServer({ server, path: "/ws" });
 wss.on("connection", (ws) => wsHub.attach(ws));
