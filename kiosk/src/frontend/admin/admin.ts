@@ -37,16 +37,16 @@ export function renderAdmin(root: HTMLElement): void {
         <label>Volume <input id="vol" type="range" min="0" max="100" /></label>
         <label><input id="mute" type="checkbox" /> Mute</label>
       </section>
-      <section class="add">
-        <h2>Add channel</h2>
-        <input id="mhz" placeholder="145.130" />
-        <input id="tag" placeholder="KC0KW — Gibbs Rd" />
-        <select id="mode"><option>nfm</option><option>fm</option><option>am</option></select>
-        <label><input id="prio" type="checkbox" /> Priority</label>
-        <button id="addBtn">Add</button>
-        <span id="addErr" class="err"></span>
+      <section class="channels">
+        <h2>Channels <button id="addBtn">+ Add</button></h2>
+        <table class="chTable">
+          <thead><tr>
+            <th>Freq (MHz)</th><th>Name</th><th>Mode</th><th>Priority</th><th>Enabled</th><th></th>
+          </tr></thead>
+          <tbody id="chRows"></tbody>
+        </table>
+        <span id="chErr" class="err"></span>
       </section>
-      <section><h2>Channels</h2><ul id="chList"></ul></section>
       <section class="weather">
         <h2>Weather</h2>
         <label>Channel <select id="wxFreq">${NOAA_CHANNELS.map((c) => `<option value="${c.mhz}">${c.label} — ${c.mhz} MHz</option>`).join("")}</select></label>
@@ -61,49 +61,135 @@ export function renderAdmin(root: HTMLElement): void {
 
   const vol = root.querySelector<HTMLInputElement>("#vol")!;
   const mute = root.querySelector<HTMLInputElement>("#mute")!;
-  const chList = root.querySelector<HTMLElement>("#chList")!;
-  const addErr = root.querySelector<HTMLElement>("#addErr")!;
+  const chRows = root.querySelector<HTMLElement>("#chRows")!;
+  const chErr = root.querySelector<HTMLElement>("#chErr")!;
+  const addBtn = root.querySelector<HTMLButtonElement>("#addBtn")!;
+
+  // Inline-editable CRUD table. One row at a time is editable: editingId is a
+  // channel id, "new" (blank row pending creation), or null. Checkboxes on
+  // display rows act immediately (PUT patch); text/mode edits go through
+  // edit -> save / cancel, with Enter/Escape shortcuts.
+  let channels: Channel[] = [];
+  let editingId: string | null = null;
+
+  const MODES: Channel["mode"][] = ["nfm", "fm", "am"];
+
+  function modeOptions(selected: string): string {
+    return MODES.map((m) =>
+      `<option value="${m}" ${m === selected ? "selected" : ""}>${m.toUpperCase()}</option>`).join("");
+  }
+
+  function displayRow(c: Channel): string {
+    return `<tr data-id="${esc(c.id)}">
+      <td>${fmtFreq(c.freq)}</td>
+      <td>${esc(c.alphaTag)}</td>
+      <td>${esc(c.mode.toUpperCase())}</td>
+      <td><input type="checkbox" class="prio" ${c.priority ? "checked" : ""} /></td>
+      <td><input type="checkbox" class="en" ${c.enabled ? "checked" : ""} /></td>
+      <td><button class="edit">edit</button> <button class="del">delete</button></td>
+    </tr>`;
+  }
+
+  function editRow(c?: Channel): string {
+    return `<tr data-id="${c ? esc(c.id) : "new"}" class="editing">
+      <td><input class="fMhz" value="${c ? fmtFreq(c.freq) : ""}" placeholder="145.130" /></td>
+      <td><input class="fTag" value="${c ? esc(c.alphaTag) : ""}" placeholder="KC0KW — Gibbs Rd" /></td>
+      <td><select class="fMode">${modeOptions(c?.mode ?? "nfm")}</select></td>
+      <td><input type="checkbox" class="fPrio" ${c?.priority ? "checked" : ""} /></td>
+      <td><input type="checkbox" class="fEn" ${c ? (c.enabled ? "checked" : "") : "checked"} /></td>
+      <td><button class="save">save</button> <button class="cancel">cancel</button></td>
+    </tr>`;
+  }
+
+  function renderRows(): void {
+    const sorted = [...channels].sort((a, b) => a.freq - b.freq);
+    chRows.innerHTML =
+      (editingId === "new" ? editRow() : "") +
+      sorted.map((c) => (editingId === c.id ? editRow(c) : displayRow(c))).join("") +
+      (channels.length === 0 && editingId !== "new"
+        ? `<tr><td colspan="6" class="empty">no channels — hit + Add</td></tr>` : "");
+    addBtn.disabled = editingId !== null;
+    wireRows();
+  }
+
+  function rowPatch(tr: HTMLElement): Omit<Channel, "id"> {
+    // formToChannel throws on a bad frequency — surfaced in chErr by saveRow.
+    // priority/enabled are set explicitly: a PUT patch needs `priority: false`
+    // (not an absent key) to UNSET the flag on an existing channel.
+    const base = formToChannel({
+      mhz: tr.querySelector<HTMLInputElement>(".fMhz")!.value,
+      alphaTag: tr.querySelector<HTMLInputElement>(".fTag")!.value,
+      mode: tr.querySelector<HTMLSelectElement>(".fMode")!.value,
+    });
+    return {
+      ...base,
+      priority: tr.querySelector<HTMLInputElement>(".fPrio")!.checked,
+      enabled: tr.querySelector<HTMLInputElement>(".fEn")!.checked,
+    };
+  }
+
+  async function saveRow(tr: HTMLElement): Promise<void> {
+    chErr.textContent = "";
+    try {
+      const payload = rowPatch(tr);
+      if (tr.dataset.id === "new") await api.addChannel(payload);
+      else await api.updateChannel(tr.dataset.id!, payload);
+      editingId = null;
+      await refresh();
+    } catch (e) { chErr.textContent = (e as Error).message; }
+  }
+
+  function wireRows(): void {
+    chRows.querySelectorAll<HTMLElement>("tr").forEach((tr) => {
+      const id = tr.dataset.id;
+      if (!id) return;
+      tr.querySelector<HTMLButtonElement>(".edit")?.addEventListener("click", () => {
+        editingId = id; chErr.textContent = ""; renderRows();
+        tr0Focus();
+      });
+      tr.querySelector<HTMLButtonElement>(".del")?.addEventListener("click", async () => {
+        const c = channels.find((x) => x.id === id);
+        if (!confirm(`Delete ${c ? c.alphaTag || fmtFreq(c.freq) : "channel"}?`)) return;
+        await api.deleteChannel(id);
+        await refresh();
+      });
+      tr.querySelector<HTMLInputElement>(".prio")?.addEventListener("change", async (ev) => {
+        await api.updateChannel(id, { priority: (ev.target as HTMLInputElement).checked });
+        await refresh();
+      });
+      tr.querySelector<HTMLInputElement>(".en")?.addEventListener("change", async (ev) => {
+        await api.updateChannel(id, { enabled: (ev.target as HTMLInputElement).checked });
+        await refresh();
+      });
+      tr.querySelector<HTMLButtonElement>(".save")?.addEventListener("click", () => saveRow(tr));
+      tr.querySelector<HTMLButtonElement>(".cancel")?.addEventListener("click", () => {
+        editingId = null; chErr.textContent = ""; renderRows();
+      });
+      if (tr.classList.contains("editing")) {
+        tr.addEventListener("keydown", (ev) => {
+          if (ev.key === "Enter") { ev.preventDefault(); saveRow(tr); }
+          if (ev.key === "Escape") { editingId = null; chErr.textContent = ""; renderRows(); }
+        });
+      }
+    });
+  }
+
+  function tr0Focus(): void {
+    chRows.querySelector<HTMLInputElement>("tr.editing .fMhz")?.focus();
+  }
 
   async function refresh(): Promise<void> {
-    const channels = await api.getChannels();
-    chList.innerHTML = channels
-      .map((c) => `<li>${c.priority ? "★ " : ""}${fmtFreq(c.freq)} — ${esc(c.alphaTag)} (${esc(c.mode)})
-        <button data-id="${esc(c.id)}" class="prio">${c.priority ? "unset priority" : "set priority"}</button>
-        <button data-id="${esc(c.id)}" class="del">delete</button></li>`)
-      .join("");
-    chList.querySelectorAll<HTMLButtonElement>(".del").forEach((b) =>
-      b.addEventListener("click", async () => { await api.deleteChannel(b.dataset.id!); refresh(); }));
-    // No per-channel update endpoint: toggle priority via whole-config PUT
-    // (also restarts the engine, so the change takes effect immediately).
-    chList.querySelectorAll<HTMLButtonElement>(".prio").forEach((b) =>
-      b.addEventListener("click", async () => {
-        const cfg = await api.getConfig();
-        const ch = cfg.channels.find((c) => c.id === b.dataset.id);
-        if (ch) {
-          ch.priority = !ch.priority;
-          await api.putConfig(cfg);
-        }
-        refresh();
-      }));
+    channels = await api.getChannels();
+    renderRows();
   }
+
+  addBtn.addEventListener("click", () => {
+    editingId = "new"; chErr.textContent = ""; renderRows(); tr0Focus();
+  });
 
   api.getConfig().then((cfg) => { vol.value = String(cfg.audio.volume); mute.checked = cfg.audio.muted; });
   vol.addEventListener("change", () => api.setVolume(Number(vol.value)));
   mute.addEventListener("change", () => api.setMuted(mute.checked));
-
-  root.querySelector<HTMLButtonElement>("#addBtn")!.addEventListener("click", async () => {
-    addErr.textContent = "";
-    try {
-      const payload = formToChannel({
-        mhz: root.querySelector<HTMLInputElement>("#mhz")!.value,
-        alphaTag: root.querySelector<HTMLInputElement>("#tag")!.value,
-        mode: root.querySelector<HTMLSelectElement>("#mode")!.value,
-        priority: root.querySelector<HTMLInputElement>("#prio")!.checked,
-      });
-      await api.addChannel(payload);
-      refresh();
-    } catch (e) { addErr.textContent = (e as Error).message; }
-  });
 
   refresh();
 

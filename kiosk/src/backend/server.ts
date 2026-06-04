@@ -123,6 +123,7 @@ export function createServer(deps: ServerDeps): { server: Server } {
     if (chMatch) {
       const id = chMatch[1]!;
       if (method === "PUT") {
+        if (!config.channels.some((c) => c.id === id)) return json(res, 404, { error: "unknown channel" });
         const body = await readBody(req);
         const parsed = channelSchema.partial().safeParse(body);
         if (!parsed.success) return json(res, 400, { error: "invalid channel" });
