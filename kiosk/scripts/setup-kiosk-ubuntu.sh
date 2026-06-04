@@ -108,6 +108,15 @@ JSON
   sudo chown -R kiosk:kiosk "$STATE_DIR"
 fi
 
+echo "[setup] Disabling the display manager (kiosk owns seat0/tty1)..."
+# A desktop install boots into GDM, which owns seat0/tty1 and blocks cage's
+# PAM/logind session forever (the unit sits "active" with cage stuck pre-exec).
+# Same move as lightdm on the Pi: the kiosk IS the display manager here.
+if systemctl list-unit-files display-manager.service >/dev/null 2>&1 \
+   && [ -e /etc/systemd/system/display-manager.service ]; then
+  sudo systemctl disable --now "$(basename "$(readlink -f /etc/systemd/system/display-manager.service)")"
+fi
+
 echo "[setup] Installing systemd units (repo-local paths, user kiosk)..."
 sudo cp "$REPO_DIR/systemd/kerchunk-kiosk-ubuntu.service" /etc/systemd/system/kerchunk-kiosk.service
 sudo cp "$REPO_DIR/systemd/kerchunk-display-ubuntu.service" /etc/systemd/system/kerchunk-display.service
