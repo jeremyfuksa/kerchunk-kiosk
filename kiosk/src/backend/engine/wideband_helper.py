@@ -29,9 +29,19 @@ DSP per chain (MAX_CHANS chains built once, offsets retuned per group):
 Detection (per assigned chain, in the 50 ms poll loop):
   Adaptive noise floor: asymmetric EMA of channel power while closed — tracks
   DOWN fast (a transmission present at tune time decays away quickly) and UP
-  slowly (so a real carrier doesn't become the floor). Open when power exceeds
-  floor + open_db for two consecutive polls; close when power stays below
-  floor + open_db - 3 (hysteresis) for hang_ms. Floors reset on every tune.
+  slowly (so a real carrier doesn't become the floor). The squelch reference
+  is the GROUP-WIDE MINIMUM of the per-chain floors: all channels share one
+  window and AGC, so the quietest channel defines the noise floor — this is
+  what lets a continuously-transmitting station (NOAA never keys down) open,
+  since its own floor would otherwise learn the carrier as "noise". Open when
+  power exceeds group_floor + open_db for two consecutive polls; close when
+  power stays below group_floor + open_db - 3 (hysteresis) for hang_ms.
+  Floors reset (and re-warm) on every tune.
+
+  KNOWN LIMITATION: a SINGLE-channel group has no idle neighbor, so a carrier
+  that is already up at tune time and never drops cannot be distinguished
+  from the floor. Bursty traffic is fine (the floor falls fast between
+  bursts). Revisit if weather-only mode moves to this engine.
 """
 
 import argparse
@@ -51,6 +61,10 @@ AUDIO_RATE = 48_000
 POLL_S = 0.05            # detection poll
 POWER_EVERY = 4          # power telemetry every 4th poll (~200 ms)
 OPEN_POLLS = 2           # consecutive above-threshold polls to open
+WARMUP_POLLS = 10        # ~500 ms after tune: let the power average fill
+                         # before arming detection (else the floor initializes
+                         # from an empty probe at -120 dB and every channel
+                         # "opens" — observed in the first live smoke test)
 CLOSE_HYST_DB = 3.0
 FLOOR_ALPHA_UP = 0.02    # floor rises slowly
 FLOOR_ALPHA_DOWN = 0.2   # floor falls fast
@@ -85,6 +99,7 @@ class Chain:
         self.open = False
         self.above_polls = 0
         self.below_since = None
+        self.warmup = WARMUP_POLLS
 
     def assign(self, channel_id, offset_hz):
         self.channel_id = channel_id
@@ -160,13 +175,28 @@ class Helper(gr.top_block):
 
     # -- detection -----------------------------------------------------------
 
+    def group_floor_db(self):
+        floors = [c.floor_db for c in self.chains
+                  if c.channel_id is not None and c.floor_db is not None]
+        return min(floors) if floors else None
+
     def poll(self, now):
         open_db = self.args.open_db
         hang_s = self.args.hang_ms / 1000.0
+
+        # Pass 1: update per-chain floors (frozen while a chain is open).
+        readings = {}
         for chain in self.chains:
             if chain.channel_id is None:
                 continue
             db = chain.power_db()
+
+            if chain.warmup > 0:
+                chain.warmup -= 1
+                if chain.warmup == 0:
+                    chain.floor_db = db   # first trusted reading = initial floor
+                continue
+            readings[chain.channel_id] = db
 
             if chain.floor_db is None:
                 chain.floor_db = db
@@ -174,8 +204,17 @@ class Helper(gr.top_block):
                 alpha = FLOOR_ALPHA_UP if db > chain.floor_db else FLOOR_ALPHA_DOWN
                 chain.floor_db += alpha * (db - chain.floor_db)
 
+        # Pass 2: squelch against the group-wide noise reference.
+        floor = self.group_floor_db()
+        if floor is None:
+            return
+        for chain in self.chains:
+            if chain.channel_id is None or chain.channel_id not in readings:
+                continue
+            db = readings[chain.channel_id]
+
             if not chain.open:
-                if db > chain.floor_db + open_db:
+                if db > floor + open_db:
                     chain.above_polls += 1
                     if chain.above_polls >= OPEN_POLLS:
                         chain.open = True
@@ -187,7 +226,7 @@ class Helper(gr.top_block):
                 else:
                     chain.above_polls = 0
             else:
-                if db < chain.floor_db + open_db - CLOSE_HYST_DB:
+                if db < floor + open_db - CLOSE_HYST_DB:
                     if chain.below_since is None:
                         chain.below_since = now
                     elif now - chain.below_since >= hang_s:
