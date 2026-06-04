@@ -78,7 +78,15 @@ export class RadioReference implements LookupProvider {
         headers: { "Content-Type": "text/xml; charset=utf-8", SOAPAction: "" },
         body: this.envelope(ctid, mhz),
       });
-      if (!res.ok) return null;
+      if (!res.ok) {
+        // SOAP faults arrive as HTTP 500 with a faultstring — surface it in
+        // the journal ("Not a premium subscriber" cost a debugging round
+        // when this was a silent null).
+        const fault = /<faultstring[^>]*>([\s\S]*?)<\/faultstring>/
+          .exec(await res.text().catch(() => ""))?.[1]?.trim();
+        console.error(`[radioreference] ${res.status}${fault ? `: ${fault}` : ""}`);
+        return null;
+      }
       const xml = await res.text();
       // Tolerant extraction: each result is an <item>...</item> block with
       // out/callsign/descr/alpha leaf elements (rpc/encoded may add attrs).
