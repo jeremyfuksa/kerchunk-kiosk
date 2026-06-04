@@ -236,3 +236,72 @@ describe("weather mode under wideband (monitor flag)", () => {
     expect(lastStart.monitor).toBe(false);
   });
 });
+
+describe("close call auto-add", () => {
+  it("a closecall event adds a DISABLED channel without restarting the engine", async () => {
+    const { server, engine } = makeApp();
+    let starts = 0;
+    const realStart = engine.start.bind(engine);
+    engine.start = async (sc) => { starts++; return realStart(sc); };
+    engine.emitCloseCall(462887500);
+    await new Promise((r) => setTimeout(r, 20));
+    const channels = (await request(server).get("/api/channels")).body;
+    const cc = channels.find((c: { freq: number }) => c.freq === 462887500);
+    expect(cc).toBeTruthy();
+    expect(cc.enabled).toBe(false);
+    expect(cc.alphaTag).toBe("Close Call 462.8875");
+    expect(starts).toBe(0); // disabled channel: no engine restart
+  });
+
+  it("does not re-add an existing frequency", async () => {
+    const { server, engine } = makeApp();
+    await request(server).post("/api/channels")
+      .send({ freq: 462887500, alphaTag: "Known", mode: "nfm", enabled: true });
+    engine.emitCloseCall(462887500);
+    await new Promise((r) => setTimeout(r, 20));
+    const channels = (await request(server).get("/api/channels")).body;
+    expect(channels.filter((c: { freq: number }) => c.freq === 462887500)).toHaveLength(1);
+  });
+});
+
+describe("POST /api/scan/skip", () => {
+  it("forwards to the engine", async () => {
+    const { server, engine } = makeApp();
+    const res = await request(server).post("/api/scan/skip");
+    expect(res.status).toBe(200);
+    expect((engine as { skips?: number }).skips).toBe(1);
+  });
+});
+
+describe("close call RepeaterBook enrichment", () => {
+  it("renames the filed channel when the frequency matches a repeater", async () => {
+    dir = mkdtempSync(join(tmpdir(), "ksrv-"));
+    const configStore = new ConfigStore(join(dir, "config.json"));
+    const engine = new FakeEngine();
+    const lookup = {
+      lookup: async (freqHz: number) =>
+        freqHz === 462675000
+          ? { callsign: "WQXX123", city: "Kansas City", state: "MO", pl: "141.3", tag: "WQXX123 Kansas City MO · PL 141.3" }
+          : null,
+    };
+    const { server } = createServer({ configStore, engine, activityLog: new ActivityLog(10), wsHub: new WsHub(), staticDir: dir, lookup });
+    engine.emitCloseCall(462675000);
+    await new Promise((r) => setTimeout(r, 30));
+    const channels = (await request(server).get("/api/channels")).body;
+    const cc = channels.find((c: { freq: number }) => c.freq === 462675000);
+    expect(cc.alphaTag).toBe("WQXX123 Kansas City MO · PL 141.3 (Close Call)");
+    expect(cc.enabled).toBe(false);
+  });
+
+  it("keeps the plain name on a miss", async () => {
+    dir = mkdtempSync(join(tmpdir(), "ksrv-"));
+    const configStore = new ConfigStore(join(dir, "config.json"));
+    const engine = new FakeEngine();
+    const lookup = { lookup: async () => null };
+    const { server } = createServer({ configStore, engine, activityLog: new ActivityLog(10), wsHub: new WsHub(), staticDir: dir, lookup });
+    engine.emitCloseCall(464175000);
+    await new Promise((r) => setTimeout(r, 30));
+    const channels = (await request(server).get("/api/channels")).body;
+    expect(channels.find((c: { freq: number }) => c.freq === 464175000).alphaTag).toBe("Close Call 464.1750");
+  });
+});

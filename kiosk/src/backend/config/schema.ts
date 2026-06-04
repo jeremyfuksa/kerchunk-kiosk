@@ -33,6 +33,16 @@ export const configSchema = z.object({
     // (rejects spurs/AGC pumping/broadband bursts — non-voice junk). Bench
     // default in the DSP helper: -86 (static ~-82, voice carrier -94..-96).
     noiseQuietDb: z.number().negative().optional(),
+    // Close Call: discover strong transmissions in the tuned window on
+    // non-configured frequencies. Plays them (priority preempt) and auto-adds
+    // them as DISABLED channels for operator review. Default ON (wideband).
+    closeCall: z.boolean().optional(),
+    // Discovery threshold: dB over the window's median noise floor. Eager by
+    // default (15) per operator preference.
+    closeCallDb: z.number().positive().optional(),
+    // Close Call lockouts: frequencies that must NEVER trigger discovery
+    // again (noise sources, data links the operator dismissed).
+    lockoutHz: z.array(z.number().int().positive()).optional(),
   }),
   audio: z.object({
     sink: z.string().min(1),
@@ -48,6 +58,21 @@ export const configSchema = z.object({
     mixerCard: z.union([z.number().int().nonnegative(), z.string().min(1)]).optional(),
     mixerControl: z.string().min(1).optional(),
   }),
+  // RepeaterBook lookup (Close Call enrichment). userAgent must be the
+  // string REGISTERED with RepeaterBook; states are full names ("Missouri").
+  lookup: z.object({
+    userAgent: z.string().min(1),
+    states: z.array(z.string().min(1)).min(1),
+    // RadioReference fallback (business band / public safety). Requires an
+    // approved developer appKey + the OPERATOR'S premium credentials; all
+    // stay in this config file on the appliance, never in the repo.
+    radioReference: z.object({
+      appKey: z.string().min(1),
+      username: z.string().min(1),
+      password: z.string().min(1),
+      countyIds: z.array(z.number().int().positive()).min(1),
+    }).optional(),
+  }).optional(),
   // One channel designated as "the weather channel", stored separately from the
   // scan list. Weather-only mode (server runtime) holds this channel.
   weatherChannel: channelSchema.optional(),

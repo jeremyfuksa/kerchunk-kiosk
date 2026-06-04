@@ -36,6 +36,7 @@ export function renderAdmin(root: HTMLElement): void {
       <section class="audio">
         <label>Volume <input id="vol" type="range" min="0" max="100" /></label>
         <label><input id="mute" type="checkbox" /> Mute</label>
+        <button id="skipBtn" title="Force-close the current transmission">Skip ▶</button>
       </section>
       <section class="channels">
         <h2>Channels <button id="addBtn">+ Add</button></h2>
@@ -53,8 +54,14 @@ export function renderAdmin(root: HTMLElement): void {
         <label>Hang time (ms) <input id="tHang" type="number" min="100" step="100" placeholder="2000" /></label>
         <label>Squelch open (dB over floor) <input id="tOpenDb" type="number" min="1" step="0.5" placeholder="9" /></label>
         <label>Quieting threshold (dB) <input id="tQuietDb" type="number" max="-1" step="0.5" placeholder="-86" /></label>
+        <label><input id="tCloseCall" type="checkbox" /> Close Call</label>
+        <label>Close Call threshold (dB over floor) <input id="tCloseCallDb" type="number" min="5" step="1" placeholder="15" /></label>
         <button id="tSave">Save tuning</button>
         <span id="tErr" class="err"></span>
+      </section>
+      <section class="lockouts">
+        <h2>Close Call lockouts</h2>
+        <ul id="loList"></ul>
       </section>
       <section class="weather">
         <h2>Weather</h2>
@@ -95,7 +102,7 @@ export function renderAdmin(root: HTMLElement): void {
       <td>${esc(c.mode.toUpperCase())}</td>
       <td><input type="checkbox" class="prio" ${c.priority ? "checked" : ""} /></td>
       <td><input type="checkbox" class="en" ${c.enabled ? "checked" : ""} /></td>
-      <td><button class="edit">edit</button> <button class="del">delete</button></td>
+      <td><button class="edit">edit</button> <button class="lock" title="Remove and never Close-Call this frequency again">lockout</button> <button class="del">delete</button></td>
     </tr>`;
   }
 
@@ -156,6 +163,17 @@ export function renderAdmin(root: HTMLElement): void {
         editingId = id; chErr.textContent = ""; renderRows();
         tr0Focus();
       });
+      tr.querySelector<HTMLButtonElement>(".lock")?.addEventListener("click", async () => {
+        const c = channels.find((x) => x.id === id);
+        if (!c) return;
+        if (!confirm(`Lock out ${c.alphaTag || fmtFreq(c.freq)}? It will be removed and never trigger Close Call again.`)) return;
+        const cfg = await api.getConfig();
+        cfg.channels = cfg.channels.filter((x) => x.id !== id);
+        cfg.scan.lockoutHz = [...new Set([...(cfg.scan.lockoutHz ?? []), c.freq])];
+        await api.putConfig(cfg);
+        await refresh();
+        renderLockouts();
+      });
       tr.querySelector<HTMLButtonElement>(".del")?.addEventListener("click", async () => {
         const c = channels.find((x) => x.id === id);
         if (!confirm(`Delete ${c ? c.alphaTag || fmtFreq(c.freq) : "channel"}?`)) return;
@@ -192,6 +210,23 @@ export function renderAdmin(root: HTMLElement): void {
     renderRows();
   }
 
+  const loList = root.querySelector<HTMLElement>("#loList")!;
+  async function renderLockouts(): Promise<void> {
+    const cfg = await api.getConfig();
+    const lo = cfg.scan.lockoutHz ?? [];
+    loList.innerHTML = lo.length === 0
+      ? `<li class="empty">none</li>`
+      : lo.map((f) => `<li>${fmtFreq(f)} <button data-hz="${f}" class="unlock">remove</button></li>`).join("");
+    loList.querySelectorAll<HTMLButtonElement>(".unlock").forEach((b) =>
+      b.addEventListener("click", async () => {
+        const cfg2 = await api.getConfig();
+        cfg2.scan.lockoutHz = (cfg2.scan.lockoutHz ?? []).filter((f) => f !== Number(b.dataset.hz));
+        await api.putConfig(cfg2);
+        renderLockouts();
+      }));
+  }
+  renderLockouts();
+
   addBtn.addEventListener("click", () => {
     editingId = "new"; chErr.textContent = ""; renderRows(); tr0Focus();
   });
@@ -199,6 +234,7 @@ export function renderAdmin(root: HTMLElement): void {
   api.getConfig().then((cfg) => { vol.value = String(cfg.audio.volume); mute.checked = cfg.audio.muted; });
   vol.addEventListener("change", () => api.setVolume(Number(vol.value)));
   mute.addEventListener("change", () => api.setMuted(mute.checked));
+  root.querySelector<HTMLButtonElement>("#skipBtn")!.addEventListener("click", () => api.skip());
 
   // Scan tuning knobs — optional config fields; empty input = engine default
   // (shown as the placeholder). Saved via whole-config PUT, which restarts
@@ -207,6 +243,8 @@ export function renderAdmin(root: HTMLElement): void {
   const tHang = root.querySelector<HTMLInputElement>("#tHang")!;
   const tOpenDb = root.querySelector<HTMLInputElement>("#tOpenDb")!;
   const tQuietDb = root.querySelector<HTMLInputElement>("#tQuietDb")!;
+  const tCloseCall = root.querySelector<HTMLInputElement>("#tCloseCall")!;
+  const tCloseCallDb = root.querySelector<HTMLInputElement>("#tCloseCallDb")!;
   const tErr = root.querySelector<HTMLElement>("#tErr")!;
 
   api.getConfig().then((cfg) => {
@@ -214,6 +252,8 @@ export function renderAdmin(root: HTMLElement): void {
     tHang.value = String(cfg.scan.dwellMs);
     tOpenDb.value = cfg.scan.openAboveFloorDb != null ? String(cfg.scan.openAboveFloorDb) : "";
     tQuietDb.value = cfg.scan.noiseQuietDb != null ? String(cfg.scan.noiseQuietDb) : "";
+    tCloseCall.checked = cfg.scan.closeCall ?? true;   // engine default: ON
+    tCloseCallDb.value = cfg.scan.closeCallDb != null ? String(cfg.scan.closeCallDb) : "";
   });
 
   root.querySelector<HTMLButtonElement>("#tSave")!.addEventListener("click", async () => {
@@ -225,6 +265,8 @@ export function renderAdmin(root: HTMLElement): void {
       cfg.scan.groupDwellMs = num(tGroupDwell);
       cfg.scan.openAboveFloorDb = num(tOpenDb);
       cfg.scan.noiseQuietDb = num(tQuietDb);
+      cfg.scan.closeCall = tCloseCall.checked;
+      cfg.scan.closeCallDb = num(tCloseCallDb);
       const hang = num(tHang);
       if (hang !== undefined) cfg.scan.dwellMs = hang;
       await api.putConfig(cfg);

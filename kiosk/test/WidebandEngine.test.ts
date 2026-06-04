@@ -241,3 +241,70 @@ describe("monitor mode passthrough", () => {
     expect(JSON.parse(lines(tunes)[0]!).monitor).toBe(true);
   });
 });
+
+describe("close call", () => {
+  it("helper closecall surfaces as a closecall EngineEvent", async () => {
+    const { engine, events } = makeEngine({
+      FAKE_WB_SCRIPT: `{"ev":"closecall","freqHz":462887500}`,
+    });
+    await engine.start(cfg([VHF_A, VHF_B]));
+    await waitFor(() => events.some((e) => e.type === "closecall"), 1000);
+    await engine.stop();
+    const cc = events.find((e) => e.type === "closecall");
+    expect(cc && cc.type === "closecall" && cc.freqHz).toBe(462887500);
+  });
+
+  it("a cc lane opening yields an active event with a synthesized CLOSE CALL channel", async () => {
+    const { engine, events } = makeEngine({
+      FAKE_WB_SCRIPT: [
+        `{"ev":"closecall","freqHz":462887500}`,
+        `{"ev":"open","id":"cc_462887500","db":-5}`,
+        `{"ev":"audible","id":"cc_462887500"}`,
+      ].join("\n"),
+    });
+    await engine.start(cfg([VHF_A, VHF_B]));
+    await waitFor(() => events.some((e) => e.type === "active"), 1000);
+    await engine.stop();
+    const active = events.find((e) => e.type === "active");
+    expect(active && active.type === "active" && active.channel.alphaTag).toBe("CLOSE CALL");
+    expect(active && active.type === "active" && active.freq).toBe(462887500);
+    const audible = events.find((e) => e.type === "audible");
+    expect(audible && audible.type === "audible" && audible.channel?.freq).toBe(462887500);
+  });
+
+  it("tune carries knownHz (all config channels) and the closeCall switch", async () => {
+    const tunes = tmpFile("tunes");
+    const { engine } = makeEngine({ FAKE_WB_TUNES_FILE: tunes });
+    await engine.start(cfg([VHF_A, VHF_B, { ...UHF, enabled: false }], { closeCall: true, closeCallDb: 15 }));
+    await waitFor(() => lines(tunes).length >= 1, 1000);
+    await engine.stop();
+    const first = JSON.parse(lines(tunes)[0]!);
+    expect(first.closeCall).toBe(true);
+    expect(first.closeCallDb).toBe(15);
+    // knownHz includes DISABLED channels too — they must not re-trigger.
+    expect(first.knownHz).toContain(UHF.freq);
+    expect(first.knownHz).toContain(VHF_A.freq);
+  });
+});
+
+describe("skip + lockout", () => {
+  it("knownHz includes locked-out frequencies so they never re-trigger", async () => {
+    const tunes = tmpFile("tunes");
+    const { engine } = makeEngine({ FAKE_WB_TUNES_FILE: tunes });
+    await engine.start(cfg([VHF_A, VHF_B], { lockoutHz: [462887500] }));
+    await waitFor(() => lines(tunes).length >= 1, 1000);
+    await engine.stop();
+    expect(JSON.parse(lines(tunes)[0]!).knownHz).toContain(462887500);
+  });
+
+  it("skip() sends the skip command to the helper", async () => {
+    const cmds = tmpFile("cmds");
+    const { engine } = makeEngine({ FAKE_WB_CMDS_FILE: cmds });
+    await engine.start(cfg([VHF_A, VHF_B]));
+    await waitFor(() => lines(cmds).some((l) => l.includes('"cmd":"tune"')), 1000);
+    engine.skip();
+    const got = await waitFor(() => lines(cmds).some((l) => l.includes('"cmd":"skip"')), 1000);
+    await engine.stop();
+    expect(got).toBe(true);
+  });
+});

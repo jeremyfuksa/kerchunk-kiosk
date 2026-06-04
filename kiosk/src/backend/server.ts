@@ -5,11 +5,14 @@ import { randomUUID } from "node:crypto";
 import { configSchema, channelSchema, type Config, type Channel } from "./config/schema.js";
 import { ConfigStore } from "./config/ConfigStore.js";
 import { ActivityLog } from "./activityLog.js";
+import type { LookupProvider } from "./lookup.js";
 import { WsHub } from "./ws.js";
 import type { ScannerEngine, ScanConfig } from "./engine/ScannerEngine.js";
 import { setVolume as amixerVolume, setMuted as amixerMuted, type AmixerOpts } from "./audio.js";
 
 export interface ServerDeps {
+  /** Optional identification chain — enriches Close Call channel names. */
+  lookup?: LookupProvider;
   configStore: ConfigStore;
   engine: ScannerEngine;
   activityLog: ActivityLog;
@@ -42,6 +45,9 @@ function toScanConfig(cfg: Config, mode: "scan" | "weather"): ScanConfig {
     // Weather-only = monitor: hold the lone channel open/audible, no squelch
     // (a continuous NOAA carrier can't be squelched against its own floor).
     monitor: mode === "weather",
+    closeCall: cfg.scan.closeCall,
+    closeCallDb: cfg.scan.closeCallDb,
+    lockoutHz: cfg.scan.lockoutHz,
   };
 }
 
@@ -64,6 +70,39 @@ export function createServer(deps: ServerDeps): { server: Server } {
   // Runtime scan/weather mode. Deliberately not read from or written to config:
   // the kiosk always boots into scan mode.
   let mode: "scan" | "weather" = "scan";
+
+  // Close Call discoveries persist as DISABLED channels for operator review.
+  // Saved WITHOUT persistAndReload: a disabled channel doesn't affect
+  // scanning, and an engine restart here would kill the live discovery audio
+  // (the helper is playing the find on a spare lane right now).
+  engine.on((ev) => {
+    if (ev.type !== "closecall") return;
+    if (config.channels.some((c) => c.freq === ev.freqHz)) return;
+    const mhz = (ev.freqHz / 1e6).toFixed(4);
+    const channel: Channel = {
+      id: `cc_${randomUUID().slice(0, 8)}`,
+      freq: ev.freqHz,
+      alphaTag: `Close Call ${mhz}`,
+      mode: "nfm",
+      enabled: false,
+    };
+    config = { ...config, channels: [...config.channels, channel] };
+    configStore.save(config);
+    // Best-effort identification (RepeaterBook): rename the filed channel if
+    // the frequency matches a known ham/GMRS repeater. Fire-and-forget — a
+    // miss or API failure leaves the plain "Close Call <MHz>" name.
+    if (deps.lookup) {
+      void deps.lookup.lookup(ev.freqHz).then((hit) => {
+        if (!hit) return;
+        config = {
+          ...config,
+          channels: config.channels.map((c) =>
+            c.id === channel.id ? { ...c, alphaTag: `${hit.tag} (Close Call)` } : c),
+        };
+        configStore.save(config);
+      }).catch(() => { /* enrichment is optional */ });
+    }
+  });
 
   // Persist config AND restart the scanner so changes (e.g. editing channels in
   // the admin) take effect immediately, instead of only after a service restart.
@@ -140,6 +179,8 @@ export function createServer(deps: ServerDeps): { server: Server } {
         return json(res, 204, null);
       }
     }
+
+    if (method === "POST" && path === "/api/scan/skip") { engine.skip?.(); return json(res, 200, { ok: true }); }
 
     if (method === "POST" && path === "/api/scan/start") { await engine.start(toScanConfig(config, mode)); return json(res, 200, { state: engine.state }); }
     if (method === "POST" && path === "/api/scan/stop") { await engine.stop(); return json(res, 200, { state: engine.state }); }

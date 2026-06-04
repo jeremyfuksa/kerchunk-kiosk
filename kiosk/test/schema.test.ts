@@ -135,3 +135,53 @@ describe("channel priority", () => {
     expect(configSchema.safeParse(defaultConfig()).success).toBe(true);
   });
 });
+
+describe("close call config", () => {
+  it("accepts closeCall toggle and closeCallDb threshold", () => {
+    const cfg = structuredClone(defaultConfig()) as Record<string, unknown> & { scan: Record<string, unknown> };
+    cfg.scan.closeCall = false;
+    cfg.scan.closeCallDb = 20;
+    const parsed = configSchema.safeParse(cfg);
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(parsed.data.scan.closeCall).toBe(false);
+      expect(parsed.data.scan.closeCallDb).toBe(20);
+    }
+  });
+});
+
+describe("close call lockouts", () => {
+  it("accepts a lockout frequency list", () => {
+    const cfg = structuredClone(defaultConfig()) as Record<string, unknown> & { scan: Record<string, unknown> };
+    cfg.scan.lockoutHz = [462887500, 463100000];
+    const parsed = configSchema.safeParse(cfg);
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.data.scan.lockoutHz).toEqual([462887500, 463100000]);
+  });
+});
+
+describe("lookup config (RepeaterBook)", () => {
+  it("accepts userAgent + states", () => {
+    const cfg = structuredClone(defaultConfig()) as Record<string, unknown>;
+    cfg.lookup = { userAgent: "Kerchunk/1.0 (JeremyFuksa, hello@jeremyfuksa.com)", states: ["Missouri", "Kansas"] };
+    const parsed = configSchema.safeParse(cfg);
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.data.lookup?.states).toEqual(["Missouri", "Kansas"]);
+  });
+
+  it("is optional", () => {
+    expect(configSchema.safeParse(defaultConfig()).success).toBe(true);
+  });
+});
+
+describe("lookup.radioReference config", () => {
+  it("accepts appKey/credentials/countyIds", () => {
+    const cfg = structuredClone(defaultConfig()) as Record<string, unknown>;
+    cfg.lookup = {
+      userAgent: "Kerchunk/1.0 (test)",
+      states: ["Missouri"],
+      radioReference: { appKey: "k", username: "u", password: "p", countyIds: [1310] },
+    };
+    expect(configSchema.safeParse(cfg).success).toBe(true);
+  });
+});

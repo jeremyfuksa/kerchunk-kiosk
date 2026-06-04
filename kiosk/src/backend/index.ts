@@ -9,6 +9,10 @@ import { RtlFmEngine } from "./engine/RtlFmEngine.js";
 import { FakeEngine } from "./engine/FakeEngine.js";
 import { WidebandEngine } from "./engine/WidebandEngine.js";
 import { setVolume, setMuted } from "./audio.js";
+import { RepeaterBook } from "./repeaterbook.js";
+import { RadioReference } from "./radioreference.js";
+import { composeLookups, type LookupProvider } from "./lookup.js";
+import { dirname } from "node:path";
 import type { EngineEvent } from "./engine/ScannerEngine.js";
 
 const PORT = Number(process.env.PORT ?? 8080);
@@ -44,7 +48,23 @@ engine.on((ev: EngineEvent) => {
   wsHub.broadcast(ev);
 });
 
-const { server } = createServer({ configStore, engine, activityLog, wsHub, staticDir: STATIC_DIR });
+// Close Call identification chain: RepeaterBook (ham/GMRS, registered UA)
+// then RadioReference (curated county DB, operator's premium credentials).
+// Either or both may be configured; first hit wins.
+const providers: LookupProvider[] = [];
+if (config.lookup) {
+  providers.push(new RepeaterBook({
+    userAgent: config.lookup.userAgent,
+    states: config.lookup.states,
+    cacheDir: dirname(CONFIG_PATH),
+  }));
+  if (config.lookup.radioReference) {
+    providers.push(new RadioReference(config.lookup.radioReference));
+  }
+}
+const lookup = providers.length > 0 ? composeLookups(providers) : undefined;
+
+const { server } = createServer({ configStore, engine, activityLog, wsHub, staticDir: STATIC_DIR, lookup });
 
 const wss = new WebSocketServer({ server, path: "/ws" });
 wss.on("connection", (ws) => wsHub.attach(ws));

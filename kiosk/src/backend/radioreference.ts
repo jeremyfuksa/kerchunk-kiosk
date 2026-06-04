@@ -1,0 +1,118 @@
+import type { LookupHit, LookupProvider } from "./lookup.js";
+
+// RadioReference Database Web Service (SOAP) — searchCountyFreq only.
+//
+// Identifies Close Call discoveries that RepeaterBook can't: business band,
+// public safety, anything in RR's curated county data. Requirements (per
+// https://support.radioreference.com/hc/en-us/articles/18844460198932):
+// an approved developer appKey AND the end user's own credentials with an
+// active premium subscription — all live in config.lookup.radioReference,
+// never in the repo.
+//
+// Call discipline: queries fire only on Close Call events (already rare:
+// 2-poll confirm + 5-minute cooldown + knownHz suppression), and every
+// county+frequency result is memoized, so the API sees each new frequency
+// at most countyIds.length times ever per process.
+
+export interface RadioReferenceOptions {
+  appKey: string;
+  username: string;
+  password: string;
+  /** RR county ids (ctid) to search, in order — e.g. Jackson MO, Johnson KS. */
+  countyIds: number[];
+  fetcher?: (url: string, init: {
+    method: string; headers: Record<string, string>; body: string;
+  }) => Promise<{ ok: boolean; status: number; text(): Promise<string> }>;
+}
+
+const ENDPOINT = "https://api.radioreference.com/soap2/index.php";
+const MATCH_TOLERANCE_MHZ = 0.0025; // close calls round to a 12.5 kHz raster
+
+export class RadioReference implements LookupProvider {
+  private readonly opts: Required<RadioReferenceOptions>;
+  private cache = new Map<string, LookupHit | null>();
+
+  constructor(opts: RadioReferenceOptions) {
+    this.opts = { fetcher: (url, init) => fetch(url, init), ...opts };
+  }
+
+  async lookup(freqHz: number): Promise<LookupHit | null> {
+    const mhz = freqHz / 1e6;
+    for (const ctid of this.opts.countyIds) {
+      const key = `${ctid}:${freqHz}`;
+      let hit = this.cache.get(key);
+      if (hit === undefined) {
+        hit = await this.searchCountyFreq(ctid, mhz);
+        this.cache.set(key, hit);
+      }
+      if (hit) return hit;
+    }
+    return null;
+  }
+
+  private envelope(ctid: number, mhz: number): string {
+    const { appKey, username, password } = this.opts;
+    return `<?xml version="1.0" encoding="UTF-8"?>
+<SOAP-ENV:Envelope xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/">
+ <SOAP-ENV:Body>
+  <searchCountyFreq>
+   <ctid>${ctid}</ctid>
+   <freq>${mhz.toFixed(4).replace(/0+$/, "").replace(/\.$/, ".0")}</freq>
+   <tone></tone>
+   <authInfo>
+    <username>${esc(username)}</username>
+    <password>${esc(password)}</password>
+    <appKey>${esc(appKey)}</appKey>
+    <version>latest</version>
+    <style>rpc</style>
+   </authInfo>
+  </searchCountyFreq>
+ </SOAP-ENV:Body>
+</SOAP-ENV:Envelope>`;
+  }
+
+  private async searchCountyFreq(ctid: number, mhz: number): Promise<LookupHit | null> {
+    try {
+      const res = await this.opts.fetcher(ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "text/xml; charset=utf-8", SOAPAction: "" },
+        body: this.envelope(ctid, mhz),
+      });
+      if (!res.ok) return null;
+      const xml = await res.text();
+      // Tolerant extraction: each result is an <item>...</item> block with
+      // out/callsign/descr/alpha leaf elements (rpc/encoded may add attrs).
+      for (const item of xml.match(/<item[\s>][\s\S]*?<\/item>/g) ?? []) {
+        const out = Number(leaf(item, "out"));
+        if (!Number.isFinite(out) || Math.abs(out - mhz) > MATCH_TOLERANCE_MHZ) continue;
+        const alpha = leaf(item, "alpha");
+        const descr = leaf(item, "descr");
+        const callsign = leaf(item, "callsign");
+        const name = (alpha || descr || "").trim();
+        if (!name && !callsign) continue;
+        const tag = name
+          ? (callsign ? `${name} · ${callsign}` : name)
+          : callsign!;
+        return { tag };
+      }
+      return null;
+    } catch {
+      return null; // offline/auth/parse: identification is best-effort
+    }
+  }
+}
+
+function leaf(xml: string, name: string): string | null {
+  const m = new RegExp(`<${name}(?:\\s[^>]*)?>([\\s\\S]*?)</${name}>`).exec(xml);
+  if (!m) return null;
+  return m[1]!
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
+    .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'").replace(/&amp;/g, "&")
+    .trim() || null;
+}
+
+function esc(s: string): string {
+  return s.replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
+}
