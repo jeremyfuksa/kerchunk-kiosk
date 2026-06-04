@@ -223,9 +223,15 @@ export class WidebandEngine implements ScannerEngine {
           this.groupStartedAt = this.now();
         }
         break;
-      case "audible":
+      case "audible": {
         this.audibleId = typeof ev.id === "string" ? ev.id : null;
+        // Surface speaker ownership: the dashboard's now-playing follows
+        // THIS, not "active" (any of the group's channels opening), so the
+        // banner can't hop away from what is actually playing.
+        const channel = this.audibleId ? this.findChannel(this.audibleId) : null;
+        this.emit({ type: "audible", channel, ts: this.now() });
         break;
+      }
       case "power": {
         if (!this.audibleId || !ev.levels) return;
         const db = ev.levels[this.audibleId];
