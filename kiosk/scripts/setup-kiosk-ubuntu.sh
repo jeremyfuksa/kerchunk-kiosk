@@ -119,6 +119,18 @@ if systemctl list-unit-files display-manager.service >/dev/null 2>&1 \
   sudo systemctl disable --now "$(basename "$(readlink -f /etc/systemd/system/display-manager.service)")"
 fi
 
+echo "[setup] Neutralizing gnome-keyring for the kiosk session..."
+# A password-locked login keyring (left over from any prior desktop login)
+# makes gnome-keyring throw an unlock dialog over the dashboard — Chromium
+# runs with --password-store=basic and never needs it. Move it aside (backup,
+# not delete: it may hold secrets from that desktop session).
+KIOSK_HOME="$(getent passwd kiosk | cut -d: -f6)"
+if [ -f "$KIOSK_HOME/.local/share/keyrings/login.keyring" ]; then
+  sudo -u kiosk mkdir -p "$KIOSK_HOME/keyrings-pre-kiosk-backup"
+  sudo -u kiosk mv "$KIOSK_HOME/.local/share/keyrings/login.keyring" \
+    "$KIOSK_HOME/keyrings-pre-kiosk-backup/login.keyring.$(date +%s)"
+fi
+
 echo "[setup] Installing systemd units (repo-local paths, user kiosk)..."
 sudo cp "$REPO_DIR/systemd/kerchunk-kiosk-ubuntu.service" /etc/systemd/system/kerchunk-kiosk.service
 sudo cp "$REPO_DIR/systemd/kerchunk-display-ubuntu.service" /etc/systemd/system/kerchunk-display.service

@@ -31,3 +31,36 @@ describe("WsHub", () => {
     expect(a.send).not.toHaveBeenCalled();
   });
 });
+
+describe("WsHub state replay on connect", () => {
+  const ch = { id: "c1", freq: 162550000, alphaTag: "WX1", mode: "nfm" as const, enabled: true };
+
+  it("replays the last active event to a client that connects mid-transmission", () => {
+    // A channel that opened BEFORE the page loaded emits no new event for
+    // hours (NOAA holds open) — without replay the dashboard says
+    // "scanning..." while audio is clearly playing.
+    const hub = new WsHub();
+    hub.broadcast({ type: "active", channel: ch, freq: ch.freq, ts: 1 });
+    const late = fakeClient();
+    hub.add(late);
+    expect(late.send).toHaveBeenCalledWith(
+      JSON.stringify({ type: "active", channel: ch, freq: ch.freq, ts: 1 }),
+    );
+  });
+
+  it("does not replay once idle superseded the active", () => {
+    const hub = new WsHub();
+    hub.broadcast({ type: "active", channel: ch, freq: ch.freq, ts: 1 });
+    hub.broadcast({ type: "idle", ts: 2 });
+    const late = fakeClient();
+    hub.add(late);
+    expect(late.send).not.toHaveBeenCalled();
+  });
+
+  it("replays nothing when no traffic has happened yet", () => {
+    const hub = new WsHub();
+    const late = fakeClient();
+    hub.add(late);
+    expect(late.send).not.toHaveBeenCalled();
+  });
+});

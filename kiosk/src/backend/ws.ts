@@ -5,11 +5,23 @@ interface Sendable { readyState: number; OPEN: number; send(data: string): void;
 
 export class WsHub {
   private clients = new Set<Sendable>();
+  // Last now-playing-relevant event, replayed to clients that connect
+  // mid-transmission. "active" fires only on the open TRANSITION — a channel
+  // that holds open for hours (NOAA) emits nothing new, so without replay a
+  // freshly-loaded dashboard says "scanning..." while audio is playing.
+  private lastNowPlaying: EngineEvent | null = null;
 
-  add(ws: Sendable): void { this.clients.add(ws); }
+  add(ws: Sendable): void {
+    this.clients.add(ws);
+    if (this.lastNowPlaying && ws.readyState === ws.OPEN) {
+      ws.send(JSON.stringify(this.lastNowPlaying));
+    }
+  }
   remove(ws: Sendable): void { this.clients.delete(ws); }
 
   broadcast(event: EngineEvent): void {
+    if (event.type === "active") this.lastNowPlaying = event;
+    else if (event.type === "idle" || event.type === "status") this.lastNowPlaying = null;
     const data = JSON.stringify(event);
     for (const ws of this.clients) {
       if (ws.readyState === ws.OPEN) ws.send(data);
