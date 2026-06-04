@@ -49,8 +49,13 @@ export function renderAdmin(root: HTMLElement): void {
       </section>
       <section class="discoveries">
         <h2>Discoveries <span class="hint">found by Close Call — listen, then decide</span></h2>
+        <div class="dcToolbar">
+          <button id="dcDismissSel" disabled>Dismiss selected</button>
+          <button id="dcLockSel" disabled>Lockout selected</button>
+          <span id="dcSelCount" class="hint"></span>
+        </div>
         <table class="chTable">
-          <thead><tr><th>Freq (MHz)</th><th>Name</th><th>Found</th><th></th></tr></thead>
+          <thead><tr><th><input id="dcAll" type="checkbox" title="Select all" /></th><th>Freq (MHz)</th><th>Name</th><th>Found</th><th></th></tr></thead>
           <tbody id="dcRows"></tbody>
         </table>
       </section>
@@ -231,12 +236,29 @@ export function renderAdmin(root: HTMLElement): void {
   }
 
   const dcRows = root.querySelector<HTMLElement>("#dcRows")!;
+  const dcAll = root.querySelector<HTMLInputElement>("#dcAll")!;
+  const dcDismissSel = root.querySelector<HTMLButtonElement>("#dcDismissSel")!;
+  const dcLockSel = root.querySelector<HTMLButtonElement>("#dcLockSel")!;
+  const dcSelCount = root.querySelector<HTMLElement>("#dcSelCount")!;
+  // Selection survives the 15 s auto-refresh (a triage session shouldn't
+  // lose its checkmarks because a new discovery arrived).
+  const dcSelected = new Set<string>();
+
+  function paintDcToolbar(): void {
+    dcDismissSel.disabled = dcSelected.size === 0;
+    dcLockSel.disabled = dcSelected.size === 0;
+    dcSelCount.textContent = dcSelected.size > 0 ? `${dcSelected.size} selected` : "";
+  }
+
   async function renderDiscoveries(): Promise<void> {
     const cfg = await api.getConfig();
     const ds = [...(cfg.discoveries ?? [])].sort((a, b) => b.ts - a.ts);
+    const present = new Set(ds.map((d) => d.id));
+    for (const id of dcSelected) if (!present.has(id)) dcSelected.delete(id);
     dcRows.innerHTML = ds.length === 0
-      ? `<tr><td colspan="4" class="empty">nothing pending — Close Call is hunting</td></tr>`
+      ? `<tr><td colspan="5" class="empty">nothing pending — Close Call is hunting</td></tr>`
       : ds.map((d) => `<tr data-id="${esc(d.id)}">
+          <td><input type="checkbox" class="dSel" ${dcSelected.has(d.id) ? "checked" : ""} /></td>
           <td>${fmtFreq(d.freq)}</td>
           <td>${esc(d.alphaTag)}</td>
           <td>${new Date(d.ts).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</td>
@@ -247,6 +269,16 @@ export function renderAdmin(root: HTMLElement): void {
             <button class="dDismiss" title="Remove (may be rediscovered later)">dismiss</button>
           </td>
         </tr>`).join("");
+    dcAll.checked = ds.length > 0 && dcSelected.size === ds.length;
+    paintDcToolbar();
+    dcRows.querySelectorAll<HTMLInputElement>(".dSel").forEach((cb) => {
+      const id = (cb.closest("tr") as HTMLElement).dataset.id!;
+      cb.addEventListener("change", () => {
+        if (cb.checked) dcSelected.add(id); else dcSelected.delete(id);
+        dcAll.checked = dcSelected.size === present.size && present.size > 0;
+        paintDcToolbar();
+      });
+    });
 
     async function mutate(id: string, fn: (cfg2: Awaited<ReturnType<typeof api.getConfig>>, d: NonNullable<Awaited<ReturnType<typeof api.getConfig>>["discoveries"]>[number]) => void): Promise<void> {
       const cfg2 = await api.getConfig();
@@ -279,6 +311,32 @@ export function renderAdmin(root: HTMLElement): void {
       if (b.classList.contains("dDismiss")) b.addEventListener("click", () => mutate(id, () => {}));
     });
   }
+  dcAll.addEventListener("change", async () => {
+    const cfg = await api.getConfig();
+    dcSelected.clear();
+    if (dcAll.checked) for (const d of cfg.discoveries ?? []) dcSelected.add(d.id);
+    renderDiscoveries();
+  });
+
+  async function bulkDiscoveries(lockout: boolean): Promise<void> {
+    const n = dcSelected.size;
+    if (n === 0) return;
+    const verb = lockout ? "Lock out" : "Dismiss";
+    if (!confirm(`${verb} ${n} ${n === 1 ? "discovery" : "discoveries"}?`)) return;
+    const cfg = await api.getConfig();
+    const doomed = (cfg.discoveries ?? []).filter((d) => dcSelected.has(d.id));
+    cfg.discoveries = (cfg.discoveries ?? []).filter((d) => !dcSelected.has(d.id));
+    if (lockout) {
+      cfg.scan.lockoutHz = [...new Set([...(cfg.scan.lockoutHz ?? []), ...doomed.map((d) => d.freq)])];
+    }
+    dcSelected.clear();
+    await api.putConfig(cfg);
+    renderDiscoveries();
+    renderLockouts();
+  }
+  dcDismissSel.addEventListener("click", () => bulkDiscoveries(false));
+  dcLockSel.addEventListener("click", () => bulkDiscoveries(true));
+
   renderDiscoveries();
   setInterval(() => { renderDiscoveries().catch(() => {}); }, 15000);
 
