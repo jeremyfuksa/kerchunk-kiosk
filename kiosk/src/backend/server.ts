@@ -42,6 +42,8 @@ function toScanConfig(cfg: Config, mode: "scan" | "weather"): ScanConfig {
     // Weather-only = monitor: hold the lone channel open/audible, no squelch
     // (a continuous NOAA carrier can't be squelched against its own floor).
     monitor: mode === "weather",
+    closeCall: cfg.scan.closeCall,
+    closeCallDb: cfg.scan.closeCallDb,
   };
 }
 
@@ -64,6 +66,25 @@ export function createServer(deps: ServerDeps): { server: Server } {
   // Runtime scan/weather mode. Deliberately not read from or written to config:
   // the kiosk always boots into scan mode.
   let mode: "scan" | "weather" = "scan";
+
+  // Close Call discoveries persist as DISABLED channels for operator review.
+  // Saved WITHOUT persistAndReload: a disabled channel doesn't affect
+  // scanning, and an engine restart here would kill the live discovery audio
+  // (the helper is playing the find on a spare lane right now).
+  engine.on((ev) => {
+    if (ev.type !== "closecall") return;
+    if (config.channels.some((c) => c.freq === ev.freqHz)) return;
+    const mhz = (ev.freqHz / 1e6).toFixed(4);
+    const channel: Channel = {
+      id: `cc_${randomUUID().slice(0, 8)}`,
+      freq: ev.freqHz,
+      alphaTag: `Close Call ${mhz}`,
+      mode: "nfm",
+      enabled: false,
+    };
+    config = { ...config, channels: [...config.channels, channel] };
+    configStore.save(config);
+  });
 
   // Persist config AND restart the scanner so changes (e.g. editing channels in
   // the admin) take effect immediately, instead of only after a service restart.

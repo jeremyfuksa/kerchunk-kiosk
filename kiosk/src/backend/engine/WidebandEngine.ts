@@ -51,6 +51,7 @@ interface HelperEvent {
   ev: string;
   id?: string | null;
   db?: number;
+  freqHz?: number;
   levels?: Record<string, number>;
   centerHz?: number;
   msg?: string;
@@ -225,6 +226,11 @@ export class WidebandEngine implements ScannerEngine {
           this.groupStartedAt = this.now();
         }
         break;
+      case "closecall":
+        if (typeof ev.freqHz === "number") {
+          this.emit({ type: "closecall", freqHz: ev.freqHz, ts: this.now() });
+        }
+        break;
       case "audible": {
         this.audibleId = typeof ev.id === "string" ? ev.id : null;
         // Surface speaker ownership: the dashboard's now-playing follows
@@ -251,6 +257,15 @@ export class WidebandEngine implements ScannerEngine {
   }
 
   private findChannel(id: string): Channel | null {
+    // Close Call lanes aren't in any group: synthesize a channel so the
+    // dashboard banner / Recent log / activity all work unchanged.
+    const cc = /^cc_(\d+)$/.exec(id);
+    if (cc) {
+      return {
+        id, freq: Number(cc[1]), alphaTag: "CLOSE CALL",
+        mode: "nfm", enabled: true, priority: true,
+      };
+    }
     const group = this.groups[this.groupIndex];
     return group?.channels.find((c) => c.id === id) ?? null;
   }
@@ -266,6 +281,12 @@ export class WidebandEngine implements ScannerEngine {
       centerHz: group.centerHz,
       channels: group.channels.map((c) => ({ id: c.id, freqHz: c.freq, priority: c.priority ?? false })),
       monitor: this.config?.monitor ?? false,
+      // Close Call: ON by default for this engine; knownHz carries EVERY
+      // configured channel (enabled or not) so disabled discoveries and
+      // benched channels never re-trigger detection.
+      closeCall: (this.config?.closeCall ?? true) && !(this.config?.monitor ?? false),
+      closeCallDb: this.config?.closeCallDb ?? 15,
+      knownHz: (this.config?.channels ?? []).map((c) => c.freq),
     };
     this.child.stdin.write(JSON.stringify(cmd) + "\n");
   }

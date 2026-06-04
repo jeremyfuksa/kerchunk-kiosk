@@ -17,6 +17,11 @@ export interface ScanConfig {
   // against its own carrier — and the operator chose to listen to exactly
   // this channel, so gating it is wrong anyway.
   monitor?: boolean;
+  // Close Call (wideband only): discover + play strong non-configured
+  // transmissions in the window. knownHz suppression is built from ALL
+  // config channels by the engine.
+  closeCall?: boolean;
+  closeCallDb?: number;
 }
 
 export type EngineState = "stopped" | "starting" | "running" | "error";
@@ -29,6 +34,10 @@ export type EngineEvent =
   // RtlFmEngine never emits this — there, active IS audible.
   | { type: "audible"; channel: Channel | null; ts: number }
   | { type: "idle"; ts: number }
+  // Close Call discovery: strong RF on a non-configured frequency in the
+  // tuned window. The server persists it as a disabled channel; any audio
+  // from it arrives via normal active/audible events (synthesized channel).
+  | { type: "closecall"; freqHz: number; ts: number }
   | { type: "signal"; dbfs: number; ts: number }
   | { type: "status"; state: EngineState; ts: number }
   | { type: "error"; code: string; message: string; ts: number };

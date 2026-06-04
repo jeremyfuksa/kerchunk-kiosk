@@ -57,7 +57,9 @@ import sys
 import threading
 import time
 
-from gnuradio import analog, audio, blocks, filter as grfilter, gr, soapy
+import numpy as np
+
+from gnuradio import analog, audio, blocks, fft as grfft, filter as grfilter, gr, soapy
 from gnuradio.filter import firdes
 
 MAX_CHANS = 12           # channelizer lanes (always running; ~2.5 cores of 8
@@ -103,6 +105,14 @@ LEVEL_SLEW_DB = 0.3      # max gain change per 20 ms poll (~15 dB/s) — slow,
                          # tones are very chirpy"). RMS envelope + slow slew
                          # cannot track the waveform, so no distortion; gains
                          # are also PER CHANNEL (each repeater keeps its own).
+CC_FFT = 2048            # Close Call: FFT bins over the whole window
+CC_EVERY = 10            # check every 10th poll (~200 ms)
+CC_CONFIRM = 2           # consecutive checks on the same raster freq to fire
+CC_COOLDOWN_S = 300      # per-frequency re-fire suppression
+CC_RASTER_HZ = 12_500    # discoveries round to the 12.5 kHz channel raster
+CC_GUARD_HZ = 12_500     # suppression half-width around known frequencies
+CC_DC_FRAC = 0.02        # exclude +-2% of bins around DC (RTL center spike)
+CC_EDGE_FRAC = 0.10      # exclude outer 10% (channelizer/filter rolloff)
 FLOOR_ALPHA_UP = 0.02    # floor rises slowly
 FLOOR_ALPHA_DOWN = 0.2   # floor falls fast
 
@@ -261,18 +271,39 @@ class Helper(gr.top_block):
         self.chains = [Chain(self, self.src, taps, args.rate, self.adder, i)
                        for i in range(MAX_CHANS)]
 
+        # Close Call: FFT over the full window. Median bin power = noise
+        # floor; a sustained peak well above it on a non-configured frequency
+        # is a nearby transmission (see close_call_check).
+        self.cc_s2v = blocks.stream_to_vector(gr.sizeof_gr_complex, CC_FFT)
+        self.cc_fft = grfft.fft_vcc(
+            CC_FFT, True, grfft.window.blackmanharris(CC_FFT), True, 1)
+        self.cc_mag = blocks.complex_to_mag_squared(CC_FFT)
+        self.cc_probe = blocks.probe_signal_vf(CC_FFT)
+        self.connect(self.src, self.cc_s2v, self.cc_fft, self.cc_mag, self.cc_probe)
+
+        self.cc_enabled = False
+        self.cc_db = 15.0
+        self.known_hz = set()
+        self.cc_cooldown = {}    # rounded freq -> monotonic ts of last fire
+        self.cc_pending = None   # (rounded freq, consecutive count)
+
         self.center_hz = None
         self.monitor = False     # weather-only: hold chain 0 open, no squelch
         self.audible = None      # chain currently gated into the sink
 
     # -- commands ------------------------------------------------------------
 
-    def tune(self, center_hz, channels, monitor=False):
+    def tune(self, center_hz, channels, monitor=False,
+             close_call=False, close_call_db=15.0, known_hz=None):
         if len(channels) > MAX_CHANS:
             emit({"ev": "log",
                   "msg": f"group truncated to {MAX_CHANS} channels"})
             channels = channels[:MAX_CHANS]
         self.monitor = monitor
+        self.cc_enabled = close_call and not monitor
+        self.cc_db = float(close_call_db)
+        self.known_hz = set(known_hz or [])
+        self.cc_pending = None
         self.center_hz = center_hz
         self.src.set_frequency(0, center_hz)
         self.set_audible(None)
@@ -418,8 +449,69 @@ class Helper(gr.top_block):
                         emit({"ev": "close", "id": chain.channel_id})
                         if self.audible is chain:
                             self.set_audible(self.next_open_chain())
+                        if chain.channel_id.startswith("cc_"):
+                            chain.park()   # discovery over: free the lane
                 else:
                     chain.below_since = None
+
+    def close_call_check(self, now):
+        """Find strong RF on non-configured frequencies in the window."""
+        levels = self.cc_probe.level()
+        if not levels or len(levels) != CC_FFT:
+            return
+        db = 10.0 * np.log10(np.asarray(levels) + 1e-20)
+        floor = float(np.median(db))
+
+        rate = self.args.rate
+        mask = np.ones(CC_FFT, dtype=bool)
+        edge = int(CC_FFT * CC_EDGE_FRAC)
+        mask[:edge] = False
+        mask[-edge:] = False
+        dc = CC_FFT // 2
+        dcw = max(1, int(CC_FFT * CC_DC_FRAC))
+        mask[dc - dcw:dc + dcw + 1] = False
+        # Suppress every known frequency (configured channels — enabled or
+        # not — plus anything a lane is currently assigned to).
+        suppress = set(self.known_hz)
+        for c in self.chains:
+            if c.channel_id is not None:
+                suppress.add(self.center_hz + c.xlate.center_freq())
+        binw = rate / CC_FFT
+        for f in suppress:
+            b = int(round((f - self.center_hz) / binw)) + dc
+            g = int(CC_GUARD_HZ / binw) + 1
+            lo, hi = max(0, b - g), min(CC_FFT, b + g + 1)
+            if lo < hi:
+                mask[lo:hi] = False
+
+        if not mask.any():
+            return
+        idx = int(np.argmax(np.where(mask, db, -np.inf)))
+        if db[idx] < floor + self.cc_db:
+            self.cc_pending = None
+            return
+        freq = self.center_hz + (idx - dc) * binw
+        freq = int(round(freq / CC_RASTER_HZ) * CC_RASTER_HZ)
+        last = self.cc_cooldown.get(freq)
+        if last is not None and now - last < CC_COOLDOWN_S:
+            return
+        if self.cc_pending and self.cc_pending[0] == freq:
+            self.cc_pending = (freq, self.cc_pending[1] + 1)
+        else:
+            self.cc_pending = (freq, 1)
+        if self.cc_pending[1] < CC_CONFIRM:
+            return
+
+        self.cc_pending = None
+        self.cc_cooldown[freq] = now
+        emit({"ev": "closecall", "freqHz": freq})
+        # Listen immediately on a parked lane (priority => preempts). The
+        # lane flows through the normal squelch/leveler/fade path and parks
+        # itself again when the transmission closes.
+        for chain in self.chains:
+            if chain.channel_id is None:
+                chain.assign(f"cc_{freq}", freq - self.center_hz, priority=True)
+                break
 
     def next_open_chain(self):
         best = None
@@ -489,13 +581,19 @@ def main():
                     break
                 if cmd.get("cmd") == "tune":
                     helper.tune(cmd["centerHz"], cmd.get("channels", []),
-                                bool(cmd.get("monitor", False)))
+                                bool(cmd.get("monitor", False)),
+                                bool(cmd.get("closeCall", False)),
+                                float(cmd.get("closeCallDb", 15.0)),
+                                cmd.get("knownHz", []))
             if helper.center_hz is not None and not helper.monitor:
-                helper.poll(time.monotonic())
+                now_mono = time.monotonic()
+                helper.poll(now_mono)
                 polls += 1
                 if polls % POWER_EVERY == 0:
                     emit({"ev": "power", "levels": helper.power_levels(),
                           "noise": helper.noise_levels()})
+                if helper.cc_enabled and polls % CC_EVERY == 0:
+                    helper.close_call_check(now_mono)
     finally:
         helper.stop()
         helper.wait()

@@ -135,3 +135,17 @@ describe("channel priority", () => {
     expect(configSchema.safeParse(defaultConfig()).success).toBe(true);
   });
 });
+
+describe("close call config", () => {
+  it("accepts closeCall toggle and closeCallDb threshold", () => {
+    const cfg = structuredClone(defaultConfig()) as Record<string, unknown> & { scan: Record<string, unknown> };
+    cfg.scan.closeCall = false;
+    cfg.scan.closeCallDb = 20;
+    const parsed = configSchema.safeParse(cfg);
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(parsed.data.scan.closeCall).toBe(false);
+      expect(parsed.data.scan.closeCallDb).toBe(20);
+    }
+  });
+});

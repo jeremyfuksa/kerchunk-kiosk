@@ -33,6 +33,13 @@ export const configSchema = z.object({
     // (rejects spurs/AGC pumping/broadband bursts — non-voice junk). Bench
     // default in the DSP helper: -86 (static ~-82, voice carrier -94..-96).
     noiseQuietDb: z.number().negative().optional(),
+    // Close Call: discover strong transmissions in the tuned window on
+    // non-configured frequencies. Plays them (priority preempt) and auto-adds
+    // them as DISABLED channels for operator review. Default ON (wideband).
+    closeCall: z.boolean().optional(),
+    // Discovery threshold: dB over the window's median noise floor. Eager by
+    // default (15) per operator preference.
+    closeCallDb: z.number().positive().optional(),
   }),
   audio: z.object({
     sink: z.string().min(1),

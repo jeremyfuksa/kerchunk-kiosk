@@ -236,3 +236,30 @@ describe("weather mode under wideband (monitor flag)", () => {
     expect(lastStart.monitor).toBe(false);
   });
 });
+
+describe("close call auto-add", () => {
+  it("a closecall event adds a DISABLED channel without restarting the engine", async () => {
+    const { server, engine } = makeApp();
+    let starts = 0;
+    const realStart = engine.start.bind(engine);
+    engine.start = async (sc) => { starts++; return realStart(sc); };
+    engine.emitCloseCall(462887500);
+    await new Promise((r) => setTimeout(r, 20));
+    const channels = (await request(server).get("/api/channels")).body;
+    const cc = channels.find((c: { freq: number }) => c.freq === 462887500);
+    expect(cc).toBeTruthy();
+    expect(cc.enabled).toBe(false);
+    expect(cc.alphaTag).toBe("Close Call 462.8875");
+    expect(starts).toBe(0); // disabled channel: no engine restart
+  });
+
+  it("does not re-add an existing frequency", async () => {
+    const { server, engine } = makeApp();
+    await request(server).post("/api/channels")
+      .send({ freq: 462887500, alphaTag: "Known", mode: "nfm", enabled: true });
+    engine.emitCloseCall(462887500);
+    await new Promise((r) => setTimeout(r, 20));
+    const channels = (await request(server).get("/api/channels")).body;
+    expect(channels.filter((c: { freq: number }) => c.freq === 462887500)).toHaveLength(1);
+  });
+});
