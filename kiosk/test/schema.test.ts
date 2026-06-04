@@ -185,3 +185,14 @@ describe("lookup.radioReference config", () => {
     expect(configSchema.safeParse(cfg).success).toBe(true);
   });
 });
+
+describe("channel levelTrimDb", () => {
+  it("accepts a learned loudness trim", () => {
+    const cfg = { ...defaultConfig(), channels: [
+      { id: "c1", freq: 464275000, alphaTag: "WOF", mode: "nfm", enabled: true, levelTrimDb: -8.5 },
+    ] };
+    const parsed = configSchema.safeParse(cfg);
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.data.channels[0]!.levelTrimDb).toBe(-8.5);
+  });
+});

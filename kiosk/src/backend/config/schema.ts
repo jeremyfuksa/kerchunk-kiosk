@@ -10,6 +10,11 @@ export const channelSchema = z.object({
   // Priority channels preempt the speaker from non-priority ones when both
   // are active in the same group (hardware-scanner "priority scan").
   priority: z.boolean().optional(),
+  // Learned loudness trim (dB) from the per-channel leveler. Persisted by the
+  // server from helper telemetry so trims survive group hops and restarts —
+  // without this the first ~second of every transmission after a hop played
+  // unleveled ("audio jumps", operator-reported).
+  levelTrimDb: z.number().optional(),
 });
 
 export const configSchema = z.object({

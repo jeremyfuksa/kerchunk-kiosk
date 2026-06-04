@@ -38,6 +38,9 @@ export class FakeEngine implements ScannerEngine {
   emitIdle(): void { this.emit({ type: "idle", ts: nextTs() }); }
   skips = 0;
   skip(): void { this.skips++; }
+  emitLevel(channelId: string, db: number): void {
+    this.emit({ type: "level", channelId, db, ts: nextTs() });
+  }
   emitCloseCall(freqHz: number): void {
     this.emit({ type: "closecall", freqHz, ts: nextTs() });
   }

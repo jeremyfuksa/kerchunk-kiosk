@@ -231,8 +231,16 @@ export function renderAdmin(root: HTMLElement): void {
     editingId = "new"; chErr.textContent = ""; renderRows(); tr0Focus();
   });
 
-  api.getConfig().then((cfg) => { vol.value = String(cfg.audio.volume); mute.checked = cfg.audio.muted; });
-  vol.addEventListener("change", () => api.setVolume(Number(vol.value)));
+  // Volume/mute stay in sync with the server (another admin tab, a stale
+  // page across service restarts): poll lightly and update the controls —
+  // but never while the operator is actively holding the slider.
+  function syncAudioControls(cfg: { audio: { volume: number; muted: boolean } }): void {
+    if (document.activeElement !== vol) vol.value = String(cfg.audio.volume);
+    if (document.activeElement !== mute) mute.checked = cfg.audio.muted;
+  }
+  api.getConfig().then(syncAudioControls);
+  setInterval(() => { api.getConfig().then(syncAudioControls).catch(() => {}); }, 5000);
+  vol.addEventListener("change", () => { api.setVolume(Number(vol.value)); vol.blur(); });
   mute.addEventListener("change", () => api.setMuted(mute.checked));
   root.querySelector<HTMLButtonElement>("#skipBtn")!.addEventListener("click", () => api.skip());
 

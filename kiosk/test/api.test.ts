@@ -305,3 +305,26 @@ describe("close call RepeaterBook enrichment", () => {
     expect(channels.find((c: { freq: number }) => c.freq === 464175000).alphaTag).toBe("Close Call 464.1750");
   });
 });
+
+describe("leveler trim persistence (server)", () => {
+  it("a level event saves the channel's trim WITHOUT restarting the engine", async () => {
+    const { server, engine } = makeApp();
+    const created = (await request(server).post("/api/channels")
+      .send({ freq: 464275000, alphaTag: "WOF", mode: "nfm", enabled: true })).body;
+    let starts = 0;
+    const realStart = engine.start.bind(engine);
+    engine.start = async (sc) => { starts++; return realStart(sc); };
+    engine.emitLevel(created.id, -8.5);
+    await new Promise((r) => setTimeout(r, 20));
+    const channels = (await request(server).get("/api/channels")).body;
+    expect(channels[0].levelTrimDb).toBe(-8.5);
+    expect(starts).toBe(0);
+  });
+
+  it("ignores level events for unknown channels (cc lanes)", async () => {
+    const { server, engine } = makeApp();
+    engine.emitLevel("cc_462887500", -3);
+    await new Promise((r) => setTimeout(r, 20));
+    expect((await request(server).get("/api/channels")).body).toEqual([]);
+  });
+});

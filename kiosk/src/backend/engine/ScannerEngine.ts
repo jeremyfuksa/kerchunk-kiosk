@@ -39,6 +39,9 @@ export type EngineEvent =
   // tuned window. The server persists it as a disabled channel; any audio
   // from it arrives via normal active/audible events (synthesized channel).
   | { type: "closecall"; freqHz: number; ts: number }
+  // Leveler telemetry: a channel's learned loudness trim changed. The server
+  // persists it (channel.levelTrimDb) so trims survive hops and restarts.
+  | { type: "level"; channelId: string; db: number; ts: number }
   | { type: "signal"; dbfs: number; ts: number }
   | { type: "status"; state: EngineState; ts: number }
   | { type: "error"; code: string; message: string; ts: number };
