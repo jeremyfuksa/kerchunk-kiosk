@@ -12,6 +12,11 @@ export interface ScanConfig {
   groupDwellMs?: number;
   openAboveFloorDb?: number;
   noiseQuietDb?: number;
+  // Monitor mode (weather-only): hold the channel open and audible with NO
+  // squelch. A lone continuously-keyed station (NOAA) can't be squelched
+  // against its own carrier — and the operator chose to listen to exactly
+  // this channel, so gating it is wrong anyway.
+  monitor?: boolean;
 }
 
 export type EngineState = "stopped" | "starting" | "running" | "error";

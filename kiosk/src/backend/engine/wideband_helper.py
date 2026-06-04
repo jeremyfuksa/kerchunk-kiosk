@@ -262,15 +262,17 @@ class Helper(gr.top_block):
                        for i in range(MAX_CHANS)]
 
         self.center_hz = None
+        self.monitor = False     # weather-only: hold chain 0 open, no squelch
         self.audible = None      # chain currently gated into the sink
 
     # -- commands ------------------------------------------------------------
 
-    def tune(self, center_hz, channels):
+    def tune(self, center_hz, channels, monitor=False):
         if len(channels) > MAX_CHANS:
             emit({"ev": "log",
                   "msg": f"group truncated to {MAX_CHANS} channels"})
             channels = channels[:MAX_CHANS]
+        self.monitor = monitor
         self.center_hz = center_hz
         self.src.set_frequency(0, center_hz)
         self.set_audible(None)
@@ -282,6 +284,17 @@ class Helper(gr.top_block):
             else:
                 chain.park()
         emit({"ev": "tuned", "centerHz": center_hz})
+        if monitor and channels:
+            # Monitor mode (weather-only): the operator chose this channel —
+            # hold it open and audible with NO squelch. A lone continuously-
+            # keyed station (NOAA) can't be squelched against its own carrier.
+            chain = self.chains[0]
+            chain.open = True
+            chain.carrier = True
+            chain.quiet = True
+            emit({"ev": "open", "id": chain.channel_id, "db": 0})
+            self.set_audible(chain)
+            chain.fade_to(chain.level_gain())
 
     def set_audible(self, chain):
         if self.audible is chain:
@@ -475,8 +488,9 @@ def main():
                 if cmd.get("cmd") == "quit":
                     break
                 if cmd.get("cmd") == "tune":
-                    helper.tune(cmd["centerHz"], cmd.get("channels", []))
-            if helper.center_hz is not None:
+                    helper.tune(cmd["centerHz"], cmd.get("channels", []),
+                                bool(cmd.get("monitor", False)))
+            if helper.center_hz is not None and not helper.monitor:
                 helper.poll(time.monotonic())
                 polls += 1
                 if polls % POWER_EVERY == 0:
