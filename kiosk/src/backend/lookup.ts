@@ -37,3 +37,15 @@ export function composeLookups(providers: LookupProvider[]): LookupProvider {
     },
   };
 }
+
+// Source vocabularies differ from ours: RadioReference says "FMN" where this
+// system (and the wider scanner world) says "NFM". Normalize at the provider
+// boundary so storage, display, and mode-mapping all speak one dialect.
+const MODE_ALIASES: Record<string, string> = {
+  FMN: "NFM",
+};
+
+export function normalizeMode(raw: string): string {
+  const up = raw.trim().toUpperCase();
+  return MODE_ALIASES[up] ?? up;
+}
