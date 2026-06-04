@@ -5,10 +5,13 @@
 
 > **Gate before implementing:** This spec has **feasibility risks** that must be
 > de-risked with a spike BEFORE writing an implementation plan — specifically
-> (1) does `csdr` build on this aarch64 Pi and express the per-group
-> channelizer + N FM demods + RMS, and (2) does the 2GB Pi 4 have the CPU
-> headroom for it at 2.4 MS/s. See "Open questions". Do not go straight to
-> writing-plans from this spec; run the spike first and fold results back in.
+> (1) do GNU Radio + SoapySDR install and run on this aarch64 Pi at acceptable
+> disk/RAM cost, and (2) does the 2GB Pi 4 have the CPU/RAM headroom for an
+> FFT/PSD-detect + multi-channel FM-demod flowgraph at ~2.4 MS/s **while also**
+> running the Node backend + Chromium kiosk. The prior-art project
+> (`rtl-sdr-scanner-cpp`) ships as a multi-GB Docker image — strongly suggesting
+> the current 2GB Pi 4 is **under-spec**; see "Hardware feasibility" below. Run
+> the spike first (ideally on the recommended hardware) and fold results back in.
 
 ## Problem this solves
 
@@ -32,10 +35,52 @@ channels from it in software.
 |---|---|
 | Core approach | **Wideband I/Q + software demod** (not per-channel `rtl_fm`) |
 | Where DSP runs | **A separate DSP helper process** (not in Node, not per-channel `rtl_fm`) |
-| DSP implementation | **Glue existing DSP CLI tools** (compose proven blocks; avoid writing a demodulator from scratch) |
+| DSP implementation | **GNU Radio flowgraph in a helper process** (revised — see "Prior art"). Originally "glue csdr CLI tools"; studying `rtl-sdr-scanner-cpp` showed real multi-channel scanning needs a proper DSP framework, not shell-pipe glue. |
+| Detection method | **FFT / power-spectral-density across the whole window + adaptive noise floor** (revised — was per-channel RMS). Detects any transmission in the window, including simultaneous ones. |
 | Multi-band handling | **Group-hop**: auto-cluster channels into ≤2.4 MHz groups; wideband-demod all channels *within* a group simultaneously; retune the front-end *between* groups |
 | Audio conflict (2 channels active in one group) | **First-active wins, hold until idle**, then switch to any other still-active channel |
 | Dashboard | **Unchanged** ("now playing" = the single audible channel). Engine still emits per-channel active state, so a richer UI is a later option. |
+
+## Prior art: `rtl-sdr-scanner-cpp` (shajen) — what we learned
+
+Studied https://github.com/shajen/rtl-sdr-scanner-cpp, a mature C++ multi-channel
+SDR scanner solving nearly this exact problem. Confirmed from its source
+(`sources/radio/`, `CMakeLists.txt`, `Dockerfile`):
+
+- **Same core model as ours (validation):** it "scans/records multiple
+  frequencies in the same time by switching quickly between bandwidth" and
+  "records multiple transmissions simultaneously if on the same band." That is
+  exactly group-hop wideband — sample a window, demod everything in it, hop
+  between windows. Our architecture is sound.
+- **DSP = GNU Radio flowgraph**, not custom DSP and not CLI glue. Its `blocks/`
+  are GNU Radio `sync_block`s: `psd` (FFT power spectral density), `transmission`
+  (detection), `decimator`, `noise_learner`, `spectrogram`, `sdr_source`.
+- **Detection = FFT/PSD + adaptive noise floor**, not per-channel RMS: it
+  computes the power spectrum across the whole sampled window, learns the noise
+  floor (`noise_learner`), and flags bins above threshold. More robust and
+  genuinely catches simultaneous transmissions. **We adopt this concept.**
+- **Device I/O = SoapySDR** (via `gnuradio-soapy`) → device-agnostic.
+- **`scheduler.cpp`** does the window/group scheduling + merges overlapping
+  transmissions — the same job as our grouping/group-hop control.
+- **Heavy dependency stack:** GNU Radio, SoapySDR, Boost, FFTW, liquid-dsp,
+  spdlog, nlohmann/json, Paho MQTT, CLI11; distributed as a multi-GB **Docker**
+  image. Output: file recordings + MQTT notifications + libsndfile.
+
+**Implications adopted into this spec:**
+1. Use a **GNU Radio flowgraph** as the DSP helper (not csdr CLI glue).
+2. Use **FFT/PSD detection with an adaptive noise floor** (not per-channel RMS).
+3. Treat **Pi feasibility as the dominant risk** — this is a heavy stack on a 2GB
+   Pi 4. The spike (below) must prove GNU Radio + SoapySDR runs with acceptable
+   CPU/RAM before any implementation plan.
+4. We do **NOT** adopt their recording/MQTT/Docker surface — our need is live
+   audio to the existing ALSA sink + the existing dashboard, behind our existing
+   `ScannerEngine` interface. We borrow the DSP approach, not the app.
+
+**Alternative not chosen (noted for the record):** run/fork
+`rtl-sdr-scanner-cpp` itself as the backend with our kiosk as a UI over its MQTT
+output. Rejected for now: large dependency + integration surface and a
+recording-oriented design that doesn't match the kiosk's live-listen purpose.
+Revisit if building the GNU Radio flowgraph ourselves proves too costly.
 
 ## Key RF facts (verified on-device)
 
@@ -52,19 +97,26 @@ channels from it in software.
 
 ## Tooling reality (verified on the Pi — IMPORTANT constraints)
 
-The Pi has the full **rtl-sdr suite** (`rtl_sdr`, `rtl_fm`, `rtl_power`,
-`rtl_tcp`, `rtl_test`) and `gcc/g++/make/git`. It does **NOT** have: `csdr`,
-`sox`, GNU Radio, `cmake`, or `librtlsdr-dev` headers. Arch is `aarch64`.
+The Pi (`aarch64`, 2GB Pi 4) has the **rtl-sdr suite** (`rtl_sdr`, `rtl_fm`,
+`rtl_power`, `rtl_tcp`, `rtl_test`) and `gcc/g++/make/git`. It does **NOT** have:
+GNU Radio, SoapySDR, `cmake`, or `librtlsdr-dev` headers.
 
-Consequences for "glue existing DSP tools":
-- `csdr` (the natural channelizer/FM-demod toolkit) is **not installed and not in
-  apt** → it must be **built from source** (needs `cmake` + `librtlsdr-dev`,
-  both currently absent). This is a real prerequisite, not a given.
-- The implementation plan MUST add the build/runtime prerequisites to
-  `kiosk/scripts/setup-kiosk-pi.sh` (e.g. `cmake`, `librtlsdr-dev`, and the csdr
-  build), and account for the deploy model: `deploy.sh` only syncs
-  `dist/node_modules` to `/opt`, so a compiled helper / installed tool is
-  **setup-kiosk-pi.sh territory**, not the deploy pipeline.
+Consequences for the GNU Radio approach:
+- **GNU Radio + SoapySDR** must be installed (`gnuradio`, `gnuradio-dev`,
+  `libsoapysdr-dev`, `soapysdr-module-rtlsdr`), plus a build toolchain if the
+  flowgraph helper is compiled C++ (or `python3-gnuradio` if the helper is a
+  GNU Radio **Python** flowgraph — simpler to write, likely fast enough since
+  the heavy DSP runs in GNU Radio's C++ blocks, not Python).
+- These are **large** packages — disk and the dependency footprint matter on a
+  kiosk SD card. The spike must confirm install size is acceptable.
+- The implementation plan MUST add these prerequisites to
+  `kiosk/scripts/setup-kiosk-pi.sh`. The deploy model is unchanged: `deploy.sh`
+  only syncs `dist/node_modules` to `/opt`, so the DSP helper + GNU Radio
+  install are **setup-kiosk-pi.sh territory**, not the deploy pipeline.
+- **Helper language leaning:** a **GNU Radio Python flowgraph** (gnuradio's
+  Python API) keeps the helper readable and avoids a C++ build step, while the
+  actual signal processing still executes in GNU Radio's compiled blocks. Decide
+  Python-vs-C++ flowgraph during the spike based on measured overhead.
 
 ## Architecture
 
@@ -103,11 +155,13 @@ drop-in engine swap behind the existing interface — the same boundary
 - Pure function → fully testable without hardware.
 
 ### 2. DSP helper invocation + protocol (`WidebandEngine`)
-- Spawns ONE `rtl_sdr` (raw I/Q at the group center) feeding the DSP chain
-  (csdr-composed channelizer + per-channel FM demod + RMS), built from the
-  group's channel offsets relative to center.
-- The helper (or the Node-side glue around the CLI chain) reports, per channel:
-  squelch open/close + RMS, and which channel is currently audible.
+- Spawns ONE **GNU Radio flowgraph** helper, tuned (via SoapySDR) to the group
+  center, configured with the group's channel offsets. The flowgraph:
+  SoapySDR source → FFT/PSD detection + adaptive noise floor (catch any
+  transmission in the window) → per-active-channel FM demod → one audio stream.
+- The helper reports, per channel: detected open/close + power, and which
+  channel is currently audible. Protocol: line-delimited JSON on stdout (cheap
+  for Node to parse), audio on a separate fd / via the ALSA sink directly.
 - Node consumes that, applies **first-active-wins hold**, routes the audible
   channel's audio to the existing ALSA sink, and emits `EngineEvent`s.
 - **Group retune** = tear down the I/Q chain for the current group and start the
@@ -164,6 +218,31 @@ drop-in engine swap behind the existing interface — the same boundary
   and audio holds until it idles, then switches.
 - **No device thrashing**: assert the engine does not restart the I/Q chain on a
   per-channel basis — only on group retune or genuine exit.
+
+## Hardware feasibility (RAM/CPU) — the dominant constraint
+
+The wideband approach is **GNU Radio + SoapySDR + FFT/PSD + multi-channel FM
+demod at ~2.4 MS/s**, running alongside the existing Node backend and the
+Chromium kiosk display. The current device — **Raspberry Pi 4, 2GB** — is almost
+certainly **under-spec** for this (the prior-art project ships as a multi-GB
+Docker image; Chromium + cage already consume meaningful RAM on this Pi, which is
+why the display unit caps V8 heap and renderer processes).
+
+Guidance (to validate in the spike, not gospel):
+
+| Hardware | RAM | Verdict for wideband + kiosk |
+|---|---|---|
+| **Pi 4 / Pi 5, 2GB** (current) | 2GB | **Too tight.** GNU Radio's working set + Chromium + Node leaves little headroom; risk of swap thrash on a 2GB box. The existing zram tuning is a sign it's already RAM-pressured. |
+| **Pi 5, 4GB** | 4GB | **Workable minimum.** Pi 5 also has ~2–3× the CPU of the Pi 4 (matters for real-time FFT/demod) and proper USB3. Reasonable floor for wideband. |
+| **Pi 5, 8GB** | 8GB | **Recommended.** Comfortable headroom for GNU Radio + Chromium + Node + future channels/groups, with margin so the kiosk UI stays responsive while DSP runs. |
+| x86 mini-PC (e.g. N100, 8–16GB) | 8GB+ | **Most headroom**, if the appliance form factor allows it; trivially handles GNU Radio. Overkill unless you want recording/transcoding later. |
+
+**Recommendation:** target a **Pi 5 with 8GB** (4GB the bare minimum) for the
+wideband engine. The Pi 5's stronger CPU and USB3 also reduce the USB-wedge risk
+class entirely. **Key point: the lean hotfix engine (per-channel `rtl_fm`,
+2000ms hop) runs fine on the current 2GB Pi 4 — only the wideband redesign needs
+the hardware bump.** So hardware spend is tied to *wanting* simultaneous
+multi-channel monitoring, not to having a working scanner.
 
 ## Out of scope (explicit)
 - Covering VHF + UHF *simultaneously* (physically impossible with one dongle).
