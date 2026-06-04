@@ -406,3 +406,12 @@ body {
   color: var(--caution);
   border-color: color-mix(in srgb, var(--golden-amber) 45%, transparent);
 }
+
+/* Discoveries Mode column — same plain-text treatment as the channels table,
+   caution color for digital (undecodable here), dim em-dash when unknown */
+.admin .dMode { color: var(--label); white-space: nowrap; }
+.admin .dMode.digital { color: var(--caution); }
+@media (max-width: 560px) {
+  .admin .discoveries .chTable th:nth-child(4),
+  .admin .discoveries .chTable td.dMode { display: none; } /* detail row keeps it */
+}

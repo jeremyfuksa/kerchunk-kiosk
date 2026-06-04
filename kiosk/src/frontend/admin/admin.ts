@@ -69,7 +69,7 @@ export function renderAdmin(root: HTMLElement): void {
         </div>
         <div class="tableWrap">
           <table class="chTable">
-            <thead><tr><th><input id="dcAll" type="checkbox" title="Select all" /></th><th>Freq (MHz)</th><th>Name</th><th></th></tr></thead>
+            <thead><tr><th><input id="dcAll" type="checkbox" title="Select all" /></th><th>Freq (MHz)</th><th>Name</th><th>Mode</th><th></th></tr></thead>
             <tbody id="dcRows"></tbody>
           </table>
         </div>
@@ -139,11 +139,6 @@ export function renderAdmin(root: HTMLElement): void {
   // this radio demodulates analog FM only, so a DMR/P25 discovery explains
   // itself ("that's why it sounds like a wood chipper").
   const DIGITAL = ["DMR", "P25", "NXDN", "D-STAR", "YSF", "TETRA"];
-  function modeChip(mode?: string): string {
-    if (!mode) return "";
-    const digital = DIGITAL.some((d) => mode.toUpperCase().includes(d));
-    return ` <span class="modeChip${digital ? " digital" : ""}">${esc(mode.toUpperCase())}</span>`;
-  }
 
   // "Olathe, KS" chip for anything an identification source located.
   function locChip(loc?: { city?: string; state?: string }): string {
@@ -322,13 +317,14 @@ export function renderAdmin(root: HTMLElement): void {
     const present = new Set(ds.map((d) => d.id));
     for (const id of dcSelected) if (!present.has(id)) dcSelected.delete(id);
     dcRows.innerHTML = ds.length === 0
-      ? `<tr><td colspan="4" class="empty">nothing pending — Close Call is hunting</td></tr>`
+      ? `<tr><td colspan="5" class="empty">nothing pending — Close Call is hunting</td></tr>`
       : ds.map((d) => `<tr data-id="${esc(d.id)}" class="dcRow${dcExpanded.has(d.id) ? " open" : ""}">
           <td><input type="checkbox" class="dSel" ${dcSelected.has(d.id) ? "checked" : ""} /></td>
           <td><button class="dToggle" aria-label="Details"><span class="chev"></span></button>${fmtFreq(d.freq)}</td>
-          <td>${esc(d.alphaTag)}${modeChip(d.mode)}${locChip(d.location)}</td>
+          <td>${esc(d.alphaTag)}${locChip(d.location)}</td>
+          <td class="dMode${d.mode && DIGITAL.some((x) => d.mode!.toUpperCase().includes(x)) ? " digital" : ""}">${d.mode ? esc(d.mode.toUpperCase()) : "—"}</td>
           <td class="actions">${iconBtn("dListen", "listen", "Listen — audition this discovery")}${iconBtn("dAdd", "add", "Add as an enabled channel")}${iconBtn("dLock", "lockout", "Lockout — never Close-Call this frequency again")}${iconBtn("dDismiss", "dismiss", "Dismiss (may be rediscovered later)")}</td>
-        </tr>${dcExpanded.has(d.id) ? `<tr class="dcDetail"><td></td><td colspan="3">
+        </tr>${dcExpanded.has(d.id) ? `<tr class="dcDetail"><td></td><td colspan="4">
           <span class="dl">found</span> ${new Date(d.ts).toLocaleString()}
           ${d.mode ? `<span class="dl">mode</span> ${esc(d.mode)}` : ""}
           <span class="dl">freq</span> ${d.freq.toLocaleString()} Hz
