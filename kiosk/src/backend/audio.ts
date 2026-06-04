@@ -37,35 +37,35 @@ export function cardFromSink(sink: string): number | null {
   return null;
 }
 
-// The UI's 0-100 is compressed into the mixer's usable upper window. Even in
-// amixer's mapped (-M) mode, HDA codecs put the bottom ~half of the scale at
-// near-silence, so every audible change crammed into a small slider segment —
-// operator-reported as "barely touch it and the volume swings wildly". UI 1
-// lands at FLOOR+0.5%, UI 100 at 100%; UI 0 stays 0 (true silence).
-const VOLUME_FLOOR_PCT = 50;
+// The slider is a LOG FADER: UI 1-100 maps linearly onto VOLUME_MIN_DB..0 dB
+// (UI 0 = raw 0 = silence). Loudness perception is linear in dB, so this puts
+// the same perceived step on every slider notch, across the whole travel.
+// Percent-based control could not do this here: raw % is linear in register
+// steps and even amixer -M's mapped curve bunched all audible change into a
+// sliver on the CS4208 (operator: "5 pixels around the 5% mark between
+// silence and full volume"). The codec spans -63.5..0 dB; below ~-45 dB is
+// effectively inaudible in a car/room, so that's the fader's bottom.
+const VOLUME_MIN_DB = -45;
 
-function uiToMixerPercent(ui: number): number {
+function uiToDb(ui: number): string {
   const clamped = Math.max(0, Math.min(100, Math.round(ui)));
-  if (clamped === 0) return 0;
-  return Math.round(VOLUME_FLOOR_PCT + (clamped * (100 - VOLUME_FLOOR_PCT)) / 100);
+  const db = VOLUME_MIN_DB + (clamped * -VOLUME_MIN_DB) / 100;
+  return `${db.toFixed(2)}dB`;
 }
 
 export async function setVolume(percent: number, opts: AmixerOpts = {}): Promise<void> {
   const run = opts.run ?? defaultRun;
   const card = opts.card ?? 0;
   const control = opts.control ?? "Master";
-  const clamped = uiToMixerPercent(percent);
+  const clamped = Math.max(0, Math.min(100, Math.round(percent)));
   // Never reject: a non-zero exit (e.g. HDMI cards exposing no mixer control)
   // or a spawn error must degrade to a safe no-op, not crash the boot chain.
   //
-  // -M (mapped-volume) is essential, not cosmetic. amixer's default raw mode
-  // maps the percent LINEARLY over the control's raw value range, which is a dB
-  // scale. The bcm2835 headphone PCM control spans -102.39..+4.00 dB, so a raw
-  // "70%" lands near -28 dB — inaudible. Mapped mode applies ALSA's perceptual
-  // curve so the slider percent matches perceived loudness. Without it, moving
-  // the volume slider silences the audio (it looks like a crash but isn't).
+  // UI 0 is true silence (raw 0%); everything else is the dB fader (uiToDb).
+  // "--" stops amixer parsing the negative dB value as an option flag.
+  const value = clamped === 0 ? "0%" : uiToDb(clamped);
   try {
-    const result = await run("amixer", ["-M", "-c", String(card), "sset", control, `${clamped}%`]);
+    const result = await run("amixer", ["-c", String(card), "--", "sset", control, value]);
     if (result.code !== 0) return; // no mixer control available; swallow
   } catch {
     /* spawn/runner failure -> no-op */
