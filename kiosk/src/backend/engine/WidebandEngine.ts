@@ -32,6 +32,9 @@ export interface WidebandEngineOptions {
 }
 
 const DEFAULT_WINDOW_HZ = 2_000_000;
+// Must match MAX_CHANS in wideband_helper.py (its channelizer lane count).
+// Grouping splits oversized clusters so the helper never truncates.
+const MAX_CHANNELS_PER_GROUP = 12;
 const DEFAULT_GROUP_DWELL_MS = 3000;
 const SIGNAL_THROTTLE_MS = 1000;
 const QUIT_GRACE_MS = 500;
@@ -115,7 +118,11 @@ export class WidebandEngine implements ScannerEngine {
     }
 
     this.config = config;
-    this.groups = groupChannels(config.channels, config.windowBandwidthHz ?? DEFAULT_WINDOW_HZ);
+    this.groups = groupChannels(
+      config.channels,
+      config.windowBandwidthHz ?? DEFAULT_WINDOW_HZ,
+      MAX_CHANNELS_PER_GROUP,
+    );
     this.groupIndex = 0;
     this.stopping = false;
 
@@ -139,6 +146,9 @@ export class WidebandEngine implements ScannerEngine {
       "--open-db", String(cfg.openAboveFloorDb ?? 9),
     ];
     if (cfg.gain !== "auto") args.push("--gain", String(cfg.gain));
+    // Quieting squelch threshold: only passed when configured — the helper's
+    // default is bench-calibrated for this hardware.
+    if (cfg.noiseQuietDb !== undefined) args.push("--quiet-db", String(cfg.noiseQuietDb));
     return args;
   }
 
@@ -213,9 +223,15 @@ export class WidebandEngine implements ScannerEngine {
           this.groupStartedAt = this.now();
         }
         break;
-      case "audible":
+      case "audible": {
         this.audibleId = typeof ev.id === "string" ? ev.id : null;
+        // Surface speaker ownership: the dashboard's now-playing follows
+        // THIS, not "active" (any of the group's channels opening), so the
+        // banner can't hop away from what is actually playing.
+        const channel = this.audibleId ? this.findChannel(this.audibleId) : null;
+        this.emit({ type: "audible", channel, ts: this.now() });
         break;
+      }
       case "power": {
         if (!this.audibleId || !ev.levels) return;
         const db = ev.levels[this.audibleId];

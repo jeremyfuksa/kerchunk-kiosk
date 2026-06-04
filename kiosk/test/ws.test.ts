@@ -64,3 +64,28 @@ describe("WsHub state replay on connect", () => {
     expect(late.send).not.toHaveBeenCalled();
   });
 });
+
+describe("WsHub replay prefers audible", () => {
+  const wof = { id: "wof", freq: 464275000, alphaTag: "WoF", mode: "nfm" as const, enabled: true };
+  const gmrs = { id: "g22", freq: 462725000, alphaTag: "G22", mode: "nfm" as const, enabled: true };
+
+  it("replays the audible owner, not the most recent open", () => {
+    const hub = new WsHub();
+    hub.broadcast({ type: "active", channel: wof, freq: wof.freq, ts: 1 });
+    hub.broadcast({ type: "audible", channel: wof, ts: 1 });
+    hub.broadcast({ type: "active", channel: gmrs, freq: gmrs.freq, ts: 2 });
+    const late = fakeClient();
+    hub.add(late);
+    expect(late.send).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(late.send.mock.calls[0][0]).channel.id).toBe("wof");
+  });
+
+  it("audible null clears the replay", () => {
+    const hub = new WsHub();
+    hub.broadcast({ type: "audible", channel: wof, ts: 1 });
+    hub.broadcast({ type: "audible", channel: null, ts: 2 });
+    const late = fakeClient();
+    hub.add(late);
+    expect(late.send).not.toHaveBeenCalled();
+  });
+});

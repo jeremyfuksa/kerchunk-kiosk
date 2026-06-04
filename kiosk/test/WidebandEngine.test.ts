@@ -199,3 +199,22 @@ describe("WidebandEngine", () => {
     expect(dead).toBe(true);
   });
 });
+
+describe("audible passthrough", () => {
+  it("helper audible events surface as audible EngineEvents with the full channel", async () => {
+    const { engine, events } = makeEngine({
+      FAKE_WB_SCRIPT: [
+        `{"ev":"open","id":"${VHF_A.id}","db":-12}`,
+        `{"ev":"audible","id":"${VHF_A.id}"}`,
+        "sleep:100",
+        `{"ev":"audible","id":null}`,
+      ].join("\n"),
+    });
+    await engine.start(cfg([VHF_A, VHF_B]));
+    await waitFor(() => events.filter((e) => e.type === "audible").length >= 2, 1500);
+    await engine.stop();
+    const audibles = events.filter((e) => e.type === "audible") as Array<{ type: "audible"; channel: unknown }>;
+    expect((audibles[0]!.channel as { id: string }).id).toBe(VHF_A.id);
+    expect(audibles[1]!.channel).toBeNull();
+  });
+});

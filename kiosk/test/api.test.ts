@@ -173,6 +173,7 @@ describe("wideband config passthrough", () => {
     cfg.scan.windowBandwidthHz = 1_500_000;
     cfg.scan.groupDwellMs = 4000;
     cfg.scan.openAboveFloorDb = 12;
+    cfg.scan.noiseQuietDb = -84;
     expect((await request(server).put("/api/config").send(cfg)).status).toBe(200);
 
     let lastStart: any = null;
@@ -182,5 +183,6 @@ describe("wideband config passthrough", () => {
     expect(lastStart.windowBandwidthHz).toBe(1_500_000);
     expect(lastStart.groupDwellMs).toBe(4000);
     expect(lastStart.openAboveFloorDb).toBe(12);
+    expect(lastStart.noiseQuietDb).toBe(-84);
   });
 });

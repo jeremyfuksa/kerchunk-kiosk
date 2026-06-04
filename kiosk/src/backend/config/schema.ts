@@ -25,6 +25,11 @@ export const configSchema = z.object({
     // Squelch: open when channel power exceeds its learned noise floor by
     // this many dB (close threshold sits 3 dB lower for hysteresis).
     openAboveFloorDb: z.number().positive().optional(),
+    // Quieting squelch: discriminator HF-noise level (dB) BELOW which a
+    // channel counts as carrier-quieted. Power without quieting never opens
+    // (rejects spurs/AGC pumping/broadband bursts — non-voice junk). Bench
+    // default in the DSP helper: -86 (static ~-82, voice carrier -94..-96).
+    noiseQuietDb: z.number().negative().optional(),
   }),
   audio: z.object({
     sink: z.string().min(1),

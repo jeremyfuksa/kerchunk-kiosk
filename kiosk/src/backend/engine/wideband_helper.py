@@ -60,7 +60,10 @@ import time
 from gnuradio import analog, audio, blocks, filter as grfilter, gr, soapy
 from gnuradio.filter import firdes
 
-MAX_CHANS = 8
+MAX_CHANS = 12           # channelizer lanes (always running; ~2.5 cores of 8
+                         # at 12). Must match MAX_CHANNELS_PER_GROUP in
+                         # WidebandEngine.ts — grouping splits clusters bigger
+                         # than this so tune never truncates.
 QUAD_RATE = 48_000
 AUDIO_RATE = 48_000
 POLL_S = 0.02            # detection/gate poll — 20 ms so the audio gate can
@@ -76,6 +79,12 @@ CLOSE_HYST_DB = 3.0
 GATE_HYST_DB = 1.0       # +-0.5 dB around the gate threshold so the fast
                          # (10 ms) power estimate can't flutter the audio
                          # on/off on a weak-but-open signal
+NOISE_HPF_HZ = 8_000     # HF-noise band for the quieting squelch: voice lives
+                         # below ~3 kHz; an FM carrier quiets the discriminator
+                         # above that, while no-carrier static is broadband
+                         # and LOUD up here. This is how hardware scanners
+                         # tell a transmission from junk power.
+QUIET_HYST_DB = 2.0      # +-1 dB around the quieting threshold
 FLOOR_ALPHA_UP = 0.02    # floor rises slowly
 FLOOR_ALPHA_DOWN = 0.2   # floor falls fast
 
@@ -102,10 +111,24 @@ class Chain:
         self.probe_fast = blocks.probe_signal_f()
         self.demod = analog.nbfm_rx(
             audio_rate=AUDIO_RATE, quad_rate=QUAD_RATE, tau=75e-6, max_dev=5_000)
+        # Quieting squelch: HF-noise power in the demod output. A genuine FM
+        # carrier suppresses discriminator noise above the voice band; static
+        # (no carrier) is broadband and loud there. ~10 ms average so the
+        # audio gate can use it too.
+        hpf_taps = firdes.high_pass(1.0, AUDIO_RATE, NOISE_HPF_HZ, 2_000)
+        self.noise_hpf = grfilter.fir_filter_fff(1, hpf_taps)
+        self.noise_sq = blocks.multiply_ff(1)
+        self.noise_avg = blocks.moving_average_ff(
+            AUDIO_RATE // 100, 100.0 / AUDIO_RATE)
+        self.noise_probe = blocks.probe_signal_f()
         self.gate = blocks.multiply_const_ff(0.0)
         tb.connect(src, self.xlate, self.mag2, self.avg, self.probe)
         tb.connect(self.mag2, self.avg_fast, self.probe_fast)
         tb.connect(self.xlate, self.demod, self.gate)
+        tb.connect(self.demod, self.noise_hpf)
+        tb.connect(self.noise_hpf, (self.noise_sq, 0))
+        tb.connect(self.noise_hpf, (self.noise_sq, 1))
+        tb.connect(self.noise_sq, self.noise_avg, self.noise_probe)
         tb.connect(self.gate, (adder, port))
 
         self.channel_id = None   # None = parked (no channel assigned)
@@ -115,6 +138,7 @@ class Chain:
         self.floor_db = None
         self.open = False
         self.carrier = False   # instantaneous carrier presence (fast audio gate)
+        self.quiet = False     # discriminator quieted (HF noise below threshold)
         self.above_polls = 0
         self.below_since = None
         self.warmup = WARMUP_POLLS
@@ -137,6 +161,10 @@ class Chain:
 
     def fast_power_db(self):
         p = self.probe_fast.level()
+        return 10 * math.log10(p) if p > 0 else -120.0
+
+    def noise_db(self):
+        p = self.noise_probe.level()
         return 10 * math.log10(p) if p > 0 else -120.0
 
 
@@ -213,6 +241,7 @@ class Helper(gr.top_block):
 
     def poll(self, now):
         open_db = self.args.open_db
+        quiet_db = self.args.quiet_db
         hang_s = self.args.hang_ms / 1000.0
 
         # Pass 1: update per-chain floors (frozen while a chain is open).
@@ -260,11 +289,20 @@ class Helper(gr.top_block):
                 chain.carrier = fast_db > gate_thresh - GATE_HYST_DB / 2
             else:
                 chain.carrier = fast_db > gate_thresh + GATE_HYST_DB / 2
+            # Quieting check: only a real FM carrier suppresses discriminator
+            # HF noise. Power above floor WITHOUT quieting is junk (AGC pump,
+            # spur, broadband burst) — the hardware-scanner behavior the
+            # operator expects. Hysteresis so a marginal signal doesn't chop.
+            noise = chain.noise_db()
+            if chain.quiet:
+                chain.quiet = noise < quiet_db + QUIET_HYST_DB / 2
+            else:
+                chain.quiet = noise < quiet_db - QUIET_HYST_DB / 2
             if self.audible is chain:
-                chain.gate.set_k(1.0 if chain.carrier else 0.0)
+                chain.gate.set_k(1.0 if (chain.carrier and chain.quiet) else 0.0)
 
             if not chain.open:
-                if db > floor + open_db:
+                if db > floor + open_db and chain.quiet:
                     chain.above_polls += 1
                     if chain.above_polls >= OPEN_POLLS:
                         chain.open = True
@@ -299,6 +337,10 @@ class Helper(gr.top_block):
         return {c.channel_id: round(c.power_db(), 1)
                 for c in self.chains if c.channel_id is not None}
 
+    def noise_levels(self):
+        return {c.channel_id: round(c.noise_db(), 1)
+                for c in self.chains if c.channel_id is not None}
+
 
 def stdin_reader(q):
     for line in sys.stdin:
@@ -319,6 +361,13 @@ def main():
     ap.add_argument("--gain", default="auto", help='tuner gain dB or "auto"')
     ap.add_argument("--open-db", type=float, default=9.0,
                     help="dB above learned floor to open squelch")
+    ap.add_argument("--quiet-db", type=float, default=-86.0,
+                    help="discriminator HF-noise level (dB) BELOW which the "
+                         "channel counts as carrier-quieted; power without "
+                         "quieting never opens (rejects non-voice junk). "
+                         "Default bench-calibrated on this hardware: dead "
+                         "channels read ~-82, voice carriers -94..-96 "
+                         "(2026-06-04, see PR)")
     ap.add_argument("--hang-ms", type=float, default=2000.0,
                     help="sustained silence before close")
     args = ap.parse_args()
@@ -346,7 +395,8 @@ def main():
                 helper.poll(time.monotonic())
                 polls += 1
                 if polls % POWER_EVERY == 0:
-                    emit({"ev": "power", "levels": helper.power_levels()})
+                    emit({"ev": "power", "levels": helper.power_levels(),
+                          "noise": helper.noise_levels()})
     finally:
         helper.stop()
         helper.wait()

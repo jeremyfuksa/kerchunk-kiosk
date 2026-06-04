@@ -38,6 +38,7 @@ function toScanConfig(cfg: Config, mode: "scan" | "weather"): ScanConfig {
     windowBandwidthHz: cfg.scan.windowBandwidthHz,
     groupDwellMs: cfg.scan.groupDwellMs,
     openAboveFloorDb: cfg.scan.openAboveFloorDb,
+    noiseQuietDb: cfg.scan.noiseQuietDb,
   };
 }
 

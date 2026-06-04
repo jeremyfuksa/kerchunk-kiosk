@@ -72,3 +72,49 @@ describe("status resets nowPlaying", () => {
     expect(s.nowPlaying).toBeNull();
   });
 });
+
+describe("audible events own now-playing (wideband)", () => {
+  const wof = { id: "wof", freq: 464275000, alphaTag: "WoF Maint", mode: "nfm" as const, enabled: true };
+  const gmrs = { id: "g22", freq: 462725000, alphaTag: "GMRS 22", mode: "nfm" as const, enabled: true };
+
+  it("audible sets nowPlaying; a later active on ANOTHER channel moves the log but not nowPlaying", () => {
+    // Operator-observed: audio held WoF Maintenance (first-active-wins) but
+    // the banner hopped to whichever channel opened next in the same group.
+    let s = reduce(initialState(), { type: "active", channel: wof, freq: wof.freq, ts: 1 });
+    s = reduce(s, { type: "audible", channel: wof, ts: 1 });
+    s = reduce(s, { type: "active", channel: gmrs, freq: gmrs.freq, ts: 2 });
+    expect(s.nowPlaying?.alphaTag).toBe("WoF Maint");
+    expect(s.log[0]?.alphaTag).toBe("GMRS 22"); // recent list still records it
+  });
+
+  it("audible null clears nowPlaying", () => {
+    let s = reduce(initialState(), { type: "audible", channel: wof, ts: 1 });
+    s = reduce(s, { type: "audible", channel: null, ts: 2 });
+    expect(s.nowPlaying).toBeNull();
+  });
+
+  it("audible handoff moves nowPlaying to the new speaker owner", () => {
+    let s = reduce(initialState(), { type: "audible", channel: wof, ts: 1 });
+    s = reduce(s, { type: "audible", channel: gmrs, ts: 2 });
+    expect(s.nowPlaying?.alphaTag).toBe("GMRS 22");
+  });
+
+  it("without any audible events, active still drives nowPlaying (rtlfm engine)", () => {
+    const s = reduce(initialState(), { type: "active", channel: wof, freq: wof.freq, ts: 1 });
+    expect(s.nowPlaying?.alphaTag).toBe("WoF Maint");
+  });
+
+  it("idle does not clear an audible-driven nowPlaying (another channel may close while the speaker plays on)", () => {
+    let s = reduce(initialState(), { type: "audible", channel: wof, ts: 1 });
+    s = reduce(s, { type: "idle", ts: 2 });
+    expect(s.nowPlaying?.alphaTag).toBe("WoF Maint");
+  });
+
+  it("status reset returns control to active events", () => {
+    let s = reduce(initialState(), { type: "audible", channel: wof, ts: 1 });
+    s = reduce(s, { type: "status", state: "running", ts: 2 });
+    expect(s.nowPlaying).toBeNull();
+    s = reduce(s, { type: "active", channel: gmrs, freq: gmrs.freq, ts: 3 });
+    expect(s.nowPlaying?.alphaTag).toBe("GMRS 22");
+  });
+});

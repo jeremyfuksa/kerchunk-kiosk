@@ -104,3 +104,19 @@ describe("mixerCard by name", () => {
     expect(configSchema.safeParse(cfg).success).toBe(true);
   });
 });
+
+describe("noiseQuietDb", () => {
+  it("accepts a negative dB quieting threshold and preserves it", () => {
+    const cfg = structuredClone(defaultConfig()) as Record<string, unknown> & { scan: Record<string, unknown> };
+    cfg.scan.noiseQuietDb = -86;
+    const parsed = configSchema.safeParse(cfg);
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.data.scan.noiseQuietDb).toBe(-86);
+  });
+
+  it("rejects a positive value (it is a below-threshold in dB)", () => {
+    const cfg = structuredClone(defaultConfig()) as Record<string, unknown> & { scan: Record<string, unknown> };
+    cfg.scan.noiseQuietDb = 10;
+    expect(configSchema.safeParse(cfg).success).toBe(false);
+  });
+});

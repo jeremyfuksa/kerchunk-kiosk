@@ -5,10 +5,19 @@ import "./dashboard.css";
 
 export interface NowPlaying { freq: number; alphaTag: string; }
 export interface LogRow { freq: number; alphaTag: string; ts: number; }
-export interface DashState { nowPlaying: NowPlaying | null; log: LogRow[]; error: string | null; }
+export interface DashState {
+  nowPlaying: NowPlaying | null;
+  log: LogRow[];
+  error: string | null;
+  // True once an "audible" event has been seen: the engine reports speaker
+  // ownership explicitly (wideband), so "active" stops driving nowPlaying —
+  // many channels can be active while exactly one is audible. RtlFm never
+  // emits audible, so there active keeps driving (its active IS audible).
+  audibleDriven: boolean;
+}
 
 export function initialState(): DashState {
-  return { nowPlaying: null, log: [], error: null };
+  return { nowPlaying: null, log: [], error: null, audibleDriven: false };
 }
 
 export function reduce(s: DashState, ev: EngineEvent): DashState {
@@ -20,20 +29,30 @@ export function reduce(s: DashState, ev: EngineEvent): DashState {
       return {
         ...s,
         error: null,
-        nowPlaying: { freq: ev.freq, alphaTag: ev.channel.alphaTag },
+        // The Recent log records every opening; nowPlaying only follows when
+        // the engine doesn't report audibility explicitly.
+        nowPlaying: s.audibleDriven ? s.nowPlaying : { freq: ev.freq, alphaTag: ev.channel.alphaTag },
         log: [{ freq: ev.freq, alphaTag: ev.channel.alphaTag, ts: ev.ts }, ...s.log].slice(0, 100),
       };
+    case "audible":
+      return {
+        ...s,
+        error: null,
+        audibleDriven: true,
+        nowPlaying: ev.channel ? { freq: ev.channel.freq, alphaTag: ev.channel.alphaTag } : null,
+      };
     case "idle":
-      return { ...s, error: null, nowPlaying: null };
+      return { ...s, error: null, nowPlaying: s.audibleDriven ? s.nowPlaying : null };
     case "error":
       return { ...s, error: ev.message };
     case "status":
       // Any engine state transition means playback context reset: a restart
       // (e.g. channel edit) kills the helper without squelch-close events, so
-      // now-playing must not survive it — a fresh "active" re-establishes it.
+      // now-playing must not survive it — a fresh active/audible
+      // re-establishes it (audibleDriven resets too: the engine kind may change).
       return ev.state === "running"
-        ? { ...s, error: null, nowPlaying: null }
-        : { ...s, nowPlaying: null };
+        ? { ...s, error: null, nowPlaying: null, audibleDriven: false }
+        : { ...s, nowPlaying: null, audibleDriven: false };
     default:
       return s;
   }
