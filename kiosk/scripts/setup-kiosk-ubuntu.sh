@@ -31,7 +31,7 @@ sudo apt-get update
 sudo apt-get install -y \
   rtl-sdr soapysdr-tools soapysdr-module-rtlsdr gnuradio python3-numpy \
   alsa-utils \
-  cage wlrctl nodejs
+  cage wlrctl nodejs npm
 
 echo "[setup] Installing Chromium (snap — the only Chromium on Ubuntu)..."
 snap list chromium >/dev/null 2>&1 || sudo snap install chromium
@@ -74,7 +74,12 @@ EOF
 sudo update-grub 2>&1 | tail -1
 
 echo "[setup] Building the kiosk app..."
-(cd "$REPO_DIR" && npm install --silent && npm run build >/dev/null)
+# Build as the repo owner, not root (this script is usually `sudo bash`-ed):
+# root-owned node_modules/dist would break later user-run builds. Plain
+# `bash -c` (no login shell) keeps mise out of it — system node/npm, same
+# interpreter the systemd unit uses.
+REPO_OWNER="$(stat -c %U "$REPO_DIR")"
+sudo -u "$REPO_OWNER" -H bash -c "cd '$REPO_DIR' && /usr/bin/npm install --silent && /usr/bin/npm run build" >/dev/null
 
 if ! sudo test -f "$STATE_DIR/config.json"; then
   echo "[setup] Seeding default config (audio sink $AUDIO_SINK, NOAA test channel)..."
