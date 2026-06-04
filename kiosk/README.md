@@ -1,13 +1,14 @@
-# Kerchunk Kiosk
+# Kerchunk Kiosk — application
 
-A Pi 4 + HD-display sibling to the headless pocket Kerchunk. Output-only
-dashboard on the attached screen, HDMI audio, web admin from any device. v1 drives
-`rtl_fm` one channel at a time and detects activity from PCM audio energy (a
-hardware capture showed this `rtl_fm` build emits no usable per-channel stderr),
-hopping the channel list itself; the radio sits behind a `ScannerEngine`
-interface so a future parallel engine drops in cleanly.
+The scanner application: TypeScript backend (engine control, HTTP/WS API,
+config), kiosk dashboard + web admin frontends, and the GNU Radio DSP helper
+(`src/backend/engine/wideband_helper.py`). The default **wideband engine**
+demodulates every channel in a 2 MHz window simultaneously behind the
+`ScannerEngine` interface; the original sequential `rtl_fm` engine remains as
+`KERCHUNK_ENGINE=rtlfm` for Pi-class hardware.
 
-See [the design spec](../docs/superpowers/specs/2026-06-02-kerchunk-kiosk-design.md).
+Specs live in [../docs/superpowers/specs/](../docs/superpowers/specs/) —
+start with the wideband engine (2026-06-03) and Close Call (2026-06-05).
 
 ## Develop on a Mac/PC (no dongle)
 

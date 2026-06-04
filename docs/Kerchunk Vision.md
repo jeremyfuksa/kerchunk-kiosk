@@ -5,6 +5,14 @@ updated: 2026-05-07
 vault: Tism
 topic: kerchunk-vision
 ---
+> **STATUS (2026-06-05):** this document is the ORIGINAL vision (Pi Zero
+> pocket scanner, Bluetooth audio). The project pivoted: it shipped as the
+> **Kerchunk Kiosk** — a laptop-based wideband SDR scanner appliance with
+> simultaneous multi-channel monitoring and Close Call discovery. See the
+> repo README and `docs/superpowers/specs/` for what was actually built.
+> Kept for the record; the P25/trunking ambitions below remain on the
+> long-term backlog.
+
 Summary:: A pocket-sized Bluetooth car scanner. A Raspberry Pi Zero 2 W and an RTL-SDR dongle on a sandwich carrier PCB, in a 3D-printed case, pairing with the car stereo and monitoring multiple channels in parallel. Analog FM/NFM/AM at launch; P25 Phase 1 in a v1.1 firmware update.
 Next:: Build the M1 prototype on a stock Pi Zero 2 W: `rtl_fm` + `bluez-alsa` A2DP source streaming a local 2 m repeater to paired earbuds for 60 seconds clean.
 Context:: April 2026 hyperfocus project. The product is a Bluetooth car scanner that uses an RTL-SDR's wide capture to monitor multiple channels in parallel rather than scanning serially. Architected around a Raspberry Pi Zero 2 W, an RTL-SDR dongle, and a sandwich carrier PCB; one product, two SKUs (Bundle / Assembled). Build intent remains "decide later." This doc captures the thinking so the decision is informed whether it is made in a week or a year.
