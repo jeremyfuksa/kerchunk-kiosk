@@ -428,6 +428,70 @@ the end of the banks track, not the start.
 
 ---
 
+## Idea 11 — SAME / NOAA alert decoding
+
+**The pitch.** Decode the Specific Area Message Encoding (SAME) headers on NOAA
+Weather Radio. When an alert for the operator's area is decoded: **display the
+alert text on the kiosk and automatically tune to the weather channel** so the
+voice message plays — exactly the "break in when it matters" behavior of a
+consumer weather radio, but on the appliance.
+
+**No extra RF hardware needed — SAME is audio.** The SAME header is an AFSK data
+burst (520.83 baud, 1562.5/2083.3 Hz tones) carried *in the voice baseband* of
+the NWR FM channel, not a separate signal. The DSP helper already demodulates
+every channel through `nbfm_rx` at 48 kHz (`wideband_helper.py`) — that demod
+output is precisely what a SAME decoder consumes. The decoder is a tap off the
+NWR channel's audio (a GNU Radio EAS block in the flowgraph, or piping that lane's
+PCM to a decoder like `multimon-ng -a EAS` / `samedec` / `dsame3`). Mature
+decoders exist; this is parsing, not invention.
+
+**The real catch is architectural, not RF: you must be demodulating NWR *during*
+the header burst.** The machine-readable SAME header is only ~a few seconds long
+(sent 3× back-to-back at the start), then a 1050 Hz alarm tone (8–25 s), then
+voice. But NWR transmits *continuously* 24/7 — which is exactly why Kerchunk
+already special-cases it as a separate `weatherChannel` with a squelch-free
+"weather-only mode" instead of putting it in the scan. So in normal scanning the
+engine isn't demodulating NWR, and a single group-hopping SDR isn't always parked
+on its window. Three tiers of reliability:
+
+- **Cheapest:** run the decoder on the NWR lane only while the group containing
+  NWR is tuned — catches alerts only when that group is active. Lossy by hop
+  timing.
+- **Better:** give weather a held/priority demod slot so NWR is always in a
+  covered window.
+- **Gold standard:** a slot/radio parked on NWR full-time — the cleanest real
+  argument for giving **weather its own SDR (Idea 10)**. SAME is the feature that
+  justifies weather's own continuous slot.
+
+**Build shape.**
+1. SAME decoder on the NWR channel's demod output (GR EAS block, or PCM →
+   `multimon-ng -a EAS` parsed by the backend). Emit a new engine event, e.g.
+   `{ type: "same", org, event, fips[], purgeMinutes, issuedTs, station }`.
+2. **Local filtering:** parse the FIPS county codes in the header and match
+   against the operator's area. Kerchunk already collects location
+   (`display.weatherLat/Lon`, zip) and `radioReference.countyIds`, so the local
+   FIPS set is derivable — ignore alerts for other counties.
+3. **On a matching alert (the two behaviors requested):**
+   - **Display on the kiosk** — a prominent banner with the decoded event
+     (e.g. "TORNADO WARNING", issuing office, affected area, expires-at from the
+     purge time). The dashboard already renders now-playing / activity; this is a
+     new high-priority card driven by the `same` event.
+   - **Tune to weather** — preempt the speaker and switch to the weather channel
+     so the NWR voice message plays, reusing the existing priority/Close Call
+     preempt + weather-only hold. Auto-revert when the purge time elapses (or on
+     SAME End-Of-Message / operator dismiss).
+4. Event-code → human-label table (TOR/SVR/FFW/…); persist alerts to **history
+   (Idea 5)**, optionally fan out to **alerts/notifications (Idea 6)** and pin the
+   affected county on the **map (Ideas 2/8)**.
+
+**Honest scope note.** "Tune to weather on alert" only works if the radio can get
+to the NWR channel at decode time — trivial once weather has a held/dedicated slot
+(above), but on a single busy SDR mid-hop it's a retune, not instantaneous. The
+decode-reliability tiers and this tune-latency are the same underlying constraint:
+continuous NWR coverage. Ties this idea tightly to Idea 10.
+
+---
+
 ## Stretch items (named, not obvious-tier)
 
 - **Transcription.** Speech-to-text over captured audio → a searchable log of
@@ -462,6 +526,12 @@ These interlock; a sensible order:
    bank to its own radio for true parallel, hop-free coverage. Heaviest item
    (a cross-device audio arbiter is net-new); wants banks + per-bank profiles
    first.
+
+**SAME / NOAA alert decoding (Idea 11)** sits across this order rather than at a
+fixed step: a basic decoder + kiosk banner can land early (it only needs the NWR
+lane's audio), but *reliable* catch-and-tune wants weather on a held or dedicated
+slot — so its robust form rides on Idea 10. Build the decoder when convenient;
+upgrade its reliability as the weather slot firms up.
 
 ## Open questions for the operator
 
