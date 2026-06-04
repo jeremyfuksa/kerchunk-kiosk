@@ -237,30 +237,25 @@ describe("weather mode under wideband (monitor flag)", () => {
   });
 });
 
-describe("close call auto-add", () => {
-  it("a closecall event adds a DISABLED channel without restarting the engine", async () => {
+describe("close call filing", () => {
+  it("filing a discovery never restarts the engine", async () => {
     const { server, engine } = makeApp();
     let starts = 0;
     const realStart = engine.start.bind(engine);
     engine.start = async (sc) => { starts++; return realStart(sc); };
     engine.emitCloseCall(462887500);
     await new Promise((r) => setTimeout(r, 20));
-    const channels = (await request(server).get("/api/channels")).body;
-    const cc = channels.find((c: { freq: number }) => c.freq === 462887500);
-    expect(cc).toBeTruthy();
-    expect(cc.enabled).toBe(false);
-    expect(cc.alphaTag).toBe("Close Call 462.8875");
-    expect(starts).toBe(0); // disabled channel: no engine restart
+    expect((await request(server).get("/api/config")).body.discoveries).toHaveLength(1);
+    expect(starts).toBe(0);
   });
 
-  it("does not re-add an existing frequency", async () => {
+  it("a frequency already configured as a channel is not filed as a discovery", async () => {
     const { server, engine } = makeApp();
     await request(server).post("/api/channels")
       .send({ freq: 462887500, alphaTag: "Known", mode: "nfm", enabled: true });
     engine.emitCloseCall(462887500);
     await new Promise((r) => setTimeout(r, 20));
-    const channels = (await request(server).get("/api/channels")).body;
-    expect(channels.filter((c: { freq: number }) => c.freq === 462887500)).toHaveLength(1);
+    expect((await request(server).get("/api/config")).body.discoveries ?? []).toHaveLength(0);
   });
 });
 
@@ -271,10 +266,18 @@ describe("POST /api/scan/skip", () => {
     expect(res.status).toBe(200);
     expect((engine as { skips?: number }).skips).toBe(1);
   });
+
+  it("passes holdoffSeconds through (temp lockout)", async () => {
+    const { server, engine } = makeApp();
+    const res = await request(server).post("/api/scan/skip")
+      .send({ holdoffSeconds: 1800 });
+    expect(res.status).toBe(200);
+    expect((engine as { lastHoldoff?: number }).lastHoldoff).toBe(1800);
+  });
 });
 
 describe("close call RepeaterBook enrichment", () => {
-  it("renames the filed channel when the frequency matches a repeater", async () => {
+  it("renames the filed DISCOVERY when the frequency matches a repeater", async () => {
     dir = mkdtempSync(join(tmpdir(), "ksrv-"));
     const configStore = new ConfigStore(join(dir, "config.json"));
     const engine = new FakeEngine();
@@ -287,10 +290,9 @@ describe("close call RepeaterBook enrichment", () => {
     const { server } = createServer({ configStore, engine, activityLog: new ActivityLog(10), wsHub: new WsHub(), staticDir: dir, lookup });
     engine.emitCloseCall(462675000);
     await new Promise((r) => setTimeout(r, 30));
-    const channels = (await request(server).get("/api/channels")).body;
-    const cc = channels.find((c: { freq: number }) => c.freq === 462675000);
-    expect(cc.alphaTag).toBe("WQXX123 Kansas City MO · PL 141.3 (Close Call)");
-    expect(cc.enabled).toBe(false);
+    const d = (await request(server).get("/api/config")).body.discoveries
+      .find((x: { freq: number }) => x.freq === 462675000);
+    expect(d.alphaTag).toBe("WQXX123 Kansas City MO · PL 141.3");
   });
 
   it("keeps the plain name on a miss", async () => {
@@ -301,8 +303,9 @@ describe("close call RepeaterBook enrichment", () => {
     const { server } = createServer({ configStore, engine, activityLog: new ActivityLog(10), wsHub: new WsHub(), staticDir: dir, lookup });
     engine.emitCloseCall(464175000);
     await new Promise((r) => setTimeout(r, 30));
-    const channels = (await request(server).get("/api/channels")).body;
-    expect(channels.find((c: { freq: number }) => c.freq === 464175000).alphaTag).toBe("Close Call 464.1750");
+    const d = (await request(server).get("/api/config")).body.discoveries
+      .find((x: { freq: number }) => x.freq === 464175000);
+    expect(d.alphaTag).toBe("Close Call 464.1750");
   });
 });
 
@@ -326,5 +329,80 @@ describe("leveler trim persistence (server)", () => {
     engine.emitLevel("cc_462887500", -3);
     await new Promise((r) => setTimeout(r, 20));
     expect((await request(server).get("/api/channels")).body).toEqual([]);
+  });
+});
+
+describe("discoveries workflow", () => {
+  it("a closecall files a DISCOVERY, not a channel", async () => {
+    const { server, engine } = makeApp();
+    engine.emitCloseCall(462887500);
+    await new Promise((r) => setTimeout(r, 20));
+    expect((await request(server).get("/api/channels")).body).toEqual([]);
+    const cfg = (await request(server).get("/api/config")).body;
+    expect(cfg.discoveries).toHaveLength(1);
+    expect(cfg.discoveries[0].freq).toBe(462887500);
+    expect(cfg.discoveries[0].alphaTag).toBe("Close Call 462.8875");
+  });
+
+  it("re-discovery of the same frequency does not duplicate", async () => {
+    const { server, engine } = makeApp();
+    engine.emitCloseCall(462887500);
+    engine.emitCloseCall(462887500);
+    await new Promise((r) => setTimeout(r, 20));
+    expect((await request(server).get("/api/config")).body.discoveries).toHaveLength(1);
+  });
+
+  it("migrates legacy disabled cc_ channels into discoveries at boot", async () => {
+    dir = mkdtempSync(join(tmpdir(), "ksrv-"));
+    const configStore = new ConfigStore(join(dir, "config.json"));
+    const legacy = configStore.load();
+    legacy.channels.push(
+      { id: "cc_aabbccdd", freq: 463100000, alphaTag: "Close Call 463.1000", mode: "nfm", enabled: false },
+      { id: "ch_real", freq: 146790000, alphaTag: "W0TE", mode: "nfm", enabled: true },
+    );
+    configStore.save(legacy);
+    const { server } = createServer({ configStore, engine: new FakeEngine(), activityLog: new ActivityLog(10), wsHub: new WsHub(), staticDir: dir });
+    const cfg = (await request(server).get("/api/config")).body;
+    expect(cfg.discoveries).toHaveLength(1);
+    expect(cfg.discoveries[0].freq).toBe(463100000);
+    expect(cfg.channels.map((c: { id: string }) => c.id)).toEqual(["ch_real"]);
+  });
+
+  it("monitor mode: POST /api/monitor parks the engine on one frequency unsquelched", async () => {
+    const { server, engine } = makeApp();
+    let lastStart: any = null;
+    const realStart = engine.start.bind(engine);
+    engine.start = async (sc) => { lastStart = sc; return realStart(sc); };
+    const res = await request(server).post("/api/monitor")
+      .send({ freq: 462887500, alphaTag: "Close Call 462.8875" });
+    expect(res.status).toBe(200);
+    expect(res.body.mode).toBe("monitor");
+    expect(lastStart.monitor).toBe(true);
+    expect(lastStart.channels).toHaveLength(1);
+    expect(lastStart.channels[0].freq).toBe(462887500);
+    const st = await request(server).get("/api/status");
+    expect(st.body.mode).toBe("monitor");
+
+    const stop = await request(server).post("/api/monitor/stop");
+    expect(stop.body.mode).toBe("scan");
+    expect(lastStart.monitor).toBe(false);
+  });
+
+  it("knownHz passed to the engine covers channels, discoveries, and lockouts", async () => {
+    const { server, engine } = makeApp();
+    await request(server).post("/api/channels")
+      .send({ freq: 146790000, alphaTag: "W0TE", mode: "nfm", enabled: true });
+    engine.emitCloseCall(462887500);
+    await new Promise((r) => setTimeout(r, 20));
+    const cfg = (await request(server).get("/api/config")).body;
+    cfg.scan.lockoutHz = [464999999];
+    await request(server).put("/api/config").send(cfg);
+    let lastStart: any = null;
+    const realStart = engine.start.bind(engine);
+    engine.start = async (sc) => { lastStart = sc; return realStart(sc); };
+    await request(server).post("/api/scan/start");
+    expect(lastStart.knownHz).toContain(146790000);
+    expect(lastStart.knownHz).toContain(462887500);
+    expect(lastStart.knownHz).toContain(464999999);
   });
 });

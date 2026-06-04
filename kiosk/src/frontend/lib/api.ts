@@ -19,12 +19,17 @@ export const api = {
     fetch("/api/audio/volume", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ percent }) }),
   setMuted: (muted: boolean) =>
     fetch("/api/audio/mute", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ muted }) }),
-  getStatus: () => fetch("/api/status").then(j<{ state: string; mode: "scan" | "weather"; config: Config }>),
+  getStatus: () => fetch("/api/status").then(j<{ state: string; mode: "scan" | "weather" | "monitor"; monitor: Channel | null; config: Config }>),
+  monitor: (freq: number, alphaTag?: string) =>
+    fetch("/api/monitor", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ freq, alphaTag }) }).then(j<{ mode: string }>),
+  monitorStop: () =>
+    fetch("/api/monitor/stop", { method: "POST" }).then(j<{ mode: string }>),
   getWeatherChannel: () => fetch("/api/weather-channel").then(j<{ weatherChannel: Channel | null }>),
   setWeatherChannel: (c: Omit<Channel, "id">) =>
     fetch("/api/weather-channel", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(c) }).then(j<{ weatherChannel: Channel }>),
   setMode: (mode: "scan" | "weather") =>
     fetch("/api/mode", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ mode }) }).then(j<{ mode: "scan" | "weather"; state: string }>),
-  skip: () => fetch("/api/scan/skip", { method: "POST" }),
+  skip: (holdoffSeconds?: number) =>
+    fetch("/api/scan/skip", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(holdoffSeconds ? { holdoffSeconds } : {}) }),
   getLogs: () => fetch("/api/logs").then(j<{ freq: number; alphaTag: string; ts: number }[]>),
 };

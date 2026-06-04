@@ -23,6 +23,9 @@ export interface ScanConfig {
   closeCall?: boolean;
   closeCallDb?: number;
   lockoutHz?: number[];
+  // Frequencies Close Call must never fire on (channels + discoveries +
+  // lockouts). Computed by the server, which owns all three lists.
+  knownHz?: number[];
 }
 
 export type EngineState = "stopped" | "starting" | "running" | "error";
@@ -51,8 +54,8 @@ export type EngineListener = (event: EngineEvent) => void;
 export interface ScannerEngine {
   start(config: ScanConfig): Promise<void>;
   stop(): Promise<void>;
-  /** Bump the current audio: force-close the audible channel (scanner SKIP key). Optional — engines without live audio control may omit it. */
-  skip?(): void;
+  /** Bump the current audio: force-close the audible channel (scanner SKIP key). A long holdoffSeconds = temp lockout. Optional — engines without live audio control may omit it. */
+  skip?(holdoffSeconds?: number): void;
   setVolume(percent: number): Promise<void>;
   setMuted(muted: boolean): Promise<void>;
   readonly state: EngineState;

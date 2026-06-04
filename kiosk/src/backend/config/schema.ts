@@ -67,6 +67,10 @@ export const configSchema = z.object({
   // string REGISTERED with RepeaterBook; states are full names ("Missouri").
   lookup: z.object({
     userAgent: z.string().min(1),
+    // Bearer token issued on RepeaterBook API approval (March 2026 policy:
+    // token + approved User-Agent are BOTH required). Absent = provider
+    // stays dormant (their endpoint 401s without it).
+    apiToken: z.string().optional(),
     states: z.array(z.string().min(1)).min(1),
     // RadioReference fallback (business band / public safety). Requires an
     // approved developer appKey + the OPERATOR'S premium credentials; all
@@ -75,9 +79,21 @@ export const configSchema = z.object({
       appKey: z.string().min(1),
       username: z.string().min(1),
       password: z.string().min(1),
-      countyIds: z.array(z.number().int().positive()).min(1),
+      // Empty = configured but dormant (counties not resolved yet). A min(1)
+      // here once silently invalidated an operator's whole hand-edited
+      // config (load fell back to .bak and ate his credentials — twice).
+      countyIds: z.array(z.number().int().positive()),
     }).optional(),
   }).optional(),
+  // Close Call discoveries pending operator review — deliberately SEPARATE
+  // from channels (the table is what the operator chose; this is what the
+  // radio found). Reviewed in admin: Listen / Add / Lockout / Dismiss.
+  discoveries: z.array(z.object({
+    id: z.string().min(1),
+    freq: z.number().int().positive(),
+    alphaTag: z.string(),
+    ts: z.number(),
+  })).optional(),
   // One channel designated as "the weather channel", stored separately from the
   // scan list. Weather-only mode (server runtime) holds this channel.
   weatherChannel: channelSchema.optional(),
