@@ -37,11 +37,24 @@ export function cardFromSink(sink: string): number | null {
   return null;
 }
 
+// The UI's 0-100 is compressed into the mixer's usable upper window. Even in
+// amixer's mapped (-M) mode, HDA codecs put the bottom ~half of the scale at
+// near-silence, so every audible change crammed into a small slider segment —
+// operator-reported as "barely touch it and the volume swings wildly". UI 1
+// lands at FLOOR+0.5%, UI 100 at 100%; UI 0 stays 0 (true silence).
+const VOLUME_FLOOR_PCT = 50;
+
+function uiToMixerPercent(ui: number): number {
+  const clamped = Math.max(0, Math.min(100, Math.round(ui)));
+  if (clamped === 0) return 0;
+  return Math.round(VOLUME_FLOOR_PCT + (clamped * (100 - VOLUME_FLOOR_PCT)) / 100);
+}
+
 export async function setVolume(percent: number, opts: AmixerOpts = {}): Promise<void> {
   const run = opts.run ?? defaultRun;
   const card = opts.card ?? 0;
   const control = opts.control ?? "Master";
-  const clamped = Math.max(0, Math.min(100, Math.round(percent)));
+  const clamped = uiToMixerPercent(percent);
   // Never reject: a non-zero exit (e.g. HDMI cards exposing no mixer control)
   // or a spawn error must degrade to a safe no-op, not crash the boot chain.
   //

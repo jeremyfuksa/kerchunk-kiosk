@@ -85,6 +85,10 @@ NOISE_HPF_HZ = 8_000     # HF-noise band for the quieting squelch: voice lives
                          # and LOUD up here. This is how hardware scanners
                          # tell a transmission from junk power.
 QUIET_HYST_DB = 2.0      # +-1 dB around the quieting threshold
+FADE_STEPS = 6           # gate fade: 6 steps x 2 ms = ~12 ms ramp. A hard
+FADE_STEP_S = 0.002      # 0/1 flip on 48 kHz audio is an audible click/thump
+                         # (operator's residual squelch "tick"); a short ramp
+                         # is below perception but kills the transient.
 FLOOR_ALPHA_UP = 0.02    # floor rises slowly
 FLOOR_ALPHA_DOWN = 0.2   # floor falls fast
 
@@ -131,8 +135,19 @@ class Chain:
         tb.connect(self.noise_sq, self.noise_avg, self.noise_probe)
         tb.connect(self.gate, (adder, port))
 
+        self.gain = 0.0          # current gate value (fade_to bookkeeping)
         self.channel_id = None   # None = parked (no channel assigned)
         self.reset_detection()
+
+    def fade_to(self, target):
+        """Ramp the audio gate to target instead of hard-switching."""
+        if self.gain == target:
+            return
+        start = self.gain
+        for i in range(1, FADE_STEPS + 1):
+            self.gate.set_k(start + (target - start) * i / FADE_STEPS)
+            time.sleep(FADE_STEP_S)
+        self.gain = target
 
     def reset_detection(self):
         self.floor_db = None
@@ -146,13 +161,15 @@ class Chain:
     def assign(self, channel_id, offset_hz):
         self.channel_id = channel_id
         self.xlate.set_center_freq(offset_hz)
-        self.gate.set_k(0.0)
+        self.gate.set_k(0.0)   # hard cut is fine: we just retuned, no audio context
+        self.gain = 0.0
         self.reset_detection()
 
     def park(self):
         self.channel_id = None
         self.xlate.set_center_freq(0)
         self.gate.set_k(0.0)
+        self.gain = 0.0
         self.reset_detection()
 
     def power_db(self):
@@ -222,13 +239,13 @@ class Helper(gr.top_block):
         if self.audible is chain:
             return
         if self.audible is not None:
-            self.audible.gate.set_k(0.0)
+            self.audible.fade_to(0.0)
         self.audible = chain
         if chain is not None:
             # Gate follows the chain's carrier, not just audibility: an open
             # chain whose carrier already dropped (riding its hang time) must
             # not blast squelch noise.
-            chain.gate.set_k(1.0 if chain.carrier else 0.0)
+            chain.fade_to(1.0 if chain.carrier else 0.0)
         emit({"ev": "audible",
               "id": chain.channel_id if chain else None})
 
@@ -299,7 +316,7 @@ class Helper(gr.top_block):
             else:
                 chain.quiet = noise < quiet_db - QUIET_HYST_DB / 2
             if self.audible is chain:
-                chain.gate.set_k(1.0 if (chain.carrier and chain.quiet) else 0.0)
+                chain.fade_to(1.0 if (chain.carrier and chain.quiet) else 0.0)
 
             if not chain.open:
                 if db > floor + open_db and chain.quiet:

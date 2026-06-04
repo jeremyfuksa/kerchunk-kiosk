@@ -10,7 +10,23 @@ describe("audio", () => {
     // the percent perceptually correct.
     const run = vi.fn().mockResolvedValue({ stdout: "", stderr: "", code: 0 });
     await setVolume(70, { run, control: "Master", card: 0 });
-    expect(run).toHaveBeenCalledWith("amixer", ["-M", "-c", "0", "sset", "Master", "70%"]);
+    // UI 70 lands at amixer 85%: the UI range is compressed into the mixer's
+    // usable upper window (see VOLUME_FLOOR_PCT) so the slider isn't touchy.
+    expect(run).toHaveBeenCalledWith("amixer", ["-M", "-c", "0", "sset", "Master", "85%"]);
+  });
+
+  it("setVolume compresses the UI range into the audible upper window", async () => {
+    // Operator-reported: the slider was hyper-sensitive — on HDA codecs the
+    // bottom ~half of the mapped scale is near-silence, so all audible change
+    // crammed into a small slider segment. UI 0-100 now maps to 50-100%
+    // (0 stays 0 = true silence), doubling slider resolution where it counts.
+    const run = vi.fn().mockResolvedValue({ stdout: "", stderr: "", code: 0 });
+    await setVolume(0, { run, control: "Master", card: 0 });
+    await setVolume(1, { run, control: "Master", card: 0 });
+    await setVolume(100, { run, control: "Master", card: 0 });
+    expect(run).toHaveBeenNthCalledWith(1, "amixer", ["-M", "-c", "0", "sset", "Master", "0%"]);
+    expect(run).toHaveBeenNthCalledWith(2, "amixer", ["-M", "-c", "0", "sset", "Master", "51%"]);
+    expect(run).toHaveBeenNthCalledWith(3, "amixer", ["-M", "-c", "0", "sset", "Master", "100%"]);
   });
 
   it("setMuted true calls amixer mute", async () => {
