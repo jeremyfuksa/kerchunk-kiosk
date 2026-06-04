@@ -16,10 +16,12 @@ const CONFIG_PATH = process.env.KERCHUNK_CONFIG ?? "/var/lib/kerchunk-kiosk/conf
 const STATIC_DIR = process.env.KERCHUNK_STATIC
   ?? join(fileURLToPath(new URL("../frontend", import.meta.url)));
 // Engine selection: KERCHUNK_ENGINE=wideband|rtlfm|fake. USE_FAKE_ENGINE=1 is
-// honored as the legacy spelling of "fake". Default stays the proven rtl_fm
-// engine so wideband rolls out behind an explicit switch.
+// honored as the legacy spelling of "fake". Default is the wideband engine —
+// burned in on the appliance (simultaneous multi-channel, zero device
+// re-opens); rtlfm remains selectable as the fallback for Pi-class hardware
+// without GNU Radio.
 const engineKind = process.env.KERCHUNK_ENGINE
-  ?? (process.env.USE_FAKE_ENGINE === "1" ? "fake" : "rtlfm");
+  ?? (process.env.USE_FAKE_ENGINE === "1" ? "fake" : "wideband");
 
 const configStore = new ConfigStore(CONFIG_PATH);
 const config = configStore.load();
