@@ -9,7 +9,7 @@
     "dev:frontend": "vite",
     "build": "npm run build:frontend && npm run build:backend",
     "build:frontend": "vite build",
-    "build:backend": "tsc -p tsconfig.json",
+    "build:backend": "tsc -p tsconfig.json && cp src/backend/engine/wideband_helper.py dist/backend/engine/",
     "start": "node dist/backend/index.js",
     "test": "vitest run",
     "test:watch": "vitest"

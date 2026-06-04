@@ -62,3 +62,29 @@ describe("weatherChannel", () => {
     expect(configSchema.safeParse(cfg).success).toBe(false);
   });
 });
+
+describe("wideband scan fields", () => {
+  it("are optional — existing configs still parse", () => {
+    expect(configSchema.safeParse(defaultConfig()).success).toBe(true);
+  });
+
+  it("accepts explicit wideband tuning and preserves the values", () => {
+    const cfg = structuredClone(defaultConfig()) as Record<string, unknown> & { scan: Record<string, unknown> };
+    cfg.scan.windowBandwidthHz = 2_000_000;
+    cfg.scan.groupDwellMs = 3000;
+    cfg.scan.openAboveFloorDb = 9;
+    const parsed = configSchema.safeParse(cfg);
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(parsed.data.scan.windowBandwidthHz).toBe(2_000_000);
+      expect(parsed.data.scan.groupDwellMs).toBe(3000);
+      expect(parsed.data.scan.openAboveFloorDb).toBe(9);
+    }
+  });
+
+  it("rejects a non-positive windowBandwidthHz", () => {
+    const cfg = structuredClone(defaultConfig()) as Record<string, unknown> & { scan: Record<string, unknown> };
+    cfg.scan.windowBandwidthHz = 0;
+    expect(configSchema.safeParse(cfg).success).toBe(false);
+  });
+});

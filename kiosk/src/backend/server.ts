@@ -34,6 +34,10 @@ function toScanConfig(cfg: Config, mode: "scan" | "weather"): ScanConfig {
     dwellMs: cfg.scan.dwellMs,
     gain: cfg.scan.gain,
     audioSink: cfg.audio.sink,
+    // Wideband engine tuning; RtlFmEngine/FakeEngine ignore these.
+    windowBandwidthHz: cfg.scan.windowBandwidthHz,
+    groupDwellMs: cfg.scan.groupDwellMs,
+    openAboveFloorDb: cfg.scan.openAboveFloorDb,
   };
 }
 

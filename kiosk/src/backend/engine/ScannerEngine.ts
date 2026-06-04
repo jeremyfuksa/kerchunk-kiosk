@@ -7,6 +7,10 @@ export interface ScanConfig {
   dwellMs: number;
   gain: number | "auto";
   audioSink: string;
+  // Wideband engine tuning (optional; RtlFmEngine/FakeEngine ignore these).
+  windowBandwidthHz?: number;
+  groupDwellMs?: number;
+  openAboveFloorDb?: number;
 }
 
 export type EngineState = "stopped" | "starting" | "running" | "error";

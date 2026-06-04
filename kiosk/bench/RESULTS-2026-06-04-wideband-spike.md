@@ -63,3 +63,24 @@ killing the flowgraph?
 4. Remaining gate item (not yet done): closed-lid HDMI kiosk display
    (`HandleLidSwitch=ignore`, compositor on HDMI output) — display porting,
    independent of the engine.
+
+## Addendum: live smoke test of the real engine (same day)
+
+`KERCHUNK_ENGINE=wideband` + `wideband_helper.py` against the dongle:
+
+- **7-channel NOAA config (one group):** detection initially broken — every
+  channel "opened" at startup because the per-chain floor initialized from an
+  empty power probe (-120 dB) and froze while open. Fixed with (1) a ~500 ms
+  per-tune warm-up before detection arms, (2) the squelch reference changed to
+  the GROUP-WIDE MINIMUM of per-chain floors, which also lets a
+  continuously-transmitting station (NOAA) open — its own floor would have
+  learned the carrier. After the fix: exactly the two real stations opened
+  (162.550 strong / 162.400 weak), five stayed closed, audio played.
+- **2-group config (VHF pair + WX pair):** started on VHF, hopped to WX on
+  dwell expiry, WX1 opened and held the group (hold-through). ONE helper
+  process for the entire run — zero respawns, zero device re-opens.
+- Helper CPU ~1 core of 8 for 7 channelizers; teardown on EOF/quit confirmed
+  clean (no orphaned processes).
+- Known limitation (documented in the helper): a SINGLE-channel group with a
+  carrier already up at tune time cannot distinguish it from the floor —
+  relevant if weather-only mode ever moves to this engine.
