@@ -85,6 +85,24 @@ NOISE_HPF_HZ = 8_000     # HF-noise band for the quieting squelch: voice lives
                          # and LOUD up here. This is how hardware scanners
                          # tell a transmission from junk power.
 QUIET_HYST_DB = 2.0      # +-1 dB around the quieting threshold
+FADE_STEPS = 6           # gate fade: 6 steps x 1 ms = ~6 ms ramp. A hard 0/1
+FADE_STEP_S = 0.001      # flip on 48 kHz audio is an audible click/thump; a
+                         # short ramp kills the transient. 12 ms was still a
+                         # hair audible at squelch close (operator), 6 ms is
+                         # the next stop — don't go much lower or the click
+                         # comes back.
+LEVEL_REF_DB = -14       # speaker leveler target: mean-square dB of the demod
+                         # audio (~0.2 amplitude, ~10 dB headroom to the rail).
+LEVEL_MIN_DB = -40       # below this = speech pause/silence: HOLD gain (no
+                         # pumping between words).
+LEVEL_MAX_DB = 12        # gain clamp: +-12 dB amplitude correction max.
+LEVEL_SLEW_DB = 0.3      # max gain change per 20 ms poll (~15 dB/s) — slow,
+                         # stepwise envelope control. NOTE: this replaced a
+                         # gr agc2 block, whose rectified-waveform detector
+                         # gain-modulated WITHIN tone cycles (operator: "CW
+                         # tones are very chirpy"). RMS envelope + slow slew
+                         # cannot track the waveform, so no distortion; gains
+                         # are also PER CHANNEL (each repeater keeps its own).
 FLOOR_ALPHA_UP = 0.02    # floor rises slowly
 FLOOR_ALPHA_DOWN = 0.2   # floor falls fast
 
@@ -122,17 +140,49 @@ class Chain:
             AUDIO_RATE // 100, 100.0 / AUDIO_RATE)
         self.noise_probe = blocks.probe_signal_f()
         self.gate = blocks.multiply_const_ff(0.0)
+        # Audio envelope (mean square over ~100 ms) for the per-channel
+        # loudness leveler — measured BEFORE the gate so the gain we apply
+        # never feeds back into the measurement.
+        self.audio_sq = blocks.multiply_ff(1)
+        self.audio_avg = blocks.moving_average_ff(
+            AUDIO_RATE // 10, 10.0 / AUDIO_RATE)
+        self.audio_probe = blocks.probe_signal_f()
         tb.connect(src, self.xlate, self.mag2, self.avg, self.probe)
         tb.connect(self.mag2, self.avg_fast, self.probe_fast)
         tb.connect(self.xlate, self.demod, self.gate)
+        tb.connect(self.demod, (self.audio_sq, 0))
+        tb.connect(self.demod, (self.audio_sq, 1))
+        tb.connect(self.audio_sq, self.audio_avg, self.audio_probe)
         tb.connect(self.demod, self.noise_hpf)
         tb.connect(self.noise_hpf, (self.noise_sq, 0))
         tb.connect(self.noise_hpf, (self.noise_sq, 1))
         tb.connect(self.noise_sq, self.noise_avg, self.noise_probe)
         tb.connect(self.gate, (adder, port))
 
+        self.gain = 0.0          # current gate value (fade_to bookkeeping)
+        self.level_db = 0.0      # learned per-channel loudness correction (dB)
         self.channel_id = None   # None = parked (no channel assigned)
         self.reset_detection()
+
+    def fade_to(self, target):
+        """Ramp the audio gate to target instead of hard-switching.
+
+        Ramps only on silence transitions (0 <-> non-zero) — those are the
+        click-prone edges. Small open-to-open moves (the leveler slewing
+        gain by ~0.3 dB) apply directly; ramping them would make the poll
+        loop fade constantly.
+        """
+        if self.gain == target:
+            return
+        if self.gain > 0.0 and target > 0.0:
+            self.gate.set_k(target)
+            self.gain = target
+            return
+        start = self.gain
+        for i in range(1, FADE_STEPS + 1):
+            self.gate.set_k(start + (target - start) * i / FADE_STEPS)
+            time.sleep(FADE_STEP_S)
+        self.gain = target
 
     def reset_detection(self):
         self.floor_db = None
@@ -146,13 +196,16 @@ class Chain:
     def assign(self, channel_id, offset_hz):
         self.channel_id = channel_id
         self.xlate.set_center_freq(offset_hz)
-        self.gate.set_k(0.0)
+        self.gate.set_k(0.0)   # hard cut is fine: we just retuned, no audio context
+        self.gain = 0.0
+        self.level_db = 0.0    # new channel on this lane: forget the old gain
         self.reset_detection()
 
     def park(self):
         self.channel_id = None
         self.xlate.set_center_freq(0)
         self.gate.set_k(0.0)
+        self.gain = 0.0
         self.reset_detection()
 
     def power_db(self):
@@ -166,6 +219,13 @@ class Chain:
     def noise_db(self):
         p = self.noise_probe.level()
         return 10 * math.log10(p) if p > 0 else -120.0
+
+    def audio_db(self):
+        p = self.audio_probe.level()
+        return 10 * math.log10(p) if p > 0 else -120.0
+
+    def level_gain(self):
+        return 10 ** (self.level_db / 20.0)
 
 
 class Helper(gr.top_block):
@@ -182,11 +242,12 @@ class Helper(gr.top_block):
             self.src.set_gain(0, float(args.gain))
 
         # One shared adder feeds the sink; exactly one gate is ever non-zero.
-        # The rail is a hard limiter (speaker guard): demodulated squelch
-        # noise swings far beyond the +-1.0 a voice signal at rated deviation
-        # produces, so any noise that slips past the gate (the ~30 ms close
-        # window) gets clipped to a tolerable level instead of slamming the
-        # speakers at full scale.
+        # Loudness leveling happens per chain (the gate gain doubles as the
+        # channel's learned volume correction — see the poll loop); the rail
+        # is the hard speaker guard: demodulated squelch noise swings far
+        # beyond the +-1.0 a voice signal at rated deviation produces, so
+        # anything that slips past the gate (the ~30 ms close window) gets
+        # clipped instead of slamming the speakers at full scale.
         self.adder = blocks.add_ff(1)
         self.limiter = analog.rail_ff(-0.8, 0.8)
         self.sink = audio.sink(AUDIO_RATE, args.sink, True)
@@ -222,13 +283,13 @@ class Helper(gr.top_block):
         if self.audible is chain:
             return
         if self.audible is not None:
-            self.audible.gate.set_k(0.0)
+            self.audible.fade_to(0.0)
         self.audible = chain
         if chain is not None:
             # Gate follows the chain's carrier, not just audibility: an open
             # chain whose carrier already dropped (riding its hang time) must
             # not blast squelch noise.
-            chain.gate.set_k(1.0 if chain.carrier else 0.0)
+            chain.fade_to(chain.level_gain() if chain.carrier else 0.0)
         emit({"ev": "audible",
               "id": chain.channel_id if chain else None})
 
@@ -299,7 +360,18 @@ class Helper(gr.top_block):
             else:
                 chain.quiet = noise < quiet_db - QUIET_HYST_DB / 2
             if self.audible is chain:
-                chain.gate.set_k(1.0 if (chain.carrier and chain.quiet) else 0.0)
+                open_now = chain.carrier and chain.quiet
+                if open_now:
+                    # Loudness leveler: slew this channel's gain toward the
+                    # reference, only while voice is present (pauses hold).
+                    ms_db = chain.audio_db()
+                    if ms_db > LEVEL_MIN_DB:
+                        desired = max(-LEVEL_MAX_DB, min(LEVEL_MAX_DB,
+                                      (LEVEL_REF_DB - ms_db) / 2))
+                        step = max(-LEVEL_SLEW_DB, min(LEVEL_SLEW_DB,
+                                   desired - chain.level_db))
+                        chain.level_db += step
+                chain.fade_to(chain.level_gain() if open_now else 0.0)
 
             if not chain.open:
                 if db > floor + open_db and chain.quiet:

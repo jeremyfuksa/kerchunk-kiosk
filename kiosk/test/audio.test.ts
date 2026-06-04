@@ -2,15 +2,26 @@ import { describe, it, expect, vi } from "vitest";
 import { setVolume, setMuted, listSinks } from "../src/backend/audio.js";
 
 describe("audio", () => {
-  it("setVolume calls amixer with mapped volume (-M) and a percent", async () => {
-    // -M (mapped-volume) is REQUIRED: amixer's default raw mode maps the percent
-    // linearly over the control's raw dB-scaled range. On the bcm2835 headphone
-    // jack the PCM control spans -102.39..+4.00 dB, so raw "70%" lands at ~-28 dB
-    // (near silent) — i.e. moving the slider mutes the audio. Mapped mode makes
-    // the percent perceptually correct.
+  it("setVolume drives the mixer in dB — a true log fader", async () => {
+    // Percent-based control (raw OR -M mapped) bunches all audible change
+    // into a sliver of the slider on this codec (operator: "5 pixels around
+    // the 5% mark between silence and full volume"). Loudness is linear in
+    // dB, so the slider maps UI 1-100 linearly onto VOLUME_MIN_DB..0 dB:
+    // every notch is the same perceived step, across the WHOLE slider.
     const run = vi.fn().mockResolvedValue({ stdout: "", stderr: "", code: 0 });
     await setVolume(70, { run, control: "Master", card: 0 });
-    expect(run).toHaveBeenCalledWith("amixer", ["-M", "-c", "0", "sset", "Master", "70%"]);
+    // UI 70 -> -45 + 0.70*45 = -13.5 dB
+    expect(run).toHaveBeenCalledWith("amixer", ["-c", "0", "--", "sset", "Master", "-13.50dB"]);
+  });
+
+  it("setVolume endpoints: 0 = silence, 100 = 0 dB, 1 = bottom of range", async () => {
+    const run = vi.fn().mockResolvedValue({ stdout: "", stderr: "", code: 0 });
+    await setVolume(0, { run, control: "Master", card: 0 });
+    await setVolume(1, { run, control: "Master", card: 0 });
+    await setVolume(100, { run, control: "Master", card: 0 });
+    expect(run).toHaveBeenNthCalledWith(1, "amixer", ["-c", "0", "--", "sset", "Master", "0%"]);
+    expect(run).toHaveBeenNthCalledWith(2, "amixer", ["-c", "0", "--", "sset", "Master", "-44.55dB"]);
+    expect(run).toHaveBeenNthCalledWith(3, "amixer", ["-c", "0", "--", "sset", "Master", "0.00dB"]);
   });
 
   it("setMuted true calls amixer mute", async () => {

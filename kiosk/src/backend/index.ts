@@ -8,6 +8,7 @@ import { WsHub } from "./ws.js";
 import { RtlFmEngine } from "./engine/RtlFmEngine.js";
 import { FakeEngine } from "./engine/FakeEngine.js";
 import { WidebandEngine } from "./engine/WidebandEngine.js";
+import { setVolume, setMuted } from "./audio.js";
 import type { EngineEvent } from "./engine/ScannerEngine.js";
 
 const PORT = Number(process.env.PORT ?? 8080);
@@ -61,8 +62,12 @@ server.listen(PORT, () => {
   })
     // Re-apply persisted volume/mute to the hardware mixer on boot, so the saved
     // setting actually takes effect instead of inheriting the OS mixer state.
-    .then(() => engine.setVolume(config.audio.volume))
-    .then(() => engine.setMuted(config.audio.muted))
+    // Direct audio.js calls WITH the configured mixer card/control — the same
+    // path the /api/audio endpoints use. engine.setVolume() hits amixer's
+    // default card 0, which is the WRONG card whenever the HDA probe race
+    // puts PCH at index 1 (volume then silently failed to persist on boot).
+    .then(() => setVolume(config.audio.volume, { card: config.audio.mixerCard, control: config.audio.mixerControl }))
+    .then(() => setMuted(config.audio.muted, { card: config.audio.mixerCard, control: config.audio.mixerControl }))
     .catch((err) => console.error("engine start failed:", err));
 });
 
