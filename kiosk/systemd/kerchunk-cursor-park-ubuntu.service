@@ -1,0 +1,23 @@
+# Ubuntu appliance variant of kerchunk-cursor-park.service (see that file for
+# the full rationale — cage has no hide-cursor flag, so we park the pointer in
+# the corner with wlrctl once cage accepts clients).
+# Differences: User=kiosk (uid 1000), park-cursor.sh runs from the repo.
+#
+# Installed by setup-kiosk-ubuntu.sh as /etc/systemd/system/kerchunk-cursor-park.service.
+
+[Unit]
+Description=Park the kiosk cursor off-screen (cage has no hide-cursor flag)
+After=kerchunk-display.service
+PartOf=kerchunk-display.service
+
+[Service]
+Type=oneshot
+User=kiosk
+Group=kiosk
+SupplementaryGroups=video render input
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+Environment=WAYLAND_DISPLAY=wayland-0
+ExecStart=/home/kiosk/kerchunk-kiosk/kiosk/scripts/park-cursor.sh
+
+[Install]
+WantedBy=graphical.target
