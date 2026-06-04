@@ -27,3 +27,12 @@ describe("weather form helper", () => {
     expect(() => weatherFormToChannel({ mhz: "x", alphaTag: "y", mode: "fm" })).toThrow();
   });
 });
+
+describe("priority in the add form", () => {
+  it("formToChannel includes priority only when set", () => {
+    const p = formToChannel({ mhz: "464.275", alphaTag: "WOF", mode: "nfm", priority: true });
+    expect(p.priority).toBe(true);
+    const np = formToChannel({ mhz: "464.275", alphaTag: "WOF", mode: "nfm" });
+    expect("priority" in np).toBe(false);
+  });
+});

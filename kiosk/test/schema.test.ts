@@ -120,3 +120,18 @@ describe("noiseQuietDb", () => {
     expect(configSchema.safeParse(cfg).success).toBe(false);
   });
 });
+
+describe("channel priority", () => {
+  it("accepts priority: true and preserves it", () => {
+    const cfg = { ...defaultConfig(), channels: [
+      { id: "p1", freq: 464275000, alphaTag: "WOF", mode: "nfm", enabled: true, priority: true },
+    ] };
+    const parsed = configSchema.safeParse(cfg);
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.data.channels[0]!.priority).toBe(true);
+  });
+
+  it("channels without priority still parse (optional)", () => {
+    expect(configSchema.safeParse(defaultConfig()).success).toBe(true);
+  });
+});
