@@ -25,11 +25,17 @@ const MIME: Record<string, string> = {
   ".json": "application/json", ".svg": "image/svg+xml",
 };
 
-function toScanConfig(cfg: Config, mode: "scan" | "weather"): ScanConfig {
+function toScanConfig(
+  cfg: Config,
+  mode: "scan" | "weather" | "monitor",
+  monitorChannel: Channel | null = null,
+): ScanConfig {
   const channels =
     mode === "weather"
       ? (cfg.weatherChannel ? [{ ...cfg.weatherChannel, enabled: true }] : [])
-      : cfg.channels;
+      : mode === "monitor"
+        ? (monitorChannel ? [{ ...monitorChannel, enabled: true }] : [])
+        : cfg.channels;
   return {
     channels,
     sampleRate: cfg.scan.sampleRate,
@@ -42,9 +48,16 @@ function toScanConfig(cfg: Config, mode: "scan" | "weather"): ScanConfig {
     groupDwellMs: cfg.scan.groupDwellMs,
     openAboveFloorDb: cfg.scan.openAboveFloorDb,
     noiseQuietDb: cfg.scan.noiseQuietDb,
-    // Weather-only = monitor: hold the lone channel open/audible, no squelch
-    // (a continuous NOAA carrier can't be squelched against its own floor).
-    monitor: mode === "weather",
+    // Weather-only AND direct-tune both hold the lone channel open/audible
+    // with no squelch — the operator chose to listen to exactly this.
+    monitor: mode === "weather" || mode === "monitor",
+    // Close Call suppression covers everything already known about:
+    // configured channels, filed discoveries, and permanent lockouts.
+    knownHz: [
+      ...cfg.channels.map((c) => c.freq),
+      ...(cfg.discoveries ?? []).map((d) => d.freq),
+      ...(cfg.scan.lockoutHz ?? []),
+    ],
     closeCall: cfg.scan.closeCall,
     closeCallDb: cfg.scan.closeCallDb,
     lockoutHz: cfg.scan.lockoutHz,
@@ -67,9 +80,33 @@ function json(res: ServerResponse, status: number, body: unknown): void {
 export function createServer(deps: ServerDeps): { server: Server } {
   const { configStore, engine, activityLog, staticDir } = deps;
   let config = configStore.load();
-  // Runtime scan/weather mode. Deliberately not read from or written to config:
-  // the kiosk always boots into scan mode.
-  let mode: "scan" | "weather" = "scan";
+  // Runtime mode. Deliberately not read from or written to config: the kiosk
+  // always boots into scan mode. "monitor" = direct tune (review a discovery
+  // or any channel); its target lives only in memory.
+  let mode: "scan" | "weather" | "monitor" = "scan";
+  let monitorChannel: Channel | null = null;
+
+  // One-time migration: earlier Close Call builds filed discoveries as
+  // DISABLED cc_* channels in the main table. Move them where they belong.
+  {
+    const legacy = config.channels.filter((c) => c.id.startsWith("cc_") && !c.enabled);
+    if (legacy.length > 0) {
+      const existing = new Set((config.discoveries ?? []).map((d) => d.freq));
+      config = {
+        ...config,
+        channels: config.channels.filter((c) => !(c.id.startsWith("cc_") && !c.enabled)),
+        discoveries: [
+          ...(config.discoveries ?? []),
+          ...legacy.filter((c) => !existing.has(c.freq)).map((c) => ({
+            id: c.id, freq: c.freq,
+            alphaTag: c.alphaTag.replace(/ \(Close Call\)$/, ""),
+            ts: Date.now(),
+          })),
+        ],
+      };
+      configStore.save(config);
+    }
+  }
 
   // Close Call discoveries persist as DISABLED channels for operator review.
   // Saved WITHOUT persistAndReload: a disabled channel doesn't affect
@@ -92,27 +129,25 @@ export function createServer(deps: ServerDeps): { server: Server } {
 
   engine.on((ev) => {
     if (ev.type !== "closecall") return;
+    // Channels are the operator's choices; discoveries are the radio's finds.
     if (config.channels.some((c) => c.freq === ev.freqHz)) return;
-    const mhz = (ev.freqHz / 1e6).toFixed(4);
-    const channel: Channel = {
+    if ((config.discoveries ?? []).some((d) => d.freq === ev.freqHz)) return;
+    const discovery = {
       id: `cc_${randomUUID().slice(0, 8)}`,
       freq: ev.freqHz,
-      alphaTag: `Close Call ${mhz}`,
-      mode: "nfm",
-      enabled: false,
+      alphaTag: `Close Call ${(ev.freqHz / 1e6).toFixed(4)}`,
+      ts: Date.now(),
     };
-    config = { ...config, channels: [...config.channels, channel] };
+    config = { ...config, discoveries: [...(config.discoveries ?? []), discovery] };
     configStore.save(config);
-    // Best-effort identification (RepeaterBook): rename the filed channel if
-    // the frequency matches a known ham/GMRS repeater. Fire-and-forget — a
-    // miss or API failure leaves the plain "Close Call <MHz>" name.
+    // Best-effort identification — a miss or API failure keeps the plain name.
     if (deps.lookup) {
       void deps.lookup.lookup(ev.freqHz).then((hit) => {
         if (!hit) return;
         config = {
           ...config,
-          channels: config.channels.map((c) =>
-            c.id === channel.id ? { ...c, alphaTag: `${hit.tag} (Close Call)` } : c),
+          discoveries: (config.discoveries ?? []).map((d) =>
+            d.id === discovery.id ? { ...d, alphaTag: hit.tag } : d),
         };
         configStore.save(config);
       }).catch(() => { /* enrichment is optional */ });
@@ -124,7 +159,7 @@ export function createServer(deps: ServerDeps): { server: Server } {
   async function persistAndReload(): Promise<void> {
     configStore.save(config);
     await engine.stop();
-    await engine.start(toScanConfig(config, mode));
+    await engine.start(toScanConfig(config, mode, monitorChannel));
   }
 
   // amixer target from config: volume/mute must hit the card+control that
@@ -160,7 +195,7 @@ export function createServer(deps: ServerDeps): { server: Server } {
       config = parsed.data;
       configStore.save(config);
       await engine.stop();
-      await engine.start(toScanConfig(config, mode));
+      await engine.start(toScanConfig(config, mode, monitorChannel));
       return json(res, 200, config);
     }
 
@@ -202,7 +237,7 @@ export function createServer(deps: ServerDeps): { server: Server } {
       return json(res, 200, { ok: true });
     }
 
-    if (method === "POST" && path === "/api/scan/start") { await engine.start(toScanConfig(config, mode)); return json(res, 200, { state: engine.state }); }
+    if (method === "POST" && path === "/api/scan/start") { await engine.start(toScanConfig(config, mode, monitorChannel)); return json(res, 200, { state: engine.state }); }
     if (method === "POST" && path === "/api/scan/stop") { await engine.stop(); return json(res, 200, { state: engine.state }); }
 
     if (method === "POST" && path === "/api/audio/volume") {
@@ -242,12 +277,36 @@ export function createServer(deps: ServerDeps): { server: Server } {
         return json(res, 400, { error: "no weather channel configured" });
       }
       mode = next;
+      monitorChannel = null;
       await engine.stop();
       await engine.start(toScanConfig(config, mode));
       return json(res, 200, { mode, state: engine.state });
     }
 
-    if (method === "GET" && path === "/api/status") return json(res, 200, { state: engine.state, mode, config });
+    if (method === "POST" && path === "/api/monitor") {
+      const body = await readBody(req);
+      const freq = Number(body?.freq);
+      if (!Number.isInteger(freq) || freq <= 0) return json(res, 400, { error: "invalid freq" });
+      monitorChannel = {
+        id: "mon_direct", freq,
+        alphaTag: typeof body?.alphaTag === "string" ? body.alphaTag : (freq / 1e6).toFixed(4),
+        mode: "nfm", enabled: true,
+      };
+      mode = "monitor";
+      await engine.stop();
+      await engine.start(toScanConfig(config, mode, monitorChannel));
+      return json(res, 200, { mode, monitor: monitorChannel });
+    }
+
+    if (method === "POST" && path === "/api/monitor/stop") {
+      mode = "scan";
+      monitorChannel = null;
+      await engine.stop();
+      await engine.start(toScanConfig(config, mode));
+      return json(res, 200, { mode, state: engine.state });
+    }
+
+    if (method === "GET" && path === "/api/status") return json(res, 200, { state: engine.state, mode, monitor: monitorChannel, config });
     if (method === "GET" && path === "/api/logs") return json(res, 200, activityLog.entries());
 
     return json(res, 404, { error: "not found" });

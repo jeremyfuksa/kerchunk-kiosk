@@ -39,12 +39,20 @@ export function renderAdmin(root: HTMLElement): void {
         <h2>Now playing</h2>
         <div class="npWhat"><span id="npName" class="npName">scanning…</span> <span id="npFreq" class="npFreq"></span></div>
         <div class="npControls">
+          <button id="resumeBtn" class="resume" style="display:none">⏹ Resume scan</button>
           <label>Volume <input id="vol" type="range" min="0" max="100" /></label>
           <label><input id="mute" type="checkbox" /> Mute</label>
           <button id="skipBtn" title="Force-close the current transmission">Skip ▶</button>
           <button id="tlockBtn" title="Suppress this channel for 30 minutes (clears on restart)" disabled>Temp lockout 30m</button>
           <button id="lockBtn" title="Remove this channel and never Close-Call its frequency again" disabled>Lockout</button>
         </div>
+      </section>
+      <section class="discoveries">
+        <h2>Discoveries <span class="hint">found by Close Call — listen, then decide</span></h2>
+        <table class="chTable">
+          <thead><tr><th>Freq (MHz)</th><th>Name</th><th>Found</th><th></th></tr></thead>
+          <tbody id="dcRows"></tbody>
+        </table>
       </section>
       <section class="channels">
         <h2>Channels <button id="addBtn">+ Add</button></h2>
@@ -110,7 +118,7 @@ export function renderAdmin(root: HTMLElement): void {
       <td>${esc(c.mode.toUpperCase())}</td>
       <td><input type="checkbox" class="prio" ${c.priority ? "checked" : ""} /></td>
       <td><input type="checkbox" class="en" ${c.enabled ? "checked" : ""} /></td>
-      <td><button class="edit">edit</button> <button class="lock" title="Remove and never Close-Call this frequency again">lockout</button> <button class="del">delete</button></td>
+      <td><button class="listen" title="Park the radio on this channel (unsquelched)">listen</button> <button class="edit">edit</button> <button class="lock" title="Remove and never Close-Call this frequency again">lockout</button> <button class="del">delete</button></td>
     </tr>`;
   }
 
@@ -171,6 +179,10 @@ export function renderAdmin(root: HTMLElement): void {
         editingId = id; chErr.textContent = ""; renderRows();
         tr0Focus();
       });
+      tr.querySelector<HTMLButtonElement>(".listen")?.addEventListener("click", () => {
+        const c = channels.find((x) => x.id === id);
+        if (c) api.monitor(c.freq, c.alphaTag || fmtFreq(c.freq));
+      });
       tr.querySelector<HTMLButtonElement>(".lock")?.addEventListener("click", async () => {
         const c = channels.find((x) => x.id === id);
         if (!c) return;
@@ -218,6 +230,58 @@ export function renderAdmin(root: HTMLElement): void {
     renderRows();
   }
 
+  const dcRows = root.querySelector<HTMLElement>("#dcRows")!;
+  async function renderDiscoveries(): Promise<void> {
+    const cfg = await api.getConfig();
+    const ds = [...(cfg.discoveries ?? [])].sort((a, b) => b.ts - a.ts);
+    dcRows.innerHTML = ds.length === 0
+      ? `<tr><td colspan="4" class="empty">nothing pending — Close Call is hunting</td></tr>`
+      : ds.map((d) => `<tr data-id="${esc(d.id)}">
+          <td>${fmtFreq(d.freq)}</td>
+          <td>${esc(d.alphaTag)}</td>
+          <td>${new Date(d.ts).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</td>
+          <td>
+            <button class="dListen">listen</button>
+            <button class="dAdd" title="Promote to an enabled channel">add</button>
+            <button class="dLock" title="Never Close-Call this frequency again">lockout</button>
+            <button class="dDismiss" title="Remove (may be rediscovered later)">dismiss</button>
+          </td>
+        </tr>`).join("");
+
+    async function mutate(id: string, fn: (cfg2: Awaited<ReturnType<typeof api.getConfig>>, d: NonNullable<Awaited<ReturnType<typeof api.getConfig>>["discoveries"]>[number]) => void): Promise<void> {
+      const cfg2 = await api.getConfig();
+      const d = (cfg2.discoveries ?? []).find((x) => x.id === id);
+      if (!d) return;
+      cfg2.discoveries = (cfg2.discoveries ?? []).filter((x) => x.id !== id);
+      fn(cfg2, d);
+      await api.putConfig(cfg2);
+      await refresh();
+      renderDiscoveries();
+      renderLockouts();
+    }
+
+    dcRows.querySelectorAll<HTMLButtonElement>("tr [class^=d]").forEach((b) => {
+      const id = (b.closest("tr") as HTMLElement).dataset.id!;
+      if (b.classList.contains("dListen")) b.addEventListener("click", async () => {
+        const cfg2 = await api.getConfig();
+        const d = (cfg2.discoveries ?? []).find((x) => x.id === id);
+        if (d) api.monitor(d.freq, d.alphaTag);
+      });
+      if (b.classList.contains("dAdd")) b.addEventListener("click", () =>
+        mutate(id, (cfg2, d) => cfg2.channels.push({
+          id: `ch_${d.id.replace(/^cc_/, "")}`, freq: d.freq, alphaTag: d.alphaTag,
+          mode: "nfm", enabled: true,
+        })));
+      if (b.classList.contains("dLock")) b.addEventListener("click", () =>
+        mutate(id, (cfg2, d) => {
+          cfg2.scan.lockoutHz = [...new Set([...(cfg2.scan.lockoutHz ?? []), d.freq])];
+        }));
+      if (b.classList.contains("dDismiss")) b.addEventListener("click", () => mutate(id, () => {}));
+    });
+  }
+  renderDiscoveries();
+  setInterval(() => { renderDiscoveries().catch(() => {}); }, 15000);
+
   const loList = root.querySelector<HTMLElement>("#loList")!;
   async function renderLockouts(): Promise<void> {
     const cfg = await api.getConfig();
@@ -250,12 +314,31 @@ export function renderAdmin(root: HTMLElement): void {
   let nowPlaying: { freq: number; alphaTag: string } | null = null;
   let npAudibleDriven = false;
 
+  const resumeBtn = root.querySelector<HTMLButtonElement>("#resumeBtn")!;
+  let monitoring: { freq: number; alphaTag: string } | null = null;
+
   function paintNow(): void {
-    npName.textContent = nowPlaying ? (nowPlaying.alphaTag || fmtFreq(nowPlaying.freq)) : "scanning…";
-    npFreq.textContent = nowPlaying ? fmtFreq(nowPlaying.freq) : "";
-    tlockBtn.disabled = nowPlaying === null;
-    lockBtn.disabled = nowPlaying === null;
+    if (monitoring) {
+      npName.textContent = `MONITORING ${monitoring.alphaTag || fmtFreq(monitoring.freq)}`;
+      npFreq.textContent = fmtFreq(monitoring.freq);
+    } else {
+      npName.textContent = nowPlaying ? (nowPlaying.alphaTag || fmtFreq(nowPlaying.freq)) : "scanning…";
+      npFreq.textContent = nowPlaying ? fmtFreq(nowPlaying.freq) : "";
+    }
+    resumeBtn.style.display = monitoring ? "" : "none";
+    tlockBtn.disabled = monitoring !== null || nowPlaying === null;
+    lockBtn.disabled = monitoring !== null && nowPlaying === null;
   }
+
+  async function syncMode(): Promise<void> {
+    try {
+      const st = await api.getStatus();
+      monitoring = st.mode === "monitor" && st.monitor
+        ? { freq: st.monitor.freq, alphaTag: st.monitor.alphaTag } : null;
+      paintNow();
+    } catch { /* transient */ }
+  }
+  resumeBtn.addEventListener("click", async () => { await api.monitorStop(); syncMode(); });
 
   function onEngineEvent(ev: EngineEvent): void {
     if (ev.type === "audible") {
@@ -268,6 +351,8 @@ export function renderAdmin(root: HTMLElement): void {
     } else if (ev.type === "status") {
       nowPlaying = null;
       npAudibleDriven = false;
+      // Mode may have flipped (Listen / Resume / weather): re-sync the card.
+      void syncMode();
     } else {
       return;
     }
@@ -275,6 +360,7 @@ export function renderAdmin(root: HTMLElement): void {
   }
   const wsProto = location.protocol === "https:" ? "wss" : "ws";
   new ReconnectingWs(`${wsProto}://${location.host}/ws`, onEngineEvent).connect();
+  syncMode();
   paintNow();
 
   tlockBtn.addEventListener("click", () => api.skip(1800));

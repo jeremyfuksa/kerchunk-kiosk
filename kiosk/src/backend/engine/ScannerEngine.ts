@@ -23,6 +23,9 @@ export interface ScanConfig {
   closeCall?: boolean;
   closeCallDb?: number;
   lockoutHz?: number[];
+  // Frequencies Close Call must never fire on (channels + discoveries +
+  // lockouts). Computed by the server, which owns all three lists.
+  knownHz?: number[];
 }
 
 export type EngineState = "stopped" | "starting" | "running" | "error";

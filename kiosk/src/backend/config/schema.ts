@@ -78,6 +78,15 @@ export const configSchema = z.object({
       countyIds: z.array(z.number().int().positive()).min(1),
     }).optional(),
   }).optional(),
+  // Close Call discoveries pending operator review — deliberately SEPARATE
+  // from channels (the table is what the operator chose; this is what the
+  // radio found). Reviewed in admin: Listen / Add / Lockout / Dismiss.
+  discoveries: z.array(z.object({
+    id: z.string().min(1),
+    freq: z.number().int().positive(),
+    alphaTag: z.string(),
+    ts: z.number(),
+  })).optional(),
   // One channel designated as "the weather channel", stored separately from the
   // scan list. Weather-only mode (server runtime) holds this channel.
   weatherChannel: channelSchema.optional(),

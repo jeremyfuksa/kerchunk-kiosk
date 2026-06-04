@@ -294,7 +294,7 @@ export class WidebandEngine implements ScannerEngine {
       // benched channels never re-trigger detection.
       closeCall: (this.config?.closeCall ?? true) && !(this.config?.monitor ?? false),
       closeCallDb: this.config?.closeCallDb ?? 15,
-      knownHz: [
+      knownHz: this.config?.knownHz ?? [
         ...(this.config?.channels ?? []).map((c) => c.freq),
         ...(this.config?.lockoutHz ?? []),
       ],
