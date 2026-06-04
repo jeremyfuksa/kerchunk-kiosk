@@ -3,15 +3,18 @@
 **Date:** 2026-06-03
 **Status:** Draft for review (future implementation session)
 
-> **Gate before implementing:** This spec has **feasibility risks** that must be
-> de-risked with a spike BEFORE writing an implementation plan — specifically
-> (1) do GNU Radio + SoapySDR install and run on this aarch64 Pi at acceptable
-> disk/RAM cost, and (2) does the 2GB Pi 4 have the CPU/RAM headroom for an
-> FFT/PSD-detect + multi-channel FM-demod flowgraph at ~2.4 MS/s **while also**
-> running the Node backend + Chromium kiosk. The prior-art project
-> (`rtl-sdr-scanner-cpp`) ships as a multi-GB Docker image — strongly suggesting
-> the current 2GB Pi 4 is **under-spec**; see "Hardware feasibility" below. Run
-> the spike first (ideally on the recommended hardware) and fold results back in.
+> **Target hardware (decided):** an **Intel MacBook Pro running Fedora, 16GB,
+> x86_64**, run closed-lid with HDMI out to the monitor. This replaces the 2GB
+> Pi 4 as the appliance for the wideband engine. RAM/CPU are no longer the
+> constraint (16GB + a real Intel CPU comfortably handle GNU Radio + Chromium +
+> Node), and x86 has the best SDR-software support. The remaining feasibility
+> work is **porting** (Fedora packaging + closed-lid HDMI + PipeWire audio),
+> not raw capacity — see "Hardware feasibility / target platform".
+>
+> **Gate before implementing:** still run a spike first — but now it's a *port +
+> prove* spike on the Fedora laptop: (1) GNU Radio + SoapySDR + rtl-sdr install
+> via `dnf` and a flowgraph streams audio + per-channel detection; (2) the kiosk
+> display + audio work closed-lid over HDMI. Fold results into the plan.
 
 ## Problem this solves
 
@@ -219,30 +222,54 @@ drop-in engine swap behind the existing interface — the same boundary
 - **No device thrashing**: assert the engine does not restart the I/Q chain on a
   per-channel basis — only on group retune or genuine exit.
 
-## Hardware feasibility (RAM/CPU) — the dominant constraint
+## Hardware feasibility / target platform
 
-The wideband approach is **GNU Radio + SoapySDR + FFT/PSD + multi-channel FM
-demod at ~2.4 MS/s**, running alongside the existing Node backend and the
-Chromium kiosk display. The current device — **Raspberry Pi 4, 2GB** — is almost
-certainly **under-spec** for this (the prior-art project ships as a multi-GB
-Docker image; Chromium + cage already consume meaningful RAM on this Pi, which is
-why the display unit caps V8 heap and renderer processes).
+**Decided target: Intel MacBook Pro running Fedora, 16GB RAM, x86_64**, operated
+**closed-lid with HDMI out** to the monitor. This replaces the Pi 4 for the
+wideband engine.
 
-Guidance (to validate in the spike, not gospel):
+Why it's a strong fit:
+- **RAM/CPU are no longer the constraint.** 16GB and a real Intel CPU comfortably
+  run GNU Radio (FFT/PSD + multi-channel demod) + Chromium kiosk + Node together.
+  The Intel CPU is far faster than any Pi for the real-time DSP.
+- **x86_64** has the best SDR-software support (GNU Radio, SoapySDR, rtl-sdr all
+  first-class in Fedora repos — no source builds, unlike the Pi where GNU Radio
+  needed compiling).
+- **Real USB3 + properly powered ports** → removes the USB-wedge failure class we
+  hit on the Pi entirely.
+- **Built-in battery = a UPS** that rides through power blips.
+
+For-the-record comparison (why not stay on a Pi):
 
 | Hardware | RAM | Verdict for wideband + kiosk |
 |---|---|---|
-| **Pi 4 / Pi 5, 2GB** (current) | 2GB | **Too tight.** GNU Radio's working set + Chromium + Node leaves little headroom; risk of swap thrash on a 2GB box. The existing zram tuning is a sign it's already RAM-pressured. |
-| **Pi 5, 4GB** | 4GB | **Workable minimum.** Pi 5 also has ~2–3× the CPU of the Pi 4 (matters for real-time FFT/demod) and proper USB3. Reasonable floor for wideband. |
-| **Pi 5, 8GB** | 8GB | **Recommended.** Comfortable headroom for GNU Radio + Chromium + Node + future channels/groups, with margin so the kiosk UI stays responsive while DSP runs. |
-| x86 mini-PC (e.g. N100, 8–16GB) | 8GB+ | **Most headroom**, if the appliance form factor allows it; trivially handles GNU Radio. Overkill unless you want recording/transcoding later. |
+| Pi 4, 2GB (old appliance) | 2GB | Under-spec for wideband; fine for the lean rtl_fm engine only. |
+| Pi 5, 8GB | 8GB | Workable alternative if a Pi form factor were required. |
+| **Fedora MacBook Pro, 16GB (chosen)** | 16GB | **Ample.** Best CPU + USB of the options; free (already owned). |
 
-**Recommendation:** target a **Pi 5 with 8GB** (4GB the bare minimum) for the
-wideband engine. The Pi 5's stronger CPU and USB3 also reduce the USB-wedge risk
-class entirely. **Key point: the lean hotfix engine (per-channel `rtl_fm`,
-2000ms hop) runs fine on the current 2GB Pi 4 — only the wideband redesign needs
-the hardware bump.** So hardware spend is tied to *wanting* simultaneous
-multi-channel monitoring, not to having a working scanner.
+### Porting work this implies (Fedora + laptop appliance)
+The current stack is Debian/RPi-OS + ALSA + cage. Fedora is also systemd-based,
+so the architecture transfers, but the implementation plan must cover:
+- **Packaging:** a Fedora path (`dnf`) alongside / replacing the Debian
+  `setup-kiosk-pi.sh` — install `gnuradio`, `soapysdr`, `rtl-sdr`, `cage`/kiosk
+  compositor, `chromium` via `dnf`.
+- **systemd units:** the existing units (`kerchunk-kiosk.service`, display unit,
+  `kerchunk-cursor-park.service`) port with minor tweaks (paths, user, display
+  target).
+- **Closed-lid operation:** set `HandleLidSwitch=ignore` (and
+  `HandleLidSwitchExternalPower=ignore`) in `logind.conf` so it stays running
+  with the lid shut; ensure the kiosk compositor targets the **HDMI** output, not
+  the internal panel.
+- **Audio:** Fedora ships **PipeWire** (ALSA-compatible). The `kerchunk` ALSA
+  sink config needs adapting to the PipeWire/CoreAudio-free Linux audio stack;
+  the engine still emits S16_LE PCM, but the sink device string changes.
+- **Deploy model:** revisit how code reaches the laptop (the Pi used
+  `deploy.sh` over SSH to `/opt`; same pattern works — just a new host/paths).
+
+**Key point unchanged:** the lean hotfix engine (per-channel `rtl_fm`, 2000ms
+hop) already works on the old 2GB Pi 4. Migrating to the Fedora laptop is about
+enabling the **wideband** engine (simultaneous multi-channel monitoring) on
+hardware that can actually run it.
 
 ## Out of scope (explicit)
 - Covering VHF + UHF *simultaneously* (physically impossible with one dongle).
