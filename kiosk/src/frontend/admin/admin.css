@@ -415,3 +415,75 @@ body {
   .admin .discoveries .chTable th:nth-child(4),
   .admin .discoveries .chTable td.dMode { display: none; } /* detail row keeps it */
 }
+
+/* ── Channel drawer: the dossier slides in from the right ── */
+.drawerScrim {
+  position: fixed; inset: 0; z-index: 40;
+  background: rgba(0, 0, 0, 0.55);
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.2s;
+}
+.drawerScrim.open { opacity: 1; pointer-events: auto; }
+.drawer {
+  position: fixed; top: 0; right: 0; bottom: 0; z-index: 41;
+  width: min(420px, 100vw);
+  background: var(--panel);
+  border-left: 1px solid var(--panel-edge);
+  box-shadow: -18px 0 50px rgba(0, 0, 0, 0.5);
+  padding: 1.1rem 1.2rem 2rem;
+  overflow-y: auto;
+  transform: translateX(102%);
+  transition: transform 0.22s cubic-bezier(0.2, 0.8, 0.3, 1);
+}
+.drawer.open { transform: translateX(0); }
+.drawer .dwHead { display: flex; align-items: center; justify-content: space-between; }
+.drawer .dwHead h3 {
+  font-family: var(--cond);
+  font-weight: 600; font-size: 1.3rem;
+  letter-spacing: 0.04em;
+  margin: 0;
+}
+.drawer .dwFreq {
+  font-variant-numeric: tabular-nums;
+  font-size: 2.1rem; font-weight: 600;
+  color: var(--amber);
+  text-shadow: 0 0 12px color-mix(in srgb, var(--spark) 30%, transparent);
+  margin: 0.2rem 0 1rem;
+}
+.drawer .dwUnit {
+  font-family: var(--cond);
+  font-size: 0.45em; font-weight: 600;
+  letter-spacing: 0.3em;
+  color: var(--amber-soft);
+  margin-left: 0.4em;
+  vertical-align: 0.5em;
+}
+.drawer .dwForm { border-top: 1px solid var(--etch); padding-top: 0.8rem; }
+.drawer .dwForm label { display: block; margin: 0.4rem 0; }
+.drawer .dwForm input[type="text"], .drawer .dwForm input:not([type]) { width: 12rem; }
+.drawer .dwInfo {
+  border-top: 1px solid var(--etch);
+  margin: 1rem 0 0; padding-top: 0.8rem;
+  display: grid; grid-template-columns: auto 1fr;
+  gap: 0.35rem 0.9rem;
+  font-size: 0.84rem;
+}
+.drawer .dwInfo dt {
+  font-family: var(--cond);
+  font-weight: 600; font-size: 0.72rem;
+  text-transform: uppercase; letter-spacing: 0.18em;
+  color: var(--dim);
+  align-self: baseline;
+}
+.drawer .dwInfo dd { margin: 0; color: var(--label); overflow-wrap: anywhere; }
+.drawer .dwVia { color: var(--dim); font-size: 0.9em; }
+.drawer .dwActions {
+  display: flex; gap: 0.6rem;
+  border-top: 1px solid var(--etch);
+  margin-top: 1rem; padding-top: 1rem;
+}
+
+/* The identifying cells are now click targets — show it */
+.admin .chTable td.rowOpen { cursor: pointer; }
+.admin .chTable tbody tr:hover td.rowOpen { color: var(--ink); }
+.admin .chTable tbody tr:hover td.rowOpen:first-child { text-shadow: 0 0 8px color-mix(in srgb, var(--spark) 35%, transparent); }

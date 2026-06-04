@@ -113,7 +113,9 @@ export function renderAdmin(root: HTMLElement): void {
         <span id="modeLabel"></span>
       </section>
       </div>
-    </main>`;
+    </main>
+    <div id="drawerScrim" class="drawerScrim"></div>
+    <aside id="chDrawer" class="drawer" aria-label="Channel details"></aside>`;
 
   // Progressive disclosure: minor modules collapse behind their legends.
   // State persists per device (an operator who tunes often keeps it open).
@@ -179,12 +181,12 @@ export function renderAdmin(root: HTMLElement): void {
 
   function displayRow(c: Channel): string {
     return `<tr data-id="${esc(c.id)}">
-      <td>${fmtFreq(c.freq)}</td>
-      <td>${esc(c.alphaTag)}${locChip(c.location)}</td>
-      <td>${esc(c.mode.toUpperCase())}</td>
+      <td class="rowOpen">${fmtFreq(c.freq)}</td>
+      <td class="rowOpen">${esc(c.alphaTag)}${locChip(c.location)}</td>
+      <td class="rowOpen">${esc(c.mode.toUpperCase())}</td>
       <td><input type="checkbox" class="prio" ${c.priority ? "checked" : ""} /></td>
       <td><input type="checkbox" class="en" ${c.enabled ? "checked" : ""} /></td>
-      <td class="actions">${iconBtn("listen", "listen", "Listen — park the radio on this channel (unsquelched)")}${iconBtn("edit", "edit", "Edit channel")}${iconBtn("lock", "lockout", "Lockout — remove and never Close-Call this frequency again")}${iconBtn("del", "del", "Delete channel")}</td>
+      <td class="actions">${iconBtn("listen", "listen", "Listen — park the radio on this channel (unsquelched)")}${iconBtn("lock", "lockout", "Lockout — remove and never Close-Call this frequency again")}${iconBtn("del", "del", "Delete channel")}</td>
     </tr>`;
   }
 
@@ -241,10 +243,8 @@ export function renderAdmin(root: HTMLElement): void {
     chRows.querySelectorAll<HTMLElement>("tr").forEach((tr) => {
       const id = tr.dataset.id;
       if (!id) return;
-      tr.querySelector<HTMLButtonElement>(".edit")?.addEventListener("click", () => {
-        editingId = id; chErr.textContent = ""; renderRows();
-        tr0Focus();
-      });
+      tr.querySelectorAll<HTMLElement>(".rowOpen").forEach((cell) =>
+        cell.addEventListener("click", () => openDrawer(id)));
       tr.querySelector<HTMLButtonElement>(".listen")?.addEventListener("click", () => {
         const c = channels.find((x) => x.id === id);
         if (c) api.monitor(c.freq, c.alphaTag || fmtFreq(c.freq));
@@ -285,10 +285,99 @@ export function renderAdmin(root: HTMLElement): void {
   }
 
   const chCount = root.querySelector<HTMLElement>("#chCount")!;
+  // ── Channel drawer: full dossier + the editor (edit left the table rows).
+  const drawer = root.querySelector<HTMLElement>("#chDrawer")!;
+  const scrim = root.querySelector<HTMLElement>("#drawerScrim")!;
+  let drawerId: string | null = null;
+
+  function closeDrawer(): void {
+    drawerId = null;
+    drawer.classList.remove("open");
+    scrim.classList.remove("open");
+  }
+
+  function openDrawer(id: string): void {
+    drawerId = id;
+    renderDrawer();
+    drawer.classList.add("open");
+    scrim.classList.add("open");
+  }
+
+  function renderDrawer(): void {
+    const c = channels.find((x) => x.id === drawerId);
+    if (!c) { closeDrawer(); return; }
+    const loc = c.location;
+    drawer.innerHTML = `
+      <header class="dwHead">
+        <h3>${esc(c.alphaTag) || fmtFreq(c.freq)}</h3>
+        ${iconBtn("dwClose", "dismiss", "Close")}
+      </header>
+      <div class="dwFreq">${fmtFreq(c.freq)}<span class="dwUnit">MHz</span></div>
+      <div class="dwForm">
+        <label>Freq (MHz) <input id="dwMhz" value="${fmtFreq(c.freq)}" /></label>
+        <label>Name <input id="dwTag" value="${esc(c.alphaTag)}" /></label>
+        <label>Mode <select id="dwMode">${modeOptions(c.mode)}</select></label>
+        <label><input id="dwPrio" type="checkbox" ${c.priority ? "checked" : ""} /> Priority</label>
+        <label><input id="dwEn" type="checkbox" ${c.enabled ? "checked" : ""} /> Enabled</label>
+        <div><button id="dwSave" class="save">Save</button> <span id="dwErr" class="err"></span></div>
+      </div>
+      <dl class="dwInfo">
+        <dt>exact</dt><dd>${c.freq.toLocaleString()} Hz</dd>
+        <dt>location</dt><dd>${loc
+          ? `${esc([loc.city, loc.state].filter(Boolean).join(", ") || "—")}${loc.lat != null ? ` · ${loc.lat}, ${loc.lon}` : ""} <span class="dwVia">via ${esc(loc.source)}</span>`
+          : "not identified"}</dd>
+        <dt>level trim</dt><dd>${c.levelTrimDb != null ? `${c.levelTrimDb > 0 ? "+" : ""}${c.levelTrimDb} dB` : "learning"}</dd>
+        <dt>looked up</dt><dd>${c.lookedUpAt ? new Date(c.lookedUpAt).toLocaleString() : "never"}</dd>
+        <dt>id</dt><dd>${esc(c.id)}</dd>
+      </dl>
+      <div class="dwActions">
+        <button id="dwListen" class="listen">Listen</button>
+        <button id="dwLock" class="lock">Lockout</button>
+        <button id="dwDel" class="del">Delete</button>
+      </div>`;
+    drawer.querySelector<HTMLButtonElement>(".dwClose")!.addEventListener("click", closeDrawer);
+    drawer.querySelector<HTMLButtonElement>("#dwSave")!.addEventListener("click", async () => {
+      const err = drawer.querySelector<HTMLElement>("#dwErr")!;
+      err.textContent = "";
+      try {
+        const base = formToChannel({
+          mhz: drawer.querySelector<HTMLInputElement>("#dwMhz")!.value,
+          alphaTag: drawer.querySelector<HTMLInputElement>("#dwTag")!.value,
+          mode: drawer.querySelector<HTMLSelectElement>("#dwMode")!.value,
+        });
+        await api.updateChannel(c.id, {
+          ...base,
+          priority: drawer.querySelector<HTMLInputElement>("#dwPrio")!.checked,
+          enabled: drawer.querySelector<HTMLInputElement>("#dwEn")!.checked,
+        });
+        await refresh();
+        err.textContent = "saved";
+      } catch (e) { err.textContent = (e as Error).message; }
+    });
+    drawer.querySelector<HTMLButtonElement>("#dwListen")!.addEventListener("click", () =>
+      api.monitor(c.freq, c.alphaTag || fmtFreq(c.freq)));
+    drawer.querySelector<HTMLButtonElement>("#dwLock")!.addEventListener("click", async () => {
+      await lockoutFreq(c.freq, c.alphaTag || fmtFreq(c.freq));
+      closeDrawer();
+    });
+    drawer.querySelector<HTMLButtonElement>("#dwDel")!.addEventListener("click", async () => {
+      if (!confirm(`Delete ${c.alphaTag || fmtFreq(c.freq)}?`)) return;
+      await api.deleteChannel(c.id);
+      await refresh();
+      closeDrawer();
+    });
+  }
+
+  scrim.addEventListener("click", closeDrawer);
+  document.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape" && drawerId) closeDrawer();
+  });
+
   async function refresh(): Promise<void> {
     channels = await api.getChannels();
     chCount.textContent = String(channels.length);
     renderRows();
+    if (drawerId) renderDrawer(); // keep an open dossier fresh after saves
   }
 
   const dcRows = root.querySelector<HTMLElement>("#dcRows")!;
