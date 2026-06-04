@@ -7,3 +7,18 @@ body { font-family: system-ui, sans-serif; background: #0d1117; color: #e6edf3; 
 .admin li { padding: 0.5rem 0; border-bottom: 1px solid #21262d; }
 .admin .err { color: #f85149; margin-left: 0.5rem; }
 .admin .del { background: #21262d; color: #f85149; border: 1px solid #30363d; border-radius: 4px; cursor: pointer; }
+
+/* Channels CRUD table */
+.admin .chTable { width: 100%; border-collapse: collapse; margin-top: 0.5rem; }
+.admin .chTable th { text-align: left; font-size: 0.85rem; color: #8b949e; padding: 0.3rem 0.5rem; border-bottom: 1px solid #30363d; }
+.admin .chTable td { padding: 0.4rem 0.5rem; border-bottom: 1px solid #21262d; }
+.admin .chTable td:nth-child(4), .admin .chTable td:nth-child(5),
+.admin .chTable th:nth-child(4), .admin .chTable th:nth-child(5) { text-align: center; }
+.admin .chTable tr.editing td { background: #1c2128; }
+.admin .chTable input.fMhz { width: 6.5rem; }
+.admin .chTable input.fTag { width: 100%; box-sizing: border-box; }
+.admin .chTable .empty { color: #8b949e; font-style: italic; text-align: center; }
+.admin .chTable button { background: #21262d; color: #e6edf3; border: 1px solid #30363d; border-radius: 4px; cursor: pointer; }
+.admin .chTable .del { color: #f85149; }
+.admin .chTable .save { color: #3fb950; }
+.admin #addBtn { font-size: 0.85rem; margin-left: 0.75rem; }

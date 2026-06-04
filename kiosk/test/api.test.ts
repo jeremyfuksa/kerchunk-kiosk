@@ -186,3 +186,38 @@ describe("wideband config passthrough", () => {
     expect(lastStart.noiseQuietDb).toBe(-84);
   });
 });
+
+describe("PUT /api/channels/:id (table inline edit)", () => {
+  const CH = { freq: 464275000, alphaTag: "WOF", mode: "nfm", enabled: true };
+
+  it("updates fields, persists, and restarts the engine", async () => {
+    const { server, engine } = makeApp();
+    const created = (await request(server).post("/api/channels").send(CH)).body;
+    let starts = 0;
+    const realStart = engine.start.bind(engine);
+    engine.start = async (sc) => { starts++; return realStart(sc); };
+    const res = await request(server)
+      .put(`/api/channels/${created.id}`)
+      .send({ alphaTag: "WOF Maint", priority: true });
+    expect(res.status).toBe(200);
+    expect(res.body.alphaTag).toBe("WOF Maint");
+    expect(res.body.priority).toBe(true);
+    expect(res.body.freq).toBe(464275000); // untouched fields survive
+    expect(starts).toBe(1);
+    const after = await request(server).get("/api/channels");
+    expect(after.body[0].priority).toBe(true);
+  });
+
+  it("404s on an unknown id", async () => {
+    const { server } = makeApp();
+    const res = await request(server).put("/api/channels/nope").send({ alphaTag: "x" });
+    expect(res.status).toBe(404);
+  });
+
+  it("400s on an invalid patch", async () => {
+    const { server } = makeApp();
+    const created = (await request(server).post("/api/channels").send(CH)).body;
+    const res = await request(server).put(`/api/channels/${created.id}`).send({ freq: -5 });
+    expect(res.status).toBe(400);
+  });
+});
