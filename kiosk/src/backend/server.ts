@@ -5,14 +5,14 @@ import { randomUUID } from "node:crypto";
 import { configSchema, channelSchema, type Config, type Channel } from "./config/schema.js";
 import { ConfigStore } from "./config/ConfigStore.js";
 import { ActivityLog } from "./activityLog.js";
-import type { RepeaterBook } from "./repeaterbook.js";
+import type { LookupProvider } from "./lookup.js";
 import { WsHub } from "./ws.js";
 import type { ScannerEngine, ScanConfig } from "./engine/ScannerEngine.js";
 import { setVolume as amixerVolume, setMuted as amixerMuted, type AmixerOpts } from "./audio.js";
 
 export interface ServerDeps {
-  /** Optional RepeaterBook service — enriches Close Call channel names. */
-  lookup?: Pick<RepeaterBook, "lookup">;
+  /** Optional identification chain — enriches Close Call channel names. */
+  lookup?: LookupProvider;
   configStore: ConfigStore;
   engine: ScannerEngine;
   activityLog: ActivityLog;

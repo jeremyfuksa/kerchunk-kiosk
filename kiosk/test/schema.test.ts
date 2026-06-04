@@ -173,3 +173,15 @@ describe("lookup config (RepeaterBook)", () => {
     expect(configSchema.safeParse(defaultConfig()).success).toBe(true);
   });
 });
+
+describe("lookup.radioReference config", () => {
+  it("accepts appKey/credentials/countyIds", () => {
+    const cfg = structuredClone(defaultConfig()) as Record<string, unknown>;
+    cfg.lookup = {
+      userAgent: "Kerchunk/1.0 (test)",
+      states: ["Missouri"],
+      radioReference: { appKey: "k", username: "u", password: "p", countyIds: [1310] },
+    };
+    expect(configSchema.safeParse(cfg).success).toBe(true);
+  });
+});

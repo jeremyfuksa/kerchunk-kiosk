@@ -63,6 +63,15 @@ export const configSchema = z.object({
   lookup: z.object({
     userAgent: z.string().min(1),
     states: z.array(z.string().min(1)).min(1),
+    // RadioReference fallback (business band / public safety). Requires an
+    // approved developer appKey + the OPERATOR'S premium credentials; all
+    // stay in this config file on the appliance, never in the repo.
+    radioReference: z.object({
+      appKey: z.string().min(1),
+      username: z.string().min(1),
+      password: z.string().min(1),
+      countyIds: z.array(z.number().int().positive()).min(1),
+    }).optional(),
   }).optional(),
   // One channel designated as "the weather channel", stored separately from the
   // scan list. Weather-only mode (server runtime) holds this channel.
