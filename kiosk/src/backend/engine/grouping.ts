@@ -9,15 +9,22 @@ export interface ChannelGroup {
 
 // Greedy interval clustering: sort enabled channels ascending, start a new
 // group whenever the span (current freq - group's lowest freq) would exceed
-// the usable window. Center = midpoint of the group's min/max, so every
-// member is within ±window/2 by construction. Deterministic, no device I/O.
-export function groupChannels(channels: Channel[], windowHz: number): ChannelGroup[] {
+// the usable window, OR the group is full (maxPerGroup — the DSP helper has a
+// fixed number of channelizer lanes; splitting beats silently truncating).
+// Center = midpoint of the group's min/max, so every member is within
+// ±window/2 by construction. Deterministic, no device I/O.
+export function groupChannels(
+  channels: Channel[],
+  windowHz: number,
+  maxPerGroup: number = Infinity,
+): ChannelGroup[] {
   const enabled = channels.filter((c) => c.enabled).sort((a, b) => a.freq - b.freq);
   const groups: ChannelGroup[] = [];
   let current: Channel[] = [];
 
   for (const c of enabled) {
-    if (current.length > 0 && c.freq - current[0]!.freq > windowHz) {
+    if (current.length > 0
+        && (c.freq - current[0]!.freq > windowHz || current.length >= maxPerGroup)) {
       groups.push(toGroup(current));
       current = [];
     }

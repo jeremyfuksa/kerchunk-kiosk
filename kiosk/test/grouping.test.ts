@@ -55,3 +55,33 @@ describe("groupChannels", () => {
     expect(a).toEqual(b);
   });
 });
+
+describe("maxPerGroup cap", () => {
+  it("splits a cluster larger than maxPerGroup instead of dropping channels", () => {
+    // 9 channels inside one window (GMRS 15-22 + a 464 business channel).
+    const freqs = [462_550_000, 462_575_000, 462_600_000, 462_625_000,
+                   462_650_000, 462_675_000, 462_700_000, 462_725_000, 464_275_000];
+    const groups = groupChannels(freqs.map((f) => ch(f)), WINDOW, 8);
+    expect(groups.map((g) => g.channels.length)).toEqual([8, 1]);
+    // Nothing dropped.
+    expect(groups.flatMap((g) => g.channels.map((c) => c.freq)).sort()).toEqual([...freqs].sort());
+  });
+
+  it("defaults to no cap", () => {
+    const freqs = [462_550_000, 462_575_000, 462_600_000, 462_625_000,
+                   462_650_000, 462_675_000, 462_700_000, 462_725_000, 464_275_000];
+    const groups = groupChannels(freqs.map((f) => ch(f)), WINDOW);
+    expect(groups).toHaveLength(1);
+  });
+
+  it("capped groups still respect the window and stay deterministic", () => {
+    const freqs = [146_000_000, 146_100_000, 146_200_000, 146_300_000];
+    const groups = groupChannels(freqs.map((f) => ch(f)), WINDOW, 2);
+    expect(groups.map((g) => g.channels.length)).toEqual([2, 2]);
+    for (const g of groups) {
+      for (const c of g.channels) {
+        expect(Math.abs(c.freq - g.centerHz)).toBeLessThanOrEqual(WINDOW / 2);
+      }
+    }
+  });
+});

@@ -60,7 +60,10 @@ import time
 from gnuradio import analog, audio, blocks, filter as grfilter, gr, soapy
 from gnuradio.filter import firdes
 
-MAX_CHANS = 8
+MAX_CHANS = 12           # channelizer lanes (always running; ~2.5 cores of 8
+                         # at 12). Must match MAX_CHANNELS_PER_GROUP in
+                         # WidebandEngine.ts — grouping splits clusters bigger
+                         # than this so tune never truncates.
 QUAD_RATE = 48_000
 AUDIO_RATE = 48_000
 POLL_S = 0.02            # detection/gate poll — 20 ms so the audio gate can
