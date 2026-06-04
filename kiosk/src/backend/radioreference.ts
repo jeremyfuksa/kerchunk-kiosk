@@ -1,4 +1,4 @@
-import type { LookupHit, LookupProvider } from "./lookup.js";
+import { normalizeMode, type LookupHit, type LookupProvider } from "./lookup.js";
 
 // RadioReference Database Web Service (SOAP) — searchCountyFreq only.
 //
@@ -136,7 +136,7 @@ export class RadioReference implements LookupProvider {
         const descr = leaf(item, "descr");
         const callsign = leaf(item, "callsign");
         const modeRaw = leaf(item, "mode");
-        const mode = modeRaw ? await this.resolveMode(modeRaw) : null;
+        const mode = modeRaw ? normalizeMode(await this.resolveMode(modeRaw)) : null;
         const name = (alpha || descr || "").trim();
         if (!name && !callsign) continue;
         const tag = name

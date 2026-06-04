@@ -1,5 +1,6 @@
 import { readFileSync, writeFileSync, mkdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { normalizeMode } from "./lookup.js";
 
 // RepeaterBook frequency lookup, used to identify Close Call discoveries.
 //
@@ -114,7 +115,8 @@ export class RepeaterBook {
         const pl = r.PL && r.PL.trim() !== "" ? r.PL.trim() : null;
         const tag = `${callsign} ${city} ${st}`.trim() + (pl ? ` · PL ${pl}` : "");
         const lat = Number(r.Lat), lon = Number(r.Long);
-        const mode = rbMode(r);
+        const rawMode = rbMode(r);
+        const mode = rawMode ? normalizeMode(rawMode) : null;
         return {
           callsign, city, state: st, pl, tag,
           ...(mode ? { mode } : {}),

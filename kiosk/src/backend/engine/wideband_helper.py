@@ -98,17 +98,17 @@ LEVEL_REF_DB = -14       # speaker leveler target: mean-square dB of the demod
 LEVEL_MIN_DB = -40       # below this = speech pause/silence: HOLD gain (no
                          # pumping between words).
 LEVEL_MAX_DB = 12        # gain clamp: +-12 dB amplitude correction max.
-LEVEL_SLEW_DOWN = 0.3    # hot-signal clamp stays responsive (~15 dB/s)
-LEVEL_SLEW_UP = 0.04     # upward gain CREEPS (~2 dB/s): chasing quiet speech
-                         # passages upward at full slew rate audibly pumped
-                         # ("level jumps as if the AGC is readjusting" —
-                         # operator, mid-Skywarn-net). NOTE: this leveler
-                         # replaced a gr agc2 block whose rectified-waveform
-                         # detector chirped CW tones; envelope + slew can't
-                         # distort. Gains are PER CHANNEL.
-LEVEL_EMA_ALPHA = 0.05   # ~0.4 s smoothing of the speech level so syllable
-                         # dynamics don't drive the target around
-LEVEL_DEADBAND_DB = 2.5  # close enough = STOP correcting (kills hunting)
+LEVEL_SLEW_DOWN = 0.08   # ~4 dB/s. Even the downward clamp is GENTLE now:
+                         # 15 dB/s ducked audibly on loud talker segments
+                         # (operator heard it on 145.130 after the first
+                         # retune) — transient peaks are the rail's job, the
+                         # leveler only sets long-term per-channel loudness.
+LEVEL_SLEW_UP = 0.04     # ~2 dB/s creep upward. NOTE: this leveler replaced
+                         # a gr agc2 block whose rectified-waveform detector
+                         # chirped CW tones; envelope + slew can't distort.
+LEVEL_EMA_ALPHA = 0.03   # ~0.7 s speech-level smoothing
+LEVEL_DEADBAND_DB = 4.0  # generous: correct only when clearly wrong, then
+                         # stop — per-talker dynamics live inside the band
 CC_FFT = 2048            # Close Call: FFT bins over the whole window
 CC_EVERY = 10            # check every 10th poll (~200 ms)
 CC_CONFIRM = 2           # consecutive checks on the same raster freq to fire
