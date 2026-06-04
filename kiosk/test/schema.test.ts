@@ -196,3 +196,21 @@ describe("channel levelTrimDb", () => {
     if (parsed.success) expect(parsed.data.channels[0]!.levelTrimDb).toBe(-8.5);
   });
 });
+
+describe("channel/discovery location", () => {
+  it("accepts a location object on channels and discoveries", () => {
+    const cfg = { ...defaultConfig(),
+      channels: [{ id: "c1", freq: 145130000, alphaTag: "W0ABC", mode: "nfm", enabled: true,
+        location: { lat: 38.88, lon: -94.82, city: "Olathe", state: "KS", source: "repeaterbook" },
+        lookedUpAt: 1780600000000 }],
+      discoveries: [{ id: "d1", freq: 462887500, alphaTag: "CC", ts: 1,
+        location: { city: "Kansas City", state: "MO", source: "repeaterbook" } }],
+    };
+    const parsed = configSchema.safeParse(cfg);
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(parsed.data.channels[0]!.location?.city).toBe("Olathe");
+      expect(parsed.data.discoveries![0]!.location?.state).toBe("MO");
+    }
+  });
+});

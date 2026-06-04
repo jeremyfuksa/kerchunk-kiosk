@@ -388,6 +388,15 @@ export class WidebandEngine implements ScannerEngine {
     }
   }
 
+  updateKnownHz(knownHz: number[]): void {
+    // Live suppression update: the helper swaps its known set without
+    // touching any chain — zero audio impact, unlike a tune or restart.
+    if (this.config) this.config = { ...this.config, knownHz };
+    if (this.child?.stdin?.writable) {
+      this.child.stdin.write(JSON.stringify({ cmd: "known", knownHz }) + "\n");
+    }
+  }
+
   skip(holdoffSeconds?: number): void {
     // Scanner SKIP key: the helper force-closes the audible channel (a cc
     // lane parks; a regular channel gets a re-open holdoff). With a long

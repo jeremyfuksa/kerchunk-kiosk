@@ -13,6 +13,8 @@ import { setVolume as amixerVolume, setMuted as amixerMuted, type AmixerOpts } f
 export interface ServerDeps {
   /** Optional identification chain — enriches Close Call channel names. */
   lookup?: LookupProvider;
+  /** Boot enrichment pass pacing (tests shrink these). */
+  lookupPass?: { initialDelayMs?: number; spacingMs?: number };
   configStore: ConfigStore;
   engine: ScannerEngine;
   activityLog: ActivityLog;
@@ -25,7 +27,7 @@ const MIME: Record<string, string> = {
   ".json": "application/json", ".svg": "image/svg+xml",
 };
 
-function toScanConfig(
+export function toScanConfig(
   cfg: Config,
   mode: "scan" | "weather" | "monitor",
   monitorChannel: Channel | null = null,
@@ -108,6 +110,38 @@ export function createServer(deps: ServerDeps): { server: Server } {
     }
   }
 
+  // Boot enrichment pass: fill location (and stamp lookedUpAt) for channels
+  // that have never been identified. Sequential and paced — the providers
+  // cache hard, but RadioReference still sees up to one query per county for
+  // each NEW frequency, and their guidance is "don't hammer". Misses are
+  // stamped too, so a frequency that matches nothing is asked about at most
+  // once per 30 days, not on every boot.
+  if (deps.lookup) {
+    const LOOKUP_RETRY_MS = 30 * 24 * 3600 * 1000;
+    const initialDelayMs = deps.lookupPass?.initialDelayMs ?? 15_000;
+    const spacingMs = deps.lookupPass?.spacingMs ?? 1_000;
+    const passTimer = setTimeout(async () => {
+      const now = Date.now();
+      const pending = config.channels.filter((c) =>
+        !c.location && (!c.lookedUpAt || now - c.lookedUpAt > LOOKUP_RETRY_MS));
+      for (const ch of pending) {
+        try {
+          const hit = await deps.lookup!.lookup(ch.freq);
+          config = {
+            ...config,
+            channels: config.channels.map((c) =>
+              c.id === ch.id
+                ? { ...c, lookedUpAt: Date.now(), ...(hit?.location ? { location: hit.location } : {}) }
+                : c),
+          };
+          configStore.save(config);
+        } catch { /* provider failure: try again next boot */ }
+        await new Promise((r) => setTimeout(r, spacingMs));
+      }
+    }, initialDelayMs);
+    passTimer.unref?.();
+  }
+
   // Close Call discoveries persist as DISABLED channels for operator review.
   // Saved WITHOUT persistAndReload: a disabled channel doesn't affect
   // scanning, and an engine restart here would kill the live discovery audio
@@ -115,6 +149,11 @@ export function createServer(deps: ServerDeps): { server: Server } {
   // Leveler trims: persist so they survive hops/restarts. Saved WITHOUT
   // reload — a trim is telemetry, not a scan-config change. cc lanes have no
   // config channel and are skipped.
+  // Trim updates land in memory immediately but persist on a trailing
+  // debounce: during an initial loudness correction the helper emits one
+  // event per ~0.5 dB (~25/s) and each save() is a .bak copy + atomic write —
+  // unthrottled, that's needless SSD wear for telemetry.
+  let levelSaveTimer: NodeJS.Timeout | null = null;
   engine.on((ev) => {
     if (ev.type !== "level") return;
     const ch = config.channels.find((c) => c.id === ev.channelId);
@@ -124,7 +163,12 @@ export function createServer(deps: ServerDeps): { server: Server } {
       channels: config.channels.map((c) =>
         c.id === ev.channelId ? { ...c, levelTrimDb: ev.db } : c),
     };
-    configStore.save(config);
+    if (levelSaveTimer) clearTimeout(levelSaveTimer);
+    levelSaveTimer = setTimeout(() => {
+      levelSaveTimer = null;
+      configStore.save(config);
+    }, 2000);
+    levelSaveTimer.unref?.();
   });
 
   engine.on((ev) => {
@@ -147,7 +191,9 @@ export function createServer(deps: ServerDeps): { server: Server } {
         config = {
           ...config,
           discoveries: (config.discoveries ?? []).map((d) =>
-            d.id === discovery.id ? { ...d, alphaTag: hit.tag } : d),
+            d.id === discovery.id
+              ? { ...d, alphaTag: hit.tag, ...(hit.location ? { location: hit.location } : {}) }
+              : d),
         };
         configStore.save(config);
       }).catch(() => { /* enrichment is optional */ });
@@ -192,10 +238,31 @@ export function createServer(deps: ServerDeps): { server: Server } {
       const body = await readBody(req);
       const parsed = configSchema.safeParse(body);
       if (!parsed.success) return json(res, 400, { error: "invalid config", issues: parsed.error.issues });
+      const prev = config;
       config = parsed.data;
       configStore.save(config);
-      await engine.stop();
-      await engine.start(toScanConfig(config, mode, monitorChannel));
+      // Monitor orphan cleanup: if the monitored frequency was removed from
+      // every list by this update, fall back to scanning instead of sitting
+      // on a frequency that no longer exists anywhere.
+      if (mode === "monitor" && monitorChannel) {
+        const f = monitorChannel.freq;
+        const stillKnown = config.channels.some((c) => c.freq === f)
+          || (config.discoveries ?? []).some((d) => d.freq === f);
+        if (!stillKnown) { mode = "scan"; monitorChannel = null; }
+      }
+      // Restart the engine only when the change is scan-RELEVANT. Pure
+      // metadata (dismissing discoveries, lockout edits) only moves knownHz —
+      // push that to the helper live instead of bouncing audio for ~1s.
+      const before = toScanConfig(prev, mode, monitorChannel);
+      const after = toScanConfig(config, mode, monitorChannel);
+      const scanChanged = JSON.stringify({ ...before, knownHz: [] })
+        !== JSON.stringify({ ...after, knownHz: [] });
+      if (scanChanged) {
+        await engine.stop();
+        await engine.start(after);
+      } else if (JSON.stringify(before.knownHz) !== JSON.stringify(after.knownHz)) {
+        engine.updateKnownHz?.(after.knownHz ?? []);
+      }
       return json(res, 200, config);
     }
 
@@ -306,7 +373,7 @@ export function createServer(deps: ServerDeps): { server: Server } {
       return json(res, 200, { mode, state: engine.state });
     }
 
-    if (method === "GET" && path === "/api/status") return json(res, 200, { state: engine.state, mode, monitor: monitorChannel, config });
+    if (method === "GET" && path === "/api/status") return json(res, 200, { state: engine.state, mode, monitor: monitorChannel });
     if (method === "GET" && path === "/api/logs") return json(res, 200, activityLog.entries());
 
     return json(res, 404, { error: "not found" });

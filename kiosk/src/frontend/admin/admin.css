@@ -40,3 +40,5 @@ body { font-family: system-ui, sans-serif; background: #0d1117; color: #e6edf3; 
 
 .admin .dcToolbar { display: flex; gap: 0.6rem; align-items: center; margin: 0.4rem 0; }
 .admin .dcToolbar button:disabled { opacity: 0.4; }
+
+.admin .loc { font-size: 0.78rem; color: #58a6ff; opacity: 0.8; margin-left: 0.3rem; }

@@ -7,8 +7,8 @@ import { RepeaterBook } from "../src/backend/repeaterbook.js";
 const EXPORT = {
   count: 2,
   results: [
-    { Callsign: "W0ABC", Frequency: "145.130", "Nearest City": "Olathe", State: "Kansas", PL: "88.5" },
-    { Callsign: "WQXX123", Frequency: "462.675", "Nearest City": "Kansas City", State: "Missouri", PL: "141.3" },
+    { Callsign: "W0ABC", Frequency: "145.130", "Nearest City": "Olathe", State: "Kansas", PL: "88.5", Lat: "38.8814", Long: "-94.8191" },
+    { Callsign: "WQXX123", Frequency: "462.675", "Nearest City": "Kansas City", State: "Missouri", PL: "141.3", Lat: "39.0997", Long: "-94.5786" },
   ],
 };
 
@@ -64,5 +64,16 @@ describe("bearer token (March 2026 policy)", () => {
     });
     await rb.lookup(145130000);
     expect(fetcher.mock.calls[0][1].headers["Authorization"]).toBe("Bearer app_abc123");
+  });
+});
+
+
+describe("location capture", () => {
+  it("returns lat/lon/city/state from the export record", async () => {
+    const { rb } = make(vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => EXPORT }));
+    const hit = await rb.lookup(145130000);
+    expect(hit?.location).toEqual({
+      lat: 38.8814, lon: -94.8191, city: "Olathe", state: "KS", source: "repeaterbook",
+    });
   });
 });

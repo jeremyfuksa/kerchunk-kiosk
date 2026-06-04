@@ -1,6 +1,17 @@
 // kiosk/src/backend/config/schema.ts
 import { z } from "zod";
 
+// Where a transmitter lives, when an identification source knows. Captured
+// from RepeaterBook (lat/lon/city/state) or RadioReference; source records
+// which database said so.
+export const locationSchema = z.object({
+  lat: z.number().optional(),
+  lon: z.number().optional(),
+  city: z.string().optional(),
+  state: z.string().optional(),
+  source: z.string(),
+});
+
 export const channelSchema = z.object({
   id: z.string().min(1),
   freq: z.number().int().positive(),
@@ -15,6 +26,10 @@ export const channelSchema = z.object({
   // without this the first ~second of every transmission after a hop played
   // unleveled ("audio jumps", operator-reported).
   levelTrimDb: z.number().optional(),
+  location: locationSchema.optional(),
+  // When identification last ran for this channel (hit OR miss) — misses are
+  // recorded so the boot enrichment pass doesn't re-query every restart.
+  lookedUpAt: z.number().optional(),
 });
 
 export const configSchema = z.object({
@@ -93,6 +108,7 @@ export const configSchema = z.object({
     freq: z.number().int().positive(),
     alphaTag: z.string(),
     ts: z.number(),
+    location: locationSchema.optional(),
   })).optional(),
   // One channel designated as "the weather channel", stored separately from the
   // scan list. Weather-only mode (server runtime) holds this channel.
