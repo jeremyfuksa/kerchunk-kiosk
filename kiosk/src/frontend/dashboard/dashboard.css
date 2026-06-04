@@ -1,33 +1,215 @@
-:root { color-scheme: dark; }
+/* ── Kerchunk dashboard: rack-mount RF instrument ─────────────────────────
+   Phosphor-amber data on near-black, silkscreen condensed labels, LED-segment
+   meter, faint CRT atmosphere. Glanceable from across a room. */
+
+:root {
+  color-scheme: dark;
+  --bg: #07090b;
+  --panel: #0d1115;
+  --panel-edge: #1d242c;
+  --etch: #11161c;
+  --ink: #e8e4d8;            /* warm off-white, CRT-adjacent */
+  --dim: #6e7681;
+  --label: #8b949e;
+  --amber: #ffb000;          /* phosphor */
+  --amber-soft: rgba(255, 176, 0, 0.55);
+  --green: #3ddc84;
+  --red: #ff5b4d;
+  --blue: #58a6ff;
+  --mono: "IBM Plex Mono", ui-monospace, monospace;
+  --cond: "Barlow Condensed", "Arial Narrow", sans-serif;
+}
+
 /* Output-only kiosk: hide the mouse cursor on the dashboard. Scoped to .dash
    (not a bare `*`) because this stylesheet is bundled into the single CSS file
    loaded on EVERY page — an unscoped rule also hid the cursor on the admin page,
    where the operator needs it. .dash exists only on the dashboard view. */
 .dash, .dash * { cursor: none !important; }
-body { margin: 0; font-family: ui-monospace, monospace; background: #0d1117; color: #e6edf3; }
-.dash { display: flex; height: 100vh; }
-.now { flex: 1.4; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #161b22; border-right: 1px solid #30363d; }
-.now .active { color: #3fb950; letter-spacing: 3px; font-size: 1.2rem; }
-.now .freq { font-size: 6rem; font-weight: 700; line-height: 1.1; }
-.now .tag { color: #8b949e; font-size: 1.6rem; }
-.now .scanning { color: #8b949e; font-size: 2rem; }
-.now .err { color: #f85149; font-size: 1.8rem; text-align: center; padding: 1rem; }
-.log { flex: 1; padding: 1.5rem; overflow-y: auto; }
-.log h2 { color: #8b949e; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 2px; }
-.log ul { list-style: none; padding: 0; margin: 0; }
-.log li { padding: 0.4rem 0; border-bottom: 1px solid #21262d; font-size: 1.1rem; }
-.log .t { color: #8b949e; margin-right: 0.6rem; }
-/* Weather-only mode indicator. Empty when scanning (no text => nothing shown);
-   shows a prominent badge in the top-left when mode === "weather". Positioned
-   fixed so it overlays the flex layout regardless of which pane it sits in. */
-.modeBadge:not(:empty) {
-  position: fixed; top: 1rem; left: 1rem; z-index: 10;
-  padding: 0.4rem 0.9rem; border-radius: 4px;
-  background: #1f6feb; color: #ffffff;
-  font-size: 1.1rem; font-weight: 700; letter-spacing: 3px;
+
+body {
+  margin: 0;
+  font-family: var(--mono);
+  background: var(--bg);
+  color: var(--ink);
 }
 
-/* Signal meter under now-playing */
-.dash .meter { width: 60%; max-width: 420px; height: 14px; margin: 0.8rem auto 0; background: #21262d; border: 1px solid #30363d; border-radius: 7px; overflow: hidden; }
-.dash .meterFill { height: 100%; background: linear-gradient(90deg, #3fb950, #d29922 75%, #f85149); transition: width 0.25s linear; }
-.dash .meterDb { font-size: 0.9rem; color: #8b949e; margin-top: 0.3rem; }
+/* CRT atmosphere: scanlines + corner vignette. Subtle on purpose. */
+.dash::before {
+  content: "";
+  position: fixed; inset: 0; z-index: 9;
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.18) 0 1px, transparent 1px 3px),
+    radial-gradient(ellipse at center, transparent 55%, rgba(0, 0, 0, 0.5) 100%);
+  opacity: 0.5;
+}
+
+.dash { display: flex; height: 100vh; }
+
+/* ── Now-playing pane ── */
+.now {
+  flex: 1.4;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  background:
+    radial-gradient(ellipse 80% 60% at 50% 42%, rgba(255, 176, 0, 0.05), transparent 70%),
+    var(--panel);
+  border-right: 1px solid var(--panel-edge);
+  position: relative;
+}
+
+.now .active {
+  font-family: var(--cond);
+  font-weight: 700; font-size: 1.5rem;
+  letter-spacing: 0.45em; text-indent: 0.45em;
+  color: var(--green);
+  display: flex; align-items: center; gap: 0.6rem;
+}
+.now .active .dot {
+  width: 0.7em; height: 0.7em; border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 8px var(--green), 0 0 18px rgba(61, 220, 132, 0.5);
+  animation: breathe 1.6s ease-in-out infinite;
+}
+@keyframes breathe { 50% { opacity: 0.45; } }
+
+.now .freq {
+  font-size: clamp(4rem, 11vw, 8.5rem);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.05;
+  color: var(--amber);
+  text-shadow: 0 0 14px rgba(255, 176, 0, 0.35), 0 0 50px rgba(255, 176, 0, 0.15);
+  letter-spacing: -0.02em;
+}
+.now .freq .unit {
+  font-family: var(--cond);
+  font-size: 0.22em; font-weight: 600;
+  letter-spacing: 0.3em;
+  color: var(--amber-soft);
+  margin-left: 0.35em;
+  vertical-align: 0.55em;
+  text-shadow: none;
+}
+
+.now .tag {
+  color: var(--ink);
+  font-family: var(--cond);
+  font-weight: 500;
+  font-size: clamp(1.4rem, 3vw, 2.2rem);
+  letter-spacing: 0.06em;
+  margin-top: 0.4rem;
+  max-width: 90%;
+  text-align: center;
+}
+
+/* Scanning idle state: label + sweeping bar (the radio is WORKING) */
+.now .scanning { text-align: center; }
+.now .scanning .scanText {
+  font-family: var(--cond);
+  font-weight: 600; font-size: 2.2rem;
+  letter-spacing: 0.6em; text-indent: 0.6em;
+  color: var(--dim);
+}
+.now .scanning .sweep {
+  width: 320px; height: 4px;
+  margin: 1.4rem auto 0;
+  background: var(--etch);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.now .scanning .sweepBar {
+  width: 30%; height: 100%;
+  background: linear-gradient(90deg, transparent, var(--amber), transparent);
+  animation: sweep 2.4s ease-in-out infinite;
+}
+@keyframes sweep {
+  0%   { transform: translateX(-110%); }
+  50%  { transform: translateX(280%); }
+  100% { transform: translateX(-110%); }
+}
+
+.now .err {
+  color: var(--red);
+  font-size: 1.6rem;
+  text-align: center;
+  padding: 1.5rem;
+  max-width: 80%;
+  border: 1px solid rgba(255, 91, 77, 0.4);
+  background: rgba(255, 91, 77, 0.06);
+  border-radius: 6px;
+}
+
+/* ── Signal meter: LED segments ── */
+.dash .meter {
+  width: 62%; max-width: 460px; height: 16px;
+  margin: 1.6rem auto 0;
+  background: var(--etch);
+  border: 1px solid var(--panel-edge);
+  border-radius: 3px;
+  overflow: hidden;
+  padding: 2px;
+}
+.dash .meterFill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--green) 0 55%, var(--amber) 55% 80%, var(--red) 80%);
+  transition: width 0.25s linear;
+  /* LED segmentation: punch gaps with a hard-stop mask */
+  -webkit-mask-image: repeating-linear-gradient(90deg, #000 0 8px, transparent 8px 11px);
+          mask-image: repeating-linear-gradient(90deg, #000 0 8px, transparent 8px 11px);
+}
+.dash .meterDb {
+  font-size: 0.95rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--dim);
+  margin-top: 0.45rem;
+  letter-spacing: 0.08em;
+}
+
+/* ── Recent log rail ── */
+.log {
+  flex: 1;
+  padding: 1.6rem 1.8rem;
+  overflow-y: auto;
+  background: var(--bg);
+}
+.log h2 {
+  font-family: var(--cond);
+  font-weight: 600; font-size: 0.95rem;
+  text-transform: uppercase;
+  letter-spacing: 0.45em;
+  color: var(--label);
+  margin: 0 0 0.8rem;
+  padding-bottom: 0.6rem;
+  border-bottom: 1px solid var(--panel-edge);
+}
+.log ul { list-style: none; padding: 0; margin: 0; }
+.log li {
+  display: flex; align-items: baseline; gap: 0.7rem;
+  padding: 0.5rem 0.2rem;
+  border-bottom: 1px solid var(--etch);
+  font-size: 1.05rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--dim);
+}
+.log li:first-child { color: var(--ink); }
+.log li:first-child::before {
+  content: "▸";
+  color: var(--amber);
+  margin-right: 0.1rem;
+}
+.log .t { color: var(--label); font-size: 0.85em; min-width: 7ch; }
+
+/* ── Mode badge: stencil chip ── */
+.modeBadge:not(:empty) {
+  position: fixed; top: 1.1rem; left: 1.2rem; z-index: 10;
+  padding: 0.35rem 1rem;
+  font-family: var(--cond);
+  font-weight: 700; font-size: 1.05rem;
+  letter-spacing: 0.4em; text-indent: 0.4em;
+  color: var(--amber);
+  background: rgba(255, 176, 0, 0.08);
+  border: 1px solid var(--amber-soft);
+  border-radius: 3px;
+  text-shadow: 0 0 10px rgba(255, 176, 0, 0.4);
+}

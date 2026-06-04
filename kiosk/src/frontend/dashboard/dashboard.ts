@@ -103,13 +103,16 @@ export function renderDashboard(root: HTMLElement): void {
       // onto a bar. -35 dB = floor-ish, +5 dB = hot; clamp outside.
       const db = state.signalDb;
       const pct = db === null ? 0 : Math.max(0, Math.min(100, ((db + 35) / 40) * 100));
-      nowEl.innerHTML = `<div class="active">● ACTIVE</div>
-        <div class="freq">${fmtFreq(state.nowPlaying.freq)}</div>
+      nowEl.innerHTML = `<div class="active"><span class="dot"></span>ACTIVE</div>
+        <div class="freq">${fmtFreq(state.nowPlaying.freq)}<span class="unit">MHz</span></div>
         <div class="tag">${esc(state.nowPlaying.alphaTag)}</div>
         <div class="meter"><div class="meterFill" style="width:${pct.toFixed(0)}%"></div></div>
         <div class="meterDb">${db === null ? "" : db.toFixed(1) + " dB"}</div>`;
     } else {
-      nowEl.innerHTML = `<div class="scanning">scanning…</div>`;
+      nowEl.innerHTML = `<div class="scanning">
+        <div class="scanText">SCANNING</div>
+        <div class="sweep"><div class="sweepBar"></div></div>
+      </div>`;
     }
     logEl.innerHTML = state.log
       .map((r) => `<li><span class="t">${fmtTime(r.ts)}</span> ${fmtFreq(r.freq)} ${esc(r.alphaTag)}</li>`)
