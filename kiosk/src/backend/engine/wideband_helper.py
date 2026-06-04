@@ -17,16 +17,21 @@ lives in dist-packages; mise pythons cannot import it). Protocol
 
 Audio goes straight to ALSA (gr audio.sink); Node never touches PCM. Audible
 selection is first-active-wins: hold until that channel closes, then hand off
-to any other open channel, else silence. Group-hop is Node's job — it just
+to any other open channel, else silence. The audio gate itself follows
+INSTANTANEOUS carrier power (~50 ms mute on carrier drop — no squelch-tail
+static), while open/close hold semantics ride hang_ms for scan behavior. Group-hop is Node's job — it just
 sends another "tune"; the device is NEVER re-opened (spike-proven:
 set_frequency on the running soapy source retunes VHF<->UHF cleanly).
 
 DSP per chain (MAX_CHANS chains built once, offsets retuned per group):
   soapy source @ samp_rate -> freq_xlating_fir (decim -> 48k) ->
     [power: mag^2 -> moving_average -> probe]
-    [audio: nbfm_rx(48k/48k, 5k dev) -> gate(multiply_const 0|1)] -> add -> sink
+    [audio: nbfm_rx(48k/48k, 5k dev) -> gate(multiply_const 0|1)] -> add ->
+    rail(+-0.8 hard limiter, speaker guard) -> sink
 
-Detection (per assigned chain, in the 50 ms poll loop):
+Detection (per assigned chain, in the 20 ms poll loop; the audio gate also
+uses a separate fast ~10 ms power estimate so the speaker mutes within
+~30 ms of carrier drop — see the pass-2 comment):
   Adaptive noise floor: asymmetric EMA of channel power while closed — tracks
   DOWN fast (a transmission present at tune time decays away quickly) and UP
   slowly (so a real carrier doesn't become the floor). The squelch reference
@@ -58,14 +63,19 @@ from gnuradio.filter import firdes
 MAX_CHANS = 8
 QUAD_RATE = 48_000
 AUDIO_RATE = 48_000
-POLL_S = 0.05            # detection poll
-POWER_EVERY = 4          # power telemetry every 4th poll (~200 ms)
-OPEN_POLLS = 2           # consecutive above-threshold polls to open
-WARMUP_POLLS = 10        # ~500 ms after tune: let the power average fill
+POLL_S = 0.02            # detection/gate poll — 20 ms so the audio gate can
+                         # mute within ~30 ms of carrier drop (operator heard
+                         # the static tail at the old 50 ms poll + 100 ms avg)
+POWER_EVERY = 10         # power telemetry every 10th poll (~200 ms)
+OPEN_POLLS = 5           # consecutive above-threshold polls to open (~100 ms)
+WARMUP_POLLS = 25        # ~500 ms after tune: let the power average fill
                          # before arming detection (else the floor initializes
                          # from an empty probe at -120 dB and every channel
                          # "opens" — observed in the first live smoke test)
 CLOSE_HYST_DB = 3.0
+GATE_HYST_DB = 1.0       # +-0.5 dB around the gate threshold so the fast
+                         # (10 ms) power estimate can't flutter the audio
+                         # on/off on a weak-but-open signal
 FLOOR_ALPHA_UP = 0.02    # floor rises slowly
 FLOOR_ALPHA_DOWN = 0.2   # floor falls fast
 
@@ -81,13 +91,20 @@ class Chain:
         self.xlate = grfilter.freq_xlating_fir_filter_ccf(
             samp_rate // QUAD_RATE, taps, 0, samp_rate)
         self.mag2 = blocks.complex_to_mag_squared(1)
-        # ~100 ms power average at the 48 kHz quad rate.
+        # ~100 ms power average at the 48 kHz quad rate: stable estimate for
+        # DETECTION (open/close, floor learning).
         self.avg = blocks.moving_average_ff(QUAD_RATE // 10, 10.0 / QUAD_RATE)
         self.probe = blocks.probe_signal_f()
+        # ~10 ms power average: fast estimate for the AUDIO GATE only, so the
+        # speaker mutes within one poll of carrier drop instead of waiting for
+        # the 100 ms average to decay through the threshold.
+        self.avg_fast = blocks.moving_average_ff(QUAD_RATE // 100, 100.0 / QUAD_RATE)
+        self.probe_fast = blocks.probe_signal_f()
         self.demod = analog.nbfm_rx(
             audio_rate=AUDIO_RATE, quad_rate=QUAD_RATE, tau=75e-6, max_dev=5_000)
         self.gate = blocks.multiply_const_ff(0.0)
         tb.connect(src, self.xlate, self.mag2, self.avg, self.probe)
+        tb.connect(self.mag2, self.avg_fast, self.probe_fast)
         tb.connect(self.xlate, self.demod, self.gate)
         tb.connect(self.gate, (adder, port))
 
@@ -97,6 +114,7 @@ class Chain:
     def reset_detection(self):
         self.floor_db = None
         self.open = False
+        self.carrier = False   # instantaneous carrier presence (fast audio gate)
         self.above_polls = 0
         self.below_since = None
         self.warmup = WARMUP_POLLS
@@ -117,6 +135,10 @@ class Chain:
         p = self.probe.level()
         return 10 * math.log10(p) if p > 0 else -120.0
 
+    def fast_power_db(self):
+        p = self.probe_fast.level()
+        return 10 * math.log10(p) if p > 0 else -120.0
+
 
 class Helper(gr.top_block):
     def __init__(self, args):
@@ -132,9 +154,15 @@ class Helper(gr.top_block):
             self.src.set_gain(0, float(args.gain))
 
         # One shared adder feeds the sink; exactly one gate is ever non-zero.
+        # The rail is a hard limiter (speaker guard): demodulated squelch
+        # noise swings far beyond the +-1.0 a voice signal at rated deviation
+        # produces, so any noise that slips past the gate (the ~30 ms close
+        # window) gets clipped to a tolerable level instead of slamming the
+        # speakers at full scale.
         self.adder = blocks.add_ff(1)
+        self.limiter = analog.rail_ff(-0.8, 0.8)
         self.sink = audio.sink(AUDIO_RATE, args.sink, True)
-        self.connect(self.adder, self.sink)
+        self.connect(self.adder, self.limiter, self.sink)
 
         # Channel filter: pass the NFM channel (~16 kHz), reject neighbors.
         taps = firdes.low_pass(1.0, args.rate, 8_000, 4_000)
@@ -169,7 +197,10 @@ class Helper(gr.top_block):
             self.audible.gate.set_k(0.0)
         self.audible = chain
         if chain is not None:
-            chain.gate.set_k(1.0)
+            # Gate follows the chain's carrier, not just audibility: an open
+            # chain whose carrier already dropped (riding its hang time) must
+            # not blast squelch noise.
+            chain.gate.set_k(1.0 if chain.carrier else 0.0)
         emit({"ev": "audible",
               "id": chain.channel_id if chain else None})
 
@@ -212,6 +243,25 @@ class Helper(gr.top_block):
             if chain.channel_id is None or chain.channel_id not in readings:
                 continue
             db = readings[chain.channel_id]
+
+            # Fast audio gate (static mute). An FM carrier holds steady power
+            # while keyed, so the moment power falls to the close threshold the
+            # transmission is OVER — demodulated output from here on is loud
+            # squelch noise. The gate runs on the FAST (10 ms) power estimate
+            # and this 20 ms poll, so it mutes within ~30 ms of carrier drop;
+            # hang_ms only governs the logical open/hold (so the scanner
+            # doesn't hop away between replies). A re-key inside the hang
+            # reopens the gate on the next poll, no event churn. The +-0.5 dB
+            # hysteresis keeps the noisier fast estimate from fluttering the
+            # audio on a weak-but-open signal.
+            gate_thresh = floor + open_db - CLOSE_HYST_DB
+            fast_db = chain.fast_power_db()
+            if chain.carrier:
+                chain.carrier = fast_db > gate_thresh - GATE_HYST_DB / 2
+            else:
+                chain.carrier = fast_db > gate_thresh + GATE_HYST_DB / 2
+            if self.audible is chain:
+                chain.gate.set_k(1.0 if chain.carrier else 0.0)
 
             if not chain.open:
                 if db > floor + open_db:
