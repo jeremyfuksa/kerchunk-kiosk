@@ -262,7 +262,7 @@ export class WidebandEngine implements ScannerEngine {
     const cmd = {
       cmd: "tune",
       centerHz: group.centerHz,
-      channels: group.channels.map((c) => ({ id: c.id, freqHz: c.freq })),
+      channels: group.channels.map((c) => ({ id: c.id, freqHz: c.freq, priority: c.priority ?? false })),
     };
     this.child.stdin.write(JSON.stringify(cmd) + "\n");
   }

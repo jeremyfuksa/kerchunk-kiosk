@@ -9,9 +9,11 @@ export function mhzToHz(mhz: string): number {
   return Math.round(n * 1e6);
 }
 
-export function formToChannel(form: { mhz: string; alphaTag: string; mode: string }): Omit<Channel, "id"> {
+export function formToChannel(form: { mhz: string; alphaTag: string; mode: string; priority?: boolean }): Omit<Channel, "id"> {
   const mode = form.mode as Channel["mode"];
-  return { freq: mhzToHz(form.mhz), alphaTag: form.alphaTag, mode, enabled: true };
+  // priority is only included when set, so non-priority channels stay free of
+  // the key in saved config (and existing toEqual-style consumers are stable).
+  return { freq: mhzToHz(form.mhz), alphaTag: form.alphaTag, mode, enabled: true, ...(form.priority ? { priority: true } : {}) };
 }
 
 export function weatherFormToChannel(form: { mhz: string; alphaTag: string; mode: string }): Omit<Channel, "id"> {
@@ -40,6 +42,7 @@ export function renderAdmin(root: HTMLElement): void {
         <input id="mhz" placeholder="145.130" />
         <input id="tag" placeholder="KC0KW — Gibbs Rd" />
         <select id="mode"><option>nfm</option><option>fm</option><option>am</option></select>
+        <label><input id="prio" type="checkbox" /> Priority</label>
         <button id="addBtn">Add</button>
         <span id="addErr" class="err"></span>
       </section>
@@ -64,11 +67,24 @@ export function renderAdmin(root: HTMLElement): void {
   async function refresh(): Promise<void> {
     const channels = await api.getChannels();
     chList.innerHTML = channels
-      .map((c) => `<li>${fmtFreq(c.freq)} — ${esc(c.alphaTag)} (${esc(c.mode)})
+      .map((c) => `<li>${c.priority ? "★ " : ""}${fmtFreq(c.freq)} — ${esc(c.alphaTag)} (${esc(c.mode)})
+        <button data-id="${esc(c.id)}" class="prio">${c.priority ? "unset priority" : "set priority"}</button>
         <button data-id="${esc(c.id)}" class="del">delete</button></li>`)
       .join("");
     chList.querySelectorAll<HTMLButtonElement>(".del").forEach((b) =>
       b.addEventListener("click", async () => { await api.deleteChannel(b.dataset.id!); refresh(); }));
+    // No per-channel update endpoint: toggle priority via whole-config PUT
+    // (also restarts the engine, so the change takes effect immediately).
+    chList.querySelectorAll<HTMLButtonElement>(".prio").forEach((b) =>
+      b.addEventListener("click", async () => {
+        const cfg = await api.getConfig();
+        const ch = cfg.channels.find((c) => c.id === b.dataset.id);
+        if (ch) {
+          ch.priority = !ch.priority;
+          await api.putConfig(cfg);
+        }
+        refresh();
+      }));
   }
 
   api.getConfig().then((cfg) => { vol.value = String(cfg.audio.volume); mute.checked = cfg.audio.muted; });
@@ -82,6 +98,7 @@ export function renderAdmin(root: HTMLElement): void {
         mhz: root.querySelector<HTMLInputElement>("#mhz")!.value,
         alphaTag: root.querySelector<HTMLInputElement>("#tag")!.value,
         mode: root.querySelector<HTMLSelectElement>("#mode")!.value,
+        priority: root.querySelector<HTMLInputElement>("#prio")!.checked,
       });
       await api.addChannel(payload);
       refresh();

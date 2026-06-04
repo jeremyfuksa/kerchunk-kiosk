@@ -161,6 +161,7 @@ class Chain:
 
         self.gain = 0.0          # current gate value (fade_to bookkeeping)
         self.level_db = 0.0      # learned per-channel loudness correction (dB)
+        self.priority = False    # preempts non-priority audible when it opens
         self.channel_id = None   # None = parked (no channel assigned)
         self.reset_detection()
 
@@ -193,8 +194,9 @@ class Chain:
         self.below_since = None
         self.warmup = WARMUP_POLLS
 
-    def assign(self, channel_id, offset_hz):
+    def assign(self, channel_id, offset_hz, priority=False):
         self.channel_id = channel_id
+        self.priority = priority
         self.xlate.set_center_freq(offset_hz)
         self.gate.set_k(0.0)   # hard cut is fine: we just retuned, no audio context
         self.gain = 0.0
@@ -203,6 +205,7 @@ class Chain:
 
     def park(self):
         self.channel_id = None
+        self.priority = False
         self.xlate.set_center_freq(0)
         self.gate.set_k(0.0)
         self.gain = 0.0
@@ -274,7 +277,8 @@ class Helper(gr.top_block):
         for i, chain in enumerate(self.chains):
             if i < len(channels):
                 c = channels[i]
-                chain.assign(c["id"], c["freqHz"] - center_hz)
+                chain.assign(c["id"], c["freqHz"] - center_hz,
+                             bool(c.get("priority", False)))
             else:
                 chain.park()
         emit({"ev": "tuned", "centerHz": center_hz})
@@ -381,7 +385,12 @@ class Helper(gr.top_block):
                         chain.below_since = None
                         emit({"ev": "open", "id": chain.channel_id,
                               "db": round(db, 1)})
-                        if self.audible is None:   # first-active-wins
+                        if self.audible is None:   # first-active-wins...
+                            self.set_audible(chain)
+                        elif chain.priority and not self.audible.priority:
+                            # ...except priority channels take the speaker
+                            # from non-priority ones (hardware-scanner
+                            # priority scan).
                             self.set_audible(chain)
                 else:
                     chain.above_polls = 0
@@ -400,10 +409,14 @@ class Helper(gr.top_block):
                     chain.below_since = None
 
     def next_open_chain(self):
+        best = None
         for chain in self.chains:
             if chain.channel_id is not None and chain.open:
-                return chain
-        return None
+                if chain.priority:
+                    return chain   # open priority channel wins the handoff
+                if best is None:
+                    best = chain
+        return best
 
     def power_levels(self):
         return {c.channel_id: round(c.power_db(), 1)

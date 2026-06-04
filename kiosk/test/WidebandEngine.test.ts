@@ -218,3 +218,15 @@ describe("audible passthrough", () => {
     expect(audibles[1]!.channel).toBeNull();
   });
 });
+
+describe("priority passthrough", () => {
+  it("tune carries each channel's priority flag", async () => {
+    const tunes = tmpFile("tunes");
+    const { engine } = makeEngine({ FAKE_WB_TUNES_FILE: tunes });
+    await engine.start(cfg([{ ...VHF_A, priority: true }, VHF_B]));
+    await waitFor(() => lines(tunes).length >= 1, 1000);
+    await engine.stop();
+    const first = JSON.parse(lines(tunes)[0]!);
+    expect(first.channels.map((c: { priority: boolean }) => c.priority)).toEqual([true, false]);
+  });
+});

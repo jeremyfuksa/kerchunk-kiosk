@@ -7,6 +7,8 @@ async function j<T>(res: Response): Promise<T> {
 
 export const api = {
   getConfig: () => fetch("/api/config").then(j<Config>),
+  putConfig: (cfg: Config) =>
+    fetch("/api/config", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(cfg) }).then(j<Config>),
   getChannels: () => fetch("/api/channels").then(j<Channel[]>),
   addChannel: (c: Omit<Channel, "id">) =>
     fetch("/api/channels", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(c) }).then(j<Channel>),

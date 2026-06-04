@@ -7,6 +7,9 @@ export const channelSchema = z.object({
   alphaTag: z.string(),
   mode: z.enum(["fm", "nfm", "am"]),
   enabled: z.boolean(),
+  // Priority channels preempt the speaker from non-priority ones when both
+  // are active in the same group (hardware-scanner "priority scan").
+  priority: z.boolean().optional(),
 });
 
 export const configSchema = z.object({
