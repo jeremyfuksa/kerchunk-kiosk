@@ -1,31 +1,89 @@
-# Kerchunk
+# Kerchunk Kiosk
 
-A pocket-sized Bluetooth scanner built around a Raspberry Pi Zero 2 W and an RTL-SDR dongle. Headless, car-optimized, parallel multi-channel monitoring with analog FM/NFM/AM at launch and P25 Phase 1 in a follow-up firmware release — all on the same single SKU.
+A software-defined radio scanner appliance. A repurposed laptop running Ubuntu,
+an RTL-SDR dongle, and GNU Radio monitor **every channel in a 2 MHz window
+simultaneously** — no scan latency, no missed bursts inside a band group — and
+boot lid-closed straight into a fullscreen dashboard on an external monitor.
 
-See [docs/Kerchunk Vision.md](docs/Kerchunk%20Vision.md) for the full product vision, architecture, and roadmap.
+**v1.0 (MVP)** — live on hardware, operator-verified end to end.
 
-## Status
+## What it does
 
-Pre-prototype. Working on **Milestone 1: Feasibility** — proving `rtl_fm + bluez-alsa` on a stock Pi Zero 2 W can stream a local 2 m repeater to Bluetooth earbuds for 60 seconds clean.
+- **Wideband engine**: one persistent GNU Radio flowgraph samples a 2.4 MS/s
+  I/Q window and demodulates up to 12 channels at once; the SDR is opened once
+  per boot and retuned live between band groups (group-hop) — the USB
+  re-open thrash that kills `rtl_fm`-style scanners is structurally gone.
+- **Real squelch**: per-channel power over an adaptive group noise floor AND
+  FM quieting detection (power without a quieted carrier never opens — rejects
+  spurs, AGC pumping, data bursts). ~30 ms audio gate with fade ramps, hard
+  limiter, per-channel loudness leveler.
+- **Close Call**: an FFT watches the whole tuned window for strong
+  transmissions on non-configured frequencies; discoveries preempt the
+  speaker, get identified against RepeaterBook / RadioReference, and are filed
+  as disabled channels for review. Skip key + permanent lockouts.
+- **Priority channels** (preempt within a group), **weather-only mode**
+  (squelch-free NOAA hold), **SKIP** key, per-channel enable/priority.
+- **Kiosk dashboard**: now-playing (true speaker ownership), live signal
+  meter, recent-activity log. **Web admin** from any device: inline-editable
+  channel table, scan tuning knobs, volume (true dB fader), Close Call
+  controls, lockouts.
+- **Appliance**: systemd-managed, boots lid-closed to the dashboard on HDMI,
+  never sleeps, survives ALSA device-order races, audio settings persist.
 
-## Layout
+## Hardware
 
-- [`docs/`](docs/) — vision and design documents
-- [`scripts/`](scripts/) — setup tooling (`setup-pi.sh` prepares a fresh Pi Zero 2 W for bench work)
-- [`bench/`](bench/) — Milestone 1 bench protocol and helper scripts
-- `software/` (Linux userspace daemons: `kerchunk-rxd`, `kerchunk-btd`, `kerchunk-cfgd`) will be added once M1 passes
-- `hardware/` (KiCad carrier PCB) will be added at M4
-- `app/` (Flutter companion) will be added at M3
+| Part | Notes |
+|---|---|
+| x86 laptop | Built-in UPS (battery); this build: 2014 MacBook Pro, Ubuntu 26.04 |
+| RTL-SDR (RTL2832U + R820T) | ~2.4 MHz usable window, 24–1766 MHz |
+| External monitor | Laptop runs lid-closed; internal panel disabled at boot |
 
-## Quick start (M1 bench)
+## Setup
 
-On a fresh Raspberry Pi OS Lite SD on a Pi Zero 2 W:
+On a fresh Ubuntu install, from the repo:
 
 ```sh
-git clone https://github.com/jeremyfuksa/kerchunk.git
-cd kerchunk
-./scripts/setup-pi.sh
+sudo bash kiosk/scripts/setup-kiosk-ubuntu.sh
 sudo reboot
 ```
 
-After reboot, plug in the RTL-SDR dongle and follow [`bench/README.md`](bench/README.md).
+Installs the SDR toolchain (GNU Radio + SoapySDR + rtl-sdr via apt),
+blacklists the DVB kernel modules, configures the kiosk session (cage + snap
+Chromium on tty1, lid ignored, sleep masked, internal panel off), seeds a
+NOAA config, and enables the systemd units. After reboot: dashboard on the
+monitor, admin at `http://<host>:8080/admin`.
+
+Deploying changes: `git pull && (cd kiosk && npm run build) && sudo systemctl
+restart kerchunk-kiosk`.
+
+## Layout
+
+- [`kiosk/`](kiosk/) — the application (TypeScript backend + frontends, GNU
+  Radio DSP helper, systemd units, setup scripts, tests)
+- [`docs/superpowers/specs/`](docs/superpowers/specs/) — design specs
+  (wideband engine, Close Call, …)
+- [`docs/Kerchunk Vision.md`](docs/Kerchunk%20Vision.md) — the original
+  pocket-scanner vision this project pivoted from
+- [`bench/`](bench/), [`kiosk/bench/`](kiosk/bench/) — feasibility-spike
+  protocols and measured results
+
+## Development
+
+```sh
+cd kiosk
+npm install
+npm test                 # 179 tests, no hardware needed (fake engine/helper)
+USE_FAKE_ENGINE=1 KERCHUNK_CONFIG=/tmp/kc.json npm run dev:backend
+npm run dev:frontend     # vite dev server, proxies /api + /ws
+```
+
+Engine selection: `KERCHUNK_ENGINE=wideband|rtlfm|fake` (default `wideband`;
+`rtlfm` is the sequential fallback for Pi-class hardware without GNU Radio).
+The DSP helper requires the SYSTEM python (`/usr/bin/python3`) — GNU Radio's
+bindings are not visible to pyenv/mise interpreters.
+
+## Post-MVP backlog
+
+Identification API approvals (RepeaterBook UA, RadioReference key), Close
+Call band-sweep mode, second SDR (eliminates group-hop), polyphase
+channelizer, AM/CB, trunking (P25).
