@@ -91,6 +91,11 @@ FADE_STEP_S = 0.001      # flip on 48 kHz audio is an audible click/thump; a
                          # hair audible at squelch close (operator), 6 ms is
                          # the next stop — don't go much lower or the click
                          # comes back.
+AGC_ATTACK = 1e-3        # speaker leveler (agc2): clamp loud audio in ~20 ms,
+AGC_DECAY = 2e-5         # lift quiet audio over ~1 s (no pumping in speech
+AGC_REF = 0.25           # pauses). Reference 0.25 leaves ~10 dB peak headroom
+AGC_MAX_GAIN = 8.0       # under the +-0.8 rail; max gain +18 dB so the gated
+                         # silence between transmissions can't breathe up hiss.
 FLOOR_ALPHA_UP = 0.02    # floor rises slowly
 FLOOR_ALPHA_DOWN = 0.2   # floor falls fast
 
@@ -201,15 +206,20 @@ class Helper(gr.top_block):
             self.src.set_gain(0, float(args.gain))
 
         # One shared adder feeds the sink; exactly one gate is ever non-zero.
-        # The rail is a hard limiter (speaker guard): demodulated squelch
-        # noise swings far beyond the +-1.0 a voice signal at rated deviation
-        # produces, so any noise that slips past the gate (the ~30 ms close
-        # window) gets clipped to a tolerable level instead of slamming the
-        # speakers at full scale.
+        # adder -> AGC (leveler) -> rail (limiter) -> sink:
+        # - the AGC evens out loudness between repeaters (some arrive much
+        #   hotter than others) with fast attack / slow release;
+        # - the rail is the hard speaker guard: demodulated squelch noise
+        #   swings far beyond the +-1.0 a voice signal at rated deviation
+        #   produces, so anything that slips past the gate (the ~30 ms close
+        #   window) or overshoots the AGC's attack gets clipped instead of
+        #   slamming the speakers at full scale.
         self.adder = blocks.add_ff(1)
+        self.agc = analog.agc2_ff(AGC_ATTACK, AGC_DECAY, AGC_REF, 1.0)
+        self.agc.set_max_gain(AGC_MAX_GAIN)
         self.limiter = analog.rail_ff(-0.8, 0.8)
         self.sink = audio.sink(AUDIO_RATE, args.sink, True)
-        self.connect(self.adder, self.limiter, self.sink)
+        self.connect(self.adder, self.agc, self.limiter, self.sink)
 
         # Channel filter: pass the NFM channel (~16 kHz), reject neighbors.
         taps = firdes.low_pass(1.0, args.rate, 8_000, 4_000)
