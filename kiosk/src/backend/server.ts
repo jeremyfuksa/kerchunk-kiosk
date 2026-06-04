@@ -44,6 +44,7 @@ function toScanConfig(cfg: Config, mode: "scan" | "weather"): ScanConfig {
     monitor: mode === "weather",
     closeCall: cfg.scan.closeCall,
     closeCallDb: cfg.scan.closeCallDb,
+    lockoutHz: cfg.scan.lockoutHz,
   };
 }
 
@@ -161,6 +162,8 @@ export function createServer(deps: ServerDeps): { server: Server } {
         return json(res, 204, null);
       }
     }
+
+    if (method === "POST" && path === "/api/scan/skip") { engine.skip?.(); return json(res, 200, { ok: true }); }
 
     if (method === "POST" && path === "/api/scan/start") { await engine.start(toScanConfig(config, mode)); return json(res, 200, { state: engine.state }); }
     if (method === "POST" && path === "/api/scan/stop") { await engine.stop(); return json(res, 200, { state: engine.state }); }

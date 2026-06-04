@@ -113,6 +113,9 @@ CC_RASTER_HZ = 12_500    # discoveries round to the 12.5 kHz channel raster
 CC_GUARD_HZ = 12_500     # suppression half-width around known frequencies
 CC_DC_FRAC = 0.02        # exclude +-2% of bins around DC (RTL center spike)
 CC_EDGE_FRAC = 0.10      # exclude outer 10% (channelizer/filter rolloff)
+SKIP_HOLDOFF_S = 10.0    # after SKIP, a regular channel may not reopen for
+                         # this long (the skipped transmission is usually
+                         # still keyed; without a holdoff it reopens next poll)
 FLOOR_ALPHA_UP = 0.02    # floor rises slowly
 FLOOR_ALPHA_DOWN = 0.2   # floor falls fast
 
@@ -202,6 +205,7 @@ class Chain:
         self.quiet = False     # discriminator quieted (HF noise below threshold)
         self.above_polls = 0
         self.below_since = None
+        self.skip_until = 0.0
         self.warmup = WARMUP_POLLS
 
     def assign(self, channel_id, offset_hz, priority=False):
@@ -422,7 +426,7 @@ class Helper(gr.top_block):
                 chain.fade_to(chain.level_gain() if open_now else 0.0)
 
             if not chain.open:
-                if db > floor + open_db and chain.quiet:
+                if db > floor + open_db and chain.quiet and now >= chain.skip_until:
                     chain.above_polls += 1
                     if chain.above_polls >= OPEN_POLLS:
                         chain.open = True
@@ -513,6 +517,27 @@ class Helper(gr.top_block):
                 chain.assign(f"cc_{freq}", freq - self.center_hz, priority=True)
                 break
 
+    def skip(self):
+        """Scanner SKIP key: force-close whatever owns the speaker.
+
+        A cc lane parks (its frequency stays in cooldown, and the server
+        already filed it as a disabled channel). A regular channel gets a
+        short re-open holdoff so the same transmission doesn't reopen it
+        on the next poll — it can trigger again once it actually drops.
+        """
+        chain = self.audible
+        if chain is None or chain.channel_id is None:
+            return
+        chain.open = False
+        chain.above_polls = 0
+        chain.below_since = None
+        emit({"ev": "close", "id": chain.channel_id})
+        self.set_audible(self.next_open_chain())
+        if chain.channel_id.startswith("cc_"):
+            chain.park()
+        else:
+            chain.skip_until = time.monotonic() + SKIP_HOLDOFF_S
+
     def next_open_chain(self):
         best = None
         for chain in self.chains:
@@ -579,6 +604,8 @@ def main():
             if cmd is not None:
                 if cmd.get("cmd") == "quit":
                     break
+                if cmd.get("cmd") == "skip":
+                    helper.skip()
                 if cmd.get("cmd") == "tune":
                     helper.tune(cmd["centerHz"], cmd.get("channels", []),
                                 bool(cmd.get("monitor", False)),

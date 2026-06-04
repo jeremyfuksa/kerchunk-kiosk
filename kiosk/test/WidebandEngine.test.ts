@@ -286,3 +286,25 @@ describe("close call", () => {
     expect(first.knownHz).toContain(VHF_A.freq);
   });
 });
+
+describe("skip + lockout", () => {
+  it("knownHz includes locked-out frequencies so they never re-trigger", async () => {
+    const tunes = tmpFile("tunes");
+    const { engine } = makeEngine({ FAKE_WB_TUNES_FILE: tunes });
+    await engine.start(cfg([VHF_A, VHF_B], { lockoutHz: [462887500] }));
+    await waitFor(() => lines(tunes).length >= 1, 1000);
+    await engine.stop();
+    expect(JSON.parse(lines(tunes)[0]!).knownHz).toContain(462887500);
+  });
+
+  it("skip() sends the skip command to the helper", async () => {
+    const cmds = tmpFile("cmds");
+    const { engine } = makeEngine({ FAKE_WB_CMDS_FILE: cmds });
+    await engine.start(cfg([VHF_A, VHF_B]));
+    await waitFor(() => lines(cmds).some((l) => l.includes('"cmd":"tune"')), 1000);
+    engine.skip();
+    const got = await waitFor(() => lines(cmds).some((l) => l.includes('"cmd":"skip"')), 1000);
+    await engine.stop();
+    expect(got).toBe(true);
+  });
+});

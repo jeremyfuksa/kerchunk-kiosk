@@ -40,6 +40,9 @@ export const configSchema = z.object({
     // Discovery threshold: dB over the window's median noise floor. Eager by
     // default (15) per operator preference.
     closeCallDb: z.number().positive().optional(),
+    // Close Call lockouts: frequencies that must NEVER trigger discovery
+    // again (noise sources, data links the operator dismissed).
+    lockoutHz: z.array(z.number().int().positive()).optional(),
   }),
   audio: z.object({
     sink: z.string().min(1),

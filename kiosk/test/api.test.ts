@@ -263,3 +263,12 @@ describe("close call auto-add", () => {
     expect(channels.filter((c: { freq: number }) => c.freq === 462887500)).toHaveLength(1);
   });
 });
+
+describe("POST /api/scan/skip", () => {
+  it("forwards to the engine", async () => {
+    const { server, engine } = makeApp();
+    const res = await request(server).post("/api/scan/skip");
+    expect(res.status).toBe(200);
+    expect((engine as { skips?: number }).skips).toBe(1);
+  });
+});

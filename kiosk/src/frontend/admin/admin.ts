@@ -36,6 +36,7 @@ export function renderAdmin(root: HTMLElement): void {
       <section class="audio">
         <label>Volume <input id="vol" type="range" min="0" max="100" /></label>
         <label><input id="mute" type="checkbox" /> Mute</label>
+        <button id="skipBtn" title="Force-close the current transmission">Skip ▶</button>
       </section>
       <section class="channels">
         <h2>Channels <button id="addBtn">+ Add</button></h2>
@@ -57,6 +58,10 @@ export function renderAdmin(root: HTMLElement): void {
         <label>Close Call threshold (dB over floor) <input id="tCloseCallDb" type="number" min="5" step="1" placeholder="15" /></label>
         <button id="tSave">Save tuning</button>
         <span id="tErr" class="err"></span>
+      </section>
+      <section class="lockouts">
+        <h2>Close Call lockouts</h2>
+        <ul id="loList"></ul>
       </section>
       <section class="weather">
         <h2>Weather</h2>
@@ -97,7 +102,7 @@ export function renderAdmin(root: HTMLElement): void {
       <td>${esc(c.mode.toUpperCase())}</td>
       <td><input type="checkbox" class="prio" ${c.priority ? "checked" : ""} /></td>
       <td><input type="checkbox" class="en" ${c.enabled ? "checked" : ""} /></td>
-      <td><button class="edit">edit</button> <button class="del">delete</button></td>
+      <td><button class="edit">edit</button> <button class="lock" title="Remove and never Close-Call this frequency again">lockout</button> <button class="del">delete</button></td>
     </tr>`;
   }
 
@@ -158,6 +163,17 @@ export function renderAdmin(root: HTMLElement): void {
         editingId = id; chErr.textContent = ""; renderRows();
         tr0Focus();
       });
+      tr.querySelector<HTMLButtonElement>(".lock")?.addEventListener("click", async () => {
+        const c = channels.find((x) => x.id === id);
+        if (!c) return;
+        if (!confirm(`Lock out ${c.alphaTag || fmtFreq(c.freq)}? It will be removed and never trigger Close Call again.`)) return;
+        const cfg = await api.getConfig();
+        cfg.channels = cfg.channels.filter((x) => x.id !== id);
+        cfg.scan.lockoutHz = [...new Set([...(cfg.scan.lockoutHz ?? []), c.freq])];
+        await api.putConfig(cfg);
+        await refresh();
+        renderLockouts();
+      });
       tr.querySelector<HTMLButtonElement>(".del")?.addEventListener("click", async () => {
         const c = channels.find((x) => x.id === id);
         if (!confirm(`Delete ${c ? c.alphaTag || fmtFreq(c.freq) : "channel"}?`)) return;
@@ -194,6 +210,23 @@ export function renderAdmin(root: HTMLElement): void {
     renderRows();
   }
 
+  const loList = root.querySelector<HTMLElement>("#loList")!;
+  async function renderLockouts(): Promise<void> {
+    const cfg = await api.getConfig();
+    const lo = cfg.scan.lockoutHz ?? [];
+    loList.innerHTML = lo.length === 0
+      ? `<li class="empty">none</li>`
+      : lo.map((f) => `<li>${fmtFreq(f)} <button data-hz="${f}" class="unlock">remove</button></li>`).join("");
+    loList.querySelectorAll<HTMLButtonElement>(".unlock").forEach((b) =>
+      b.addEventListener("click", async () => {
+        const cfg2 = await api.getConfig();
+        cfg2.scan.lockoutHz = (cfg2.scan.lockoutHz ?? []).filter((f) => f !== Number(b.dataset.hz));
+        await api.putConfig(cfg2);
+        renderLockouts();
+      }));
+  }
+  renderLockouts();
+
   addBtn.addEventListener("click", () => {
     editingId = "new"; chErr.textContent = ""; renderRows(); tr0Focus();
   });
@@ -201,6 +234,7 @@ export function renderAdmin(root: HTMLElement): void {
   api.getConfig().then((cfg) => { vol.value = String(cfg.audio.volume); mute.checked = cfg.audio.muted; });
   vol.addEventListener("change", () => api.setVolume(Number(vol.value)));
   mute.addEventListener("change", () => api.setMuted(mute.checked));
+  root.querySelector<HTMLButtonElement>("#skipBtn")!.addEventListener("click", () => api.skip());
 
   // Scan tuning knobs — optional config fields; empty input = engine default
   // (shown as the placeholder). Saved via whole-config PUT, which restarts

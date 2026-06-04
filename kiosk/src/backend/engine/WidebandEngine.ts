@@ -286,7 +286,10 @@ export class WidebandEngine implements ScannerEngine {
       // benched channels never re-trigger detection.
       closeCall: (this.config?.closeCall ?? true) && !(this.config?.monitor ?? false),
       closeCallDb: this.config?.closeCallDb ?? 15,
-      knownHz: (this.config?.channels ?? []).map((c) => c.freq),
+      knownHz: [
+        ...(this.config?.channels ?? []).map((c) => c.freq),
+        ...(this.config?.lockoutHz ?? []),
+      ],
     };
     this.child.stdin.write(JSON.stringify(cmd) + "\n");
   }
@@ -374,6 +377,14 @@ export class WidebandEngine implements ScannerEngine {
       }, this.restartDelayMs);
     } else {
       this.setState("stopped");
+    }
+  }
+
+  skip(): void {
+    // Scanner SKIP key: the helper force-closes the audible channel (a cc
+    // lane parks; a regular channel gets a short re-open holdoff).
+    if (this.child?.stdin?.writable) {
+      this.child.stdin.write('{"cmd":"skip"}\n');
     }
   }
 

@@ -4,6 +4,7 @@
 #   FAKE_WB_ARGS_FILE   - append "$@" on launch (spawn counting)
 #   FAKE_WB_PID_FILE    - append $$ on launch (orphan detection, fake-sink.sh pattern)
 #   FAKE_WB_TUNES_FILE  - append every received tune command (hop assertions)
+#   FAKE_WB_CMDS_FILE   - append EVERY received command line (skip etc.)
 #   FAKE_WB_SCRIPT      - newline-separated events to emit after the FIRST tune;
 #                         lines of the form "sleep:<ms>" pause between events
 #   FAKE_WB_MODE        - "nodevice" -> print device error to stderr, exit 1
@@ -18,6 +19,7 @@ echo '{"ev":"ready"}'
 if [ "${FAKE_WB_MODE:-}" = "crash" ]; then sleep 0.1; exit 2; fi
 emitted=0
 while IFS= read -r line; do
+  [ -n "${FAKE_WB_CMDS_FILE:-}" ] && echo "$line" >> "$FAKE_WB_CMDS_FILE"
   case "$line" in
     *'"cmd":"quit"'*) exit 0 ;;
     *'"cmd":"tune"'*)

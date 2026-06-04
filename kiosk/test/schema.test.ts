@@ -149,3 +149,13 @@ describe("close call config", () => {
     }
   });
 });
+
+describe("close call lockouts", () => {
+  it("accepts a lockout frequency list", () => {
+    const cfg = structuredClone(defaultConfig()) as Record<string, unknown> & { scan: Record<string, unknown> };
+    cfg.scan.lockoutHz = [462887500, 463100000];
+    const parsed = configSchema.safeParse(cfg);
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.data.scan.lockoutHz).toEqual([462887500, 463100000]);
+  });
+});
