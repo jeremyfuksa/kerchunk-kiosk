@@ -25,6 +25,25 @@ export function weatherFormToChannel(form: { mhz: string; alphaTag: string; mode
 
 
 
+// Inline feather-style icons (stroke = currentColor, so the existing
+// consequence color-coding on button classes carries straight through).
+const ICONS: Record<string, string> = {
+  listen: '<path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/>',
+  edit: '<path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>',
+  lockout: '<circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>',
+  del: '<polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>',
+  add: '<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>',
+  dismiss: '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
+  save: '<polyline points="20 6 9 17 4 12"/>',
+  cancel: '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
+  unlock: '<rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/>',
+};
+
+function iconBtn(cls: string, icon: string, label: string, attrs = ""): string {
+  return `<button class="${cls} iconBtn" title="${label}" aria-label="${label}"${attrs ? " " + attrs : ""}>`
+    + `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[icon]}</svg></button>`;
+}
+
 export function renderAdmin(root: HTMLElement): void {
   root.innerHTML = `
     <main class="admin">
@@ -42,28 +61,33 @@ export function renderAdmin(root: HTMLElement): void {
         </div>
       </section>
       <section class="discoveries">
-        <h2>Discoveries <span class="hint">found by Close Call — listen, then decide</span></h2>
+        <h2>Discoveries <span class="count" id="dcCount"></span><span class="hint">found by Close Call — listen, then decide</span></h2>
         <div class="dcToolbar">
           <button id="dcDismissSel" disabled>Dismiss selected</button>
           <button id="dcLockSel" disabled>Lockout selected</button>
           <span id="dcSelCount" class="hint"></span>
         </div>
-        <table class="chTable">
-          <thead><tr><th><input id="dcAll" type="checkbox" title="Select all" /></th><th>Freq (MHz)</th><th>Name</th><th>Found</th><th></th></tr></thead>
-          <tbody id="dcRows"></tbody>
-        </table>
+        <div class="tableWrap">
+          <table class="chTable">
+            <thead><tr><th><input id="dcAll" type="checkbox" title="Select all" /></th><th>Freq (MHz)</th><th>Name</th><th>Mode</th><th></th></tr></thead>
+            <tbody id="dcRows"></tbody>
+          </table>
+        </div>
       </section>
       <section class="channels">
-        <h2>Channels <button id="addBtn">+ Add</button></h2>
-        <table class="chTable">
-          <thead><tr>
-            <th>Freq (MHz)</th><th>Name</th><th>Mode</th><th>Priority</th><th>Enabled</th><th></th>
-          </tr></thead>
-          <tbody id="chRows"></tbody>
-        </table>
+        <h2>Channels <span class="count" id="chCount"></span><button id="addBtn">+ Add</button></h2>
+        <div class="tableWrap">
+          <table class="chTable">
+            <thead><tr>
+              <th>Freq (MHz)</th><th>Name</th><th>Mode</th><th>Priority</th><th>Enabled</th><th></th>
+            </tr></thead>
+            <tbody id="chRows"></tbody>
+          </table>
+        </div>
         <span id="chErr" class="err"></span>
       </section>
-      <section class="tuning">
+      <div class="moduleRow">
+      <section class="tuning collapsible" data-key="tuning">
         <h2>Scan tuning</h2>
         <label>Group dwell (ms) <input id="tGroupDwell" type="number" min="500" step="100" placeholder="3000" /></label>
         <label>Hang time (ms) <input id="tHang" type="number" min="100" step="100" placeholder="2000" /></label>
@@ -74,11 +98,11 @@ export function renderAdmin(root: HTMLElement): void {
         <button id="tSave">Save tuning</button>
         <span id="tErr" class="err"></span>
       </section>
-      <section class="lockouts">
+      <section class="lockouts collapsible" data-key="lockouts">
         <h2>Close Call lockouts</h2>
         <ul id="loList"></ul>
       </section>
-      <section class="weather">
+      <section class="weather collapsible" data-key="weather">
         <h2>Weather</h2>
         <label>Channel <select id="wxFreq">${NOAA_CHANNELS.map((c) => `<option value="${c.mhz}">${c.label} — ${c.mhz} MHz</option>`).join("")}</select></label>
         <label>Tag <input id="wxTag" type="text" placeholder="NOAA WX" /></label>
@@ -88,13 +112,33 @@ export function renderAdmin(root: HTMLElement): void {
         <label class="modeToggle"><input id="wxToggle" type="checkbox" /> Weather-only mode</label>
         <span id="modeLabel"></span>
       </section>
+      </div>
     </main>`;
+
+  // Progressive disclosure: minor modules collapse behind their legends.
+  // State persists per device (an operator who tunes often keeps it open).
+  const COLLAPSE_KEY = "kerchunk.admin.collapsed";
+  const collapsed = new Set<string>(JSON.parse(localStorage.getItem(COLLAPSE_KEY) ?? '["tuning","lockouts","weather"]'));
+  root.querySelectorAll<HTMLElement>("section.collapsible").forEach((sec) => {
+    const key = sec.dataset.key!;
+    if (collapsed.has(key)) sec.classList.add("collapsed");
+    sec.querySelector("h2")!.addEventListener("click", () => {
+      sec.classList.toggle("collapsed");
+      if (sec.classList.contains("collapsed")) collapsed.add(key); else collapsed.delete(key);
+      localStorage.setItem(COLLAPSE_KEY, JSON.stringify([...collapsed]));
+    });
+  });
 
   const vol = root.querySelector<HTMLInputElement>("#vol")!;
   const mute = root.querySelector<HTMLInputElement>("#mute")!;
   const chRows = root.querySelector<HTMLElement>("#chRows")!;
   const chErr = root.querySelector<HTMLElement>("#chErr")!;
   const addBtn = root.querySelector<HTMLButtonElement>("#addBtn")!;
+
+  // Identified-modulation chip; digital modes get the warning treatment —
+  // this radio demodulates analog FM only, so a DMR/P25 discovery explains
+  // itself ("that's why it sounds like a wood chipper").
+  const DIGITAL = ["DMR", "P25", "NXDN", "D-STAR", "YSF", "TETRA"];
 
   // "Olathe, KS" chip for anything an identification source located.
   function locChip(loc?: { city?: string; state?: string }): string {
@@ -140,7 +184,7 @@ export function renderAdmin(root: HTMLElement): void {
       <td>${esc(c.mode.toUpperCase())}</td>
       <td><input type="checkbox" class="prio" ${c.priority ? "checked" : ""} /></td>
       <td><input type="checkbox" class="en" ${c.enabled ? "checked" : ""} /></td>
-      <td><button class="listen" title="Park the radio on this channel (unsquelched)">listen</button> <button class="edit">edit</button> <button class="lock" title="Remove and never Close-Call this frequency again">lockout</button> <button class="del">delete</button></td>
+      <td class="actions">${iconBtn("listen", "listen", "Listen — park the radio on this channel (unsquelched)")}${iconBtn("edit", "edit", "Edit channel")}${iconBtn("lock", "lockout", "Lockout — remove and never Close-Call this frequency again")}${iconBtn("del", "del", "Delete channel")}</td>
     </tr>`;
   }
 
@@ -151,7 +195,7 @@ export function renderAdmin(root: HTMLElement): void {
       <td><select class="fMode">${modeOptions(c?.mode ?? "nfm")}</select></td>
       <td><input type="checkbox" class="fPrio" ${c?.priority ? "checked" : ""} /></td>
       <td><input type="checkbox" class="fEn" ${c ? (c.enabled ? "checked" : "") : "checked"} /></td>
-      <td><button class="save">save</button> <button class="cancel">cancel</button></td>
+      <td class="actions">${iconBtn("save", "save", "Save")}${iconBtn("cancel", "cancel", "Cancel")}</td>
     </tr>`;
   }
 
@@ -240,8 +284,10 @@ export function renderAdmin(root: HTMLElement): void {
     chRows.querySelector<HTMLInputElement>("tr.editing .fMhz")?.focus();
   }
 
+  const chCount = root.querySelector<HTMLElement>("#chCount")!;
   async function refresh(): Promise<void> {
     channels = await api.getChannels();
+    chCount.textContent = String(channels.length);
     renderRows();
   }
 
@@ -253,6 +299,9 @@ export function renderAdmin(root: HTMLElement): void {
   // Selection survives the 15 s auto-refresh (a triage session shouldn't
   // lose its checkmarks because a new discovery arrived).
   const dcSelected = new Set<string>();
+  // Progressive disclosure: per-row drill-in for the data-dense fields
+  // (timestamps, exact Hz, coordinates) that don't earn a column.
+  const dcExpanded = new Set<string>();
 
   function paintDcToolbar(): void {
     dcDismissSel.disabled = dcSelected.size === 0;
@@ -264,24 +313,32 @@ export function renderAdmin(root: HTMLElement): void {
     const cfg = await api.getConfig();
     syncAudioControls(cfg); // one poll feeds both (was a separate 5s loop)
     const ds = [...(cfg.discoveries ?? [])].sort((a, b) => b.ts - a.ts);
+    root.querySelector<HTMLElement>("#dcCount")!.textContent = String(ds.length);
     const present = new Set(ds.map((d) => d.id));
     for (const id of dcSelected) if (!present.has(id)) dcSelected.delete(id);
     dcRows.innerHTML = ds.length === 0
       ? `<tr><td colspan="5" class="empty">nothing pending — Close Call is hunting</td></tr>`
-      : ds.map((d) => `<tr data-id="${esc(d.id)}">
+      : ds.map((d) => `<tr data-id="${esc(d.id)}" class="dcRow${dcExpanded.has(d.id) ? " open" : ""}">
           <td><input type="checkbox" class="dSel" ${dcSelected.has(d.id) ? "checked" : ""} /></td>
-          <td>${fmtFreq(d.freq)}</td>
+          <td><button class="dToggle" aria-label="Details"><span class="chev"></span></button>${fmtFreq(d.freq)}</td>
           <td>${esc(d.alphaTag)}${locChip(d.location)}</td>
-          <td>${new Date(d.ts).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</td>
-          <td>
-            <button class="dListen">listen</button>
-            <button class="dAdd" title="Promote to an enabled channel">add</button>
-            <button class="dLock" title="Never Close-Call this frequency again">lockout</button>
-            <button class="dDismiss" title="Remove (may be rediscovered later)">dismiss</button>
-          </td>
-        </tr>`).join("");
+          <td class="dMode${d.mode && DIGITAL.some((x) => d.mode!.toUpperCase().includes(x)) ? " digital" : ""}">${d.mode ? esc(d.mode.toUpperCase()) : "—"}</td>
+          <td class="actions">${iconBtn("dListen", "listen", "Listen — audition this discovery")}${iconBtn("dAdd", "add", "Add as an enabled channel")}${iconBtn("dLock", "lockout", "Lockout — never Close-Call this frequency again")}${iconBtn("dDismiss", "dismiss", "Dismiss (may be rediscovered later)")}</td>
+        </tr>${dcExpanded.has(d.id) ? `<tr class="dcDetail"><td></td><td colspan="4">
+          <span class="dl">found</span> ${new Date(d.ts).toLocaleString()}
+          ${d.mode ? `<span class="dl">mode</span> ${esc(d.mode)}` : ""}
+          <span class="dl">freq</span> ${d.freq.toLocaleString()} Hz
+          ${d.location ? `<span class="dl">location</span> ${esc([d.location.city, d.location.state].filter(Boolean).join(", "))}${d.location.lat != null ? ` (${d.location.lat}, ${d.location.lon})` : ""} <span class="dl">via</span> ${esc(d.location.source)}` : ""}
+        </td></tr>` : ""}`).join("");
     dcAll.checked = ds.length > 0 && dcSelected.size === ds.length;
     paintDcToolbar();
+    dcRows.querySelectorAll<HTMLButtonElement>(".dToggle").forEach((b) => {
+      const id = (b.closest("tr") as HTMLElement).dataset.id!;
+      b.addEventListener("click", () => {
+        if (dcExpanded.has(id)) dcExpanded.delete(id); else dcExpanded.add(id);
+        renderDiscoveries();
+      });
+    });
     dcRows.querySelectorAll<HTMLInputElement>(".dSel").forEach((cb) => {
       const id = (cb.closest("tr") as HTMLElement).dataset.id!;
       cb.addEventListener("change", () => {
@@ -311,11 +368,17 @@ export function renderAdmin(root: HTMLElement): void {
         if (d) api.monitor(d.freq, d.alphaTag);
       });
       if (b.classList.contains("dAdd")) b.addEventListener("click", () =>
-        mutate(id, (cfg2, d) => cfg2.channels.push({
-          id: `ch_${d.id.replace(/^cc_/, "")}`, freq: d.freq, alphaTag: d.alphaTag,
-          mode: "nfm", enabled: true,
-          ...(d.location ? { location: d.location, lookedUpAt: Date.now() } : {}),
-        })));
+        mutate(id, (cfg2, d) => {
+          // Map the identified modulation onto our demod modes; digital and
+          // unknown fall back to nfm (all we can demodulate).
+          const m = (d.mode ?? "").toUpperCase();
+          const mode = m === "FM" ? "fm" as const : m === "AM" ? "am" as const : "nfm" as const;
+          cfg2.channels.push({
+            id: `ch_${d.id.replace(/^cc_/, "")}`, freq: d.freq, alphaTag: d.alphaTag,
+            mode, enabled: true,
+            ...(d.location ? { location: d.location, lookedUpAt: Date.now() } : {}),
+          });
+        }));
       if (b.classList.contains("dLock")) b.addEventListener("click", () =>
         mutate(id, (cfg2, d) => {
           cfg2.scan.lockoutHz = [...new Set([...(cfg2.scan.lockoutHz ?? []), d.freq])];
@@ -358,7 +421,7 @@ export function renderAdmin(root: HTMLElement): void {
     const lo = cfg.scan.lockoutHz ?? [];
     loList.innerHTML = lo.length === 0
       ? `<li class="empty">none</li>`
-      : lo.map((f) => `<li>${fmtFreq(f)} <button data-hz="${f}" class="unlock">remove</button></li>`).join("");
+      : lo.map((f) => `<li>${fmtFreq(f)} ${iconBtn("unlock", "unlock", "Remove lockout", `data-hz="${f}"`)}</li>`).join("");
     loList.querySelectorAll<HTMLButtonElement>(".unlock").forEach((b) =>
       b.addEventListener("click", async () => {
         const cfg2 = await api.getConfig();

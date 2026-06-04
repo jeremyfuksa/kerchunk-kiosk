@@ -138,6 +138,29 @@ export function createServer(deps: ServerDeps): { server: Server } {
         } catch { /* provider failure: try again next boot */ }
         await new Promise((r) => setTimeout(r, spacingMs));
       }
+      // Discoveries too: anything filed before mode/location capture existed
+      // (or that missed) gets one identification attempt per 30 days.
+      const pendingDisc = (config.discoveries ?? []).filter((d) =>
+        (!d.mode || !d.location) && (!d.lookedUpAt || now - d.lookedUpAt > LOOKUP_RETRY_MS));
+      for (const disc of pendingDisc) {
+        try {
+          const hit = await deps.lookup!.lookup(disc.freq);
+          config = {
+            ...config,
+            discoveries: (config.discoveries ?? []).map((d) =>
+              d.id === disc.id
+                ? {
+                    ...d, lookedUpAt: Date.now(),
+                    ...(hit ? { alphaTag: hit.tag } : {}),
+                    ...(hit?.mode ? { mode: hit.mode } : {}),
+                    ...(hit?.location ? { location: hit.location } : {}),
+                  }
+                : d),
+          };
+          configStore.save(config);
+        } catch { /* next boot */ }
+        await new Promise((r) => setTimeout(r, spacingMs));
+      }
     }, initialDelayMs);
     passTimer.unref?.();
   }
@@ -192,7 +215,11 @@ export function createServer(deps: ServerDeps): { server: Server } {
           ...config,
           discoveries: (config.discoveries ?? []).map((d) =>
             d.id === discovery.id
-              ? { ...d, alphaTag: hit.tag, ...(hit.location ? { location: hit.location } : {}) }
+              ? {
+                  ...d, alphaTag: hit.tag,
+                  ...(hit.mode ? { mode: hit.mode } : {}),
+                  ...(hit.location ? { location: hit.location } : {}),
+                }
               : d),
         };
         configStore.save(config);

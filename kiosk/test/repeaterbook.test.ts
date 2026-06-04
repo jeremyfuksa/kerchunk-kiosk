@@ -68,6 +68,20 @@ describe("bearer token (March 2026 policy)", () => {
 });
 
 
+describe("mode capture", () => {
+  it("derives the mode from RB's per-mode flags", async () => {
+    const data = { count: 2, results: [
+      { Callsign: "W0DMR", Frequency: "443.000", State: "Kansas", "DMR": "Yes" },
+      { Callsign: "W0FM", Frequency: "145.130", State: "Kansas", "FM Analog": "Yes" },
+    ] };
+    const fetcher = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => data });
+    const dir = mkdtempSync(join(tmpdir(), "rb-"));
+    const rb = new RepeaterBook({ userAgent: "t", states: ["Kansas"], cacheDir: dir, fetcher });
+    expect((await rb.lookup(443000000))?.mode).toBe("DMR");
+    expect((await rb.lookup(145130000))?.mode).toBe("FM");
+  });
+});
+
 describe("location capture", () => {
   it("returns lat/lon/city/state from the export record", async () => {
     const { rb } = make(vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => EXPORT }));

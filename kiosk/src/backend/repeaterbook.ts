@@ -32,6 +32,7 @@ interface RbRecord {
   PL?: string;
   Lat?: string | number;
   Long?: string | number;
+  [flag: string]: unknown;   // per-mode "Yes" flags vary by export version
 }
 
 export type Fetcher = (url: string, init: { headers: Record<string, string> })
@@ -49,6 +50,28 @@ export interface RepeaterBookOptions {
 }
 
 const MATCH_TOLERANCE_HZ = 2_500; // close calls round to a 12.5 kHz raster
+
+// RepeaterBook reports capability as per-mode "Yes" flags; key spellings have
+// varied across export versions, so probe the known aliases. First digital
+// hit wins (a mixed-mode repeater is most useful labeled by its digital side
+// — analog gear can't decode it).
+const RB_MODE_FLAGS: Array<[string, string[]]> = [
+  ["DMR", ["DMR", "DMR Capable"]],
+  ["P25", ["APCO P-25", "P-25", "P25"]],
+  ["D-STAR", ["D-Star", "DSTAR"]],
+  ["YSF", ["System Fusion", "YSF"]],
+  ["NXDN", ["NXDN"]],
+  ["FM", ["FM Analog", "FM"]],
+];
+
+function rbMode(r: RbRecord): string | null {
+  for (const [mode, keys] of RB_MODE_FLAGS) {
+    for (const k of keys) {
+      if (String(r[k] ?? "").toLowerCase() === "yes") return mode;
+    }
+  }
+  return null;
+}
 
 const STATE_ABBR: Record<string, string> = {
   Alabama: "AL", Alaska: "AK", Arizona: "AZ", Arkansas: "AR", California: "CA",
@@ -91,8 +114,10 @@ export class RepeaterBook {
         const pl = r.PL && r.PL.trim() !== "" ? r.PL.trim() : null;
         const tag = `${callsign} ${city} ${st}`.trim() + (pl ? ` · PL ${pl}` : "");
         const lat = Number(r.Lat), lon = Number(r.Long);
+        const mode = rbMode(r);
         return {
           callsign, city, state: st, pl, tag,
+          ...(mode ? { mode } : {}),
           location: {
             ...(Number.isFinite(lat) && lat !== 0 ? { lat } : {}),
             ...(Number.isFinite(lon) && lon !== 0 ? { lon } : {}),

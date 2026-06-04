@@ -4,20 +4,24 @@
 
 :root {
   color-scheme: dark;
-  --bg: #07090b;
-  --panel: #0d1115;
-  --panel-edge: #1d242c;
-  --etch: #11161c;
-  --ink: #e8e4d8;            /* warm off-white, CRT-adjacent */
-  --dim: #6e7681;
-  --label: #8b949e;
-  --amber: #ffb000;          /* phosphor */
-  --amber-soft: rgba(255, 176, 0, 0.55);
-  --green: #3ddc84;
-  --red: #ff5b4d;
-  --blue: #58a6ff;
-  --mono: "IBM Plex Mono", ui-monospace, monospace;
-  --cond: "Barlow Condensed", "Arial Narrow", sans-serif;
+  /* Campfire design-system tokens (@jeremyfuksa/campfire/tokens.css, .dark
+     theme on <html>). Local names kept as a mapping layer so the layout CSS
+     reads the same; values are ALL Campfire. */
+  --bg: var(--bg-base);
+  --panel: var(--bg-subtle);
+  --panel-edge: var(--border-default);
+  --etch: var(--bg-base);
+  --ink: var(--text-primary);
+  --dim: var(--text-tertiary);
+  --label: var(--text-secondary);
+  --amber: var(--spark);            /* the Campfire flame — hero data color */
+  --amber-soft: color-mix(in srgb, var(--spark) 55%, transparent);
+  --caution: var(--golden-amber);
+  --green: var(--sage);
+  --red: var(--flamingo);
+  --blue: var(--pine);
+  --mono: var(--font-mono);
+  --cond: var(--font-sans);
 }
 
 /* Output-only kiosk: hide the mouse cursor on the dashboard. Scoped to .dash
@@ -52,7 +56,7 @@ body {
   display: flex; flex-direction: column;
   align-items: center; justify-content: center;
   background:
-    radial-gradient(ellipse 80% 60% at 50% 42%, rgba(255, 176, 0, 0.05), transparent 70%),
+    radial-gradient(ellipse 80% 60% at 50% 42%, color-mix(in srgb, var(--spark) 5%, transparent), transparent 70%),
     var(--panel);
   border-right: 1px solid var(--panel-edge);
   position: relative;
@@ -68,7 +72,7 @@ body {
 .now .active .dot {
   width: 0.7em; height: 0.7em; border-radius: 50%;
   background: var(--green);
-  box-shadow: 0 0 8px var(--green), 0 0 18px rgba(61, 220, 132, 0.5);
+  box-shadow: 0 0 8px var(--green), 0 0 18px color-mix(in srgb, var(--sage) 50%, transparent);
   animation: breathe 1.6s ease-in-out infinite;
 }
 @keyframes breathe { 50% { opacity: 0.45; } }
@@ -79,7 +83,7 @@ body {
   font-variant-numeric: tabular-nums;
   line-height: 1.05;
   color: var(--amber);
-  text-shadow: 0 0 14px rgba(255, 176, 0, 0.35), 0 0 50px rgba(255, 176, 0, 0.15);
+  text-shadow: 0 0 14px color-mix(in srgb, var(--spark) 35%, transparent), 0 0 50px color-mix(in srgb, var(--spark) 15%, transparent);
   letter-spacing: -0.02em;
 }
 .now .freq .unit {
@@ -135,8 +139,8 @@ body {
   text-align: center;
   padding: 1.5rem;
   max-width: 80%;
-  border: 1px solid rgba(255, 91, 77, 0.4);
-  background: rgba(255, 91, 77, 0.06);
+  border: 1px solid color-mix(in srgb, var(--flamingo) 40%, transparent);
+  background: color-mix(in srgb, var(--flamingo) 6%, transparent);
   border-radius: 6px;
 }
 
@@ -208,8 +212,8 @@ body {
   font-weight: 700; font-size: 1.05rem;
   letter-spacing: 0.4em; text-indent: 0.4em;
   color: var(--amber);
-  background: rgba(255, 176, 0, 0.08);
+  background: color-mix(in srgb, var(--spark) 8%, transparent);
   border: 1px solid var(--amber-soft);
   border-radius: 3px;
-  text-shadow: 0 0 10px rgba(255, 176, 0, 0.4);
+  text-shadow: 0 0 10px color-mix(in srgb, var(--spark) 40%, transparent);
 }

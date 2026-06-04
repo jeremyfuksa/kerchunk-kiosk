@@ -24,11 +24,23 @@ function make(text: string, ok = true) {
   return { rr, fetcher };
 }
 
+const SOAP_ENTITIES = SOAP_HIT.replace(
+  "<descr>Worlds of Fun - Maintenance</descr>",
+  "<descr>Harrah&apos;s Kansas City (XPT) Site 001 &#8211; Casino</descr>",
+).replace("<alpha>WOF Maint</alpha>", "<alpha></alpha>");
+
 describe("RadioReference", () => {
+  it("decodes XML entities in returned strings (&apos;, numeric refs)", async () => {
+    const { rr } = make(SOAP_ENTITIES);
+    const hit = await rr.lookup(464275000);
+    expect(hit?.tag).toBe("Harrah's Kansas City (XPT) Site 001 – Casino · WQAB123");
+  });
+
   it("finds a county frequency and prefers the RR alpha tag", async () => {
     const { rr, fetcher } = make(SOAP_HIT);
     const hit = await rr.lookup(464275000);
     expect(hit?.tag).toBe("WOF Maint · WQAB123");
+    expect(hit?.mode).toBe("FMN"); // RR's mode field — discarded until now
     // SOAP body carries auth + decimal MHz
     const body = fetcher.mock.calls[0][1].body as string;
     expect(body).toContain("<appKey>k</appKey>");

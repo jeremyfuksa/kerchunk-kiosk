@@ -511,3 +511,36 @@ describe("location capture", () => {
     expect(miss.lookedUpAt).toBeGreaterThan(0); // miss recorded: no re-query every boot
   });
 });
+
+describe("discovery mode capture", () => {
+  it("stores the identified mode on the discovery", async () => {
+    dir = mkdtempSync(join(tmpdir(), "ksrv-"));
+    const configStore = new ConfigStore(join(dir, "config.json"));
+    const engine = new FakeEngine();
+    const lookup = { lookup: async () => ({ tag: "MoDOT DMR", mode: "DMR" }) };
+    const { server } = createServer({ configStore, engine, activityLog: new ActivityLog(10), wsHub: new WsHub(), staticDir: dir, lookup });
+    engine.emitCloseCall(462887500);
+    await new Promise((r) => setTimeout(r, 30));
+    const d = (await request(server).get("/api/config")).body.discoveries[0];
+    expect(d.mode).toBe("DMR");
+  });
+
+  it("the boot pass backfills mode/location on existing discoveries", async () => {
+    dir = mkdtempSync(join(tmpdir(), "ksrv-"));
+    const configStore = new ConfigStore(join(dir, "config.json"));
+    const seed = configStore.load();
+    seed.discoveries = [{ id: "cc_old", freq: 462887500, alphaTag: "Close Call 462.8875", ts: 1 }];
+    configStore.save(seed);
+    const engine = new FakeEngine();
+    const lookup = { lookup: async () => ({ tag: "WQXX123 KC MO", mode: "FMN" }) };
+    const { server } = createServer({
+      configStore, engine, activityLog: new ActivityLog(10), wsHub: new WsHub(), staticDir: dir,
+      lookup, lookupPass: { initialDelayMs: 1, spacingMs: 1 },
+    });
+    await new Promise((r) => setTimeout(r, 100));
+    const d = (await request(server).get("/api/config")).body.discoveries[0];
+    expect(d.mode).toBe("FMN");
+    expect(d.alphaTag).toBe("WQXX123 KC MO"); // plain Close Call name upgraded
+    expect(d.lookedUpAt).toBeGreaterThan(0);
+  });
+});

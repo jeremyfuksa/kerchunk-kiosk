@@ -98,13 +98,17 @@ LEVEL_REF_DB = -14       # speaker leveler target: mean-square dB of the demod
 LEVEL_MIN_DB = -40       # below this = speech pause/silence: HOLD gain (no
                          # pumping between words).
 LEVEL_MAX_DB = 12        # gain clamp: +-12 dB amplitude correction max.
-LEVEL_SLEW_DB = 0.3      # max gain change per 20 ms poll (~15 dB/s) — slow,
-                         # stepwise envelope control. NOTE: this replaced a
-                         # gr agc2 block, whose rectified-waveform detector
-                         # gain-modulated WITHIN tone cycles (operator: "CW
-                         # tones are very chirpy"). RMS envelope + slow slew
-                         # cannot track the waveform, so no distortion; gains
-                         # are also PER CHANNEL (each repeater keeps its own).
+LEVEL_SLEW_DOWN = 0.3    # hot-signal clamp stays responsive (~15 dB/s)
+LEVEL_SLEW_UP = 0.04     # upward gain CREEPS (~2 dB/s): chasing quiet speech
+                         # passages upward at full slew rate audibly pumped
+                         # ("level jumps as if the AGC is readjusting" —
+                         # operator, mid-Skywarn-net). NOTE: this leveler
+                         # replaced a gr agc2 block whose rectified-waveform
+                         # detector chirped CW tones; envelope + slew can't
+                         # distort. Gains are PER CHANNEL.
+LEVEL_EMA_ALPHA = 0.05   # ~0.4 s smoothing of the speech level so syllable
+                         # dynamics don't drive the target around
+LEVEL_DEADBAND_DB = 2.5  # close enough = STOP correcting (kills hunting)
 CC_FFT = 2048            # Close Call: FFT bins over the whole window
 CC_EVERY = 10            # check every 10th poll (~200 ms)
 CC_CONFIRM = 2           # consecutive checks on the same raster freq to fire
@@ -175,6 +179,7 @@ class Chain:
         self.gain = 0.0          # current gate value (fade_to bookkeeping)
         self.level_db = 0.0      # learned per-channel loudness correction (dB)
         self.level_emitted = 0.0 # last trim value reported to Node
+        self.speech_db = None    # smoothed voiced-audio level (leveler input)
         self.priority = False    # preempts non-priority audible when it opens
         self.channel_id = None   # None = parked (no channel assigned)
         self.reset_detection()
@@ -220,6 +225,7 @@ class Chain:
         # of jumping unleveled after every hop/restart.
         self.level_db = float(level_db)
         self.level_emitted = self.level_db
+        self.speech_db = None
         self.reset_detection()
 
     def park(self):
@@ -424,11 +430,16 @@ class Helper(gr.top_block):
                     # reference, only while voice is present (pauses hold).
                     ms_db = chain.audio_db()
                     if ms_db > LEVEL_MIN_DB:
+                        if chain.speech_db is None:
+                            chain.speech_db = ms_db
+                        else:
+                            chain.speech_db += LEVEL_EMA_ALPHA * (ms_db - chain.speech_db)
                         desired = max(-LEVEL_MAX_DB, min(LEVEL_MAX_DB,
-                                      (LEVEL_REF_DB - ms_db) / 2))
-                        step = max(-LEVEL_SLEW_DB, min(LEVEL_SLEW_DB,
-                                   desired - chain.level_db))
-                        chain.level_db += step
+                                      (LEVEL_REF_DB - chain.speech_db) / 2))
+                        err = desired - chain.level_db
+                        if abs(err) > LEVEL_DEADBAND_DB:
+                            step = max(-LEVEL_SLEW_DOWN, min(LEVEL_SLEW_UP, err))
+                            chain.level_db += step
                         # Report meaningful trim movement so Node persists it
                         # (>=0.5 dB hysteresis keeps the event rate trivial).
                         if abs(chain.level_db - chain.level_emitted) >= 0.5:

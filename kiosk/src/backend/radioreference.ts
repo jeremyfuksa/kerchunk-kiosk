@@ -31,6 +31,9 @@ const MATCH_TOLERANCE_MHZ = 0.0025; // close calls round to a 12.5 kHz raster
 export class RadioReference implements LookupProvider {
   private readonly opts: Required<RadioReferenceOptions>;
   private cache = new Map<string, LookupHit | null>();
+  // searchCountyFreq returns mode IDs (4 = FMN, 6 = DMR, ...). Resolved via
+  // their getMode op and memoized — one call per distinct id, ever.
+  private modeNames = new Map<string, string>();
 
   constructor(opts: RadioReferenceOptions) {
     this.opts = { fetcher: (url, init) => fetch(url, init), ...opts };
@@ -48,6 +51,42 @@ export class RadioReference implements LookupProvider {
       if (hit) return hit;
     }
     return null;
+  }
+
+  private authXml(): string {
+    const { appKey, username, password } = this.opts;
+    return `<authInfo>
+    <username>${esc(username)}</username>
+    <password>${esc(password)}</password>
+    <appKey>${esc(appKey)}</appKey>
+    <version>latest</version>
+    <style>rpc</style>
+   </authInfo>`;
+  }
+
+  /** Mode ids -> names ("4" -> "FMN") via getMode; non-numeric passes through. */
+  private async resolveMode(raw: string): Promise<string> {
+    if (!/^\d+$/.test(raw)) return raw;
+    const hit = this.modeNames.get(raw);
+    if (hit) return hit;
+    try {
+      const res = await this.opts.fetcher(ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "text/xml; charset=utf-8", SOAPAction: "" },
+        body: `<?xml version="1.0" encoding="UTF-8"?>
+<SOAP-ENV:Envelope xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/">
+ <SOAP-ENV:Body><getMode><mode>${raw}</mode>${this.authXml()}</getMode></SOAP-ENV:Body>
+</SOAP-ENV:Envelope>`,
+      });
+      if (res.ok) {
+        const name = leaf(await res.text(), "modeName");
+        if (name) {
+          this.modeNames.set(raw, name);
+          return name;
+        }
+      }
+    } catch { /* fall through to raw id */ }
+    return raw;
   }
 
   private envelope(ctid: number, mhz: number): string {
@@ -96,12 +135,14 @@ export class RadioReference implements LookupProvider {
         const alpha = leaf(item, "alpha");
         const descr = leaf(item, "descr");
         const callsign = leaf(item, "callsign");
+        const modeRaw = leaf(item, "mode");
+        const mode = modeRaw ? await this.resolveMode(modeRaw) : null;
         const name = (alpha || descr || "").trim();
         if (!name && !callsign) continue;
         const tag = name
           ? (callsign ? `${name} · ${callsign}` : name)
           : callsign!;
-        return { tag };
+        return { tag, ...(mode ? { mode } : {}) };
       }
       return null;
     } catch {
@@ -113,11 +154,20 @@ export class RadioReference implements LookupProvider {
 function leaf(xml: string, name: string): string | null {
   const m = new RegExp(`<${name}(?:\\s[^>]*)?>([\\s\\S]*?)</${name}>`).exec(xml);
   if (!m) return null;
-  return m[1]!
-    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
-    .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'").replace(/&amp;/g, "&")
-    .trim() || null;
+  return decodeXml(m[1]!.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")).trim() || null;
+}
+
+// Full XML entity decoding — RR data is rich in named (&apos;) and numeric
+// (&#8211;) references; "Harrah&apos;s ..." reached the operator's screen
+// when only a hand-picked subset was decoded. &amp; goes LAST so encoded
+// ampersands can't re-trigger earlier replacements.
+function decodeXml(s: string): string {
+  return s
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, h) => String.fromCodePoint(parseInt(h, 16)))
+    .replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(Number(d)))
+    .replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"').replace(/&apos;/g, "'")
+    .replace(/&amp;/g, "&");
 }
 
 function esc(s: string): string {
