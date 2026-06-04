@@ -1,6 +1,7 @@
 import type { Channel } from "../../backend/config/schema.js";
 import { NOAA_CHANNELS } from "../../backend/config/noaa.js";
 import { api } from "../lib/api.js";
+import { fmtFreq, esc } from "../lib/format.js";
 import { ReconnectingWs } from "../lib/wsClient.js";
 import type { EngineEvent } from "../../backend/engine/ScannerEngine.js";
 import "./admin.css";
@@ -22,14 +23,7 @@ export function weatherFormToChannel(form: { mhz: string; alphaTag: string; mode
   return formToChannel(form);
 }
 
-function fmtFreq(hz: number): string { return (hz / 1e6).toFixed(3); }
 
-// Channel fields (alphaTag especially) are operator-typed and rendered via
-// innerHTML, so escape them to prevent stored XSS.
-function esc(s: string): string {
-  return s.replace(/[&<>"']/g, (c) =>
-    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
-}
 
 export function renderAdmin(root: HTMLElement): void {
   root.innerHTML = `
@@ -101,6 +95,22 @@ export function renderAdmin(root: HTMLElement): void {
   const chRows = root.querySelector<HTMLElement>("#chRows")!;
   const chErr = root.querySelector<HTMLElement>("#chErr")!;
   const addBtn = root.querySelector<HTMLButtonElement>("#addBtn")!;
+
+  // Single lockout path for all three entry points (channel row, discovery
+  // row, now-playing card) — they drifted when each had its own copy.
+  async function lockoutFreq(freq: number, label: string): Promise<void> {
+    if (!confirm(`Lock out ${label}? It will be removed and never trigger Close Call again.`)) return;
+    const cfg = await api.getConfig();
+    // Locking out a frequency removes it EVERYWHERE: channel(s), pending
+    // discoveries, and into the suppression list.
+    cfg.channels = cfg.channels.filter((c) => c.freq !== freq);
+    cfg.discoveries = (cfg.discoveries ?? []).filter((d) => d.freq !== freq);
+    cfg.scan.lockoutHz = [...new Set([...(cfg.scan.lockoutHz ?? []), freq])];
+    await api.putConfig(cfg);
+    await refresh();
+    renderDiscoveries();
+    renderLockouts();
+  }
 
   // Inline-editable CRUD table. One row at a time is editable: editingId is a
   // channel id, "new" (blank row pending creation), or null. Checkboxes on
@@ -188,16 +198,9 @@ export function renderAdmin(root: HTMLElement): void {
         const c = channels.find((x) => x.id === id);
         if (c) api.monitor(c.freq, c.alphaTag || fmtFreq(c.freq));
       });
-      tr.querySelector<HTMLButtonElement>(".lock")?.addEventListener("click", async () => {
+      tr.querySelector<HTMLButtonElement>(".lock")?.addEventListener("click", () => {
         const c = channels.find((x) => x.id === id);
-        if (!c) return;
-        if (!confirm(`Lock out ${c.alphaTag || fmtFreq(c.freq)}? It will be removed and never trigger Close Call again.`)) return;
-        const cfg = await api.getConfig();
-        cfg.channels = cfg.channels.filter((x) => x.id !== id);
-        cfg.scan.lockoutHz = [...new Set([...(cfg.scan.lockoutHz ?? []), c.freq])];
-        await api.putConfig(cfg);
-        await refresh();
-        renderLockouts();
+        if (c) void lockoutFreq(c.freq, c.alphaTag || fmtFreq(c.freq));
       });
       tr.querySelector<HTMLButtonElement>(".del")?.addEventListener("click", async () => {
         const c = channels.find((x) => x.id === id);
@@ -252,6 +255,7 @@ export function renderAdmin(root: HTMLElement): void {
 
   async function renderDiscoveries(): Promise<void> {
     const cfg = await api.getConfig();
+    syncAudioControls(cfg); // one poll feeds both (was a separate 5s loop)
     const ds = [...(cfg.discoveries ?? [])].sort((a, b) => b.ts - a.ts);
     const present = new Set(ds.map((d) => d.id));
     for (const id of dcSelected) if (!present.has(id)) dcSelected.delete(id);
@@ -384,8 +388,10 @@ export function renderAdmin(root: HTMLElement): void {
       npFreq.textContent = nowPlaying ? fmtFreq(nowPlaying.freq) : "";
     }
     resumeBtn.style.display = monitoring ? "" : "none";
+    // Both act on the live audible channel: no target (or monitoring,
+    // where lockout-of-what-you-chose makes no sense) disables both.
     tlockBtn.disabled = monitoring !== null || nowPlaying === null;
-    lockBtn.disabled = monitoring !== null && nowPlaying === null;
+    lockBtn.disabled = monitoring !== null || nowPlaying === null;
   }
 
   async function syncMode(): Promise<void> {
@@ -422,17 +428,9 @@ export function renderAdmin(root: HTMLElement): void {
   paintNow();
 
   tlockBtn.addEventListener("click", () => api.skip(1800));
-  lockBtn.addEventListener("click", async () => {
+  lockBtn.addEventListener("click", () => {
     if (!nowPlaying) return;
-    const label = nowPlaying.alphaTag || fmtFreq(nowPlaying.freq);
-    if (!confirm(`Lock out ${label}? It will be removed and never trigger Close Call again.`)) return;
-    const freq = nowPlaying.freq;
-    const cfg = await api.getConfig();
-    cfg.channels = cfg.channels.filter((c) => c.freq !== freq);
-    cfg.scan.lockoutHz = [...new Set([...(cfg.scan.lockoutHz ?? []), freq])];
-    await api.putConfig(cfg);
-    await refresh();
-    renderLockouts();
+    void lockoutFreq(nowPlaying.freq, nowPlaying.alphaTag || fmtFreq(nowPlaying.freq));
   });
 
   // Volume/mute stay in sync with the server (another admin tab, a stale
@@ -443,7 +441,6 @@ export function renderAdmin(root: HTMLElement): void {
     if (document.activeElement !== mute) mute.checked = cfg.audio.muted;
   }
   api.getConfig().then(syncAudioControls);
-  setInterval(() => { api.getConfig().then(syncAudioControls).catch(() => {}); }, 5000);
   vol.addEventListener("change", () => { api.setVolume(Number(vol.value)); vol.blur(); });
   mute.addEventListener("change", () => api.setMuted(mute.checked));
   root.querySelector<HTMLButtonElement>("#skipBtn")!.addEventListener("click", () => api.skip());
@@ -496,9 +493,11 @@ export function renderAdmin(root: HTMLElement): void {
   const wxToggle = root.querySelector<HTMLInputElement>("#wxToggle")!;
   const modeLabel = root.querySelector<HTMLElement>("#modeLabel")!;
 
-  function paintMode(mode: "scan" | "weather"): void {
+  function paintMode(mode: "scan" | "weather" | "monitor"): void {
     wxToggle.checked = mode === "weather";
-    modeLabel.textContent = mode === "weather" ? "WEATHER-ONLY" : "scanning";
+    modeLabel.textContent =
+      mode === "weather" ? "WEATHER-ONLY"
+      : mode === "monitor" ? "MONITORING" : "scanning";
   }
 
   api.getWeatherChannel().then(({ weatherChannel }) => {

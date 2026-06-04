@@ -1,6 +1,7 @@
 import type { EngineEvent } from "../../backend/engine/ScannerEngine.js";
 import { ReconnectingWs } from "../lib/wsClient.js";
 import { api } from "../lib/api.js";
+import { fmtFreq, esc } from "../lib/format.js";
 import "./dashboard.css";
 
 export interface NowPlaying { freq: number; alphaTag: string; }
@@ -63,15 +64,10 @@ export function reduce(s: DashState, ev: EngineEvent): DashState {
   }
 }
 
-function fmtFreq(hz: number): string { return (hz / 1e6).toFixed(3); }
 function fmtTime(ts: number): string { return new Date(ts).toLocaleTimeString(); }
 
-// alphaTag and error messages are operator-supplied (typed in admin, persisted
-// to config) and rendered via innerHTML, so escape them to prevent stored XSS.
-export function esc(s: string): string {
-  return s.replace(/[&<>"']/g, (c) =>
-    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
-}
+// Re-exported for tests (kept stable from the pre-refactor public surface).
+export { esc } from "../lib/format.js";
 
 export function renderDashboard(root: HTMLElement): void {
   let state = initialState();
@@ -85,9 +81,19 @@ export function renderDashboard(root: HTMLElement): void {
   const nowEl = root.querySelector<HTMLElement>("#now")!;
   const logEl = root.querySelector<HTMLElement>("#logList")!;
   const modeBadge = root.querySelector<HTMLElement>("#modeBadge")!;
-  api.getStatus()
-    .then((s) => { modeBadge.textContent = s.mode === "weather" ? "WEATHER" : ""; })
-    .catch(() => {});
+  // Badge follows the runtime mode — refreshed on engine status transitions
+  // (mode flips always restart the engine), so MONITORING/WEATHER are never
+  // stale on the kiosk screen (review finding: monitor mode was invisible).
+  function paintBadge(): void {
+    api.getStatus()
+      .then((s) => {
+        modeBadge.textContent =
+          s.mode === "weather" ? "WEATHER"
+          : s.mode === "monitor" ? "MONITORING" : "";
+      })
+      .catch(() => {});
+  }
+  paintBadge();
 
   function paint(): void {
     if (state.error) {
@@ -112,6 +118,10 @@ export function renderDashboard(root: HTMLElement): void {
 
   api.getLogs().then((rows) => { state = { ...state, log: rows }; paint(); }).catch(() => {});
   const proto = location.protocol === "https:" ? "wss" : "ws";
-  new ReconnectingWs(`${proto}://${location.host}/ws`, (ev) => { state = reduce(state, ev); paint(); }).connect();
+  new ReconnectingWs(`${proto}://${location.host}/ws`, (ev) => {
+    state = reduce(state, ev);
+    if (ev.type === "status") paintBadge();
+    paint();
+  }).connect();
   paint();
 }

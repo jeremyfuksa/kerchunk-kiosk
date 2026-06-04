@@ -19,7 +19,7 @@ export const api = {
     fetch("/api/audio/volume", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ percent }) }),
   setMuted: (muted: boolean) =>
     fetch("/api/audio/mute", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ muted }) }),
-  getStatus: () => fetch("/api/status").then(j<{ state: string; mode: "scan" | "weather" | "monitor"; monitor: Channel | null; config: Config }>),
+  getStatus: () => fetch("/api/status").then(j<{ state: string; mode: "scan" | "weather" | "monitor"; monitor: Channel | null }>),
   monitor: (freq: number, alphaTag?: string) =>
     fetch("/api/monitor", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ freq, alphaTag }) }).then(j<{ mode: string }>),
   monitorStop: () =>

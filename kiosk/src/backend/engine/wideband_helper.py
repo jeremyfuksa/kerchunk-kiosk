@@ -622,6 +622,8 @@ def main():
             if cmd is not None:
                 if cmd.get("cmd") == "quit":
                     break
+                if cmd.get("cmd") == "known":
+                    helper.known_hz = set(cmd.get("knownHz", []))
                 if cmd.get("cmd") == "skip":
                     helper.skip(float(cmd.get("holdoffS", SKIP_HOLDOFF_S)))
                 if cmd.get("cmd") == "tune":

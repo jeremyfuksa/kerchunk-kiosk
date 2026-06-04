@@ -61,14 +61,13 @@ const STATE_ABBR: Record<string, string> = {
 };
 
 export class RepeaterBook {
-  private readonly opts: Required<Omit<RepeaterBookOptions, "fetcher">> & { fetcher: Fetcher };
+  private readonly opts: Omit<Required<RepeaterBookOptions>, "apiToken"> & { apiToken?: string };
   private mem = new Map<string, RbRecord[]>();
 
   constructor(opts: RepeaterBookOptions) {
     this.opts = {
       ttlMs: 7 * 24 * 3600 * 1000,
       fetcher: (url, init) => fetch(url, init),
-      apiToken: undefined as unknown as string,
       ...opts,
     };
   }

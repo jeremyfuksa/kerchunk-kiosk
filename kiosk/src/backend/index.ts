@@ -1,7 +1,7 @@
 import { WebSocketServer } from "ws";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createServer } from "./server.js";
+import { createServer, toScanConfig } from "./server.js";
 import { ConfigStore } from "./config/ConfigStore.js";
 import { ActivityLog } from "./activityLog.js";
 import { WsHub } from "./ws.js";
@@ -72,17 +72,10 @@ wss.on("connection", (ws) => wsHub.attach(ws));
 
 server.listen(PORT, () => {
   console.log(`kerchunk-kiosk listening on :${PORT} (engine: ${engineKind})`);
-  engine.start({
-    channels: config.channels,
-    sampleRate: config.scan.sampleRate,
-    squelchLevel: config.scan.squelchLevel,
-    dwellMs: config.scan.dwellMs,
-    gain: config.scan.gain,
-    audioSink: config.audio.sink,
-    windowBandwidthHz: config.scan.windowBandwidthHz,
-    groupDwellMs: config.scan.groupDwellMs,
-    openAboveFloorDb: config.scan.openAboveFloorDb,
-  })
+  // Boot through the SAME constructor every API path uses — a hand-built
+  // payload here once omitted knownHz/lockouts/closeCall and made every
+  // reboot re-discover all filed frequencies (review finding).
+  engine.start(toScanConfig(config, "scan"))
     // Re-apply persisted volume/mute to the hardware mixer on boot, so the saved
     // setting actually takes effect instead of inheriting the OS mixer state.
     // Direct audio.js calls WITH the configured mixer card/control — the same

@@ -406,3 +406,65 @@ describe("discoveries workflow", () => {
     expect(lastStart.knownHz).toContain(464999999);
   });
 });
+
+describe("review fixes: engine lifecycle", () => {
+  it("toScanConfig is exported and includes knownHz + lockouts for the boot path", async () => {
+    const { toScanConfig } = await import("../src/backend/server.js");
+    const cfg = {
+      ...JSON.parse(JSON.stringify((await import("../src/backend/config/schema.js")).defaultConfig())),
+      channels: [{ id: "c1", freq: 146790000, alphaTag: "A", mode: "nfm", enabled: true }],
+      discoveries: [{ id: "d1", freq: 462887500, alphaTag: "CC", ts: 1 }],
+    };
+    cfg.scan.lockoutHz = [464999999];
+    const sc = toScanConfig(cfg, "scan");
+    expect(sc.knownHz).toEqual(expect.arrayContaining([146790000, 462887500, 464999999]));
+    expect(sc.lockoutHz).toEqual([464999999]);
+  });
+
+  it("PUT /api/config with only metadata changes does NOT restart the engine", async () => {
+    const { server, engine } = makeApp();
+    engine.emitCloseCall(462887500);
+    await new Promise((r) => setTimeout(r, 20));
+    let starts = 0;
+    const realStart = engine.start.bind(engine);
+    engine.start = async (sc) => { starts++; return realStart(sc); };
+    const cfg = (await request(server).get("/api/config")).body;
+    cfg.discoveries = []; // dismiss-all: scan-irrelevant except knownHz
+    const res = await request(server).put("/api/config").send(cfg);
+    expect(res.status).toBe(200);
+    expect(starts).toBe(0); // knownHz updated live instead
+    expect((engine as { knownHzUpdates?: number[][] }).knownHzUpdates?.length).toBe(1);
+  });
+
+  it("PUT /api/config with scan-relevant changes still restarts", async () => {
+    const { server, engine } = makeApp();
+    let starts = 0;
+    const realStart = engine.start.bind(engine);
+    engine.start = async (sc) => { starts++; return realStart(sc); };
+    const cfg = (await request(server).get("/api/config")).body;
+    cfg.scan.groupDwellMs = 999;
+    await request(server).put("/api/config").send(cfg);
+    expect(starts).toBe(1);
+  });
+
+  it("dismissing the monitored discovery exits monitor mode", async () => {
+    const { server, engine } = makeApp();
+    engine.emitCloseCall(462887500);
+    await new Promise((r) => setTimeout(r, 20));
+    await request(server).post("/api/monitor").send({ freq: 462887500, alphaTag: "CC" });
+    expect((await request(server).get("/api/status")).body.mode).toBe("monitor");
+    const cfg = (await request(server).get("/api/config")).body;
+    cfg.discoveries = [];
+    await request(server).put("/api/config").send(cfg);
+    const st = (await request(server).get("/api/status")).body;
+    expect(st.mode).toBe("scan");
+  });
+
+  it("GET /api/status is slim: no embedded config", async () => {
+    const { server } = makeApp();
+    const st = (await request(server).get("/api/status")).body;
+    expect(st.config).toBeUndefined();
+    expect(st.mode).toBe("scan");
+    expect(st.state).toBeDefined();
+  });
+});

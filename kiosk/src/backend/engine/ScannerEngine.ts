@@ -56,6 +56,8 @@ export interface ScannerEngine {
   stop(): Promise<void>;
   /** Bump the current audio: force-close the audible channel (scanner SKIP key). A long holdoffSeconds = temp lockout. Optional — engines without live audio control may omit it. */
   skip?(holdoffSeconds?: number): void;
+  /** Update Close Call suppression live (no restart, no audio impact). Optional. */
+  updateKnownHz?(knownHz: number[]): void;
   setVolume(percent: number): Promise<void>;
   setMuted(muted: boolean): Promise<void>;
   readonly state: EngineState;
