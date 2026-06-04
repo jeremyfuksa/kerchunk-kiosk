@@ -22,3 +22,12 @@ body { font-family: system-ui, sans-serif; background: #0d1117; color: #e6edf3; 
 .admin .chTable .del { color: #f85149; }
 .admin .chTable .save { color: #3fb950; }
 .admin #addBtn { font-size: 0.85rem; margin-left: 0.75rem; }
+
+/* Now Playing card */
+.admin .nowCard .npWhat { margin: 0.4rem 0 0.8rem; }
+.admin .nowCard .npName { font-size: 1.4rem; font-weight: 600; }
+.admin .nowCard .npFreq { color: #8b949e; margin-left: 0.6rem; }
+.admin .nowCard .npControls { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; }
+.admin .nowCard #tlockBtn, .admin .nowCard #lockBtn { color: #d29922; }
+.admin .nowCard #lockBtn { color: #f85149; }
+.admin .nowCard button:disabled { opacity: 0.4; cursor: default; }

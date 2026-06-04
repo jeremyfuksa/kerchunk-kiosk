@@ -51,8 +51,8 @@ export type EngineListener = (event: EngineEvent) => void;
 export interface ScannerEngine {
   start(config: ScanConfig): Promise<void>;
   stop(): Promise<void>;
-  /** Bump the current audio: force-close the audible channel (scanner SKIP key). Optional — engines without live audio control may omit it. */
-  skip?(): void;
+  /** Bump the current audio: force-close the audible channel (scanner SKIP key). A long holdoffSeconds = temp lockout. Optional — engines without live audio control may omit it. */
+  skip?(holdoffSeconds?: number): void;
   setVolume(percent: number): Promise<void>;
   setMuted(muted: boolean): Promise<void>;
   readonly state: EngineState;

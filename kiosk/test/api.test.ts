@@ -271,6 +271,14 @@ describe("POST /api/scan/skip", () => {
     expect(res.status).toBe(200);
     expect((engine as { skips?: number }).skips).toBe(1);
   });
+
+  it("passes holdoffSeconds through (temp lockout)", async () => {
+    const { server, engine } = makeApp();
+    const res = await request(server).post("/api/scan/skip")
+      .send({ holdoffSeconds: 1800 });
+    expect(res.status).toBe(200);
+    expect((engine as { lastHoldoff?: number }).lastHoldoff).toBe(1800);
+  });
 });
 
 describe("close call RepeaterBook enrichment", () => {

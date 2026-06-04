@@ -195,7 +195,12 @@ export function createServer(deps: ServerDeps): { server: Server } {
       }
     }
 
-    if (method === "POST" && path === "/api/scan/skip") { engine.skip?.(); return json(res, 200, { ok: true }); }
+    if (method === "POST" && path === "/api/scan/skip") {
+      const body = await readBody(req).catch(() => undefined);
+      const holdoff = Number(body?.holdoffSeconds);
+      engine.skip?.(Number.isFinite(holdoff) && holdoff > 0 ? holdoff : undefined);
+      return json(res, 200, { ok: true });
+    }
 
     if (method === "POST" && path === "/api/scan/start") { await engine.start(toScanConfig(config, mode)); return json(res, 200, { state: engine.state }); }
     if (method === "POST" && path === "/api/scan/stop") { await engine.stop(); return json(res, 200, { state: engine.state }); }

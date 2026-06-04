@@ -307,6 +307,18 @@ describe("skip + lockout", () => {
     await engine.stop();
     expect(got).toBe(true);
   });
+
+  it("skip(holdoffSeconds) carries the holdoff — temp lockout is a long skip", async () => {
+    const cmds = tmpFile("cmds");
+    const { engine } = makeEngine({ FAKE_WB_CMDS_FILE: cmds });
+    await engine.start(cfg([VHF_A, VHF_B]));
+    await waitFor(() => lines(cmds).some((l) => l.includes('"cmd":"tune"')), 1000);
+    engine.skip(1800);
+    const got = await waitFor(() => lines(cmds).some((l) =>
+      l.includes('"cmd":"skip"') && l.includes('"holdoffS":1800')), 1000);
+    await engine.stop();
+    expect(got).toBe(true);
+  });
 });
 
 describe("leveler trim persistence", () => {

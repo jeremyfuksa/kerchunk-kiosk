@@ -293,7 +293,7 @@ class Helper(gr.top_block):
         self.cc_enabled = False
         self.cc_db = 15.0
         self.known_hz = set()
-        self.cc_cooldown = {}    # rounded freq -> monotonic ts of last fire
+        self.cc_cooldown = {}    # rounded freq -> monotonic EXPIRY of suppression
         self.cc_pending = None   # (rounded freq, consecutive count)
 
         self.center_hz = None
@@ -508,8 +508,8 @@ class Helper(gr.top_block):
             return
         freq = self.center_hz + (idx - dc) * binw
         freq = int(round(freq / CC_RASTER_HZ) * CC_RASTER_HZ)
-        last = self.cc_cooldown.get(freq)
-        if last is not None and now - last < CC_COOLDOWN_S:
+        expiry = self.cc_cooldown.get(freq)
+        if expiry is not None and now < expiry:
             return
         if self.cc_pending and self.cc_pending[0] == freq:
             self.cc_pending = (freq, self.cc_pending[1] + 1)
@@ -519,7 +519,7 @@ class Helper(gr.top_block):
             return
 
         self.cc_pending = None
-        self.cc_cooldown[freq] = now
+        self.cc_cooldown[freq] = now + CC_COOLDOWN_S
         emit({"ev": "closecall", "freqHz": freq})
         # Listen immediately on a parked lane (priority => preempts). The
         # lane flows through the normal squelch/leveler/fade path and parks
@@ -529,26 +529,32 @@ class Helper(gr.top_block):
                 chain.assign(f"cc_{freq}", freq - self.center_hz, priority=True)
                 break
 
-    def skip(self):
+    def skip(self, holdoff_s=SKIP_HOLDOFF_S):
         """Scanner SKIP key: force-close whatever owns the speaker.
 
-        A cc lane parks (its frequency stays in cooldown, and the server
-        already filed it as a disabled channel). A regular channel gets a
-        short re-open holdoff so the same transmission doesn't reopen it
-        on the next poll — it can trigger again once it actually drops.
+        A cc lane parks; its frequency is suppressed (cc cooldown) for
+        holdoff_s. A regular channel may not reopen for holdoff_s. The
+        default is a short bump; a LONG holdoff is temp lockout (cleared
+        by an engine restart, hardware-scanner style).
         """
         chain = self.audible
         if chain is None or chain.channel_id is None:
             return
+        now = time.monotonic()
+        cid = chain.channel_id
         chain.open = False
         chain.above_polls = 0
         chain.below_since = None
-        emit({"ev": "close", "id": chain.channel_id})
+        emit({"ev": "close", "id": cid})
         self.set_audible(self.next_open_chain())
-        if chain.channel_id.startswith("cc_"):
+        if cid.startswith("cc_"):
+            try:
+                self.cc_cooldown[int(cid[3:])] = now + holdoff_s
+            except ValueError:
+                pass
             chain.park()
         else:
-            chain.skip_until = time.monotonic() + SKIP_HOLDOFF_S
+            chain.skip_until = now + holdoff_s
 
     def next_open_chain(self):
         best = None
@@ -617,7 +623,7 @@ def main():
                 if cmd.get("cmd") == "quit":
                     break
                 if cmd.get("cmd") == "skip":
-                    helper.skip()
+                    helper.skip(float(cmd.get("holdoffS", SKIP_HOLDOFF_S)))
                 if cmd.get("cmd") == "tune":
                     helper.tune(cmd["centerHz"], cmd.get("channels", []),
                                 bool(cmd.get("monitor", False)),

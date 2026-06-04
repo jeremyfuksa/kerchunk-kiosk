@@ -1,6 +1,8 @@
 import type { Channel } from "../../backend/config/schema.js";
 import { NOAA_CHANNELS } from "../../backend/config/noaa.js";
 import { api } from "../lib/api.js";
+import { ReconnectingWs } from "../lib/wsClient.js";
+import type { EngineEvent } from "../../backend/engine/ScannerEngine.js";
 import "./admin.css";
 
 export function mhzToHz(mhz: string): number {
@@ -33,10 +35,16 @@ export function renderAdmin(root: HTMLElement): void {
   root.innerHTML = `
     <main class="admin">
       <h1>Kerchunk Kiosk — Admin</h1>
-      <section class="audio">
-        <label>Volume <input id="vol" type="range" min="0" max="100" /></label>
-        <label><input id="mute" type="checkbox" /> Mute</label>
-        <button id="skipBtn" title="Force-close the current transmission">Skip ▶</button>
+      <section class="nowCard">
+        <h2>Now playing</h2>
+        <div class="npWhat"><span id="npName" class="npName">scanning…</span> <span id="npFreq" class="npFreq"></span></div>
+        <div class="npControls">
+          <label>Volume <input id="vol" type="range" min="0" max="100" /></label>
+          <label><input id="mute" type="checkbox" /> Mute</label>
+          <button id="skipBtn" title="Force-close the current transmission">Skip ▶</button>
+          <button id="tlockBtn" title="Suppress this channel for 30 minutes (clears on restart)" disabled>Temp lockout 30m</button>
+          <button id="lockBtn" title="Remove this channel and never Close-Call its frequency again" disabled>Lockout</button>
+        </div>
       </section>
       <section class="channels">
         <h2>Channels <button id="addBtn">+ Add</button></h2>
@@ -229,6 +237,58 @@ export function renderAdmin(root: HTMLElement): void {
 
   addBtn.addEventListener("click", () => {
     editingId = "new"; chErr.textContent = ""; renderRows(); tr0Focus();
+  });
+
+  // ---- Now Playing card ----
+  // Live speaker ownership over the same WS feed the dashboard uses (the hub
+  // replays the current audible channel on connect). Lockout buttons act on
+  // whatever is playing right now.
+  const npName = root.querySelector<HTMLElement>("#npName")!;
+  const npFreq = root.querySelector<HTMLElement>("#npFreq")!;
+  const tlockBtn = root.querySelector<HTMLButtonElement>("#tlockBtn")!;
+  const lockBtn = root.querySelector<HTMLButtonElement>("#lockBtn")!;
+  let nowPlaying: { freq: number; alphaTag: string } | null = null;
+  let npAudibleDriven = false;
+
+  function paintNow(): void {
+    npName.textContent = nowPlaying ? (nowPlaying.alphaTag || fmtFreq(nowPlaying.freq)) : "scanning…";
+    npFreq.textContent = nowPlaying ? fmtFreq(nowPlaying.freq) : "";
+    tlockBtn.disabled = nowPlaying === null;
+    lockBtn.disabled = nowPlaying === null;
+  }
+
+  function onEngineEvent(ev: EngineEvent): void {
+    if (ev.type === "audible") {
+      npAudibleDriven = true;
+      nowPlaying = ev.channel ? { freq: ev.channel.freq, alphaTag: ev.channel.alphaTag } : null;
+    } else if (ev.type === "active" && !npAudibleDriven) {
+      nowPlaying = { freq: ev.freq, alphaTag: ev.channel.alphaTag };
+    } else if (ev.type === "idle" && !npAudibleDriven) {
+      nowPlaying = null;
+    } else if (ev.type === "status") {
+      nowPlaying = null;
+      npAudibleDriven = false;
+    } else {
+      return;
+    }
+    paintNow();
+  }
+  const wsProto = location.protocol === "https:" ? "wss" : "ws";
+  new ReconnectingWs(`${wsProto}://${location.host}/ws`, onEngineEvent).connect();
+  paintNow();
+
+  tlockBtn.addEventListener("click", () => api.skip(1800));
+  lockBtn.addEventListener("click", async () => {
+    if (!nowPlaying) return;
+    const label = nowPlaying.alphaTag || fmtFreq(nowPlaying.freq);
+    if (!confirm(`Lock out ${label}? It will be removed and never trigger Close Call again.`)) return;
+    const freq = nowPlaying.freq;
+    const cfg = await api.getConfig();
+    cfg.channels = cfg.channels.filter((c) => c.freq !== freq);
+    cfg.scan.lockoutHz = [...new Set([...(cfg.scan.lockoutHz ?? []), freq])];
+    await api.putConfig(cfg);
+    await refresh();
+    renderLockouts();
   });
 
   // Volume/mute stay in sync with the server (another admin tab, a stale

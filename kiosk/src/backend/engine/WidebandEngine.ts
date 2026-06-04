@@ -388,11 +388,16 @@ export class WidebandEngine implements ScannerEngine {
     }
   }
 
-  skip(): void {
+  skip(holdoffSeconds?: number): void {
     // Scanner SKIP key: the helper force-closes the audible channel (a cc
-    // lane parks; a regular channel gets a short re-open holdoff).
+    // lane parks; a regular channel gets a re-open holdoff). With a long
+    // holdoff this is TEMP LOCKOUT — suppressed for the duration, cleared
+    // by an engine restart (hardware-scanner semantics).
     if (this.child?.stdin?.writable) {
-      this.child.stdin.write('{"cmd":"skip"}\n');
+      const cmd = holdoffSeconds !== undefined
+        ? `{"cmd":"skip","holdoffS":${Math.max(1, Math.round(holdoffSeconds))}}`
+        : '{"cmd":"skip"}';
+      this.child.stdin.write(cmd + "\n");
     }
   }
 
