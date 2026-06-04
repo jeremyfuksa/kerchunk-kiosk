@@ -9,6 +9,8 @@ export interface DashState {
   nowPlaying: NowPlaying | null;
   log: LogRow[];
   error: string | null;
+  /** Latest signal level (dB) of the audible channel; null when silent. */
+  signalDb: number | null;
   // True once an "audible" event has been seen: the engine reports speaker
   // ownership explicitly (wideband), so "active" stops driving nowPlaying —
   // many channels can be active while exactly one is audible. RtlFm never
@@ -17,7 +19,7 @@ export interface DashState {
 }
 
 export function initialState(): DashState {
-  return { nowPlaying: null, log: [], error: null, audibleDriven: false };
+  return { nowPlaying: null, log: [], error: null, signalDb: null, audibleDriven: false };
 }
 
 export function reduce(s: DashState, ev: EngineEvent): DashState {
@@ -40,7 +42,10 @@ export function reduce(s: DashState, ev: EngineEvent): DashState {
         error: null,
         audibleDriven: true,
         nowPlaying: ev.channel ? { freq: ev.channel.freq, alphaTag: ev.channel.alphaTag } : null,
+        signalDb: ev.channel ? s.signalDb : null,
       };
+    case "signal":
+      return { ...s, signalDb: ev.dbfs };
     case "idle":
       return { ...s, error: null, nowPlaying: s.audibleDriven ? s.nowPlaying : null };
     case "error":
@@ -51,8 +56,8 @@ export function reduce(s: DashState, ev: EngineEvent): DashState {
       // now-playing must not survive it — a fresh active/audible
       // re-establishes it (audibleDriven resets too: the engine kind may change).
       return ev.state === "running"
-        ? { ...s, error: null, nowPlaying: null, audibleDriven: false }
-        : { ...s, nowPlaying: null, audibleDriven: false };
+        ? { ...s, error: null, nowPlaying: null, signalDb: null, audibleDriven: false }
+        : { ...s, nowPlaying: null, signalDb: null, audibleDriven: false };
     default:
       return s;
   }
@@ -88,9 +93,15 @@ export function renderDashboard(root: HTMLElement): void {
     if (state.error) {
       nowEl.innerHTML = `<div class="err">${esc(state.error)}</div>`;
     } else if (state.nowPlaying) {
+      // Signal meter: map the audible channel's level (helper power telemetry)
+      // onto a bar. -35 dB = floor-ish, +5 dB = hot; clamp outside.
+      const db = state.signalDb;
+      const pct = db === null ? 0 : Math.max(0, Math.min(100, ((db + 35) / 40) * 100));
       nowEl.innerHTML = `<div class="active">● ACTIVE</div>
         <div class="freq">${fmtFreq(state.nowPlaying.freq)}</div>
-        <div class="tag">${esc(state.nowPlaying.alphaTag)}</div>`;
+        <div class="tag">${esc(state.nowPlaying.alphaTag)}</div>
+        <div class="meter"><div class="meterFill" style="width:${pct.toFixed(0)}%"></div></div>
+        <div class="meterDb">${db === null ? "" : db.toFixed(1) + " dB"}</div>`;
     } else {
       nowEl.innerHTML = `<div class="scanning">scanning…</div>`;
     }

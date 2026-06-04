@@ -230,3 +230,14 @@ describe("priority passthrough", () => {
     expect(first.channels.map((c: { priority: boolean }) => c.priority)).toEqual([true, false]);
   });
 });
+
+describe("monitor mode passthrough", () => {
+  it("tune carries monitor: true so the helper holds the channel open unsquelched", async () => {
+    const tunes = tmpFile("tunes");
+    const { engine } = makeEngine({ FAKE_WB_TUNES_FILE: tunes });
+    await engine.start({ ...cfg([VHF_A]), monitor: true });
+    await waitFor(() => lines(tunes).length >= 1, 1000);
+    await engine.stop();
+    expect(JSON.parse(lines(tunes)[0]!).monitor).toBe(true);
+  });
+});

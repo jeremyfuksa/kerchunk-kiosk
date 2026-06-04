@@ -39,6 +39,9 @@ function toScanConfig(cfg: Config, mode: "scan" | "weather"): ScanConfig {
     groupDwellMs: cfg.scan.groupDwellMs,
     openAboveFloorDb: cfg.scan.openAboveFloorDb,
     noiseQuietDb: cfg.scan.noiseQuietDb,
+    // Weather-only = monitor: hold the lone channel open/audible, no squelch
+    // (a continuous NOAA carrier can't be squelched against its own floor).
+    monitor: mode === "weather",
   };
 }
 

@@ -221,3 +221,18 @@ describe("PUT /api/channels/:id (table inline edit)", () => {
     expect(res.status).toBe(400);
   });
 });
+
+describe("weather mode under wideband (monitor flag)", () => {
+  it("POST /api/mode weather starts the engine with monitor: true; scan mode without", async () => {
+    const { server, engine } = makeApp();
+    await request(server).put("/api/weather-channel")
+      .send({ freq: 162550000, alphaTag: "NOAA", mode: "nfm", enabled: true });
+    let lastStart: any = null;
+    const realStart = engine.start.bind(engine);
+    engine.start = async (sc) => { lastStart = sc; return realStart(sc); };
+    await request(server).post("/api/mode").send({ mode: "weather" });
+    expect(lastStart.monitor).toBe(true);
+    await request(server).post("/api/mode").send({ mode: "scan" });
+    expect(lastStart.monitor).toBe(false);
+  });
+});

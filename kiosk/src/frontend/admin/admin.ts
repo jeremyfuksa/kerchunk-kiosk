@@ -47,6 +47,15 @@ export function renderAdmin(root: HTMLElement): void {
         </table>
         <span id="chErr" class="err"></span>
       </section>
+      <section class="tuning">
+        <h2>Scan tuning</h2>
+        <label>Group dwell (ms) <input id="tGroupDwell" type="number" min="500" step="100" placeholder="3000" /></label>
+        <label>Hang time (ms) <input id="tHang" type="number" min="100" step="100" placeholder="2000" /></label>
+        <label>Squelch open (dB over floor) <input id="tOpenDb" type="number" min="1" step="0.5" placeholder="9" /></label>
+        <label>Quieting threshold (dB) <input id="tQuietDb" type="number" max="-1" step="0.5" placeholder="-86" /></label>
+        <button id="tSave">Save tuning</button>
+        <span id="tErr" class="err"></span>
+      </section>
       <section class="weather">
         <h2>Weather</h2>
         <label>Channel <select id="wxFreq">${NOAA_CHANNELS.map((c) => `<option value="${c.mhz}">${c.label} — ${c.mhz} MHz</option>`).join("")}</select></label>
@@ -190,6 +199,38 @@ export function renderAdmin(root: HTMLElement): void {
   api.getConfig().then((cfg) => { vol.value = String(cfg.audio.volume); mute.checked = cfg.audio.muted; });
   vol.addEventListener("change", () => api.setVolume(Number(vol.value)));
   mute.addEventListener("change", () => api.setMuted(mute.checked));
+
+  // Scan tuning knobs — optional config fields; empty input = engine default
+  // (shown as the placeholder). Saved via whole-config PUT, which restarts
+  // the engine so changes take effect immediately.
+  const tGroupDwell = root.querySelector<HTMLInputElement>("#tGroupDwell")!;
+  const tHang = root.querySelector<HTMLInputElement>("#tHang")!;
+  const tOpenDb = root.querySelector<HTMLInputElement>("#tOpenDb")!;
+  const tQuietDb = root.querySelector<HTMLInputElement>("#tQuietDb")!;
+  const tErr = root.querySelector<HTMLElement>("#tErr")!;
+
+  api.getConfig().then((cfg) => {
+    tGroupDwell.value = cfg.scan.groupDwellMs != null ? String(cfg.scan.groupDwellMs) : "";
+    tHang.value = String(cfg.scan.dwellMs);
+    tOpenDb.value = cfg.scan.openAboveFloorDb != null ? String(cfg.scan.openAboveFloorDb) : "";
+    tQuietDb.value = cfg.scan.noiseQuietDb != null ? String(cfg.scan.noiseQuietDb) : "";
+  });
+
+  root.querySelector<HTMLButtonElement>("#tSave")!.addEventListener("click", async () => {
+    tErr.textContent = "";
+    try {
+      const cfg = await api.getConfig();
+      const num = (el: HTMLInputElement): number | undefined =>
+        el.value.trim() === "" ? undefined : Number(el.value);
+      cfg.scan.groupDwellMs = num(tGroupDwell);
+      cfg.scan.openAboveFloorDb = num(tOpenDb);
+      cfg.scan.noiseQuietDb = num(tQuietDb);
+      const hang = num(tHang);
+      if (hang !== undefined) cfg.scan.dwellMs = hang;
+      await api.putConfig(cfg);
+      tErr.textContent = "saved";
+    } catch (e) { tErr.textContent = (e as Error).message; }
+  });
 
   refresh();
 

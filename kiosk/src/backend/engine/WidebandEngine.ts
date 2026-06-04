@@ -36,7 +36,9 @@ const DEFAULT_WINDOW_HZ = 2_000_000;
 // Grouping splits oversized clusters so the helper never truncates.
 const MAX_CHANNELS_PER_GROUP = 12;
 const DEFAULT_GROUP_DWELL_MS = 3000;
-const SIGNAL_THROTTLE_MS = 1000;
+// Signal events drive the dashboard meter; the helper's power telemetry
+// arrives ~5 Hz, pass it through at up to 4 Hz for a live-feeling needle.
+const SIGNAL_THROTTLE_MS = 250;
 const QUIT_GRACE_MS = 500;
 
 // GNU Radio is only importable from the system python; mise/pyenv interpreters
@@ -263,6 +265,7 @@ export class WidebandEngine implements ScannerEngine {
       cmd: "tune",
       centerHz: group.centerHz,
       channels: group.channels.map((c) => ({ id: c.id, freqHz: c.freq, priority: c.priority ?? false })),
+      monitor: this.config?.monitor ?? false,
     };
     this.child.stdin.write(JSON.stringify(cmd) + "\n");
   }
