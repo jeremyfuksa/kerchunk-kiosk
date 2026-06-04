@@ -24,7 +24,9 @@ set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # the kiosk/ dir
 STATE_DIR=/var/lib/kerchunk-kiosk
-AUDIO_SINK="plughw:1,0"   # CS4208 built-in analog out (operator-verified)
+# Built-in analog out (CS4208), addressed by card NAME: indices swap across
+# boots when the PCH and HDMI controllers race (bit us on first appliance boot).
+AUDIO_SINK="plughw:CARD=PCH,DEV=0"
 
 echo "[setup] Installing SDR toolchain packages..."
 sudo apt-get update
@@ -93,7 +95,7 @@ if ! sudo test -f "$STATE_DIR/config.json"; then
 {
   "version": 1,
   "scan": { "sampleRate": 12000, "squelchLevel": 1800, "gain": "auto", "dwellMs": 2000 },
-  "audio": { "sink": "$AUDIO_SINK", "volume": 70, "muted": false, "mixerCard": 1, "mixerControl": "Master" },
+  "audio": { "sink": "$AUDIO_SINK", "volume": 70, "muted": false, "mixerCard": "PCH", "mixerControl": "Master" },
   "channels": [
     { "id": "wx2", "freq": 162400000, "alphaTag": "WX2", "mode": "nfm", "enabled": true },
     { "id": "wx4", "freq": 162425000, "alphaTag": "WX4", "mode": "nfm", "enabled": true },
