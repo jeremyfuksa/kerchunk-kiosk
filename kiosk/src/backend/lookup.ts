@@ -8,6 +8,8 @@
 export interface LookupHit {
   /** Display tag for the channel table / dashboard. */
   tag: string;
+  /** Modulation as the source reports it (FMN, FM, DMR, P25, NXDN, ...). */
+  mode?: string;
   /** Transmitter location when the source knows it. */
   location?: {
     lat?: number;

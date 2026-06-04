@@ -135,6 +135,16 @@ export function renderAdmin(root: HTMLElement): void {
   const chErr = root.querySelector<HTMLElement>("#chErr")!;
   const addBtn = root.querySelector<HTMLButtonElement>("#addBtn")!;
 
+  // Identified-modulation chip; digital modes get the warning treatment —
+  // this radio demodulates analog FM only, so a DMR/P25 discovery explains
+  // itself ("that's why it sounds like a wood chipper").
+  const DIGITAL = ["DMR", "P25", "NXDN", "D-STAR", "YSF", "TETRA"];
+  function modeChip(mode?: string): string {
+    if (!mode) return "";
+    const digital = DIGITAL.some((d) => mode.toUpperCase().includes(d));
+    return ` <span class="modeChip${digital ? " digital" : ""}">${esc(mode.toUpperCase())}</span>`;
+  }
+
   // "Olathe, KS" chip for anything an identification source located.
   function locChip(loc?: { city?: string; state?: string }): string {
     if (!loc || (!loc.city && !loc.state)) return "";
@@ -316,10 +326,11 @@ export function renderAdmin(root: HTMLElement): void {
       : ds.map((d) => `<tr data-id="${esc(d.id)}" class="dcRow${dcExpanded.has(d.id) ? " open" : ""}">
           <td><input type="checkbox" class="dSel" ${dcSelected.has(d.id) ? "checked" : ""} /></td>
           <td><button class="dToggle" aria-label="Details"><span class="chev"></span></button>${fmtFreq(d.freq)}</td>
-          <td>${esc(d.alphaTag)}${locChip(d.location)}</td>
+          <td>${esc(d.alphaTag)}${modeChip(d.mode)}${locChip(d.location)}</td>
           <td class="actions">${iconBtn("dListen", "listen", "Listen — audition this discovery")}${iconBtn("dAdd", "add", "Add as an enabled channel")}${iconBtn("dLock", "lockout", "Lockout — never Close-Call this frequency again")}${iconBtn("dDismiss", "dismiss", "Dismiss (may be rediscovered later)")}</td>
         </tr>${dcExpanded.has(d.id) ? `<tr class="dcDetail"><td></td><td colspan="3">
           <span class="dl">found</span> ${new Date(d.ts).toLocaleString()}
+          ${d.mode ? `<span class="dl">mode</span> ${esc(d.mode)}` : ""}
           <span class="dl">freq</span> ${d.freq.toLocaleString()} Hz
           ${d.location ? `<span class="dl">location</span> ${esc([d.location.city, d.location.state].filter(Boolean).join(", "))}${d.location.lat != null ? ` (${d.location.lat}, ${d.location.lon})` : ""} <span class="dl">via</span> ${esc(d.location.source)}` : ""}
         </td></tr>` : ""}`).join("");
@@ -361,11 +372,17 @@ export function renderAdmin(root: HTMLElement): void {
         if (d) api.monitor(d.freq, d.alphaTag);
       });
       if (b.classList.contains("dAdd")) b.addEventListener("click", () =>
-        mutate(id, (cfg2, d) => cfg2.channels.push({
-          id: `ch_${d.id.replace(/^cc_/, "")}`, freq: d.freq, alphaTag: d.alphaTag,
-          mode: "nfm", enabled: true,
-          ...(d.location ? { location: d.location, lookedUpAt: Date.now() } : {}),
-        })));
+        mutate(id, (cfg2, d) => {
+          // Map the identified modulation onto our demod modes; digital and
+          // unknown fall back to nfm (all we can demodulate).
+          const m = (d.mode ?? "").toUpperCase();
+          const mode = m === "FM" ? "fm" as const : m === "AM" ? "am" as const : "nfm" as const;
+          cfg2.channels.push({
+            id: `ch_${d.id.replace(/^cc_/, "")}`, freq: d.freq, alphaTag: d.alphaTag,
+            mode, enabled: true,
+            ...(d.location ? { location: d.location, lookedUpAt: Date.now() } : {}),
+          });
+        }));
       if (b.classList.contains("dLock")) b.addEventListener("click", () =>
         mutate(id, (cfg2, d) => {
           cfg2.scan.lockoutHz = [...new Set([...(cfg2.scan.lockoutHz ?? []), d.freq])];

@@ -388,3 +388,21 @@ body {
   .admin .channels .chTable th:nth-child(3),
   .admin .channels .chTable td:nth-child(3) { display: none; }
 }
+
+/* Identified-modulation chips */
+.admin .modeChip {
+  font-family: var(--cond);
+  font-size: 0.7rem; font-weight: 600;
+  letter-spacing: 0.12em;
+  color: var(--green);
+  border: 1px solid color-mix(in srgb, var(--sage) 40%, transparent);
+  border-radius: 3px;
+  padding: 0.02rem 0.3rem;
+  margin-left: 0.4rem;
+  vertical-align: 1px;
+  white-space: nowrap;
+}
+.admin .modeChip.digital {
+  color: var(--caution);
+  border-color: color-mix(in srgb, var(--golden-amber) 45%, transparent);
+}

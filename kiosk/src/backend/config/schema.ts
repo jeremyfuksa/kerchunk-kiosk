@@ -108,7 +108,11 @@ export const configSchema = z.object({
     freq: z.number().int().positive(),
     alphaTag: z.string(),
     ts: z.number(),
+    // Modulation as identified by the lookup chain (FMN, DMR, P25, ...) —
+    // tells the operator whether a discovery is even decodable as analog.
+    mode: z.string().optional(),
     location: locationSchema.optional(),
+    lookedUpAt: z.number().optional(),
   })).optional(),
   // One channel designated as "the weather channel", stored separately from the
   // scan list. Weather-only mode (server runtime) holds this channel.

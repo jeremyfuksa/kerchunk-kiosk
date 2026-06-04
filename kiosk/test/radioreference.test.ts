@@ -29,6 +29,7 @@ describe("RadioReference", () => {
     const { rr, fetcher } = make(SOAP_HIT);
     const hit = await rr.lookup(464275000);
     expect(hit?.tag).toBe("WOF Maint · WQAB123");
+    expect(hit?.mode).toBe("FMN"); // RR's mode field — discarded until now
     // SOAP body carries auth + decimal MHz
     const body = fetcher.mock.calls[0][1].body as string;
     expect(body).toContain("<appKey>k</appKey>");
