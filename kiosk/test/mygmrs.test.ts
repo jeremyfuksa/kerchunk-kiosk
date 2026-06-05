@@ -41,5 +41,6 @@ describe("MyGmrs", () => {
     await g.lookup(462650000);
     expect(fetcher.mock.calls.length).toBe(n);
     expect(fetcher.mock.calls[0][1].headers["User-Agent"]).toBe("Kerchunk/1.0 (test)");
+    expect(fetcher.mock.calls[0][0]).toContain("limit=1000"); // default page is 25 — truncates states
   });
 });

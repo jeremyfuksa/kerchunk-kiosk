@@ -100,12 +100,18 @@ export class MyGmrs implements LookupProvider {
     } catch { /* no/stale cache */ }
     try {
       const abbr = STATE_ABBR[state] ?? state;
+      // The endpoint paginates at 25 by default and silently truncates —
+      // a Cameron machine 53 km out was invisible until the operator found
+      // it by hand. limit=1000 covers every US state's GMRS census.
       const res = await this.opts.fetcher(
-        `https://api.mygmrs.com/repeaters?state=${encodeURIComponent(abbr)}`,
+        `https://api.mygmrs.com/repeaters?state=${encodeURIComponent(abbr)}&limit=1000`,
         { headers: { "User-Agent": this.opts.userAgent } });
       if (!res.ok) return this.mem.get(state) ?? [];
-      const body = await res.json() as { items?: GmrsItem[] };
+      const body = await res.json() as { items?: GmrsItem[]; info?: { total?: number } };
       const items = body.items ?? [];
+      if (body.info?.total !== undefined && items.length < body.info.total) {
+        console.error(`[mygmrs] ${state}: got ${items.length} of ${body.info.total} — raise the limit`);
+      }
       this.mem.set(state, items);
       try {
         mkdirSync(this.opts.cacheDir, { recursive: true });
