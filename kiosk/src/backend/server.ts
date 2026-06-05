@@ -12,6 +12,7 @@ import { WsHub } from "./ws.js";
 import type { ScannerEngine, ScanConfig } from "./engine/ScannerEngine.js";
 import { setVolume as amixerVolume, setMuted as amixerMuted, type AmixerOpts } from "./audio.js";
 import { isScannable, isAudible, profileFor } from "./config/banks.js";
+import { solveK, estimateWatts, distKm, type Anchor } from "./powerEstimator.js";
 
 export interface ServerDeps {
   /** Optional identification chain — enriches Close Call channel names. */
@@ -176,6 +177,7 @@ export function createServer(deps: ServerDeps): { server: Server } {
                     ...(hit ? { alphaTag: hit.tag } : {}),
                     ...(hit?.mode ? { mode: hit.mode } : {}),
                     ...(hit?.location ? { location: hit.location } : {}),
+                    ...(hit?.listen ? { audible: hit.listen === "voice" } : {}),
                   }
                 : d),
           };
@@ -276,11 +278,78 @@ export function createServer(deps: ServerDeps): { server: Server } {
     levelSaveTimer.unref?.();
   });
 
+  // RF telemetry tee: per-transmission median received power -> channel.rfDb
+  // (EMA, persisted on a trailing debounce like the leveler trims). This is
+  // the ERP estimator's measurement input.
+  let rfSaveTimer: NodeJS.Timeout | null = null;
+  engine.on((ev) => {
+    if (ev.type !== "rf") return;
+    const ch = config.channels.find((c) => c.id === ev.channelId);
+    if (!ch) return;
+    const next = ch.rfDb === undefined ? ev.db : ch.rfDb + 0.3 * (ev.db - ch.rfDb);
+    config = {
+      ...config,
+      channels: config.channels.map((c) =>
+        c.id === ev.channelId ? { ...c, rfDb: Math.round(next * 10) / 10 } : c),
+    };
+    if (rfSaveTimer) clearTimeout(rfSaveTimer);
+    rfSaveTimer = setTimeout(() => { rfSaveTimer = null; configStore.save(config); }, 5000);
+    rfSaveTimer.unref?.();
+  });
+
+  // ── ERP estimator (operator idea): licensed channels are calibration
+  // anchors; everything located + measured gets an estimated powerWatts so
+  // its blips render at physical coverage. Estimates stay refreshable
+  // (powerEstimated flag); licensed values are never touched.
+  function runPowerEstimate(): { anchors: number; estimated: Array<{ alphaTag: string; watts: number }> } {
+    const home = config.display
+      ? { lat: config.display.weatherLat, lon: config.display.weatherLon }
+      : null;
+    if (!home) return { anchors: 0, estimated: [] };
+    const anchors: Anchor[] = config.channels
+      .filter((c) => c.rfDb !== undefined && c.location?.lat != null
+        && c.location.powerWatts && !c.location.powerEstimated)
+      .map((c) => ({
+        rfDb: c.rfDb!, powerWatts: c.location!.powerWatts!,
+        distKm: distKm(home, { lat: c.location!.lat!, lon: c.location!.lon! }),
+        freqMhz: c.freq / 1e6,
+      }));
+    const k = solveK(anchors);
+    if (k === null) return { anchors: anchors.length, estimated: [] };
+    const estimated: Array<{ alphaTag: string; watts: number }> = [];
+    config = {
+      ...config,
+      channels: config.channels.map((c) => {
+        if (c.rfDb === undefined || c.location?.lat == null) return c;
+        if (c.location.powerWatts && !c.location.powerEstimated) return c; // licensed
+        const watts = estimateWatts(
+          c.rfDb, distKm(home, { lat: c.location.lat, lon: c.location.lon! }),
+          c.freq / 1e6, k);
+        if (c.location.powerWatts === watts) return c;
+        estimated.push({ alphaTag: c.alphaTag, watts });
+        return { ...c, location: { ...c.location, powerWatts: watts, powerEstimated: true } };
+      }),
+    };
+    if (estimated.length > 0) configStore.save(config);
+    return { anchors: anchors.length, estimated };
+  }
+  const estTimer = setInterval(() => { runPowerEstimate(); }, 12 * 3600 * 1000);
+  estTimer.unref?.();
+
+  // Persistence-before-filing: one FFT transient used to file a discovery
+  // forever; now a frequency must hit TWICE (helper cooldown spaces hits
+  // >=5 min) before it earns a row. Real signals come back; junk doesn't.
+  // Every hit still plays live and lands in history regardless.
+  const ccSeen = new Map<number, number>();
+  const CC_FILE_AFTER = 2;
   engine.on((ev) => {
     if (ev.type !== "closecall") return;
     // Channels are the operator's choices; discoveries are the radio's finds.
     if (config.channels.some((c) => c.freq === ev.freqHz)) return;
     if ((config.discoveries ?? []).some((d) => d.freq === ev.freqHz)) return;
+    const seen = (ccSeen.get(ev.freqHz) ?? 0) + 1;
+    ccSeen.set(ev.freqHz, seen);
+    if (seen < CC_FILE_AFTER) return;
     const discovery = {
       id: `cc_${randomUUID().slice(0, 8)}`,
       freq: ev.freqHz,
@@ -301,6 +370,9 @@ export function createServer(deps: ServerDeps): { server: Server } {
                   ...d, alphaTag: hit.tag,
                   ...(hit.mode ? { mode: hit.mode } : {}),
                   ...(hit.location ? { location: hit.location } : {}),
+                  // Listenability triage (operator rule): identified data/
+                  // paging/digital files as seen-not-heard.
+                  ...(hit.listen ? { audible: hit.listen === "voice" } : {}),
                 }
               : d),
         };
@@ -491,6 +563,10 @@ export function createServer(deps: ServerDeps): { server: Server } {
       await engine.stop();
       await engine.start(toScanConfig(config, mode));
       return json(res, 200, { mode, state: engine.state });
+    }
+
+    if (method === "POST" && path === "/api/power/estimate") {
+      return json(res, 200, runPowerEstimate());
     }
 
     if (method === "POST" && path === "/api/kiosk/reload") {

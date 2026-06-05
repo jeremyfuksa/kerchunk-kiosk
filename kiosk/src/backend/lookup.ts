@@ -10,6 +10,9 @@ export interface LookupHit {
   tag: string;
   /** Modulation as the source reports it (FMN, FM, DMR, P25, NXDN, ...). */
   mode?: string;
+  /** Can the operator actually LISTEN to this? "data" = paging/telemetry/
+   *  digital voice we can't decode — file it seen-not-heard. */
+  listen?: "voice" | "data";
   /** Transmitter location when the source knows it. */
   location?: {
     lat?: number;
@@ -48,6 +51,26 @@ export function inferModeFromName(tag: string): string | undefined {
   return undefined;
 }
 
+// Listenability triage (operator rule): a hit we can identify is either
+// something the speaker can carry (analog voice) or something it can't —
+// digital voice with no decoder (Idea 12), paging, telemetry, raw data.
+// Sources tell us via mode (RR: DMR/P25/Telm...), via the name ("...Paging"),
+// or via FCC emission designators (handled in fccprox). Unknown stays
+// undefined: the operator triages by ear, as before.
+const DATA_MODES = new Set([
+  "DMR", "P25", "NXDN", "NXDN48", "NXDN96", "TETRA", "D-STAR", "DSTAR",
+  "YSF", "TELM", "POCSAG", "FLEX", "ACARS", "DATA",
+]);
+
+export function classifyListen(tag: string, mode?: string): "voice" | "data" | undefined {
+  const m = (mode ?? "").trim().toUpperCase();
+  if (DATA_MODES.has(m)) return "data";
+  if (/PAGING|PAGER|TELEMETRY|\bTELEM\b|POCSAG|\bFLEX\b|SCADA|\bDATA\b/i.test(tag)) return "data";
+  if (inferModeFromName(tag)) return "data";   // "MotoNet (DMR) Site 13" etc.
+  if (["FM", "NFM", "FMN", "AM", "USB", "LSB"].includes(m)) return "voice";
+  return undefined;
+}
+
 export function composeLookups(providers: LookupProvider[]): LookupProvider {
   return {
     async lookup(freqHz: number, hint?: LookupHint): Promise<LookupHit | null> {
@@ -70,7 +93,11 @@ export function composeLookups(providers: LookupProvider[]): LookupProvider {
       }
       if (best && !best.mode) {
         const inferred = inferModeFromName(best.tag);
-        if (inferred) return { ...best, mode: inferred };
+        if (inferred) best = { ...best, mode: inferred };
+      }
+      if (best && !best.listen) {
+        const listen = classifyListen(best.tag, best.mode);
+        if (listen) best = { ...best, listen };
       }
       return best;
     },

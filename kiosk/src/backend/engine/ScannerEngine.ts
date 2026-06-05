@@ -58,6 +58,9 @@ export type EngineEvent =
   // Leveler telemetry: a channel's learned loudness trim changed. The server
   // persists it (channel.levelTrimDb) so trims survive hops and restarts.
   | { type: "level"; channelId: string; db: number; ts: number }
+  // Median received RF power over one closed transmission (helper telemetry)
+  // — feeds the ERP estimator (channel.rfDb -> location.powerWatts).
+  | { type: "rf"; channelId: string; db: number; ts: number }
   | { type: "signal"; dbfs: number; ts: number }
   // The engine (re)tuned its window: which channels are under demod RIGHT
   // NOW. Fires on every group hop (~groupDwellMs) — drives the kiosk's

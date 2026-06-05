@@ -36,8 +36,18 @@ const STOP_WORDS = new Set([
 ]);
 
 interface FccDetails {
-  freqs: Array<{ locationNumber: number; freqHz: number; powerWatts?: number }>;
+  licensee: string;
+  freqs: Array<{ locationNumber: number; freqHz: number; powerWatts?: number; emission?: string }>;
   locations: Array<{ locationNumber: number; lat: number; lon: number; city?: string; state?: string; antennaHaatM?: number }>;
+}
+
+// Emission designator's final symbol: E = telephony (voice), D = data.
+// "11K0F3E" speaks, "7K60F1D" doesn't. A grant set with NO voice emission
+// is something the speaker can't carry — paging, telemetry, digital.
+function listenFromEmissions(emissions: Array<string | undefined>): "voice" | "data" | undefined {
+  const known = emissions.filter((e): e is string => !!e && /[A-Z]$/.test(e));
+  if (known.length === 0) return undefined;
+  return known.some((e) => e.endsWith("E")) ? "voice" : "data";
 }
 
 interface ProxEntry {
@@ -74,10 +84,21 @@ export class FccProx implements LookupProvider {
   }
 
   async lookup(freqHz: number, hint?: LookupHint): Promise<LookupHit | null> {
-    // No name, no game: a bare frequency would mean fetching license
-    // details for every callsign in the metro. Discoveries stay out.
     const name = hint?.name?.trim();
-    if (!name) return null;
+    if (!name) {
+      // Bare frequency (a Close Call): answer ONLY from already-cached
+      // license details — no network. primeDetails() fills that cache in
+      // the background, after which the whole metro identifies offline.
+      const best = { km: Infinity, hit: null as LookupHit | null };
+      for (const det of this.cachedDetails().values()) {
+        if (!det) continue;
+        const hit = this.hitFrom(det, freqHz);
+        if (!hit?.location?.lat) continue;
+        const km = distKm(this.opts.home, hit.location.lat, hit.location.lon!);
+        if (km < best.km) { best.km = km; best.hit = hit; }
+      }
+      return best.hit;
+    }
     const tokens = name.toLowerCase().split(/[^a-z0-9]+/)
       .filter((t) => t.length >= 4 && !STOP_WORDS.has(t));
     if (tokens.length === 0) return null;
@@ -94,36 +115,78 @@ export class FccProx implements LookupProvider {
 
     for (const { e } of candidates) {
       const det = await this.callsignDetails(e.callsign);
-      if (!det) continue;
-      const matched = det.freqs.filter((f) => Math.abs(f.freqHz - freqHz) <= MATCH_TOLERANCE_HZ);
-      if (matched.length === 0) continue;
-      const locNums = new Set(matched.map((f) => f.locationNumber));
-      // Among the locations actually granted this frequency, nearest to
-      // home wins — beyond MAX_SITE_KM it's some other city's grant on a
-      // system-wide license, not our transmitter.
-      const sites = det.locations
-        .filter((l) => locNums.has(l.locationNumber))
-        .map((l) => ({ l, km: distKm(this.opts.home, l.lat, l.lon) }))
-        .filter((sk) => sk.km <= MAX_SITE_KM)
-        .sort((a, b) => a.km - b.km);
-      const site = sites[0]?.l;
-      if (!site) continue;
-      const power = Math.max(0, ...matched
-        .filter((f) => f.locationNumber === site.locationNumber)
-        .map((f) => f.powerWatts ?? 0));
-      return {
-        tag: name, // the channel keeps its name; FCC only donates geography
-        location: {
-          lat: site.lat, lon: site.lon,
-          ...(site.city ? { city: site.city } : {}),
-          ...(site.state ? { state: site.state } : {}),
-          ...(power > 0 ? { powerWatts: power } : {}),
-          ...(site.antennaHaatM ? { antennaHaatM: site.antennaHaatM } : {}),
-          source: "fcc",
-        },
-      };
+      const hit = det && this.hitFrom(det, freqHz, name);
+      if (hit) return hit;
     }
     return null;
+  }
+
+  /** Build a hit from a license iff it holds this frequency at a sane site. */
+  private hitFrom(det: FccDetails, freqHz: number, tag?: string): LookupHit | null {
+    const matched = det.freqs.filter((f) => Math.abs(f.freqHz - freqHz) <= MATCH_TOLERANCE_HZ);
+    if (matched.length === 0) return null;
+    const locNums = new Set(matched.map((f) => f.locationNumber));
+    // Among the locations actually granted this frequency, nearest to home
+    // wins — beyond MAX_SITE_KM it's some other city's grant on a
+    // system-wide license, not our transmitter.
+    const sites = det.locations
+      .filter((l) => locNums.has(l.locationNumber))
+      .map((l) => ({ l, km: distKm(this.opts.home, l.lat, l.lon) }))
+      .filter((sk) => sk.km <= MAX_SITE_KM)
+      .sort((a, b) => a.km - b.km);
+    const site = sites[0]?.l;
+    if (!site) return null;
+    const atSite = matched.filter((f) => f.locationNumber === site.locationNumber);
+    const power = Math.max(0, ...atSite.map((f) => f.powerWatts ?? 0));
+    const listen = listenFromEmissions(atSite.map((f) => f.emission));
+    return {
+      // A hinted channel keeps its name (FCC donates geography); a bare
+      // frequency (Close Call) is NAMED by its licensee.
+      tag: tag ?? `${title(det.licensee)}${site.city ? ` · ${site.city}` : ""}`,
+      ...(listen ? { listen } : {}),
+      location: {
+        lat: site.lat, lon: site.lon,
+        ...(site.city ? { city: site.city } : {}),
+        ...(site.state ? { state: site.state } : {}),
+        ...(power > 0 ? { powerWatts: power } : {}),
+        ...(site.antennaHaatM ? { antennaHaatM: site.antennaHaatM } : {}),
+        source: "fcc",
+      },
+    };
+  }
+
+  /** All cached license details (memory merged over disk). */
+  private cachedDetails(): Map<string, FccDetails | null> {
+    if (!this.diskLoaded) {
+      this.diskLoaded = true;
+      try {
+        const disk = JSON.parse(readFileSync(join(this.opts.cacheDir, "fcc-callsigns.json"), "utf8")) as Record<string, FccDetails>;
+        for (const [cs, det] of Object.entries(disk)) {
+          if (!this.details.has(cs)) this.details.set(cs, det);
+        }
+      } catch { /* nothing cached yet */ }
+    }
+    return this.details;
+  }
+  private diskLoaded = false;
+
+  /**
+   * Background index priming: fetch license details for every callsign in
+   * the probe-grid index that isn't cached yet, gently paced — after one
+   * pass, bare-frequency (Close Call) lookups answer offline for the whole
+   * metro. Resolves with how many licenses were fetched.
+   */
+  async primeDetails(spacingMs = 4_000): Promise<number> {
+    const index = await this.proxIndex();
+    const cached = this.cachedDetails();
+    const pending = index.filter((e) => !cached.has(e.callsign));
+    let fetched = 0;
+    for (const e of pending) {
+      await this.callsignDetails(e.callsign);
+      fetched++;
+      await new Promise((r) => setTimeout(r, spacingMs));
+    }
+    return fetched;
   }
 
   // ── Probe grid: home + 6 hex points, merged + deduped, disk-cached.
@@ -212,10 +275,12 @@ export class FccProx implements LookupProvider {
       const locN = Number(field(item, "locationNumber"));
       const power = Number(field(item, "power"));
       if (!Number.isFinite(mhz)) continue;
+      const emission = field(item, "emission");
       freqs.push({
         locationNumber: Number.isFinite(locN) ? locN : 1,
         freqHz: Math.round(mhz * 1e6),
         ...(Number.isFinite(power) && power > 0 ? { powerWatts: power } : {}),
+        ...(emission ? { emission } : {}),
       });
     }
     const locations: FccDetails["locations"] = [];
@@ -235,7 +300,10 @@ export class FccProx implements LookupProvider {
         ...(Number.isFinite(haat) && haat > 0 ? { antennaHaatM: haat } : {}),
       });
     }
-    const det: FccDetails = { freqs, locations };
+    const det: FccDetails = {
+      licensee: decodeXml(field(body, "licensee") ?? ""),
+      freqs, locations,
+    };
     this.details.set(callsign, det);
     try {
       mkdirSync(this.opts.cacheDir, { recursive: true });

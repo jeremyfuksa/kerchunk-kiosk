@@ -244,6 +244,7 @@ describe("close call filing", () => {
     const realStart = engine.start.bind(engine);
     engine.start = async (sc) => { starts++; return realStart(sc); };
     engine.emitCloseCall(462887500);
+    engine.emitCloseCall(462887500); // persistence-before-filing: second hit files
     await new Promise((r) => setTimeout(r, 20));
     expect((await request(server).get("/api/config")).body.discoveries).toHaveLength(1);
     expect(starts).toBe(0);
@@ -254,6 +255,7 @@ describe("close call filing", () => {
     await request(server).post("/api/channels")
       .send({ freq: 462887500, alphaTag: "Known", mode: "nfm", enabled: true });
     engine.emitCloseCall(462887500);
+    engine.emitCloseCall(462887500); // persistence-before-filing: second hit files
     await new Promise((r) => setTimeout(r, 20));
     expect((await request(server).get("/api/config")).body.discoveries ?? []).toHaveLength(0);
   });
@@ -289,6 +291,7 @@ describe("close call RepeaterBook enrichment", () => {
     };
     const { server } = createServer({ configStore, engine, activityLog: new ActivityLog(10), wsHub: new WsHub(), staticDir: dir, lookup });
     engine.emitCloseCall(462675000);
+    engine.emitCloseCall(462675000); // persistence-before-filing: second hit files
     await new Promise((r) => setTimeout(r, 30));
     const d = (await request(server).get("/api/config")).body.discoveries
       .find((x: { freq: number }) => x.freq === 462675000);
@@ -302,6 +305,7 @@ describe("close call RepeaterBook enrichment", () => {
     const lookup = { lookup: async () => null };
     const { server } = createServer({ configStore, engine, activityLog: new ActivityLog(10), wsHub: new WsHub(), staticDir: dir, lookup });
     engine.emitCloseCall(464175000);
+    engine.emitCloseCall(464175000); // persistence-before-filing: second hit files
     await new Promise((r) => setTimeout(r, 30));
     const d = (await request(server).get("/api/config")).body.discoveries
       .find((x: { freq: number }) => x.freq === 464175000);
@@ -336,6 +340,7 @@ describe("discoveries workflow", () => {
   it("a closecall files a DISCOVERY, not a channel", async () => {
     const { server, engine } = makeApp();
     engine.emitCloseCall(462887500);
+    engine.emitCloseCall(462887500); // persistence-before-filing: second hit files
     await new Promise((r) => setTimeout(r, 20));
     expect((await request(server).get("/api/channels")).body).toEqual([]);
     const cfg = (await request(server).get("/api/config")).body;
@@ -393,6 +398,7 @@ describe("discoveries workflow", () => {
     await request(server).post("/api/channels")
       .send({ freq: 146790000, alphaTag: "W0TE", mode: "nfm", enabled: true });
     engine.emitCloseCall(462887500);
+    engine.emitCloseCall(462887500); // persistence-before-filing: second hit files
     await new Promise((r) => setTimeout(r, 20));
     const cfg = (await request(server).get("/api/config")).body;
     cfg.scan.lockoutHz = [464999999];
@@ -424,6 +430,7 @@ describe("review fixes: engine lifecycle", () => {
   it("PUT /api/config with only metadata changes does NOT restart the engine", async () => {
     const { server, engine } = makeApp();
     engine.emitCloseCall(462887500);
+    engine.emitCloseCall(462887500); // persistence-before-filing: second hit files
     await new Promise((r) => setTimeout(r, 20));
     let starts = 0;
     const realStart = engine.start.bind(engine);
@@ -450,6 +457,7 @@ describe("review fixes: engine lifecycle", () => {
   it("dismissing the monitored discovery exits monitor mode", async () => {
     const { server, engine } = makeApp();
     engine.emitCloseCall(462887500);
+    engine.emitCloseCall(462887500); // persistence-before-filing: second hit files
     await new Promise((r) => setTimeout(r, 20));
     await request(server).post("/api/monitor").send({ freq: 462887500, alphaTag: "CC" });
     expect((await request(server).get("/api/status")).body.mode).toBe("monitor");
@@ -480,6 +488,7 @@ describe("location capture", () => {
     }) };
     const { server } = createServer({ configStore, engine, activityLog: new ActivityLog(10), wsHub: new WsHub(), staticDir: dir, lookup });
     engine.emitCloseCall(462887500);
+    engine.emitCloseCall(462887500); // persistence-before-filing: second hit files
     await new Promise((r) => setTimeout(r, 30));
     const d = (await request(server).get("/api/config")).body.discoveries[0];
     expect(d.location).toEqual({ lat: 38.88, lon: -94.82, city: "Olathe", state: "KS", source: "repeaterbook" });
@@ -520,6 +529,7 @@ describe("discovery mode capture", () => {
     const lookup = { lookup: async () => ({ tag: "MoDOT DMR", mode: "DMR" }) };
     const { server } = createServer({ configStore, engine, activityLog: new ActivityLog(10), wsHub: new WsHub(), staticDir: dir, lookup });
     engine.emitCloseCall(462887500);
+    engine.emitCloseCall(462887500); // persistence-before-filing: second hit files
     await new Promise((r) => setTimeout(r, 30));
     const d = (await request(server).get("/api/config")).body.discoveries[0];
     expect(d.mode).toBe("DMR");
@@ -722,5 +732,17 @@ describe("kiosk reload", () => {
     await request(srv).post("/api/kiosk/reload").expect(200);
     expect(sent.some((e) => (e as { type: string }).type === "reload")).toBe(true);
     void server;
+  });
+});
+
+describe("Close Call persistence-before-filing", () => {
+  it("first hit files nothing; the second files the discovery", async () => {
+    const { server, engine } = makeApp();
+    engine.emitCloseCall(462887500);
+    let res = await request(server).get("/api/config");
+    expect((res.body.discoveries ?? []).some((d: { freq: number }) => d.freq === 462887500)).toBe(false);
+    engine.emitCloseCall(462887500);
+    res = await request(server).get("/api/config");
+    expect((res.body.discoveries ?? []).some((d: { freq: number }) => d.freq === 462887500)).toBe(true);
   });
 });

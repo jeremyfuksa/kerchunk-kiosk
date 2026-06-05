@@ -72,3 +72,15 @@ describe("FccProx", () => {
     expect(hit?.location?.antennaHaatM).toBe(15);
   });
 });
+
+describe("frequency-only lookups (Close Call triage)", () => {
+  it("answers bare frequencies from primed cache with licensee name + emission verdict", async () => {
+    const { g } = make();
+    expect(await g.lookup(463425000)).toBeNull();   // nothing primed: offline-only path
+    await g.primeDetails(0);
+    const hit = await g.lookup(463425000);
+    expect(hit?.tag).toContain("Cedar Fair");
+    expect(hit?.listen).toBe("voice");              // 11K0F3E = telephony
+    expect(hit?.location?.powerWatts).toBe(110);
+  });
+});

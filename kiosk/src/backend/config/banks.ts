@@ -19,6 +19,8 @@ export function bandFor(freqHz: number): BandName {
 
 export function matchesBank(channel: Channel, bank: Bank): boolean {
   if (bank.band && bandFor(channel.freq) !== bank.band) return false;
+  if (bank.loHz !== undefined && channel.freq < bank.loHz) return false;
+  if (bank.hiHz !== undefined && channel.freq > bank.hiHz) return false;
   if (bank.tags && bank.tags.length > 0) {
     if (!channel.tags?.some((t) => bank.tags!.includes(t))) return false;
   }
@@ -61,4 +63,56 @@ export function profileFor(channel: Channel, banks: Bank[]): BankProfile {
     }
   }
   return out;
+}
+
+// ── US service allocations (operator: label what KIND of hit a Close Call
+// is from frequency alone — and expose when one is a true OUTBAND oddity).
+// Coarse on purpose: a triage label, not a band plan.
+const ALLOCATIONS: Array<{ lo: number; hi: number; svc: string }> = [
+  { lo: 118_000_000, hi: 137_000_000, svc: "air" },
+  { lo: 144_000_000, hi: 148_000_000, svc: "ham 2m" },
+  { lo: 156_000_000, hi: 157_450_000, svc: "marine" },
+  { lo: 159_810_000, hi: 161_565_000, svc: "rail" },
+  { lo: 161_600_000, hi: 162_025_000, svc: "marine" },
+  { lo: 162_400_000, hi: 162_550_000, svc: "NOAA wx" },
+  { lo: 148_000_000, hi: 174_000_000, svc: "VHF biz/PS" },   // after the carve-outs above
+  { lo: 222_000_000, hi: 225_000_000, svc: "ham 1.25m" },
+  { lo: 420_000_000, hi: 450_000_000, svc: "ham 70cm" },
+  { lo: 462_537_500, hi: 462_737_500, svc: "GMRS/FRS" },
+  { lo: 467_537_500, hi: 467_737_500, svc: "GMRS/FRS" },
+  { lo: 450_000_000, hi: 470_000_000, svc: "UHF biz/PS" },   // after GMRS carve-outs
+  { lo: 470_000_000, hi: 512_000_000, svc: "T-band" },
+  { lo: 764_000_000, hi: 776_000_000, svc: "700 PS" },
+  { lo: 794_000_000, hi: 806_000_000, svc: "700 PS" },
+  { lo: 806_000_000, hi: 824_000_000, svc: "800 trunked" },
+  { lo: 851_000_000, hi: 869_000_000, svc: "800 trunked" },
+  { lo: 929_000_000, hi: 932_000_000, svc: "paging" },
+  { lo: 896_000_000, hi: 940_000_000, svc: "900 biz" },
+];
+
+/** Rough service for a frequency; undefined = a true outband hit. */
+export function serviceFor(freqHz: number): string | undefined {
+  // First match wins — specific carve-outs precede their parent ranges.
+  return ALLOCATIONS.find((a) => freqHz >= a.lo && freqHz <= a.hi)?.svc;
+}
+
+// Spectrum slice names for the kiosk's tuned-window chip — INFORMATION,
+// not control (the operator killed the toggle-able spectrum masters: every
+// real toggle is by service; raw-spectrum kills were only ever a trap).
+const SPECTRUM: Array<{ lo: number; hi: number; name: string }> = [
+  { lo: 118_000_000, hi: 137_000_000, name: "AIRBAND" },
+  { lo: 144_000_000, hi: 148_000_000, name: "2M" },
+  { lo: 148_000_000, hi: 174_000_000, name: "VHF-HI" },
+  { lo: 222_000_000, hi: 225_000_000, name: "1.25M" },
+  { lo: 420_000_000, hi: 450_000_000, name: "70CM" },
+  { lo: 450_000_000, hi: 470_000_000, name: "UHF-T" },
+  { lo: 470_000_000, hi: 512_000_000, name: "T-BAND" },
+  { lo: 764_000_000, hi: 806_000_000, name: "700" },
+  { lo: 806_000_000, hi: 869_000_000, name: "800" },
+  { lo: 896_000_000, hi: 940_000_000, name: "900" },
+];
+
+export function spectrumLabelFor(freqHz: number): string {
+  return SPECTRUM.find((b) => freqHz >= b.lo && freqHz <= b.hi)?.name
+    ?? bandFor(freqHz).toUpperCase();
 }

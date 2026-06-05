@@ -80,13 +80,23 @@ if (config.lookup) {
   // channels RadioReference names but can't place. Same credentials; only
   // consulted when earlier providers left a hit location-less.
   if (config.lookup.radioReference && config.display) {
-    providers.push(new FccProx({
+    const fcc = new FccProx({
       appKey: config.lookup.radioReference.appKey,
       username: config.lookup.radioReference.username,
       password: config.lookup.radioReference.password,
       home: { lat: config.display.weatherLat, lon: config.display.weatherLon },
       cacheDir: dirname(CONFIG_PATH),
-    }));
+    });
+    providers.push(fcc);
+    // Prime the metro license index in the background (gently paced; only
+    // uncached callsigns are fetched, so after the first pass this is a
+    // no-op). Once primed, bare-frequency Close Calls identify offline.
+    const primeTimer = setTimeout(() => {
+      void fcc.primeDetails().then((n) => {
+        if (n > 0) console.error(`[fccprox] primed ${n} license details`);
+      }).catch(() => { /* next boot resumes where it left off */ });
+    }, 120_000);
+    primeTimer.unref?.();
   }
 }
 const lookup = providers.length > 0 ? composeLookups(providers) : undefined;

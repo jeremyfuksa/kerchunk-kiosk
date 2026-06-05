@@ -115,7 +115,8 @@ CC_FFT = 2048            # Close Call: FFT bins over the whole window
 CC_EVERY = 10            # check every 10th poll (~200 ms)
 CC_CONFIRM = 2           # consecutive checks on the same raster freq to fire
 CC_COOLDOWN_S = 300      # per-frequency re-fire suppression
-CC_RASTER_HZ = 12_500    # discoveries round to the 12.5 kHz channel raster
+CC_RASTER_HZ = 12_500      # discoveries round to the 12.5 kHz channel raster
+CC_IMAGE_REJECT_DB = 6.0   # mirror bin this much hotter = candidate is an image
 CC_GUARD_HZ = 12_500     # suppression half-width around known frequencies
 CC_DC_FRAC = 0.02        # exclude +-2% of bins around DC (RTL center spike)
 CC_EDGE_FRAC = 0.10      # exclude outer 10% (channelizer/filter rolloff)
@@ -204,6 +205,7 @@ class Chain:
         self.open_db_o = None
         self.quiet_db_o = None
         self.hang_ms_o = None
+        self.rf_samples = []     # received power while open (ERP estimator)
         self.level_db = 0.0      # learned per-channel loudness correction (dB)
         self.level_emitted = 0.0 # last trim value reported to Node
         self.speech_db = None    # smoothed voiced-audio level (leveler input)
@@ -255,6 +257,7 @@ class Chain:
         self.open_db_o = open_db
         self.quiet_db_o = quiet_db
         self.hang_ms_o = hang_ms
+        self.rf_samples = []
         self.kind = "am" if mode == "am" else "fm"
         self.xlate.set_center_freq(offset_hz)
         self.gate.set_k(0.0)   # hard cut is fine: we just retuned, no audio context
@@ -268,6 +271,14 @@ class Chain:
         self.speech_db = None
         self.reset_detection()
 
+    def flush_rf(self):
+        n = len(self.rf_samples)
+        if n >= 25 and self.channel_id and not self.channel_id.startswith("cc_"):
+            med = sorted(self.rf_samples)[n // 2]
+            emit({"ev": "rf", "id": self.channel_id,
+                  "db": round(med, 1), "n": n})
+        self.rf_samples = []
+
     def park(self):
         self.channel_id = None
         self.priority = False
@@ -277,6 +288,7 @@ class Chain:
         self.open_db_o = None
         self.quiet_db_o = None
         self.hang_ms_o = None
+        self.rf_samples = []
         self.kind = "fm"
         self.xlate.set_center_freq(0)
         self.gate.set_k(0.0)
@@ -461,6 +473,10 @@ class Helper(gr.top_block):
                     chain.fade_to(0.0)
                     self.set_audible(self.next_open_chain())
             db = readings[chain.channel_id]
+            # RF telemetry for the ERP estimator: received power while open,
+            # capped at ~60 s (the first minute is representative).
+            if chain.open and len(chain.rf_samples) < 3000:
+                chain.rf_samples.append(db)
 
             # Fast audio gate (static mute). An FM carrier holds steady power
             # while keyed, so the moment power falls to the close threshold the
@@ -539,6 +555,7 @@ class Helper(gr.top_block):
                         chain.open = False
                         chain.above_polls = 0
                         chain.below_since = None
+                        chain.flush_rf()
                         emit({"ev": "close", "id": chain.channel_id})
                         if self.audible is chain:
                             self.set_audible(self.next_open_chain())
@@ -583,6 +600,14 @@ class Helper(gr.top_block):
         if db[idx] < floor + self.cc_db:
             self.cc_pending = None
             return
+        # Image rejection: the tuner mirrors strong signals around the
+        # window center; the ghost lands at the mirrored bin. If the mirror
+        # is markedly stronger than the candidate, the candidate IS the
+        # ghost — the classic in-band false Close Call.
+        mirror = 2 * dc - idx
+        if 0 <= mirror < CC_FFT and db[mirror] > db[idx] + CC_IMAGE_REJECT_DB:
+            self.cc_pending = None
+            return
         freq = self.center_hz + (idx - dc) * binw
         freq = int(round(freq / CC_RASTER_HZ) * CC_RASTER_HZ)
         expiry = self.cc_cooldown.get(freq)
@@ -622,6 +647,7 @@ class Helper(gr.top_block):
         chain.open = False
         chain.above_polls = 0
         chain.below_since = None
+        chain.flush_rf()
         emit({"ev": "close", "id": cid})
         self.set_audible(self.next_open_chain())
         if cid.startswith("cc_"):
