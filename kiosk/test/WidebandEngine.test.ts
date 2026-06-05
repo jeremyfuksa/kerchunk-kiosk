@@ -219,6 +219,18 @@ describe("audible passthrough", () => {
   });
 });
 
+describe("mode passthrough", () => {
+  it("tune carries each channel's demod mode (AM airband vs NFM)", async () => {
+    const tunes = tmpFile("tunes");
+    const { engine } = makeEngine({ FAKE_WB_TUNES_FILE: tunes });
+    await engine.start(cfg([{ ...VHF_A, mode: "am" }, VHF_B]));
+    await waitFor(() => lines(tunes).length >= 1, 1000);
+    await engine.stop();
+    const first = JSON.parse(lines(tunes)[0]!);
+    expect(first.channels.map((c: { mode: string }) => c.mode)).toEqual(["am", "nfm"]);
+  });
+});
+
 describe("priority passthrough", () => {
   it("tune carries each channel's priority flag", async () => {
     const tunes = tmpFile("tunes");

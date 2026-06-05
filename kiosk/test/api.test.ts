@@ -562,6 +562,30 @@ describe("GET /api/weather", () => {
   });
 });
 
+describe("monitor demod mode", () => {
+  it("uses the configured channel's mode for the monitored frequency (AM airband)", async () => {
+    const { server, engine } = makeApp();
+    await request(server).post("/api/channels")
+      .send({ freq: 128375000, alphaTag: "MCI ATIS", mode: "am", enabled: true });
+    let lastStart: any = null;
+    const realStart = engine.start.bind(engine);
+    engine.start = async (sc) => { lastStart = sc; return realStart(sc); };
+    await request(server).post("/api/monitor").send({ freq: 128375000, alphaTag: "ATIS" });
+    expect(lastStart.channels[0].mode).toBe("am");
+  });
+
+  it("honors an explicit mode and defaults to nfm for unknown frequencies", async () => {
+    const { server, engine } = makeApp();
+    let lastStart: any = null;
+    const realStart = engine.start.bind(engine);
+    engine.start = async (sc) => { lastStart = sc; return realStart(sc); };
+    await request(server).post("/api/monitor").send({ freq: 123450000, mode: "am" });
+    expect(lastStart.channels[0].mode).toBe("am");
+    await request(server).post("/api/monitor").send({ freq: 123450000 });
+    expect(lastStart.channels[0].mode).toBe("nfm");
+  });
+});
+
 describe("banks gate scanning", () => {
   it("a disabled bank's channels are excluded from engine.start (off-wins); knownHz keeps them", async () => {
     const { server, engine } = makeApp();

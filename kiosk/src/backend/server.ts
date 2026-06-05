@@ -388,10 +388,21 @@ export function createServer(deps: ServerDeps): { server: Server } {
       const body = await readBody(req);
       const freq = Number(body?.freq);
       if (!Number.isInteger(freq) || freq <= 0) return json(res, 400, { error: "invalid freq" });
+      // Demod mode: explicit request > the configured channel/discovery at
+      // this frequency > nfm. Auditioning AM airband must not demod as FM.
+      // (Discovery modes are identification strings — DMR, NFM, AM — so only
+      // the demodulatable ones count.)
+      const asDemod = (m: unknown): Channel["mode"] | undefined => {
+        const low = typeof m === "string" ? m.toLowerCase() : "";
+        return low === "fm" || low === "nfm" || low === "am" ? low : undefined;
+      };
+      const known = config.channels.find((c) => c.freq === freq)
+        ?? (config.discoveries ?? []).find((d) => d.freq === freq);
+      const mode_ = asDemod(body?.mode) ?? asDemod(known?.mode) ?? "nfm";
       monitorChannel = {
         id: "mon_direct", freq,
         alphaTag: typeof body?.alphaTag === "string" ? body.alphaTag : (freq / 1e6).toFixed(4),
-        mode: "nfm", enabled: true,
+        mode: mode_, enabled: true,
       };
       mode = "monitor";
       await engine.stop();

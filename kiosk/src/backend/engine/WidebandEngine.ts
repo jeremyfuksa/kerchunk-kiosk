@@ -287,6 +287,7 @@ export class WidebandEngine implements ScannerEngine {
       channels: group.channels.map((c) => ({
         id: c.id, freqHz: c.freq, priority: c.priority ?? false,
         levelDb: c.levelTrimDb ?? 0,
+        mode: c.mode,
       })),
       monitor: this.config?.monitor ?? false,
       // Close Call: ON by default for this engine; knownHz carries EVERY
