@@ -147,6 +147,14 @@ scrubbing, the radar overlay, and clustering are follow-ons.
 
 ## Idea 3 — An artistic treatment of the data on hand (brainstorm)
 
+> **Operator note (2026-06-05, after living with the map-stage kiosk):**
+> absolute low priority, and the premise needs a rethink before any build.
+> KC-metro traffic is too sparse for live-decay visuals to ever feel alive —
+> most of the time the map shows antennas with no blips, because each hit
+> fades before the next arrives. Whatever the artistic treatment becomes, it
+> can't depend on constant traffic; it has to make SPARSE activity beautiful
+> (accumulation, memory, replay — not decay). Way down the line.
+
 The scanner produces a genuinely rich, *live* data exhaust: frequency, signal
 strength (dBFS), open/close timing, dwell, which bank, transmitter geography,
 alpha tags, Close Call surprises. That's raw material for something beautiful on
@@ -326,22 +334,25 @@ per-group for tune-time settings." Worth a design pass, not free.
 
 ---
 
-## Idea 8 — Map history, replay & click-to-listen
+## Idea 8 — Map history, replay & click-to-listen — *resolved 2026-06-05*
 
 **The pitch.** Deepen the map (Idea 2) with time: a scrubber to replay the last
 hour, a heatmap of busy transmitter sites, and click-a-blip-to-hear-it — which is
 the hear/see toggle (Idea 4) applied to a pin.
 
-**What we have.** Live blips come from Idea 2; persisted positions come from Idea
-5 (lat/lon are already stored per opening). Click-to-listen reuses the same
-audible/visibility switch Idea 4 introduces.
+**Resolution (operator decisions, after the kiosk became the map's primary
+home — an output-only surface):**
 
-**Build shape.**
-1. Time scrubber over `/api/history` — slide back, blips re-animate for the
-   chosen window.
-2. Heatmap layer from per-site hit counts (a `GROUP BY lat,lon` over the store).
-3. Click a blip → channel detail + a "listen" control that flips that channel
-   (or bank) to audible for a session. Closes the loop between map and speaker.
+- **Heatmap: SHIPPED.** Per-site golden-amber glow discs under the antenna
+  icons, scaled by 30-day hit counts (log scale). Not Google's HeatmapLayer
+  (deprecated May 2025); the glow rides the existing antenna layer.
+- **Click-to-listen: DROPPED.** The kiosk has no pointer, and the browser
+  user already has the admin (Listen button, hear/see tri-state) one tab
+  over — a parallel control path on the map is duplicate affordance.
+- **Time scrubber: DEFERRED, mutated.** As a slider it's a browser toy; the
+  kiosk-native version is an ambient **auto-replay** — when the band is
+  quiet, replay the last hours' blips on a loop, snap to live on any
+  activity. That folds into **Idea 3** as the map-skin ambient mode.
 
 ---
 
@@ -624,9 +635,11 @@ These interlock; a sensible order:
    replay, stats, and alert review; build it early so the rest are mostly queries.
 3. **Hear-vs-see (Idea 4)** — small schema change once banks exist; immediately
    useful on its own (mute noisy channels but keep logging them).
-4. **Map + map history (Ideas 2 & 8)** — the first big visual payoff; color blips
-   by bank, visibility-gated by Idea 4, replay/heatmap backed by Idea 5. Decide
-   the tile-provider question first.
+4. **Map + map history (Ideas 2 & 8)** — SHIPPED: Google Maps (operator pick,
+   vector via Map ID, style master in `kiosk/kiosk-assets/map-style.json`),
+   antenna layer + heat glow, NO-FIX ring, auto-fit framing. The kiosk IS the
+   map now (map-as-stage redesign, PR #48); Idea 8 resolved (heatmap shipped,
+   click-to-listen dropped, scrubber → Idea 3 ambient auto-replay).
 5. **Per-bank profiles, alerts, stats (Ideas 7, 6, 9)** — layered refinements that
    ride on banks + history; each is small once its dependencies exist.
 6. **Artistic mode (Idea 3)** — an ambient/screensaver mode that reuses the same
