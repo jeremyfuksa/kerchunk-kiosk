@@ -32,9 +32,9 @@
 .mapMsg:empty { display: none; }
 .blipInfo { color: #1c1f26; font-weight: 600; }
 
-.mapLegend .lgAnt { color: #ffb866; font-size: 1rem; line-height: 0; }
+.mapLegend .lgAnt { color: var(--golden-amber, #ffc05c); font-size: 1rem; line-height: 0; }
 .blipMeta { color: #5e6371; font-size: 0.8em; font-weight: 400; margin-top: 0.2rem; }
 
-.mapLegend .lgAnt svg { width: 14px; height: 14px; color: #ffb866; display: inline-block; vertical-align: -2px; }
+.mapLegend .lgAnt svg { width: 14px; height: 14px; color: var(--golden-amber, #ffc05c); display: inline-block; vertical-align: -2px; }
 
 .mapLegend .lgBlip.nofix { background: #4a7c7e; box-shadow: 0 0 8px rgba(74, 124, 126, 0.6); }
