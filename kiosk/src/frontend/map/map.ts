@@ -1,7 +1,7 @@
 import { ReconnectingWs } from "../lib/wsClient.js";
 import { api } from "../lib/api.js";
 import { esc, fmtFreq } from "../lib/format.js";
-import { BlipField, ringPoint } from "./blips.js";
+import { BlipField, ringPoint, coverageRadiusM } from "./blips.js";
 import type { EngineEvent } from "../../backend/engine/ScannerEngine.js";
 import icoTower from "lucide-static/icons/radio-tower.svg?raw";
 import icoHouse from "lucide-static/icons/house.svg?raw";
@@ -227,13 +227,21 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
       })
       .catch(() => {});
 
-    // Located channels frame the view even before they're first heard.
+    // Located channels frame the view even before they're first heard —
+    // and power-rated licenses (FCC) register their estimated coverage so
+    // the site's blips render at physical size instead of the hit ramp.
+    const coverage = new Map<string, number>(); // site key -> radius m
     const channelsReady = fetch("/api/channels")
       .then((r) => (r.ok ? r.json() : []))
-      .then((chs: Array<{ location?: { lat?: number; lon?: number } }>) => {
+      .then((chs: Array<{ location?: { lat?: number; lon?: number; powerWatts?: number; antennaHaatM?: number } }>) => {
         for (const c of chs) {
           if (c.location?.lat != null && c.location.lon != null) {
             frame(c.location.lat, c.location.lon);
+            if (c.location.powerWatts) {
+              coverage.set(
+                `${c.location.lat.toFixed(5)},${c.location.lon.toFixed(5)}`,
+                coverageRadiusM(c.location.powerWatts, c.location.antennaHaatM));
+            }
           }
         }
       })
@@ -391,7 +399,9 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
           circles.set(key, entry);
         }
         entry.circle.setOptions({
-          radius: (3750 + 625 * Math.min(b.hits, 6)) * geo,
+          // Power-rated sites blip at ESTIMATED COVERAGE (true geography, no
+          // kiosk scale factor); the rest use the hit-count ramp.
+          radius: coverage.get(key) ?? (3750 + 625 * Math.min(b.hits, 6)) * geo,
           strokeColor: COLORS[b.kind],
           strokeOpacity: Math.min(1, b.opacity * 1.4),
           fillColor: COLORS[b.kind],

@@ -12,6 +12,7 @@ import { setVolume, setMuted } from "./audio.js";
 import { RepeaterBook } from "./repeaterbook.js";
 import { RadioReference } from "./radioreference.js";
 import { MyGmrs } from "./mygmrs.js";
+import { FccProx } from "./fccprox.js";
 import { composeLookups, type LookupProvider } from "./lookup.js";
 import { NwsWeather } from "./weather.js";
 import { HistoryStore } from "./history.js";
@@ -74,6 +75,18 @@ if (config.lookup) {
   }
   if (config.lookup.radioReference) {
     providers.push(new RadioReference(config.lookup.radioReference));
+  }
+  // FCC license proximity (stretch item): location backfill for business
+  // channels RadioReference names but can't place. Same credentials; only
+  // consulted when earlier providers left a hit location-less.
+  if (config.lookup.radioReference && config.display) {
+    providers.push(new FccProx({
+      appKey: config.lookup.radioReference.appKey,
+      username: config.lookup.radioReference.username,
+      password: config.lookup.radioReference.password,
+      home: { lat: config.display.weatherLat, lon: config.display.weatherLon },
+      cacheDir: dirname(CONFIG_PATH),
+    }));
   }
 }
 const lookup = providers.length > 0 ? composeLookups(providers) : undefined;

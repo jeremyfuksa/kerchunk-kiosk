@@ -146,7 +146,9 @@ export function createServer(deps: ServerDeps): { server: Server } {
         !c.location && (!c.lookedUpAt || now - c.lookedUpAt > LOOKUP_RETRY_MS));
       for (const ch of pending) {
         try {
-          const hit = await deps.lookup!.lookup(ch.freq);
+          // The channel's existing name is the hint FccProx needs to
+          // name-gate license candidates before frequency-confirming.
+          const hit = await deps.lookup!.lookup(ch.freq, { name: ch.alphaTag });
           config = {
             ...config,
             channels: config.channels.map((c) =>
