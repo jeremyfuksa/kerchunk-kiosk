@@ -50,7 +50,12 @@ export function solveK(anchors: Anchor[]): number | null {
 /** Estimate ERP watts for a measured channel, clamped and 2-sig-fig rounded. */
 export function estimateWatts(rfDb: number, distKm: number, freqMhz: number, k: number): number {
   const pDbw = rfDb + pathLossDb(distKm, freqMhz) - k;
-  const w = Math.min(MAX_WATTS, Math.max(MIN_WATTS, 10 ** (pDbw / 10)));
+  // Regulatory ceilings beat path-loss math: a GMRS machine "measuring"
+  // 130 W is a great antenna site, not an illegal transmitter (Part 95
+  // caps the main channels at 50 W). The model lumps height into power;
+  // the law un-lumps it for us where it can.
+  const cap = freqMhz >= 462 && freqMhz < 468 ? 50 : MAX_WATTS;
+  const w = Math.min(cap, Math.max(MIN_WATTS, 10 ** (pDbw / 10)));
   // 2 significant figures — the model has no business claiming more.
   const mag = 10 ** Math.floor(Math.log10(w) - 1);
   return Math.round(w / mag) * mag;

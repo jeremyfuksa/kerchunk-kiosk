@@ -18,7 +18,7 @@ describe("ERP estimator", () => {
   it("round-trips a known transmitter through the model", () => {
     const k = solveK(anchors)!;
     expect(estimateWatts(rf(50, 10, 146.79), 10, 146.79, k)).toBe(50);
-    expect(estimateWatts(rf(100, 25, 462.675), 25, 462.675, k)).toBe(100);
+    expect(estimateWatts(rf(100, 25, 461.05), 25, 461.05, k)).toBe(100); // 461 = outside the GMRS clamp
   });
   it("clamps to sane wattage and rounds to 2 significant figures", () => {
     const k = solveK(anchors)!;
@@ -30,5 +30,18 @@ describe("ERP estimator", () => {
   });
   it("haversine sanity", () => {
     expect(distKm({ lat: 39.2915, lon: -94.4953 }, { lat: 39.1764, lon: -94.4911 })).toBeCloseTo(12.8, 0);
+  });
+});
+
+describe("regulatory ceilings", () => {
+  it("GMRS estimates clamp to the Part 95 limit (50 W) however loud the math", () => {
+    const anchors = [
+      { powerWatts: 110, distKm: 13.2, freqMhz: 463.425, rfDb: rf(110, 13.2, 463.425) },
+      { powerWatts: 45, distKm: 9.1, freqMhz: 160.5, rfDb: rf(45, 9.1, 160.5) },
+      { powerWatts: 5, distKm: 19.4, freqMhz: 160.32, rfDb: rf(5, 19.4, 160.32) },
+    ];
+    const k = solveK(anchors)!;
+    expect(estimateWatts(rf(400, 8, 462.6), 8, 462.6, k)).toBe(50);   // GMRS clamp
+    expect(estimateWatts(rf(400, 8, 443.775), 8, 443.775, k)).toBe(400); // ham: no clamp
   });
 });
