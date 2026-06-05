@@ -11,6 +11,7 @@ import { WidebandEngine } from "./engine/WidebandEngine.js";
 import { setVolume, setMuted } from "./audio.js";
 import { RepeaterBook } from "./repeaterbook.js";
 import { RadioReference } from "./radioreference.js";
+import { MyGmrs } from "./mygmrs.js";
 import { composeLookups, type LookupProvider } from "./lookup.js";
 import { NwsWeather } from "./weather.js";
 import { HistoryStore } from "./history.js";
@@ -61,6 +62,16 @@ if (config.lookup) {
     states: config.lookup.states,
     cacheDir: dirname(CONFIG_PATH),
   }));
+  // GMRS repeaters: myGMRS is the authority (keyless). Needs the QTH for
+  // nearest-wins on the eight shared channels.
+  if (config.display) {
+    providers.push(new MyGmrs({
+      states: config.lookup.states,
+      home: { lat: config.display.weatherLat, lon: config.display.weatherLon },
+      userAgent: config.lookup.userAgent,
+      cacheDir: dirname(CONFIG_PATH),
+    }));
+  }
   if (config.lookup.radioReference) {
     providers.push(new RadioReference(config.lookup.radioReference));
   }
