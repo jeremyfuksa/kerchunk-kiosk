@@ -254,6 +254,25 @@ describe("monitor mode passthrough", () => {
   });
 });
 
+describe("overlapping teardown (bank-toggle race)", () => {
+  it("a helper that ignores quit is SIGKILLed even when a second teardown overlaps", async () => {
+    // Operator-replicated: all banks off -> new bank on (rapid stop/start
+    // cycles). The old per-class kill timer could be CANCELLED by the next
+    // teardown, leaving a wedged helper holding the device forever.
+    const pids = tmpFile("pids");
+    const { engine } = makeEngine({ FAKE_WB_PID_FILE: pids, FAKE_WB_MODE: "wedge" });
+    await engine.start(cfg([VHF_A, VHF_B]));
+    await waitFor(() => lines(pids).length >= 1, 1000);
+    const pid = Number(lines(pids)[0]);
+    await engine.stop();   // schedules the grace SIGKILL
+    await engine.stop();   // second teardown — used to cancel that SIGKILL
+    const dead = await waitFor(() => {
+      try { process.kill(pid, 0); return false; } catch { return true; }
+    }, 2000);
+    expect(dead).toBe(true);
+  });
+});
+
 describe("close call", () => {
   it("helper closecall surfaces as a closecall EngineEvent", async () => {
     const { engine, events } = makeEngine({

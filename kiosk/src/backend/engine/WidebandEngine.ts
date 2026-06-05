@@ -84,7 +84,6 @@ export class WidebandEngine implements ScannerEngine {
   private groupStartedAt = 0;
   private dwellTimer: NodeJS.Timeout | null = null;
   private restartTimer: NodeJS.Timeout | null = null;
-  private killTimer: NodeJS.Timeout | null = null;
 
   private stopping = false;
 
@@ -336,10 +335,6 @@ export class WidebandEngine implements ScannerEngine {
 
   private killChild(): void {
     this.clearDwellTimer();
-    if (this.killTimer) {
-      clearTimeout(this.killTimer);
-      this.killTimer = null;
-    }
     if (this.childStdout) {
       try { this.childStdout.close(); } catch { /* ignore */ }
       this.childStdout = null;
@@ -352,14 +347,18 @@ export class WidebandEngine implements ScannerEngine {
       const child = this.child;
       this.child = null; // null first: its own exit hits the stale-guard
       // Ask nicely (the helper tears the flowgraph down on "quit"/EOF), then
-      // make sure after a grace period.
+      // make sure after a grace period. The timer is PER CHILD on purpose:
+      // a shared class slot let an overlapping teardown (rapid bank toggles
+      // = stop/start cycles) CANCEL the previous helper's pending SIGKILL —
+      // a helper wedged in GNU Radio teardown then held the SDR forever and
+      // every respawn errored on-screen until timing luck freed it
+      // (operator-replicated).
       try { child.stdin?.write('{"cmd":"quit"}\n'); } catch { /* ignore */ }
       try { child.stdin?.end(); } catch { /* ignore */ }
-      this.killTimer = setTimeout(() => {
-        this.killTimer = null;
+      const graceKill = setTimeout(() => {
         try { child.kill("SIGKILL"); } catch { /* ignore */ }
       }, QUIT_GRACE_MS);
-      this.killTimer.unref?.();
+      graceKill.unref?.();
     }
   }
 

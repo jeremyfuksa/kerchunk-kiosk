@@ -9,6 +9,9 @@
 #                         lines of the form "sleep:<ms>" pause between events
 #   FAKE_WB_MODE        - "nodevice" -> print device error to stderr, exit 1
 #                         "crash"    -> emit ready, then exit 2 after 100ms
+#                         "wedge"    -> emit ready, then IGNORE quit/EOF and
+#                                       linger (simulates GNU Radio teardown
+#                                       hanging while holding the device)
 [ -n "${FAKE_WB_ARGS_FILE:-}" ] && echo "$@" >> "$FAKE_WB_ARGS_FILE"
 [ -n "${FAKE_WB_PID_FILE:-}" ] && echo "$$" >> "$FAKE_WB_PID_FILE"
 if [ "${FAKE_WB_MODE:-}" = "nodevice" ]; then
@@ -17,6 +20,12 @@ if [ "${FAKE_WB_MODE:-}" = "nodevice" ]; then
 fi
 echo '{"ev":"ready"}'
 if [ "${FAKE_WB_MODE:-}" = "crash" ]; then sleep 0.1; exit 2; fi
+if [ "${FAKE_WB_MODE:-}" = "wedge" ]; then
+  # Swallow stdin (incl. quit) and refuse to die politely.
+  cat > /dev/null
+  sleep 30
+  exit 0
+fi
 emitted=0
 while IFS= read -r line; do
   [ -n "${FAKE_WB_CMDS_FILE:-}" ] && echo "$line" >> "$FAKE_WB_CMDS_FILE"
