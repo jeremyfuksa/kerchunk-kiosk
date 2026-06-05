@@ -25,6 +25,11 @@ export const channelSchema = z.object({
   // Priority channels preempt the speaker from non-priority ones when both
   // are active in the same group (hardware-scanner "priority scan").
   priority: z.boolean().optional(),
+  // Alerts (ROADMAP Idea 6): a hit on this channel flashes the kiosk, lands
+  // in the alert feed, and — if the channel is see-only — pulls its audio
+  // into the speaker for the hold window. Needs Hear or See to fire (an Off
+  // channel is never demodulated, so there is nothing to detect).
+  alert: z.boolean().optional(),
   // Learned loudness trim (dB) from the per-channel leveler. Persisted by the
   // server from helper telemetry so trims survive group hops and restarts —
   // without this the first ~second of every transmission after a hop played
@@ -115,6 +120,16 @@ export const configSchema = z.object({
     mapLat: z.number().optional(),
     mapLon: z.number().optional(),
     mapZoom: z.number().int().optional(),
+  }).optional(),
+  // Alert behavior (ROADMAP Idea 6) — deliberately a couple of knobs, not a
+  // rules engine. cooldownMinutes: a channel re-alerts only after this quiet
+  // window (first hit fires, repeats don't). holdSeconds: how long a see-only
+  // alert channel keeps the speaker. ntfyUrl: optional push — POST the alert
+  // text to an ntfy topic (or any webhook that accepts a text body).
+  alerts: z.object({
+    cooldownMinutes: z.number().positive().optional(),
+    holdSeconds: z.number().positive().optional(),
+    ntfyUrl: z.string().url().optional(),
   }).optional(),
   // RepeaterBook lookup (Close Call enrichment). userAgent must be the
   // string REGISTERED with RepeaterBook; states are full names ("Missouri").

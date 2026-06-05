@@ -49,6 +49,11 @@ export type EngineEvent =
   // persists it (channel.levelTrimDb) so trims survive hops and restarts.
   | { type: "level"; channelId: string; db: number; ts: number }
   | { type: "signal"; dbfs: number; ts: number }
+  // Alert fired (ROADMAP Idea 6): a hit on a channel flagged alert, outside
+  // its cooldown. Synthesized by the SERVER (which owns alert config), not
+  // the engine — it rides the same union so the WS hub and dashboards treat
+  // it like any other event.
+  | { type: "alert"; channel: Channel; freq: number; holdSeconds: number; ts: number }
   | { type: "status"; state: EngineState; ts: number }
   | { type: "error"; code: string; message: string; ts: number };
 
@@ -61,6 +66,8 @@ export interface ScannerEngine {
   skip?(holdoffSeconds?: number): void;
   /** Update Close Call suppression live (no restart, no audio impact). Optional. */
   updateKnownHz?(knownHz: number[]): void;
+  /** Alert pull-in: open a see-only channel's audio for holdSeconds (its lane is already demodulating — this just routes it to the speaker). Optional. */
+  alertUnmute?(channelId: string, holdSeconds: number): void;
   setVolume(percent: number): Promise<void>;
   setMuted(muted: boolean): Promise<void>;
   readonly state: EngineState;

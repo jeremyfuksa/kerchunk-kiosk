@@ -263,3 +263,44 @@ body {
   color: var(--dim);
   margin-top: 0.8rem;
 }
+
+/* ── Alert banner (ROADMAP Idea 6): a strip under the topbar, flamingo,
+   glanceable from across the room. Hidden (zero height) unless .on. */
+.alertBar {
+  display: none;
+  align-items: center;
+  gap: 1.2rem;
+  padding: 0.6rem 1.6rem;
+  background: color-mix(in srgb, var(--red) 18%, transparent);
+  border-top: 1px solid var(--red);
+  border-bottom: 1px solid var(--red);
+  font-family: var(--mono);
+}
+.alertBar.on { display: flex; animation: alertPulse 1.2s ease-in-out infinite; }
+.alertBar .alertGlyph svg {
+  width: 1.6rem; height: 1.6rem; color: var(--red);
+  animation: alertRing 1.2s ease-in-out infinite;
+}
+.alertBar .alertLabel {
+  font-family: var(--cond);
+  font-size: 1.3rem;
+  letter-spacing: 0.3em;
+  color: var(--red);
+}
+.alertBar .alertFreq { font-size: 1.3rem; color: var(--ink); }
+.alertBar .alertTag {
+  font-family: var(--cond);
+  font-size: 1.3rem;
+  color: var(--ink);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+@keyframes alertPulse {
+  0%, 100% { background: color-mix(in srgb, var(--red) 18%, transparent); }
+  50% { background: color-mix(in srgb, var(--red) 32%, transparent); }
+}
+@keyframes alertRing {
+  0%, 100% { transform: rotate(0deg); }
+  20% { transform: rotate(12deg); }
+  40% { transform: rotate(-10deg); }
+  60% { transform: rotate(6deg); }
+}

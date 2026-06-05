@@ -202,6 +202,43 @@ export function createServer(deps: ServerDeps): { server: Server } {
     });
   }
 
+  // ── Alerts (ROADMAP Idea 6): a hit on a flagged channel, outside its
+  // cooldown, flashes the kiosk (WS "alert"), lands in the alert feed
+  // (history kind "alert"), optionally pushes to ntfy, and — when the channel
+  // is see-only — pulls its audio into the speaker for the hold window.
+  // Synthesized HERE, not in the engine: alert flags and knobs are config,
+  // which the engine deliberately knows nothing about.
+  const lastAlertTs = new Map<string, number>();
+  engine.on((ev) => {
+    if (ev.type !== "active") return;
+    const ch = config.channels.find((c) => c.id === ev.channel.id);
+    if (!ch?.alert) return;
+    const cooldownMs = (config.alerts?.cooldownMinutes ?? 15) * 60_000;
+    const last = lastAlertTs.get(ch.id);
+    if (last !== undefined && ev.ts - last < cooldownMs) return;
+    lastAlertTs.set(ch.id, ev.ts);
+    const holdSeconds = config.alerts?.holdSeconds ?? 30;
+    deps.wsHub.broadcast({ type: "alert", channel: ch, freq: ev.freq, holdSeconds, ts: ev.ts });
+    deps.history?.record({
+      ts: ev.ts, kind: "alert", channelId: ch.id, freq: ev.freq,
+      alphaTag: ch.alphaTag, mode: ch.mode, tags: ch.tags,
+      lat: ch.location?.lat, lon: ch.location?.lon,
+    });
+    // Pull-in: a see-only channel is demodulated but muted — break it into
+    // the speaker. An audible channel is already playing; nothing to do.
+    if (!isAudible(ch, config.banks ?? [])) {
+      engine.alertUnmute?.(ch.id, holdSeconds);
+    }
+    const ntfyUrl = config.alerts?.ntfyUrl;
+    if (ntfyUrl) {
+      void fetch(ntfyUrl, {
+        method: "POST",
+        headers: { Title: `Kerchunk alert: ${ch.alphaTag}`, Priority: "high", Tags: "rotating_light" },
+        body: `${ch.alphaTag} active on ${(ev.freq / 1e6).toFixed(4)} MHz`,
+      }).catch(() => { /* push is best-effort */ });
+    }
+  });
+
   // Close Call discoveries persist as DISABLED channels for operator review.
   // Saved WITHOUT persistAndReload: a disabled channel doesn't affect
   // scanning, and an engine restart here would kill the live discovery audio
@@ -455,6 +492,7 @@ export function createServer(deps: ServerDeps): { server: Server } {
       return json(res, 200, deps.history.query({
         sinceMs: num("since"), untilMs: num("until"), freq: num("freq"),
         tag: sp.get("tag") ?? undefined,
+        kind: sp.get("kind") ?? undefined,
         limit: num("limit"),
       }));
     }

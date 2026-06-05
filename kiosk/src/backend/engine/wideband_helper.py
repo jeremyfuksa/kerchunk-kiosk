@@ -199,6 +199,8 @@ class Chain:
         self.gain = 0.0          # current gate value (fade_to bookkeeping)
         self.kind = "fm"         # demod selection: "fm" (nbfm) or "am" (airband)
         self.allow_audio = True  # hear-vs-see: False = detect/report, never speak
+        self.audible_cfg = True
+        self.alert_until = None
         self.level_db = 0.0      # learned per-channel loudness correction (dB)
         self.level_emitted = 0.0 # last trim value reported to Node
         self.speech_db = None    # smoothed voiced-audio level (leveler input)
@@ -242,6 +244,8 @@ class Chain:
         self.channel_id = channel_id
         self.priority = priority
         self.allow_audio = audible
+        self.audible_cfg = audible      # restore target when an alert hold ends
+        self.alert_until = None         # monotonic deadline of an alert unmute
         self.kind = "am" if mode == "am" else "fm"
         self.xlate.set_center_freq(offset_hz)
         self.gate.set_k(0.0)   # hard cut is fine: we just retuned, no audio context
@@ -259,6 +263,8 @@ class Chain:
         self.channel_id = None
         self.priority = False
         self.allow_audio = True
+        self.audible_cfg = True
+        self.alert_until = None
         self.kind = "fm"
         self.xlate.set_center_freq(0)
         self.gate.set_k(0.0)
@@ -428,6 +434,14 @@ class Helper(gr.top_block):
         for chain in self.chains:
             if chain.channel_id is None or chain.channel_id not in readings:
                 continue
+            # Expired alert hold: restore the configured mute. If the chain
+            # owns the speaker mid-transmission, hand off like a close.
+            if chain.alert_until is not None and now >= chain.alert_until:
+                chain.alert_until = None
+                chain.allow_audio = chain.audible_cfg
+                if not chain.allow_audio and self.audible is chain:
+                    chain.fade_to(0.0)
+                    self.set_audible(self.next_open_chain())
             db = readings[chain.channel_id]
 
             # Fast audio gate (static mute). An FM carrier holds steady power
@@ -601,6 +615,24 @@ class Helper(gr.top_block):
         else:
             chain.skip_until = now + holdoff_s
 
+    def alert_unmute(self, channel_id, hold_s):
+        """Alert pull-in (ROADMAP Idea 6): route a see-only chain's audio to
+        the speaker for hold_s seconds.
+
+        The lane is already demodulating (SEE costs a slot) — this only flips
+        allow_audio and lets the normal speaker arbitration run. poll()
+        restores the configured mute when the hold expires. Alerts preempt
+        like priority hits: the operator flagged this channel as
+        interrupt-worthy."""
+        now = time.monotonic()
+        for chain in self.chains:
+            if chain.channel_id == channel_id:
+                chain.allow_audio = True
+                chain.alert_until = now + hold_s
+                if chain.open and self.audible is not chain:
+                    self.set_audible(chain)
+                break
+
     def next_open_chain(self):
         best = None
         for chain in self.chains:
@@ -669,6 +701,8 @@ def main():
                     break
                 if cmd.get("cmd") == "known":
                     helper.known_hz = set(cmd.get("knownHz", []))
+                if cmd.get("cmd") == "alert_unmute":
+                    helper.alert_unmute(cmd["id"], float(cmd.get("holdS", 30.0)))
                 if cmd.get("cmd") == "skip":
                     helper.skip(float(cmd.get("holdoffS", SKIP_HOLDOFF_S)))
                 if cmd.get("cmd") == "tune":

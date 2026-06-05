@@ -11,6 +11,7 @@ import icoPlus from "lucide-static/icons/circle-plus.svg?raw";
 import icoX from "lucide-static/icons/x.svg?raw";
 import icoCheck from "lucide-static/icons/check.svg?raw";
 import icoUnlock from "lucide-static/icons/lock-open.svg?raw";
+import icoBell from "lucide-static/icons/bell-ring.svg?raw";
 import type { Bank } from "../../backend/config/schema.js";
 import { ReconnectingWs } from "../lib/wsClient.js";
 import type { EngineEvent } from "../../backend/engine/ScannerEngine.js";
@@ -47,6 +48,7 @@ const ICONS: Record<string, string> = {
   save: icoCheck,
   cancel: icoX,
   unlock: icoUnlock,
+  bell: icoBell,
 };
 
 function iconBtn(cls: string, icon: string, label: string, attrs = ""): string {
@@ -115,6 +117,10 @@ export function renderAdmin(root: HTMLElement): void {
         </div>
         <div id="inBody" class="inBody"></div>
       </section>
+      <section class="alertFeed collapsible" data-key="alerts">
+        <h2>Alerts <span class="hint">what fired while you were away — flag channels with the bell</span></h2>
+        <ul id="alertRows" class="alertList"></ul>
+      </section>
       <div class="moduleRow">
       <section class="tuning collapsible" data-key="tuning">
         <h2>Scan tuning</h2>
@@ -124,6 +130,9 @@ export function renderAdmin(root: HTMLElement): void {
         <label>Quieting threshold (dB) <input id="tQuietDb" type="number" max="-1" step="0.5" placeholder="-86" /></label>
         <label>Google Maps key <input id="tMapsKey" type="text" placeholder="AIza…" /></label>
         <label>Google Maps Map ID <input id="tMapsMapId" type="text" placeholder="vector map + exact fit" /></label>
+        <label>Alert cooldown (min) <input id="tAlertCool" type="number" min="1" step="1" placeholder="15" /></label>
+        <label>Alert hold (s) <input id="tAlertHold" type="number" min="5" step="5" placeholder="30" /></label>
+        <label>Alert push URL <input id="tAlertNtfy" type="text" placeholder="https://ntfy.sh/your-topic" /></label>
         <label><input id="tCloseCall" type="checkbox" /> Close Call</label>
         <label>Close Call threshold (dB over floor) <input id="tCloseCallDb" type="number" min="5" step="1" placeholder="15" /></label>
         <button id="tSave">Save tuning</button>
@@ -316,6 +325,21 @@ export function renderAdmin(root: HTMLElement): void {
   void renderInsights();
   setInterval(() => { renderInsights().catch(() => {}); }, 60_000);
 
+  // ── Alert feed (ROADMAP Idea 6): the durable "what fired while I was
+  // away" review, straight off history rows with kind=alert.
+  const alertRows = root.querySelector<HTMLElement>("#alertRows")!;
+  async function renderAlertFeed(): Promise<void> {
+    const rows = await fetch("/api/history?kind=alert&limit=25")
+      .then((r) => (r.ok ? r.json() : [])) as
+      Array<{ ts: number; freq: number; alphaTag: string }>;
+    alertRows.innerHTML = rows.length
+      ? rows.map((r) => `<li><span class="alertWhen">${new Date(r.ts).toLocaleString()}</span>
+          <span class="alertWhat">${fmtFreq(r.freq)} ${esc(r.alphaTag)}</span></li>`).join("")
+      : `<li class="hint">no alerts yet — flag a channel with “Alert on hit” in its drawer</li>`;
+  }
+  void renderAlertFeed().catch(() => {});
+  setInterval(() => { renderAlertFeed().catch(() => {}); }, 60_000);
+
   // Inline-editable CRUD table. One row at a time is editable: editingId is a
   // channel id, "new" (blank row pending creation), or null. Checkboxes on
   // display rows act immediately (PUT patch); text/mode edits go through
@@ -333,7 +357,7 @@ export function renderAdmin(root: HTMLElement): void {
   function displayRow(c: Channel): string {
     return `<tr data-id="${esc(c.id)}">
       <td class="rowOpen">${fmtFreq(c.freq)}</td>
-      <td class="rowOpen">${esc(c.alphaTag)}${locChip(c.location)}</td>
+      <td class="rowOpen">${esc(c.alphaTag)}${c.alert ? `<span class="bellChip" title="Alerts on a hit">${ICONS.bell}</span>` : ""}${locChip(c.location)}</td>
       <td class="rowOpen">${esc(c.mode.toUpperCase())}</td>
       <td><input type="checkbox" class="prio" ${c.priority ? "checked" : ""} /></td>
       <td><select class="hs hs-${!c.enabled ? "off" : c.audible === false ? "see" : "hear"}">
@@ -479,6 +503,7 @@ export function renderAdmin(root: HTMLElement): void {
         <label>Tags <input id="dwTags" value="${esc((c.tags ?? []).join(", "))}" placeholder="air, rail, ham" /></label>
         <label>Site lat, lon <input id="dwLoc" value="${c.location?.lat != null ? `${c.location.lat}, ${c.location.lon}` : ""}" placeholder="39.1755, -94.4861" title="Transmitter site — drives the map blip" /></label>
         <label><input id="dwPrio" type="checkbox" ${c.priority ? "checked" : ""} /> Priority</label>
+        <label title="A hit flashes the kiosk, lands in the alert feed, and breaks a see-only channel into the speaker. Needs Listen = Hear or See."><input id="dwAlert" type="checkbox" ${c.alert ? "checked" : ""} /> Alert on hit</label>
         <label>Listen <select id="dwHs">
           <option value="hear" ${c.enabled && c.audible !== false ? "selected" : ""}>Hear — scan + speaker</option>
           <option value="see" ${c.enabled && c.audible === false ? "selected" : ""}>See — log hits, stay silent</option>
@@ -530,6 +555,7 @@ export function renderAdmin(root: HTMLElement): void {
           tags: drawer.querySelector<HTMLInputElement>("#dwTags")!.value
             .split(",").map((t) => t.trim()).filter(Boolean),
           priority: drawer.querySelector<HTMLInputElement>("#dwPrio")!.checked,
+          alert: drawer.querySelector<HTMLInputElement>("#dwAlert")!.checked,
           enabled: hs !== "off",
           audible: hs !== "see",
         });
@@ -788,6 +814,10 @@ export function renderAdmin(root: HTMLElement): void {
   resumeBtn.addEventListener("click", async () => { await api.monitorStop(); syncMode(); });
 
   function onEngineEvent(ev: EngineEvent): void {
+    if (ev.type === "alert") {
+      void renderAlertFeed().catch(() => {});
+      return;
+    }
     if (ev.type === "audible") {
       npAudibleDriven = true;
       nowPlaying = ev.channel ? { freq: ev.channel.freq, alphaTag: ev.channel.alphaTag } : null;
@@ -837,6 +867,9 @@ export function renderAdmin(root: HTMLElement): void {
   const tQuietDb = root.querySelector<HTMLInputElement>("#tQuietDb")!;
   const tMapsKey = root.querySelector<HTMLInputElement>("#tMapsKey")!;
   const tMapsMapId = root.querySelector<HTMLInputElement>("#tMapsMapId")!;
+  const tAlertCool = root.querySelector<HTMLInputElement>("#tAlertCool")!;
+  const tAlertHold = root.querySelector<HTMLInputElement>("#tAlertHold")!;
+  const tAlertNtfy = root.querySelector<HTMLInputElement>("#tAlertNtfy")!;
   const tCloseCall = root.querySelector<HTMLInputElement>("#tCloseCall")!;
   const tCloseCallDb = root.querySelector<HTMLInputElement>("#tCloseCallDb")!;
   const tErr = root.querySelector<HTMLElement>("#tErr")!;
@@ -848,6 +881,9 @@ export function renderAdmin(root: HTMLElement): void {
     tQuietDb.value = cfg.scan.noiseQuietDb != null ? String(cfg.scan.noiseQuietDb) : "";
     tMapsKey.value = cfg.display?.googleMapsApiKey ?? "";
     tMapsMapId.value = cfg.display?.googleMapsMapId ?? "";
+    tAlertCool.value = cfg.alerts?.cooldownMinutes != null ? String(cfg.alerts.cooldownMinutes) : "";
+    tAlertHold.value = cfg.alerts?.holdSeconds != null ? String(cfg.alerts.holdSeconds) : "";
+    tAlertNtfy.value = cfg.alerts?.ntfyUrl ?? "";
     tCloseCall.checked = cfg.scan.closeCall ?? true;   // engine default: ON
     tCloseCallDb.value = cfg.scan.closeCallDb != null ? String(cfg.scan.closeCallDb) : "";
   });
@@ -870,6 +906,15 @@ export function renderAdmin(root: HTMLElement): void {
         if (mapId) cfg.display.googleMapsMapId = mapId;
         else delete cfg.display.googleMapsMapId;
       }
+      // Alert knobs: empty fields fall back to defaults (15 min / 30 s).
+      const ntfy = tAlertNtfy.value.trim();
+      const alerts = {
+        ...(num(tAlertCool) !== undefined ? { cooldownMinutes: num(tAlertCool) } : {}),
+        ...(num(tAlertHold) !== undefined ? { holdSeconds: num(tAlertHold) } : {}),
+        ...(ntfy ? { ntfyUrl: ntfy } : {}),
+      };
+      if (Object.keys(alerts).length) cfg.alerts = alerts;
+      else delete cfg.alerts;
       const hang = num(tHang);
       if (hang !== undefined) cfg.scan.dwellMs = hang;
       await api.putConfig(cfg);
