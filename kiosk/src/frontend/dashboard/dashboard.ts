@@ -4,7 +4,7 @@ import { api } from "../lib/api.js";
 import { fmtFreq, esc } from "../lib/format.js";
 import icoBellRing from "lucide-static/icons/bell-ring.svg?raw";
 import { mountActivityMap } from "../map/map.js";
-import { matchesBank } from "../../backend/config/banks.js";
+import { matchesBank, spectrumLabelFor } from "../../backend/config/banks.js";
 import type { Bank, Channel } from "../../backend/config/schema.js";
 import "./dashboard.css";
 
@@ -17,6 +17,8 @@ export interface DashState {
   nowPlaying: NowPlaying | null;
   /** Channel ids in the currently-tuned window (drives the bank rail). */
   tunedIds: string[];
+  /** Center frequency of the tuned window (drives the spectrum chip). */
+  tunedHz: number | null;
   /** Active alert banner; cleared by paint once `until` passes. */
   alert: AlertBanner | null;
   log: LogRow[];
@@ -33,7 +35,7 @@ export interface DashState {
 }
 
 export function initialState(): DashState {
-  return { nowPlaying: null, tunedIds: [], alert: null, log: [], error: null, signalDb: null, engineState: "running", audibleDriven: false };
+  return { nowPlaying: null, tunedIds: [], tunedHz: null, alert: null, log: [], error: null, signalDb: null, engineState: "running", audibleDriven: false };
 }
 
 export function reduce(s: DashState, ev: EngineEvent): DashState {
@@ -61,7 +63,7 @@ export function reduce(s: DashState, ev: EngineEvent): DashState {
     case "signal":
       return { ...s, signalDb: ev.dbfs };
     case "tuned":
-      return { ...s, tunedIds: ev.channelIds };
+      return { ...s, tunedIds: ev.channelIds, tunedHz: ev.freqHz };
     case "alert":
       // The banner outlives the transmission: holdSeconds is the operator's
       // attention window, not the squelch's.
@@ -158,12 +160,17 @@ export function renderDashboard(root: HTMLElement): void {
   loadBanks();
 
   function paintRail(): void {
-    if (!cfgBanks.length) { railEl.innerHTML = ""; return; }
+    // Spectrum chip: computed from the tuned window's center — information
+    // about WHERE in the spectrum the radio is, not a toggle.
+    const spectrum = state.tunedHz !== null
+      ? `<span class="bankChipK spectrum">${esc(spectrumLabelFor(state.tunedHz))} · ${(state.tunedHz / 1e6).toFixed(1)}</span>`
+      : "";
     const tuned = cfgChannels.filter((c) => state.tunedIds.includes(c.id));
-    railEl.innerHTML = cfgBanks.map((b) => {
+    const chips = cfgBanks.map((b) => {
       const lit = tuned.some((c) => matchesBank(c, b));
       return `<span class="bankChipK${lit ? " lit" : ""}">${esc(b.name)}</span>`;
     }).join("");
+    railEl.innerHTML = spectrum + chips;
   }
 
   const alertEl = root.querySelector<HTMLElement>("#alertBar")!;

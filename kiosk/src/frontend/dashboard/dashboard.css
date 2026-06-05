@@ -401,3 +401,11 @@ body {
               inset 0 0 8px color-mix(in srgb, var(--spark) 12%, transparent);
   text-shadow: 0 0 8px color-mix(in srgb, var(--spark) 40%, transparent);
 }
+
+/* Spectrum chip: read-only "where in the spectrum" — pine, never amber
+   (amber chips are toggles; this is instrumentation). */
+.bankChipK.spectrum {
+  color: var(--blue);
+  border-color: color-mix(in srgb, var(--blue) 60%, transparent);
+  font-variant-numeric: tabular-nums;
+}

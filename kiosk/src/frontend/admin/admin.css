@@ -594,3 +594,29 @@ body {
 .bankProfile h3 { width: 100%; margin: 0 0 0.2rem; font-size: 0.95rem; }
 .bankProfile label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.8rem; }
 .bankProfile input { width: 9rem; }
+
+/* Close Call triage verdicts */
+.dcSee, .dcHear {
+  font-size: 0.65rem; font-weight: 700; letter-spacing: 0.12em;
+  padding: 0.1em 0.5em; margin-left: 0.5em;
+  border-radius: 3px; vertical-align: 0.1em;
+}
+.dcSee { color: var(--pine, #75acaf); border: 1px solid var(--pine, #75acaf); }
+.dcHear { color: var(--sage, #a8c76f); border: 1px solid var(--sage, #a8c76f); }
+
+/* Service allocation chip on discoveries: what KIND of hit this is.
+   OUTBAND = matches no known allocation — the genuinely interesting ones. */
+.dcSvc {
+  font-size: 0.65rem; letter-spacing: 0.06em;
+  padding: 0.1em 0.45em; margin-left: 0.5em;
+  border-radius: 3px;
+  color: var(--text-tertiary, #747b8a);
+  border: 1px solid var(--border-default, #42454e);
+  vertical-align: 0.1em;
+  white-space: nowrap;
+}
+.dcSvc.outband {
+  color: var(--flamingo, #f08080);
+  border-color: var(--flamingo, #f08080);
+  font-weight: 700;
+}

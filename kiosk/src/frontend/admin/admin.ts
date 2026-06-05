@@ -2,7 +2,7 @@ import type { Channel } from "../../backend/config/schema.js";
 import { NOAA_CHANNELS } from "../../backend/config/noaa.js";
 import { api } from "../lib/api.js";
 import { fmtFreq, esc } from "../lib/format.js";
-import { bandFor, matchesBank } from "../../backend/config/banks.js";
+import { bandFor, matchesBank, serviceFor } from "../../backend/config/banks.js";
 import icoHeadphones from "lucide-static/icons/headphones.svg?raw";
 import icoPencil from "lucide-static/icons/pencil.svg?raw";
 import icoBan from "lucide-static/icons/ban.svg?raw";
@@ -93,6 +93,8 @@ export function renderAdmin(root: HTMLElement): void {
         <div class="bankAdd">
           <input id="bkName" placeholder="Bank name (Air, Rail, …)" />
           <select id="bkBand"><option value="">any band</option><option value="hf">HF</option><option value="vhf">VHF</option><option value="uhf">UHF</option><option value="shf">SHF</option></select>
+          <input id="bkLo" type="number" step="0.001" placeholder="lo MHz (opt)" title="Frequency range predicate — e.g. 144 for 2m" />
+          <input id="bkHi" type="number" step="0.001" placeholder="hi MHz (opt)" />
           <input id="bkTags" placeholder="tags (comma-sep, optional)" />
           <button id="bkAdd">+ Bank</button>
           <span id="bkErr" class="err"></span>
@@ -216,7 +218,10 @@ export function renderAdmin(root: HTMLElement): void {
       ? `<span class="empty">no banks — add one to bulk-toggle a slice of the channel list</span>`
       : banks.map((b) => {
           const n = channels.filter((c) => matchesBank(c, b)).length;
-          const what = [b.band?.toUpperCase(), ...(b.tags ?? [])].filter(Boolean).join(" · ") || "everything";
+          const range = b.loHz || b.hiHz
+            ? `${b.loHz ? (b.loHz / 1e6).toFixed(b.loHz % 1e6 ? 3 : 0) : "…"}–${b.hiHz ? (b.hiHz / 1e6).toFixed(b.hiHz % 1e6 ? 3 : 0) : "…"} MHz`
+            : undefined;
+          const what = [b.band?.toUpperCase(), range, ...(b.tags ?? [])].filter(Boolean).join(" · ") || "everything";
           const state = !b.enabled ? "off" : b.audible === false ? "see" : "on";
           const next = state === "on" ? "SEE (scan, stay silent)" : state === "see" ? "OFF" : "HEAR";
           return `<button class="bankChip ${state}" data-id="${esc(b.id)}" title="${esc(what)} — ${state.toUpperCase()}; click for ${next}">
@@ -315,11 +320,15 @@ export function renderAdmin(root: HTMLElement): void {
     const band = root.querySelector<HTMLSelectElement>("#bkBand")!.value;
     const tags = root.querySelector<HTMLInputElement>("#bkTags")!.value
       .split(",").map((t) => t.trim()).filter(Boolean);
+    const lo = root.querySelector<HTMLInputElement>("#bkLo")!.value.trim();
+    const hi = root.querySelector<HTMLInputElement>("#bkHi")!.value.trim();
     const cfg = await api.getConfig();
     cfg.banks = [...(cfg.banks ?? []), {
       id: `bk_${Math.random().toString(36).slice(2, 10)}`,
       name, enabled: true,
       ...(band ? { band: band as Bank["band"] } : {}),
+      ...(lo ? { loHz: Math.round(Number(lo) * 1e6) } : {}),
+      ...(hi ? { hiHz: Math.round(Number(hi) * 1e6) } : {}),
       ...(tags.length ? { tags } : {}),
     }];
     await api.putConfig(cfg);
@@ -724,6 +733,8 @@ export function renderAdmin(root: HTMLElement): void {
     cfg2.channels.push({
       id: `ch_${d.id.replace(/^cc_/, "")}`, freq: d.freq, alphaTag: d.alphaTag,
       mode, enabled: true,
+      // Triage verdict: data/paging promotes seen-not-heard.
+      ...(d.audible === false ? { audible: false } : {}),
       ...(d.location ? { location: d.location, lookedUpAt: Date.now() } : {}),
     });
   }
@@ -746,8 +757,8 @@ export function renderAdmin(root: HTMLElement): void {
       ? `<tr><td colspan="5" class="empty">nothing pending — Close Call is hunting</td></tr>`
       : ds.map((d) => `<tr data-id="${esc(d.id)}" class="dcRow">
           <td><input type="checkbox" class="dSel" ${dcSelected.has(d.id) ? "checked" : ""} /></td>
-          <td class="rowOpen">${fmtFreq(d.freq)}</td>
-          <td class="rowOpen">${esc(d.alphaTag)}${locChip(d.location)}</td>
+          <td class="rowOpen">${fmtFreq(d.freq)}<span class="dcSvc${serviceFor(d.freq) ? "" : " outband"}">${esc(serviceFor(d.freq) ?? "OUTBAND")}</span></td>
+          <td class="rowOpen">${esc(d.alphaTag)}${d.audible === false ? '<span class="dcSee" title="Identified as data/paging — filed seen-not-heard; promotes as SEE">SEE</span>' : d.audible === true ? '<span class="dcHear" title="Identified as analog voice — hearable">HEAR</span>' : ""}${locChip(d.location)}</td>
           <td class="rowOpen dMode${d.mode && DIGITAL.some((x) => d.mode!.toUpperCase().includes(x)) ? " digital" : ""}">${d.mode ? esc(d.mode.toUpperCase()) : "—"}</td>
           <td class="actions">${iconBtn("dListen", "listen", "Listen — audition this discovery")}${iconBtn("dAdd", "add", "Add as an enabled channel")}${iconBtn("dLock", "lockout", "Lockout — never Close-Call this frequency again")}${iconBtn("dDismiss", "dismiss", "Dismiss (may be rediscovered later)")}</td>
         </tr>`).join("");

@@ -14,6 +14,9 @@ export const locationSchema = z.object({
   // the map's coverage-radius blips.
   powerWatts: z.number().positive().optional(),
   antennaHaatM: z.number().positive().optional(),
+  // true = powerWatts is the RF estimator's guess, not a license — kept
+  // refreshable (estimates update as rfDb accumulates; licenses never move).
+  powerEstimated: z.boolean().optional(),
 });
 
 export const channelSchema = z.object({
@@ -34,6 +37,9 @@ export const channelSchema = z.object({
   // into the speaker for the hold window. Needs Hear or See to fire (an Off
   // channel is never demodulated, so there is nothing to detect).
   alert: z.boolean().optional(),
+  // Median received RF power (dB, helper units), EMA over transmissions —
+  // the ERP estimator's measurement input. Telemetry like levelTrimDb.
+  rfDb: z.number().optional(),
   // Learned loudness trim (dB) from the per-channel leveler. Persisted by the
   // server from helper telemetry so trims survive group hops and restarts —
   // without this the first ~second of every transmission after a hop played
@@ -104,6 +110,11 @@ export const configSchema = z.object({
     // muted; mute-wins like off-wins). Absent = hear.
     audible: z.boolean().optional(),
     band: z.enum(["hf", "vhf", "uhf", "shf"]).optional(),
+    // Explicit frequency range (Hz) — finer than band: "2m" = 144-148 MHz,
+    // "70cm" = 420-450. Lets the bank rail show WHICH slice of spectrum is
+    // being swept, and makes outband activity obvious by omission.
+    loHz: z.number().int().positive().optional(),
+    hiHz: z.number().int().positive().optional(),
     tags: z.array(z.string().min(1)).optional(),
     // Per-bank scan profile (ROADMAP Idea 7) — overrides the global scan
     // block for this bank's channels. Resolution: field-wise first-match
@@ -179,6 +190,9 @@ export const configSchema = z.object({
     mode: z.string().optional(),
     location: locationSchema.optional(),
     lookedUpAt: z.number().optional(),
+    // Listenability triage (Close Call pipeline): false = identified as
+    // paging/data/undecodable digital — promote as seen-not-heard.
+    audible: z.boolean().optional(),
   })).optional(),
   // One channel designated as "the weather channel", stored separately from the
   // scan list. Weather-only mode (server runtime) holds this channel.

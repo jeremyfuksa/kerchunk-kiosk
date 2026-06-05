@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { composeLookups, normalizeMode } from "../src/backend/lookup.js";
+import { composeLookups, normalizeMode, classifyListen } from "../src/backend/lookup.js";
 
 describe("composeLookups", () => {
   it("returns the first provider's hit and skips the rest", async () => {
@@ -55,7 +55,7 @@ describe("location merge (FccProx backfill)", () => {
     const fcc = { lookup: async () => ({ tag: "ignored", location: { lat: 39.176, lon: -94.491, source: "fcc" } }) };
     const hit = await composeLookups([rr, fcc]).lookup(463425000, { name: "Worlds of Fun Security" });
     expect(hit).toEqual({
-      tag: "Worlds of Fun Security", mode: "NFM",
+      tag: "Worlds of Fun Security", mode: "NFM", listen: "voice",
       location: { lat: 39.176, lon: -94.491, source: "fcc" },
     });
   });
@@ -65,5 +65,21 @@ describe("location merge (FccProx backfill)", () => {
     const hit = await composeLookups([a, spy]).lookup(146790000);
     expect(hit?.tag).toBe("A");
     expect(spy.lookup).not.toHaveBeenCalled();
+  });
+});
+
+describe("classifyListen — listenability triage", () => {
+  it("digital/paging/telemetry is data; analog voice is voice; unknown stays open", () => {
+    expect(classifyListen("MotoNet CP+ (DMR) Site 013", undefined)).toBe("data");
+    expect(classifyListen("Anything", "P25")).toBe("data");
+    expect(classifyListen("Hospital Paging", undefined)).toBe("data");
+    expect(classifyListen("Acme Telemetry Link", "Telm")).toBe("data");
+    expect(classifyListen("Skywarn", "FM")).toBe("voice");
+    expect(classifyListen("Mystery 462", undefined)).toBeUndefined();
+  });
+  it("chain attaches the verdict to hits", async () => {
+    const rr = { lookup: async () => ({ tag: "KC Wireless (LTR) Site 010", location: { lat: 1, lon: 2, source: "x" } }) };
+    const hit = await composeLookups([rr]).lookup(460000000);
+    expect(hit?.listen).toBe("data");
   });
 });

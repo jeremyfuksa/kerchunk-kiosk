@@ -246,6 +246,11 @@ export class WidebandEngine implements ScannerEngine {
           this.emit({ type: "level", channelId: ev.id, db: ev.db, ts: this.now() });
         }
         break;
+      case "rf":
+        if (typeof ev.id === "string" && typeof ev.db === "number") {
+          this.emit({ type: "rf", channelId: ev.id, db: ev.db, ts: this.now() });
+        }
+        break;
       case "closecall":
         if (typeof ev.freqHz === "number") {
           this.emit({ type: "closecall", freqHz: ev.freqHz, ts: this.now() });
