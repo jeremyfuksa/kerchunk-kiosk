@@ -584,6 +584,78 @@ this roadmap.
 
 ---
 
+## Idea 13 — ADS-B aircraft on the map
+
+**The pitch.** Plot live aircraft on the map and pair them with airband voice:
+*see the plane move AND hear the tower/approach frequency it's working.* No
+scanner does this; Kerchunk already has the map and the Air bank to join it to.
+
+**Tiering (per the modularity note): Tier A on display, Tier C on RF.** The
+consumption side is a clean map-layer module fed by an external decoder; the RF
+side needs its own radio and a separate pipeline.
+
+**RF reality.** Aircraft broadcast on **1090 MHz** (1090ES; plus **978 MHz** UAT
+for US general aviation) using Mode S extended squitter — 2 Mbps pulse-position
+modulation, nothing like FM voice. That's far outside Kerchunk's VHF/UHF voice
+windows, and you can't group-hop between 145 MHz and 1090 MHz and catch anything,
+so ADS-B wants a **dedicated SDR parked on 1090** — it rides directly on
+**Multi-SDR (Idea 10)**. A 1090-tuned antenna + LNA helps a lot (per-band antenna,
+also Idea 10).
+
+**Build shape.**
+1. Run a mature decoder as a **sidecar process** — `dump1090` / `readsb` — on its
+   own dongle. These already exist and are rock-solid; don't reimplement Mode S.
+2. Ingest the decoder's JSON aircraft feed (lat/lon, altitude, callsign, speed,
+   squawk) in the backend; expose it to the dashboard like any other module.
+3. Map layer (Idea 2): aircraft icons that move and trail, rotated to heading,
+   labeled with callsign/altitude. Distinct from the transmitter blips.
+4. **The payoff cross-tie:** correlate an aircraft with the **Air bank (Idea 1)**
+   voice — click a plane to see/affect the relevant airband channel, or highlight
+   the aircraft when its sector frequency is audible.
+
+**Caveats.** Needs the dedicated radio (so it's gated on Idea 10 in practice);
+coverage is line-of-sight (ground/low aircraft drop out); UAT (978) is a second
+frequency if GA coverage matters. CPU for `dump1090` is light.
+
+---
+
+## Idea 14 — Meshtastic (companion node feed)
+
+**The pitch.** Surface Meshtastic mesh traffic on the kiosk — received text
+messages and node positions on the map — turning the appliance into a passive
+mesh monitor alongside the radio. **The operator already has a companion mesh
+node**, so the hardware side is solved.
+
+**Critical: this is NOT an SDR feature.** Meshtastic is **LoRa** (Semtech's
+proprietary chirp-spread-spectrum) on 915 MHz ISM (US). RTL-SDR can't practically
+demodulate LoRa — experimental GNU Radio decoders exist but are fragile and
+SNR-hungry, not a real monitoring path. So Meshtastic does **not** go through the
+dongle or the DSP at all. Worth stating plainly so nobody burns time trying to
+de-chirp LoRa on an RTL-SDR.
+
+**Tiering: Tier A, but sourced from a peripheral, not the radio.** It's a clean
+consumer module that ingests an external feed and renders a panel + map layer —
+it just happens to source from a LoRa node instead of the engine event bus.
+
+**Build shape.**
+1. Talk to the existing companion node over its **API**: USB-serial (protobuf),
+   BLE, or — if the node publishes to MQTT — subscribe to that. The Meshtastic
+   project ships a Python API and documented serial/MQTT interfaces; pick whatever
+   matches how the node is already connected.
+2. Backend module ingests packets → emits a normalized feed (messages, node
+   telemetry, positions) to the dashboard, optionally persisted to **history
+   (Idea 5)**.
+3. UI: a mesh **message panel** (recent texts, channel, sender) and **node
+   positions on the map (Idea 2)** — nodes as a distinct marker layer from
+   transmitter blips and aircraft.
+4. Optional: tie into **alerts (Idea 6)** for keyword/DM notifications.
+
+**Caveats.** Receive/display only (no implication of transmitting from the
+kiosk); coverage is whatever the companion node hears; encrypted mesh channels
+without the key show as undecodable, same as any other crypto.
+
+---
+
 ## Stretch items (named, not obvious-tier)
 
 - **FCC proximity lookup — SHIPPED 2026-06-05 (PRs #56/#57)** and it grew:
