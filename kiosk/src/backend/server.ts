@@ -7,6 +7,7 @@ import { ConfigStore } from "./config/ConfigStore.js";
 import { ActivityLog } from "./activityLog.js";
 import type { LookupProvider } from "./lookup.js";
 import type { NwsWeather } from "./weather.js";
+import type { HistoryStore } from "./history.js";
 import { WsHub } from "./ws.js";
 import type { ScannerEngine, ScanConfig } from "./engine/ScannerEngine.js";
 import { setVolume as amixerVolume, setMuted as amixerMuted, type AmixerOpts } from "./audio.js";
@@ -19,6 +20,8 @@ export interface ServerDeps {
   lookupPass?: { initialDelayMs?: number; spacingMs?: number };
   /** Optional current-conditions provider for the kiosk header. */
   weather?: Pick<NwsWeather, "current">;
+  /** Optional durable activity history (ROADMAP Idea 5). */
+  history?: Pick<HistoryStore, "record" | "release" | "query">;
   configStore: ConfigStore;
   engine: ScannerEngine;
   activityLog: ActivityLog;
@@ -170,6 +173,29 @@ export function createServer(deps: ServerDeps): { server: Server } {
       }
     }, initialDelayMs);
     passTimer.unref?.();
+  }
+
+  // Durable history tee: every opening/discovery/release, enriched with the
+  // channel's tags/location at the moment it happened.
+  if (deps.history) {
+    const history = deps.history;
+    engine.on((ev) => {
+      if (ev.type === "active") {
+        history.record({
+          ts: ev.ts, kind: "active", channelId: ev.channel.id,
+          freq: ev.freq, alphaTag: ev.channel.alphaTag, mode: ev.channel.mode,
+          tags: ev.channel.tags,
+          lat: ev.channel.location?.lat, lon: ev.channel.location?.lon,
+        });
+      } else if (ev.type === "release") {
+        history.release(ev.channelId, ev.ts);
+      } else if (ev.type === "closecall") {
+        history.record({
+          ts: ev.ts, kind: "closecall", channelId: `cc_${ev.freqHz}`,
+          freq: ev.freqHz, alphaTag: `Close Call ${(ev.freqHz / 1e6).toFixed(4)}`,
+        });
+      }
+    });
   }
 
   // Close Call discoveries persist as DISABLED channels for operator review.
@@ -416,6 +442,17 @@ export function createServer(deps: ServerDeps): { server: Server } {
       await engine.stop();
       await engine.start(toScanConfig(config, mode));
       return json(res, 200, { mode, state: engine.state });
+    }
+
+    if (method === "GET" && path === "/api/history") {
+      if (!deps.history) return json(res, 404, { error: "no history store" });
+      const sp = new URL(req.url ?? "/", "http://localhost").searchParams;
+      const num = (k: string) => sp.has(k) ? Number(sp.get(k)) : undefined;
+      return json(res, 200, deps.history.query({
+        sinceMs: num("since"), untilMs: num("until"), freq: num("freq"),
+        tag: sp.get("tag") ?? undefined,
+        limit: num("limit"),
+      }));
     }
 
     if (method === "GET" && path === "/api/weather") {

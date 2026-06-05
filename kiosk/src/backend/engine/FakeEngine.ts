@@ -36,6 +36,9 @@ export class FakeEngine implements ScannerEngine {
     this.emit({ type: "active", channel, freq: channel.freq, ts: nextTs() });
   }
   emitIdle(): void { this.emit({ type: "idle", ts: nextTs() }); }
+  emitRelease(channelId: string): void {
+    this.emit({ type: "release", channelId, ts: nextTs() });
+  }
   skips = 0;
   knownHzUpdates: number[][] = [];
   updateKnownHz(knownHz: number[]): void { this.knownHzUpdates.push(knownHz); }
