@@ -522,3 +522,14 @@ body {
 .admin .bankAdd { display: flex; flex-wrap: wrap; gap: 0.3rem; align-items: center; }
 .admin .bankAdd #bkName { width: 11rem; }
 .admin .bankAdd #bkTags { width: 13rem; }
+
+/* Hear/See/Off */
+.admin .chTable select.hs { font-size: 0.8rem; padding: 0.15rem 0.3rem; }
+.admin select.hs-see { color: var(--blue); }
+.admin select.hs-off { color: var(--dim); }
+.admin .bankChip.see { opacity: 1; border-color: color-mix(in srgb, var(--pine) 50%, transparent); }
+.admin .bankChip.see .bankState { background: var(--blue); box-shadow: 0 0 6px color-mix(in srgb, var(--pine) 60%, transparent); }
+.admin .bankChip .bankSee {
+  font-family: var(--cond); font-size: 0.68rem; font-weight: 700;
+  letter-spacing: 0.15em; color: var(--blue);
+}
