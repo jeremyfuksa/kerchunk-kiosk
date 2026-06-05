@@ -89,6 +89,7 @@ export function renderAdmin(root: HTMLElement): void {
       <section class="banks">
         <h2>Banks <span class="hint">toggle a group to mute/unmute it — off wins</span></h2>
         <div id="bankChips" class="bankChips"></div>
+        <div id="bankProfile" class="bankProfile"></div>
         <div class="bankAdd">
           <input id="bkName" placeholder="Bank name (Air, Rail, …)" />
           <select id="bkBand"><option value="">any band</option><option value="hf">HF</option><option value="vhf">VHF</option><option value="uhf">UHF</option><option value="shf">SHF</option></select>
@@ -219,7 +220,8 @@ export function renderAdmin(root: HTMLElement): void {
           const state = !b.enabled ? "off" : b.audible === false ? "see" : "on";
           const next = state === "on" ? "SEE (scan, stay silent)" : state === "see" ? "OFF" : "HEAR";
           return `<button class="bankChip ${state}" data-id="${esc(b.id)}" title="${esc(what)} — ${state.toUpperCase()}; click for ${next}">
-            <span class="bankState"></span>${esc(b.name)}${state === "see" ? ' <span class="bankSee">SEE</span>' : ""} <span class="bankCount">${n}</span>
+            <span class="bankState"></span>${esc(b.name)}${state === "see" ? ' <span class="bankSee">SEE</span>' : ""} <span class="bankCount">${n}</span>${hasProfile(b) ? ' <span class="bankProf" title="Has a scan profile">*</span>' : ""}
+            <span class="bankGear" data-id="${esc(b.id)}" title="Scan profile (squelch/dwell overrides)">⚙</span>
             <span class="bankDel" data-id="${esc(b.id)}" title="Delete bank">×</span>
           </button>`;
         }).join("");
@@ -227,6 +229,10 @@ export function renderAdmin(root: HTMLElement): void {
       chip.addEventListener("click", async (ev) => {
         const cfg = await api.getConfig();
         const id = chip.dataset.id!;
+        if ((ev.target as HTMLElement).classList.contains("bankGear")) {
+          openProfileEditor((cfg.banks ?? []).find((x) => x.id === id));
+          return;
+        }
         if ((ev.target as HTMLElement).classList.contains("bankDel")) {
           const b = (cfg.banks ?? []).find((x) => x.id === id);
           if (!b || !confirm(`Delete bank ${b.name}? Its channels keep scanning.`)) return;
@@ -243,6 +249,58 @@ export function renderAdmin(root: HTMLElement): void {
         await api.putConfig(cfg);
         refreshBanks();
       }));
+  }
+
+  function hasProfile(b: Bank): boolean {
+    return b.openAboveFloorDb !== undefined || b.noiseQuietDb !== undefined
+      || b.hangMs !== undefined || b.dwellWeight !== undefined;
+  }
+
+  // ── Per-bank scan profile editor (ROADMAP Idea 7): squelch trio applies
+  // to the bank's channels; dwell weight scales its windows' park time.
+  // Empty field = inherit the global Scan tuning value.
+  const bankProfBox = root.querySelector<HTMLElement>("#bankProfile")!;
+  function openProfileEditor(b: Bank | undefined): void {
+    if (!b) return;
+    const num = (v: number | undefined) => (v !== undefined ? String(v) : "");
+    bankProfBox.innerHTML = `
+      <h3>${esc(b.name)} — scan profile <span class="hint">empty = global default</span></h3>
+      <label>Squelch open (dB over floor) <input id="bpOpen" type="number" min="1" step="0.5" value="${num(b.openAboveFloorDb)}" placeholder="global" /></label>
+      <label>Quieting threshold (dB) <input id="bpQuiet" type="number" max="-1" step="0.5" value="${num(b.noiseQuietDb)}" placeholder="global" /></label>
+      <label>Hang time (ms) <input id="bpHang" type="number" min="100" step="100" value="${num(b.hangMs)}" placeholder="global" /></label>
+      <label>Dwell weight <input id="bpDwell" type="number" min="0.1" step="0.1" value="${num(b.dwellWeight)}" placeholder="1" title="2 = this bank's windows get twice the park time; 0.5 = half" /></label>
+      <button id="bpSave">Save profile</button>
+      <button id="bpCancel">Cancel</button>
+      <span id="bpErr" class="err"></span>`;
+    bankProfBox.classList.add("open");
+    const val = (sel: string): number | undefined => {
+      const raw = bankProfBox.querySelector<HTMLInputElement>(sel)!.value.trim();
+      return raw === "" ? undefined : Number(raw);
+    };
+    bankProfBox.querySelector<HTMLButtonElement>("#bpCancel")!
+      .addEventListener("click", () => { bankProfBox.classList.remove("open"); bankProfBox.innerHTML = ""; });
+    bankProfBox.querySelector<HTMLButtonElement>("#bpSave")!.addEventListener("click", async () => {
+      const err = bankProfBox.querySelector<HTMLElement>("#bpErr")!;
+      err.textContent = "";
+      try {
+        const cfg = await api.getConfig();
+        cfg.banks = (cfg.banks ?? []).map((x) => {
+          if (x.id !== b.id) return x;
+          const { openAboveFloorDb: _o, noiseQuietDb: _q, hangMs: _h, dwellWeight: _d, ...rest } = x;
+          return {
+            ...rest,
+            ...(val("#bpOpen") !== undefined ? { openAboveFloorDb: val("#bpOpen") } : {}),
+            ...(val("#bpQuiet") !== undefined ? { noiseQuietDb: val("#bpQuiet") } : {}),
+            ...(val("#bpHang") !== undefined ? { hangMs: val("#bpHang") } : {}),
+            ...(val("#bpDwell") !== undefined ? { dwellWeight: val("#bpDwell") } : {}),
+          };
+        });
+        await api.putConfig(cfg);
+        bankProfBox.classList.remove("open");
+        bankProfBox.innerHTML = "";
+        refreshBanks();
+      } catch (e) { err.textContent = (e as Error).message; }
+    });
   }
 
   async function refreshBanks(): Promise<void> {

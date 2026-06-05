@@ -201,6 +201,9 @@ class Chain:
         self.allow_audio = True  # hear-vs-see: False = detect/report, never speak
         self.audible_cfg = True
         self.alert_until = None
+        self.open_db_o = None
+        self.quiet_db_o = None
+        self.hang_ms_o = None
         self.level_db = 0.0      # learned per-channel loudness correction (dB)
         self.level_emitted = 0.0 # last trim value reported to Node
         self.speech_db = None    # smoothed voiced-audio level (leveler input)
@@ -240,12 +243,18 @@ class Chain:
         self.warmup = WARMUP_POLLS
 
     def assign(self, channel_id, offset_hz, priority=False, level_db=0.0,
-               mode="nfm", audible=True):
+               mode="nfm", audible=True,
+               open_db=None, quiet_db=None, hang_ms=None):
         self.channel_id = channel_id
         self.priority = priority
         self.allow_audio = audible
         self.audible_cfg = audible      # restore target when an alert hold ends
         self.alert_until = None         # monotonic deadline of an alert unmute
+        # Per-channel squelch profile (banks, ROADMAP Idea 7); None = the
+        # process-global --open-db/--quiet-db/--hang-ms defaults.
+        self.open_db_o = open_db
+        self.quiet_db_o = quiet_db
+        self.hang_ms_o = hang_ms
         self.kind = "am" if mode == "am" else "fm"
         self.xlate.set_center_freq(offset_hz)
         self.gate.set_k(0.0)   # hard cut is fine: we just retuned, no audio context
@@ -265,6 +274,9 @@ class Chain:
         self.allow_audio = True
         self.audible_cfg = True
         self.alert_until = None
+        self.open_db_o = None
+        self.quiet_db_o = None
+        self.hang_ms_o = None
         self.kind = "fm"
         self.xlate.set_center_freq(0)
         self.gate.set_k(0.0)
@@ -365,7 +377,9 @@ class Helper(gr.top_block):
                              bool(c.get("priority", False)),
                              float(c.get("levelDb", 0.0)),
                              str(c.get("mode", "nfm")),
-                             bool(c.get("audible", True)))
+                             bool(c.get("audible", True)),
+                             c.get("openDb"), c.get("quietDb"),
+                             c.get("hangMs"))
             else:
                 chain.park()
         emit({"ev": "tuned", "centerHz": center_hz})
@@ -403,9 +417,9 @@ class Helper(gr.top_block):
         return min(floors) if floors else None
 
     def poll(self, now):
-        open_db = self.args.open_db
-        quiet_db = self.args.quiet_db
-        hang_s = self.args.hang_ms / 1000.0
+        g_open_db = self.args.open_db
+        g_quiet_db = self.args.quiet_db
+        g_hang_s = self.args.hang_ms / 1000.0
 
         # Pass 1: update per-chain floors (frozen while a chain is open).
         readings = {}
@@ -434,6 +448,10 @@ class Helper(gr.top_block):
         for chain in self.chains:
             if chain.channel_id is None or chain.channel_id not in readings:
                 continue
+            # Per-channel squelch profile (banks): fall back to the globals.
+            open_db = chain.open_db_o if chain.open_db_o is not None else g_open_db
+            quiet_db = chain.quiet_db_o if chain.quiet_db_o is not None else g_quiet_db
+            hang_s = (chain.hang_ms_o / 1000.0) if chain.hang_ms_o is not None else g_hang_s
             # Expired alert hold: restore the configured mute. If the chain
             # owns the speaker mid-transmission, hand off like a close.
             if chain.alert_until is not None and now >= chain.alert_until:

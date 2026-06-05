@@ -1,10 +1,10 @@
 import type { Channel } from "../config/schema.js";
 
-export interface ChannelGroup {
+export interface ChannelGroup<T extends Channel = Channel> {
   /** Front-end tune frequency for this group (Hz). */
   centerHz: number;
   /** Enabled channels in this group, ascending by freq. */
-  channels: Channel[];
+  channels: T[];
 }
 
 // Greedy interval clustering: sort enabled channels ascending, start a new
@@ -13,14 +13,14 @@ export interface ChannelGroup {
 // fixed number of channelizer lanes; splitting beats silently truncating).
 // Center = midpoint of the group's min/max, so every member is within
 // ±window/2 by construction. Deterministic, no device I/O.
-export function groupChannels(
-  channels: Channel[],
+export function groupChannels<T extends Channel>(
+  channels: T[],
   windowHz: number,
   maxPerGroup: number = Infinity,
-): ChannelGroup[] {
+): Array<ChannelGroup<T>> {
   const enabled = channels.filter((c) => c.enabled).sort((a, b) => a.freq - b.freq);
-  const groups: ChannelGroup[] = [];
-  let current: Channel[] = [];
+  const groups: Array<ChannelGroup<T>> = [];
+  let current: T[] = [];
 
   for (const c of enabled) {
     if (current.length > 0
@@ -34,7 +34,7 @@ export function groupChannels(
   return groups;
 }
 
-function toGroup(channels: Channel[]): ChannelGroup {
+function toGroup<T extends Channel>(channels: T[]): ChannelGroup<T> {
   const lo = channels[0]!.freq;
   const hi = channels[channels.length - 1]!.freq;
   return { centerHz: (lo + hi) / 2, channels };

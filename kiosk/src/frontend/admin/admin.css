@@ -578,3 +578,19 @@ body {
 .alertList li:last-child { border-bottom: none; }
 .alertList .alertWhen { color: var(--text-tertiary, #747b8a); white-space: nowrap; }
 .alertList .alertWhat { color: var(--text-primary, #f7f8f9); }
+
+/* ── Per-bank scan profile editor (Idea 7) */
+.bankGear { opacity: 0.55; margin-left: 0.45em; cursor: pointer; }
+.bankGear:hover { opacity: 1; }
+.bankProf { color: var(--golden-amber, #ffc05c); }
+.bankProfile { display: none; }
+.bankProfile.open {
+  display: flex; flex-wrap: wrap; gap: 0.8rem; align-items: end;
+  margin-top: 0.8rem; padding: 0.8rem 1rem;
+  border: 1px solid var(--border-default, #42454e);
+  border-radius: 6px;
+  background: var(--bg-subtle, #2b303b);
+}
+.bankProfile h3 { width: 100%; margin: 0 0 0.2rem; font-size: 0.95rem; }
+.bankProfile label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.8rem; }
+.bankProfile input { width: 9rem; }
