@@ -254,3 +254,12 @@ body {
   text-shadow: 0 0 10px color-mix(in srgb, var(--spark) 40%, transparent);
 }
 
+
+.now .scanning .standby { color: var(--caution, var(--amber)); }
+.now .standbyHint {
+  font-family: var(--cond);
+  font-size: 1.05rem;
+  letter-spacing: 0.15em;
+  color: var(--dim);
+  margin-top: 0.8rem;
+}

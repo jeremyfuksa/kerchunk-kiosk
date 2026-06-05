@@ -40,6 +40,9 @@ const DEFAULT_GROUP_DWELL_MS = 3000;
 // arrives ~5 Hz, pass it through at up to 4 Hz for a live-feeling needle.
 const SIGNAL_THROTTLE_MS = 250;
 const QUIT_GRACE_MS = 500;
+// A helper alive this long is considered healthy; its eventual death starts
+// a fresh failure-escalation window instead of compounding an old one.
+const HEALTHY_AFTER_MS = 10_000;
 
 // GNU Radio is only importable from the system python; mise/pyenv interpreters
 // shadow it. The helper ships next to this file in dist/ (build copy step).
@@ -86,6 +89,12 @@ export class WidebandEngine implements ScannerEngine {
   private restartTimer: NodeJS.Timeout | null = null;
 
   private stopping = false;
+  // Exit-failure escalation: ONE failed spawn is expected during rapid
+  // reconfiguration (bank toggles = overlapping stop/start; the dying helper
+  // can still hold the SDR for up to the grace period). The first failure is
+  // a soft restart; repetition is a real error.
+  private exitFailures = 0;
+  private lastSpawnAt = 0;
 
   constructor(opts: WidebandEngineOptions = {}) {
     this.helperCmd = opts.helperCmd ?? defaultHelperCmd();
@@ -157,6 +166,7 @@ export class WidebandEngine implements ScannerEngine {
   private spawnHelper(): void {
     if (!this.config) return;
 
+    this.lastSpawnAt = this.now();
     const argv = [...this.helperCmd, ...this.helperArgs()];
     const child = spawn(argv[0]!, argv.slice(1), {
       stdio: ["pipe", "pipe", "pipe"],
@@ -201,6 +211,11 @@ export class WidebandEngine implements ScannerEngine {
   }
 
   private handleHelperEvent(ev: HelperEvent): void {
+    // Escalation resets on PROVEN health (alive for a while), not on mere
+    // startup — a crash-looping helper also says "ready" before each death.
+    if (this.exitFailures > 0 && this.now() - this.lastSpawnAt > HEALTHY_AFTER_MS) {
+      this.exitFailures = 0;
+    }
     switch (ev.ev) {
       case "ready":
         this.sendTune();
@@ -374,7 +389,14 @@ export class WidebandEngine implements ScannerEngine {
       ? `${exited}: ${reason}${this.autoRestart ? "; restarting" : ""}`
       : `${exited}${this.autoRestart ? "; restarting" : ""}`;
 
-    this.emit({ type: "error", code, message, ts: this.now() });
+    this.exitFailures += 1;
+    if (this.autoRestart && this.exitFailures === 1) {
+      // Soft path: expected during reconfiguration. The dashboard renders
+      // state "starting" as "retuning…" instead of a red error.
+      this.emit({ type: "status", state: "starting", ts: this.now() });
+    } else {
+      this.emit({ type: "error", code, message, ts: this.now() });
+    }
 
     if (this.autoRestart) {
       this.clearRestartTimer();

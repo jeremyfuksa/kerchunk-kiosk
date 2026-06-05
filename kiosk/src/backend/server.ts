@@ -423,7 +423,14 @@ export function createServer(deps: ServerDeps): { server: Server } {
       return json(res, 200, await deps.weather.current());
     }
 
-    if (method === "GET" && path === "/api/status") return json(res, 200, { state: engine.state, mode, monitor: monitorChannel });
+    if (method === "GET" && path === "/api/status") {
+      return json(res, 200, {
+        state: engine.state, mode, monitor: monitorChannel,
+        // How many channels the current mode actually scans — 0 with every
+        // bank muted, where the kiosk should say "standby", not "scanning".
+        scanCount: toScanConfig(config, mode, monitorChannel).channels.length,
+      });
+    }
     if (method === "GET" && path === "/api/logs") return json(res, 200, activityLog.entries());
 
     return json(res, 404, { error: "not found" });
