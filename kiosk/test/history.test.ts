@@ -110,3 +110,17 @@ describe("stats() — aggregates for Insights (Idea 9)", () => {
     expect(recent.totalHits).toBe(2);
   });
 });
+
+describe("alert rows (ROADMAP Idea 6)", () => {
+  it("filters by kind and keeps alert rows out of aggregates", () => {
+    const h = make();
+    h.record({ ts: 1000, kind: "active", channelId: "c1", freq: CH.freq, alphaTag: CH.alphaTag, tags: CH.tags, lat: 39.17, lon: -94.48 });
+    h.record({ ts: 1001, kind: "alert", channelId: "c1", freq: CH.freq, alphaTag: CH.alphaTag, tags: CH.tags, lat: 39.17, lon: -94.48 });
+    expect(h.query({ kind: "alert" }).map((r) => r.kind)).toEqual(["alert"]);
+    expect(h.query({}).length).toBe(2);
+    // The alert row annotates the active row — it must not double-count.
+    expect(h.stats(0).totalHits).toBe(1);
+    expect(h.stats(0).byTag).toEqual([{ tag: "business", hits: 1 }]);
+    expect(h.sites()[0]?.hits).toBe(1);
+  });
+});

@@ -560,3 +560,21 @@ body {
 .admin .inSplit { display: flex; flex-wrap: wrap; gap: 0.35rem; }
 .admin .inChip { font-size: 0.75rem; color: var(--label); border: 1px solid var(--panel-edge); border-radius: 8px; padding: 0.06rem 0.5rem; }
 .admin .inChip.tag { color: var(--blue); }
+
+/* ── Alerts (ROADMAP Idea 6) */
+.bellChip svg {
+  width: 0.85em; height: 0.85em;
+  color: var(--flamingo, #f08080);
+  margin-left: 0.4em; vertical-align: -0.08em;
+}
+.alertList { list-style: none; margin: 0; padding: 0; }
+.alertList li {
+  display: flex; gap: 1rem; align-items: baseline;
+  padding: 0.35rem 0;
+  border-bottom: 1px solid var(--border-subtle, #2b303b);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.85rem;
+}
+.alertList li:last-child { border-bottom: none; }
+.alertList .alertWhen { color: var(--text-tertiary, #747b8a); white-space: nowrap; }
+.alertList .alertWhat { color: var(--text-primary, #f7f8f9); }

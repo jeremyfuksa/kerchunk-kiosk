@@ -645,3 +645,66 @@ describe("activity history (Idea 5)", () => {
     expect((await request(server).get("/api/history")).status).toBe(404);
   });
 });
+
+describe("alerts (ROADMAP Idea 6)", () => {
+  function makeAlertApp(alertsCfg?: Record<string, unknown>) {
+    dir = mkdtempSync(join(tmpdir(), "ksrv-"));
+    const configStore = new ConfigStore(join(dir, "config.json"));
+    const engine = new FakeEngine();
+    const wsHub = new WsHub();
+    const sent: unknown[] = [];
+    wsHub.add({ readyState: 1, OPEN: 1, send: (d: string) => sent.push(JSON.parse(d)) });
+    const recorded: unknown[] = [];
+    const history = {
+      record: (ev: unknown) => recorded.push(ev),
+      release: () => {}, query: () => [], sites: () => [],
+      stats: () => ({ totalHits: 0, totalAirtimeMs: 0, discoveries: 0, topChannels: [], byTag: [], byBand: [], byHour: [] }),
+    };
+    const unmutes: Array<[string, number]> = [];
+    (engine as unknown as { alertUnmute(id: string, s: number): void }).alertUnmute =
+      (id, s) => unmutes.push([id, s]);
+    const { server } = createServer({
+      configStore, engine, activityLog: new ActivityLog(10), wsHub, staticDir: dir,
+      history: history as never,
+    });
+    return { server, engine, configStore, sent, recorded, unmutes, alertsCfg };
+  }
+
+  const alertCh = {
+    id: "al1", freq: 155475000, alphaTag: "Watched Tac", mode: "nfm" as const,
+    enabled: true, audible: false, alert: true,
+  };
+
+  it("a hit on a flagged see-only channel broadcasts, records, and unmutes", async () => {
+    const { server, engine, sent, recorded, unmutes } = makeAlertApp();
+    await request(server).post("/api/channels").send(alertCh).expect(201);
+    const res = await request(server).get("/api/channels");
+    const ch = res.body.find((c: { freq: number }) => c.freq === alertCh.freq);
+    engine.emitActive(ch);
+    const alertEvs = sent.filter((e) => (e as { type: string }).type === "alert");
+    expect(alertEvs).toHaveLength(1);
+    expect((alertEvs[0] as { holdSeconds: number }).holdSeconds).toBe(30);
+    expect(recorded.filter((r) => (r as { kind: string }).kind === "alert")).toHaveLength(1);
+    expect(unmutes).toEqual([[ch.id, 30]]);
+  });
+
+  it("cooldown suppresses repeats; an audible channel never unmutes", async () => {
+    const { server, engine, sent, unmutes } = makeAlertApp();
+    await request(server).post("/api/channels").send({ ...alertCh, audible: true }).expect(201);
+    const ch = (await request(server).get("/api/channels")).body
+      .find((c: { freq: number }) => c.freq === alertCh.freq);
+    engine.emitActive(ch);
+    engine.emitActive(ch); // within cooldown — must not re-fire
+    expect(sent.filter((e) => (e as { type: string }).type === "alert")).toHaveLength(1);
+    expect(unmutes).toHaveLength(0); // already audible: nothing to pull in
+  });
+
+  it("unflagged channels never alert", async () => {
+    const { server, engine, sent } = makeAlertApp();
+    await request(server).post("/api/channels").send({ ...alertCh, alert: false }).expect(201);
+    const ch = (await request(server).get("/api/channels")).body
+      .find((c: { freq: number }) => c.freq === alertCh.freq);
+    engine.emitActive(ch);
+    expect(sent.filter((e) => (e as { type: string }).type === "alert")).toHaveLength(0);
+  });
+});

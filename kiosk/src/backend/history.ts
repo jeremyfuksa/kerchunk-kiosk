@@ -9,7 +9,7 @@ import { bandFor } from "./config/banks.js";
 
 export interface HistoryEvent {
   ts: number;
-  kind: "active" | "closecall";
+  kind: "active" | "closecall" | "alert";
   channelId: string;
   freq: number;
   alphaTag: string;
@@ -34,6 +34,7 @@ export interface HistoryRow {
 }
 
 export interface HistoryQuery {
+  kind?: string;
   sinceMs?: number;
   untilMs?: number;
   freq?: number;
@@ -102,6 +103,7 @@ export class HistoryStore {
   query(q: HistoryQuery): HistoryRow[] {
     const where: string[] = [];
     const args: Array<number | string> = [];
+    if (q.kind !== undefined) { where.push("kind = ?"); args.push(q.kind); }
     if (q.sinceMs !== undefined) { where.push("ts >= ?"); args.push(q.sinceMs); }
     if (q.untilMs !== undefined) { where.push("ts <= ?"); args.push(q.untilMs); }
     if (q.freq !== undefined) { where.push("freq = ?"); args.push(q.freq); }
@@ -123,7 +125,7 @@ export class HistoryStore {
       SELECT ROUND(lat, 5) AS lat, ROUND(lon, 5) AS lon,
              COUNT(*) AS hits, MAX(ts) AS lastTs,
              GROUP_CONCAT(DISTINCT alphaTag) AS names
-      FROM events WHERE lat IS NOT NULL AND lon IS NOT NULL
+      FROM events WHERE lat IS NOT NULL AND lon IS NOT NULL AND kind != 'alert'
       GROUP BY ROUND(lat, 5), ROUND(lon, 5)
     `).all() as Array<Record<string, unknown>>;
     return rows.map((r) => ({
@@ -148,20 +150,22 @@ export class HistoryStore {
     const all = (sql: string) =>
       this.db.prepare(sql).all(sinceMs) as Array<Record<string, unknown>>;
 
+    // kind != 'alert' throughout: an alert row annotates an active row —
+    // counting both would double every alerted hit.
     const totals = one(`SELECT COUNT(*) n, COALESCE(SUM(durationMs), 0) air,
-        SUM(kind = 'closecall') cc FROM events WHERE ts >= ?`);
+        SUM(kind = 'closecall') cc FROM events WHERE ts >= ? AND kind != 'alert'`);
     const top = all(`SELECT alphaTag, freq, COUNT(*) hits,
         COALESCE(SUM(durationMs), 0) airtimeMs
       FROM events WHERE ts >= ? AND kind = 'active'
       GROUP BY freq ORDER BY hits DESC, airtimeMs DESC LIMIT 12`);
     const byTag = all(`SELECT je.value tag, COUNT(*) hits
-      FROM events, json_each(events.tags) je WHERE ts >= ?
+      FROM events, json_each(events.tags) je WHERE ts >= ? AND kind != 'alert'
       GROUP BY je.value ORDER BY hits DESC`);
-    const byBand = all(`SELECT band, COUNT(*) hits FROM events WHERE ts >= ?
-      GROUP BY band ORDER BY hits DESC`);
+    const byBand = all(`SELECT band, COUNT(*) hits FROM events
+      WHERE ts >= ? AND kind != 'alert' GROUP BY band ORDER BY hits DESC`);
     // Hour-of-day activity clock in the appliance's local time.
     const hours = all(`SELECT CAST(strftime('%H', ts / 1000, 'unixepoch', 'localtime') AS INTEGER) h,
-        COUNT(*) n FROM events WHERE ts >= ? GROUP BY h`);
+        COUNT(*) n FROM events WHERE ts >= ? AND kind != 'alert' GROUP BY h`);
     const byHour = Array.from({ length: 24 }, () => 0);
     for (const r of hours) byHour[Number(r.h)] = Number(r.n);
 

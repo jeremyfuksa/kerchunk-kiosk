@@ -147,3 +147,26 @@ describe("engine state in dash state", () => {
     expect(s.engineState).toBe("running");
   });
 });
+
+describe("alert banner (ROADMAP Idea 6)", () => {
+  const ch = { id: "c1", freq: 154130000, alphaTag: "Skywarn", mode: "nfm" as const, enabled: true };
+  it("alert event sets the banner with a hold deadline", () => {
+    const s = reduce(initialState(), { type: "alert", channel: ch, freq: ch.freq, holdSeconds: 30, ts: 1000 });
+    expect(s.alert).toEqual({ freq: ch.freq, alphaTag: "Skywarn", until: 31000 });
+  });
+  it("a later alert replaces the banner", () => {
+    let s = reduce(initialState(), { type: "alert", channel: ch, freq: ch.freq, holdSeconds: 30, ts: 1000 });
+    s = reduce(s, { type: "alert", channel: { ...ch, alphaTag: "Tac 2" }, freq: 460000000, holdSeconds: 30, ts: 2000 });
+    expect(s.alert?.alphaTag).toBe("Tac 2");
+  });
+  it("status transitions clear the banner (engine restarted under it)", () => {
+    let s = reduce(initialState(), { type: "alert", channel: ch, freq: ch.freq, holdSeconds: 30, ts: 1000 });
+    s = reduce(s, { type: "status", state: "starting", ts: 2000 });
+    expect(s.alert).toBeNull();
+  });
+  it("alert does not disturb now-playing", () => {
+    let s = reduce(initialState(), { type: "audible", channel: ch, ts: 1 });
+    s = reduce(s, { type: "alert", channel: { ...ch, id: "c2" }, freq: 1, holdSeconds: 5, ts: 2 });
+    expect(s.nowPlaying?.alphaTag).toBe("Skywarn");
+  });
+});

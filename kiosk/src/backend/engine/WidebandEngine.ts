@@ -421,6 +421,17 @@ export class WidebandEngine implements ScannerEngine {
     }
   }
 
+  alertUnmute(channelId: string, holdSeconds: number): void {
+    // Alert pull-in (ROADMAP Idea 6): the helper opens the chain's audio for
+    // the hold. If the channel's window isn't tuned right now the command
+    // finds no chain and is a no-op — the kiosk banner still fires; only the
+    // audio break-in is best-effort (same coverage truth as detection).
+    if (this.child?.stdin?.writable) {
+      this.child.stdin.write(JSON.stringify(
+        { cmd: "alert_unmute", id: channelId, holdS: Math.max(1, holdSeconds) }) + "\n");
+    }
+  }
+
   skip(holdoffSeconds?: number): void {
     // Scanner SKIP key: the helper force-closes the audible channel (a cc
     // lane parks; a regular channel gets a re-open holdoff). With a long

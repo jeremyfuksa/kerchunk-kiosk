@@ -2,12 +2,18 @@ import type { EngineEvent } from "../../backend/engine/ScannerEngine.js";
 import { ReconnectingWs } from "../lib/wsClient.js";
 import { api } from "../lib/api.js";
 import { fmtFreq, esc } from "../lib/format.js";
+import icoBellRing from "lucide-static/icons/bell-ring.svg?raw";
 import "./dashboard.css";
+
+const ICO_BELL = icoBellRing;
 
 export interface NowPlaying { freq: number; alphaTag: string; }
 export interface LogRow { freq: number; alphaTag: string; ts: number; }
+export interface AlertBanner { freq: number; alphaTag: string; until: number; }
 export interface DashState {
   nowPlaying: NowPlaying | null;
+  /** Active alert banner; cleared by paint once `until` passes. */
+  alert: AlertBanner | null;
   log: LogRow[];
   error: string | null;
   /** Latest signal level (dB) of the audible channel; null when silent. */
@@ -22,7 +28,7 @@ export interface DashState {
 }
 
 export function initialState(): DashState {
-  return { nowPlaying: null, log: [], error: null, signalDb: null, engineState: "running", audibleDriven: false };
+  return { nowPlaying: null, alert: null, log: [], error: null, signalDb: null, engineState: "running", audibleDriven: false };
 }
 
 export function reduce(s: DashState, ev: EngineEvent): DashState {
@@ -49,6 +55,13 @@ export function reduce(s: DashState, ev: EngineEvent): DashState {
       };
     case "signal":
       return { ...s, signalDb: ev.dbfs };
+    case "alert":
+      // The banner outlives the transmission: holdSeconds is the operator's
+      // attention window, not the squelch's.
+      return { ...s, alert: {
+        freq: ev.freq, alphaTag: ev.channel.alphaTag,
+        until: ev.ts + ev.holdSeconds * 1000,
+      } };
     case "idle":
       return { ...s, error: null, nowPlaying: s.audibleDriven ? s.nowPlaying : null };
     case "error":
@@ -59,8 +72,8 @@ export function reduce(s: DashState, ev: EngineEvent): DashState {
       // now-playing must not survive it — a fresh active/audible
       // re-establishes it (audibleDriven resets too: the engine kind may change).
       return ev.state === "running"
-        ? { ...s, error: null, nowPlaying: null, signalDb: null, engineState: ev.state, audibleDriven: false }
-        : { ...s, nowPlaying: null, signalDb: null, engineState: ev.state, audibleDriven: false };
+        ? { ...s, error: null, nowPlaying: null, alert: null, signalDb: null, engineState: ev.state, audibleDriven: false }
+        : { ...s, nowPlaying: null, alert: null, signalDb: null, engineState: ev.state, audibleDriven: false };
     default:
       return s;
   }
@@ -86,6 +99,7 @@ export function renderDashboard(root: HTMLElement): void {
           <div id="clockDate" class="clockDate"></div>
         </div>
       </header>
+      <div id="alertBar" class="alertBar"></div>
       <div class="dashBody">
         <section class="now" id="now"></section>
         <aside class="log"><h2>Recent</h2><ul id="logList"></ul></aside>
@@ -112,7 +126,31 @@ export function renderDashboard(root: HTMLElement): void {
 
   let scanCount = -1; // unknown until the first status fetch
 
+  const alertEl = root.querySelector<HTMLElement>("#alertBar")!;
+  let alertTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function paintAlert(): void {
+    if (state.alert && Date.now() >= state.alert.until) {
+      state = { ...state, alert: null };
+    }
+    if (state.alert) {
+      alertEl.innerHTML = `<span class="alertGlyph">${ICO_BELL}</span>
+        <span class="alertLabel">ALERT</span>
+        <span class="alertFreq">${fmtFreq(state.alert.freq)}</span>
+        <span class="alertTag">${esc(state.alert.alphaTag)}</span>`;
+      alertEl.classList.add("on");
+      // One repaint exactly at expiry — no polling.
+      if (alertTimer) clearTimeout(alertTimer);
+      alertTimer = setTimeout(paintAlert, Math.max(0, state.alert.until - Date.now()) + 50);
+    } else {
+      alertEl.classList.remove("on");
+      alertEl.innerHTML = "";
+      if (alertTimer) { clearTimeout(alertTimer); alertTimer = null; }
+    }
+  }
+
   function paint(): void {
+    paintAlert();
     if (state.engineState === "starting" && !state.nowPlaying && !state.error) {
       nowEl.innerHTML = `<div class="scanning">
         <div class="scanText">RETUNING</div>
