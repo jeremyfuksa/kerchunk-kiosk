@@ -314,6 +314,7 @@ body {
     grid-template-areas:
       "title title"
       "disc  card"
+      "banks card"
       "chan  card"
       "row   card";
     column-gap: 1.8rem;
@@ -321,6 +322,7 @@ body {
   }
   .admin h1 { grid-area: title; }
   .admin .discoveries { grid-area: disc; margin-top: 0.4rem; }
+  .admin .banks { grid-area: banks; }
   .admin .channels { grid-area: chan; }
   .admin .moduleRow { grid-area: row; align-self: start; grid-template-columns: 1fr 1fr 1fr; }
   /* The control surface rides along while you triage the lists. */
@@ -487,3 +489,36 @@ body {
 .admin .chTable td.rowOpen { cursor: pointer; }
 .admin .chTable tbody tr:hover td.rowOpen { color: var(--ink); }
 .admin .chTable tbody tr:hover td.rowOpen:first-child { text-shadow: 0 0 8px color-mix(in srgb, var(--spark) 35%, transparent); }
+
+/* ── Banks rail ── */
+.admin .bankChips { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.3rem 0 0.7rem; }
+.admin .bankChips .empty { color: var(--dim); font-style: italic; font-size: 0.85rem; }
+.admin .bankChip {
+  display: inline-flex; align-items: center; gap: 0.45rem;
+  padding: 0.35rem 0.7rem;
+  font-size: 0.95rem;
+  letter-spacing: 0.06em;
+  opacity: 0.55;
+}
+.admin .bankChip .bankState {
+  width: 0.55em; height: 0.55em; border-radius: 50%;
+  background: var(--dim);
+}
+.admin .bankChip.on { opacity: 1; border-color: color-mix(in srgb, var(--sage) 45%, transparent); }
+.admin .bankChip.on .bankState {
+  background: var(--green);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--sage) 60%, transparent);
+}
+.admin .bankChip .bankCount {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--label);
+  background: var(--etch);
+  border-radius: 8px;
+  padding: 0.05rem 0.4rem;
+}
+.admin .bankChip .bankDel { color: var(--dim); margin-left: 0.2rem; padding: 0 0.15rem; }
+.admin .bankChip .bankDel:hover { color: var(--red); }
+.admin .bankAdd { display: flex; flex-wrap: wrap; gap: 0.3rem; align-items: center; }
+.admin .bankAdd #bkName { width: 11rem; }
+.admin .bankAdd #bkTags { width: 13rem; }

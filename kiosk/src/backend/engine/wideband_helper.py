@@ -26,7 +26,9 @@ set_frequency on the running soapy source retunes VHF<->UHF cleanly).
 DSP per chain (MAX_CHANS chains built once, offsets retuned per group):
   soapy source @ samp_rate -> freq_xlating_fir (decim -> 48k) ->
     [power: mag^2 -> moving_average -> probe]
-    [audio: nbfm_rx(48k/48k, 5k dev) -> gate(multiply_const 0|1)] -> add ->
+    [audio FM: nbfm_rx(48k/48k, 5k dev) -> fm gate]  -> add ->
+    [audio AM: complex_to_mag -> dc_blocker -> am gate] ^ (airband; lane's
+     active gate selected by the channel's mode in the tune command)
     rail(+-0.8 hard limiter, speaker guard) -> sink
 
 Detection (per assigned chain, in the 20 ms poll loop; the audio gate also
@@ -120,6 +122,8 @@ CC_EDGE_FRAC = 0.10      # exclude outer 10% (channelizer/filter rolloff)
 SKIP_HOLDOFF_S = 10.0    # after SKIP, a regular channel may not reopen for
                          # this long (the skipped transmission is usually
                          # still keyed; without a holdoff it reopens next poll)
+AM_GAIN = 0.7            # AM audio gain AFTER carrier normalization (audio
+                         # is modulation-depth units, ~±0.8 at full depth)
 FLOOR_ALPHA_UP = 0.02    # floor rises slowly
 FLOOR_ALPHA_DOWN = 0.2   # floor falls fast
 
@@ -157,6 +161,17 @@ class Chain:
             AUDIO_RATE // 100, 100.0 / AUDIO_RATE)
         self.noise_probe = blocks.probe_signal_f()
         self.gate = blocks.multiply_const_ff(0.0)
+        # AM path (airband): envelope detector with CARRIER NORMALIZATION —
+        # the envelope is divided by its own slow average (the carrier level),
+        # so loudness is RF-independent like the FM demod's, then the DC (=1
+        # after normalization) is removed. Without this, audio level rode the
+        # raw carrier amplitude and weak-but-readable ATIS played near-silent.
+        self.am_mag = blocks.complex_to_mag(1)
+        self.am_carrier = grfilter.single_pole_iir_filter_ff(0.0005, 1)  # ~40 ms carrier tracker
+        self.am_div = blocks.divide_ff(1)
+        self.am_dc = blocks.add_const_ff(-1.0)
+        self.am_amp = blocks.multiply_const_ff(AM_GAIN)
+        self.am_gate = blocks.multiply_const_ff(0.0)
         # Audio envelope (mean square over ~100 ms) for the per-channel
         # loudness leveler — measured BEFORE the gate so the gain we apply
         # never feeds back into the measurement.
@@ -167,6 +182,11 @@ class Chain:
         tb.connect(src, self.xlate, self.mag2, self.avg, self.probe)
         tb.connect(self.mag2, self.avg_fast, self.probe_fast)
         tb.connect(self.xlate, self.demod, self.gate)
+        tb.connect(self.xlate, self.am_mag)
+        tb.connect(self.am_mag, (self.am_div, 0))
+        tb.connect(self.am_mag, self.am_carrier, (self.am_div, 1))
+        tb.connect(self.am_div, self.am_dc, self.am_amp, self.am_gate)
+        tb.connect(self.am_gate, (adder, port + MAX_CHANS))
         tb.connect(self.demod, (self.audio_sq, 0))
         tb.connect(self.demod, (self.audio_sq, 1))
         tb.connect(self.audio_sq, self.audio_avg, self.audio_probe)
@@ -177,6 +197,7 @@ class Chain:
         tb.connect(self.gate, (adder, port))
 
         self.gain = 0.0          # current gate value (fade_to bookkeeping)
+        self.kind = "fm"         # demod selection: "fm" (nbfm) or "am" (airband)
         self.level_db = 0.0      # learned per-channel loudness correction (dB)
         self.level_emitted = 0.0 # last trim value reported to Node
         self.speech_db = None    # smoothed voiced-audio level (leveler input)
@@ -194,13 +215,14 @@ class Chain:
         """
         if self.gain == target:
             return
+        gate = self.am_gate if self.kind == "am" else self.gate
         if self.gain > 0.0 and target > 0.0:
-            self.gate.set_k(target)
+            gate.set_k(target)
             self.gain = target
             return
         start = self.gain
         for i in range(1, FADE_STEPS + 1):
-            self.gate.set_k(start + (target - start) * i / FADE_STEPS)
+            gate.set_k(start + (target - start) * i / FADE_STEPS)
             time.sleep(FADE_STEP_S)
         self.gain = target
 
@@ -214,11 +236,13 @@ class Chain:
         self.skip_until = 0.0
         self.warmup = WARMUP_POLLS
 
-    def assign(self, channel_id, offset_hz, priority=False, level_db=0.0):
+    def assign(self, channel_id, offset_hz, priority=False, level_db=0.0, mode="nfm"):
         self.channel_id = channel_id
         self.priority = priority
+        self.kind = "am" if mode == "am" else "fm"
         self.xlate.set_center_freq(offset_hz)
         self.gate.set_k(0.0)   # hard cut is fine: we just retuned, no audio context
+        self.am_gate.set_k(0.0)
         self.gain = 0.0
         # Seed the leveler with the channel's PERSISTED trim (tune carries it
         # back from config) so audio resumes at the learned loudness instead
@@ -231,8 +255,10 @@ class Chain:
     def park(self):
         self.channel_id = None
         self.priority = False
+        self.kind = "fm"
         self.xlate.set_center_freq(0)
         self.gate.set_k(0.0)
+        self.am_gate.set_k(0.0)
         self.gain = 0.0
         self.reset_detection()
 
@@ -327,7 +353,8 @@ class Helper(gr.top_block):
                 c = channels[i]
                 chain.assign(c["id"], c["freqHz"] - center_hz,
                              bool(c.get("priority", False)),
-                             float(c.get("levelDb", 0.0)))
+                             float(c.get("levelDb", 0.0)),
+                             str(c.get("mode", "nfm")))
             else:
                 chain.park()
         emit({"ev": "tuned", "centerHz": center_hz})

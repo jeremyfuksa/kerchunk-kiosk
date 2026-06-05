@@ -26,6 +26,8 @@ export const channelSchema = z.object({
   // without this the first ~second of every transmission after a hop played
   // unleveled ("audio jumps", operator-reported).
   levelTrimDb: z.number().optional(),
+  // Service tags — the operator-defined axis banks pivot on ("air", "rail").
+  tags: z.array(z.string().min(1)).optional(),
   location: locationSchema.optional(),
   // When identification last ran for this channel (hit OR miss) — misses are
   // recorded so the boot enrichment pass doesn't re-query every restart.
@@ -78,6 +80,16 @@ export const configSchema = z.object({
     mixerCard: z.union([z.number().int().nonnegative(), z.string().min(1)]).optional(),
     mixerControl: z.string().min(1).optional(),
   }),
+  // Banks (ROADMAP Idea 1): toggleable channel groups. A bank is a predicate
+  // over derived band and/or service tags; disabling one mutes every channel
+  // it matches (off-wins). See config/banks.ts.
+  banks: z.array(z.object({
+    id: z.string().min(1),
+    name: z.string().min(1),
+    enabled: z.boolean(),
+    band: z.enum(["hf", "vhf", "uhf", "shf"]).optional(),
+    tags: z.array(z.string().min(1)).optional(),
+  })).optional(),
   // Kiosk header extras: clock is always on; weather needs a location
   // (NWS gridpoint resolution wants lat/lon — the operator's zip resolved
   // once at config time).
@@ -128,6 +140,7 @@ export const configSchema = z.object({
 });
 
 export type Channel = z.infer<typeof channelSchema>;
+export type Bank = NonNullable<z.infer<typeof configSchema>["banks"]>[number];
 export type Config = z.infer<typeof configSchema>;
 
 export function defaultConfig(): Config {

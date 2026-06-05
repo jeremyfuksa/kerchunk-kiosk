@@ -10,6 +10,7 @@ import type { NwsWeather } from "./weather.js";
 import { WsHub } from "./ws.js";
 import type { ScannerEngine, ScanConfig } from "./engine/ScannerEngine.js";
 import { setVolume as amixerVolume, setMuted as amixerMuted, type AmixerOpts } from "./audio.js";
+import { isScannable } from "./config/banks.js";
 
 export interface ServerDeps {
   /** Optional identification chain — enriches Close Call channel names. */
@@ -40,7 +41,10 @@ export function toScanConfig(
       ? (cfg.weatherChannel ? [{ ...cfg.weatherChannel, enabled: true }] : [])
       : mode === "monitor"
         ? (monitorChannel ? [{ ...monitorChannel, enabled: true }] : [])
-        : cfg.channels;
+        // Banks gate scanning here, the same chokepoint as channel.enabled.
+        // knownHz below intentionally still covers EVERY configured channel —
+        // muting a bank must not make Close Call rediscover its frequencies.
+        : cfg.channels.filter((c) => isScannable(c, cfg.banks ?? []));
   return {
     channels,
     sampleRate: cfg.scan.sampleRate,
@@ -384,10 +388,21 @@ export function createServer(deps: ServerDeps): { server: Server } {
       const body = await readBody(req);
       const freq = Number(body?.freq);
       if (!Number.isInteger(freq) || freq <= 0) return json(res, 400, { error: "invalid freq" });
+      // Demod mode: explicit request > the configured channel/discovery at
+      // this frequency > nfm. Auditioning AM airband must not demod as FM.
+      // (Discovery modes are identification strings — DMR, NFM, AM — so only
+      // the demodulatable ones count.)
+      const asDemod = (m: unknown): Channel["mode"] | undefined => {
+        const low = typeof m === "string" ? m.toLowerCase() : "";
+        return low === "fm" || low === "nfm" || low === "am" ? low : undefined;
+      };
+      const known = config.channels.find((c) => c.freq === freq)
+        ?? (config.discoveries ?? []).find((d) => d.freq === freq);
+      const mode_ = asDemod(body?.mode) ?? asDemod(known?.mode) ?? "nfm";
       monitorChannel = {
         id: "mon_direct", freq,
         alphaTag: typeof body?.alphaTag === "string" ? body.alphaTag : (freq / 1e6).toFixed(4),
-        mode: "nfm", enabled: true,
+        mode: mode_, enabled: true,
       };
       mode = "monitor";
       await engine.stop();

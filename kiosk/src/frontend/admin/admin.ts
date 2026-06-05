@@ -2,6 +2,8 @@ import type { Channel } from "../../backend/config/schema.js";
 import { NOAA_CHANNELS } from "../../backend/config/noaa.js";
 import { api } from "../lib/api.js";
 import { fmtFreq, esc } from "../lib/format.js";
+import { bandFor, matchesBank } from "../../backend/config/banks.js";
+import type { Bank } from "../../backend/config/schema.js";
 import { ReconnectingWs } from "../lib/wsClient.js";
 import type { EngineEvent } from "../../backend/engine/ScannerEngine.js";
 import "./admin.css";
@@ -72,6 +74,17 @@ export function renderAdmin(root: HTMLElement): void {
             <thead><tr><th><input id="dcAll" type="checkbox" title="Select all" /></th><th>Freq (MHz)</th><th>Name</th><th>Mode</th><th></th></tr></thead>
             <tbody id="dcRows"></tbody>
           </table>
+        </div>
+      </section>
+      <section class="banks">
+        <h2>Banks <span class="hint">toggle a group to mute/unmute it — off wins</span></h2>
+        <div id="bankChips" class="bankChips"></div>
+        <div class="bankAdd">
+          <input id="bkName" placeholder="Bank name (Air, Rail, …)" />
+          <select id="bkBand"><option value="">any band</option><option value="hf">HF</option><option value="vhf">VHF</option><option value="uhf">UHF</option><option value="shf">SHF</option></select>
+          <input id="bkTags" placeholder="tags (comma-sep, optional)" />
+          <button id="bkAdd">+ Bank</button>
+          <span id="bkErr" class="err"></span>
         </div>
       </section>
       <section class="channels">
@@ -164,6 +177,62 @@ export function renderAdmin(root: HTMLElement): void {
     renderDiscoveries();
     renderLockouts();
   }
+
+  // ── Banks: toggleable predicates over band/tags (ROADMAP Idea 1) ──
+  const bankChips = root.querySelector<HTMLElement>("#bankChips")!;
+  const bkErr = root.querySelector<HTMLElement>("#bkErr")!;
+
+  function renderBanks(banks: Bank[]): void {
+    bankChips.innerHTML = banks.length === 0
+      ? `<span class="empty">no banks — add one to bulk-toggle a slice of the channel list</span>`
+      : banks.map((b) => {
+          const n = channels.filter((c) => matchesBank(c, b)).length;
+          const what = [b.band?.toUpperCase(), ...(b.tags ?? [])].filter(Boolean).join(" · ") || "everything";
+          return `<button class="bankChip${b.enabled ? " on" : ""}" data-id="${esc(b.id)}" title="${esc(what)} — click to ${b.enabled ? "mute" : "unmute"}">
+            <span class="bankState"></span>${esc(b.name)} <span class="bankCount">${n}</span>
+            <span class="bankDel" data-id="${esc(b.id)}" title="Delete bank">×</span>
+          </button>`;
+        }).join("");
+    bankChips.querySelectorAll<HTMLButtonElement>(".bankChip").forEach((chip) =>
+      chip.addEventListener("click", async (ev) => {
+        const cfg = await api.getConfig();
+        const id = chip.dataset.id!;
+        if ((ev.target as HTMLElement).classList.contains("bankDel")) {
+          const b = (cfg.banks ?? []).find((x) => x.id === id);
+          if (!b || !confirm(`Delete bank ${b.name}? Its channels keep scanning.`)) return;
+          cfg.banks = (cfg.banks ?? []).filter((x) => x.id !== id);
+        } else {
+          cfg.banks = (cfg.banks ?? []).map((x) => x.id === id ? { ...x, enabled: !x.enabled } : x);
+        }
+        await api.putConfig(cfg);
+        refreshBanks();
+      }));
+  }
+
+  async function refreshBanks(): Promise<void> {
+    const cfg = await api.getConfig();
+    renderBanks(cfg.banks ?? []);
+  }
+
+  root.querySelector<HTMLButtonElement>("#bkAdd")!.addEventListener("click", async () => {
+    bkErr.textContent = "";
+    const name = root.querySelector<HTMLInputElement>("#bkName")!.value.trim();
+    if (!name) { bkErr.textContent = "name required"; return; }
+    const band = root.querySelector<HTMLSelectElement>("#bkBand")!.value;
+    const tags = root.querySelector<HTMLInputElement>("#bkTags")!.value
+      .split(",").map((t) => t.trim()).filter(Boolean);
+    const cfg = await api.getConfig();
+    cfg.banks = [...(cfg.banks ?? []), {
+      id: `bk_${Math.random().toString(36).slice(2, 10)}`,
+      name, enabled: true,
+      ...(band ? { band: band as Bank["band"] } : {}),
+      ...(tags.length ? { tags } : {}),
+    }];
+    await api.putConfig(cfg);
+    root.querySelector<HTMLInputElement>("#bkName")!.value = "";
+    root.querySelector<HTMLInputElement>("#bkTags")!.value = "";
+    refreshBanks();
+  });
 
   // Inline-editable CRUD table. One row at a time is editable: editingId is a
   // channel id, "new" (blank row pending creation), or null. Checkboxes on
@@ -320,11 +389,13 @@ export function renderAdmin(root: HTMLElement): void {
         <label>Freq (MHz) <input id="dwMhz" value="${fmtFreq(c.freq)}" /></label>
         <label>Name <input id="dwTag" value="${esc(c.alphaTag)}" /></label>
         <label>Mode <select id="dwMode">${modeOptions(c.mode)}</select></label>
+        <label>Tags <input id="dwTags" value="${esc((c.tags ?? []).join(", "))}" placeholder="air, rail, ham" /></label>
         <label><input id="dwPrio" type="checkbox" ${c.priority ? "checked" : ""} /> Priority</label>
         <label><input id="dwEn" type="checkbox" ${c.enabled ? "checked" : ""} /> Enabled</label>
         <div><button id="dwSave" class="save">Save</button> <span id="dwErr" class="err"></span></div>
       </div>
       <dl class="dwInfo">
+        <dt>band</dt><dd>${bandFor(c.freq).toUpperCase()}</dd>
         <dt>exact</dt><dd>${c.freq.toLocaleString()} Hz</dd>
         <dt>location</dt><dd>${loc
           ? `${esc([loc.city, loc.state].filter(Boolean).join(", ") || "—")}${loc.lat != null ? ` · ${loc.lat}, ${loc.lon}` : ""} <span class="dwVia">via ${esc(loc.source)}</span>`
@@ -350,6 +421,8 @@ export function renderAdmin(root: HTMLElement): void {
         });
         await api.updateChannel(c.id, {
           ...base,
+          tags: drawer.querySelector<HTMLInputElement>("#dwTags")!.value
+            .split(",").map((t) => t.trim()).filter(Boolean),
           priority: drawer.querySelector<HTMLInputElement>("#dwPrio")!.checked,
           enabled: drawer.querySelector<HTMLInputElement>("#dwEn")!.checked,
         });
@@ -424,6 +497,7 @@ export function renderAdmin(root: HTMLElement): void {
     channels = await api.getChannels();
     chCount.textContent = String(channels.length);
     renderRows();
+    refreshBanks();
     if (drawerId) renderDrawer(); // keep an open dossier fresh after saves
   }
 
