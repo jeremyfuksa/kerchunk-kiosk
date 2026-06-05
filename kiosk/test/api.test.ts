@@ -614,6 +614,7 @@ describe("activity history (Idea 5)", () => {
       release: (id: string, ts: number) => released.push([id, ts]),
       query: () => [{ id: 1, ts: 5, kind: "active", freq: 464275000, alphaTag: "WoF", mode: "nfm", band: "uhf", tags: ["business"], lat: null, lon: null, durationMs: 1500 }],
       sites: () => [{ lat: 39.17, lon: -94.48, hits: 3, lastTs: 5, names: ["WoF"] }],
+      stats: () => ({ totalHits: 3, totalAirtimeMs: 12000, discoveries: 1, topChannels: [], byTag: [], byBand: [], byHour: Array(24).fill(0) }),
     };
     const { server } = createServer({ configStore, engine, activityLog: new ActivityLog(10), wsHub: new WsHub(), staticDir: dir, history });
     return { server, engine, recorded, released };

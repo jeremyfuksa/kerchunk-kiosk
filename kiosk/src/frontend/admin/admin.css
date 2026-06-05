@@ -312,11 +312,12 @@ body {
     display: grid;
     grid-template-columns: minmax(0, 1fr) 380px;
     grid-template-areas:
-      "title title"
-      "disc  card"
-      "banks card"
-      "chan  card"
-      "row   card";
+      "title  title"
+      "disc   card"
+      "banks  card"
+      "chan   card"
+      "stats  card"
+      "row    card";
     column-gap: 1.8rem;
     align-items: start;
   }
@@ -324,6 +325,7 @@ body {
   .admin .discoveries { grid-area: disc; margin-top: 0.4rem; }
   .admin .banks { grid-area: banks; }
   .admin .channels { grid-area: chan; }
+  .admin .insights { grid-area: stats; }
   .admin .moduleRow { grid-area: row; align-self: start; grid-template-columns: 1fr 1fr 1fr; }
   /* The control surface rides along while you triage the lists. */
   .admin .nowCard {
@@ -539,3 +541,22 @@ body {
   color: var(--blue); text-decoration: none;
   margin-left: 0.8rem; vertical-align: 2px;
 }
+
+/* ── Insights ── */
+.admin .inToolbar { display: flex; gap: 0.4rem; margin-bottom: 0.6rem; }
+.admin .inPeriod.active { color: var(--amber); border-color: color-mix(in srgb, var(--spark) 45%, transparent); }
+.admin .inTotals { display: flex; gap: 1.4rem; margin-bottom: 0.7rem; font-size: 0.95rem; color: var(--label); }
+.admin .inTotals b { color: var(--amber); font-size: 1.15rem; }
+.admin .inClock { display: flex; align-items: flex-end; gap: 2px; height: 32px; margin-bottom: 0.8rem; }
+.admin .inClock .inHr { flex: 1; background: color-mix(in srgb, var(--spark) 45%, transparent); border-radius: 1px 1px 0 0; min-height: 3px; }
+.admin .inClock .inHr.now { background: var(--green); }
+.admin .inTop { width: 100%; border-collapse: collapse; margin-bottom: 0.6rem; }
+.admin .inTop td { padding: 0.18rem 0.4rem; font-size: 0.85rem; border: none; }
+.admin .inTop .inName { white-space: nowrap; max-width: 14rem; overflow: hidden; text-overflow: ellipsis; }
+.admin .inTop .inBar { width: 40%; }
+.admin .inTop .inBar div { height: 8px; background: color-mix(in srgb, var(--spark) 60%, transparent); border-radius: 2px; min-width: 2px; }
+.admin .inTop .inN { color: var(--amber); font-variant-numeric: tabular-nums; text-align: right; }
+.admin .inTop .inAir { color: var(--dim); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+.admin .inSplit { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.admin .inChip { font-size: 0.75rem; color: var(--label); border: 1px solid var(--panel-edge); border-radius: 8px; padding: 0.06rem 0.5rem; }
+.admin .inChip.tag { color: var(--blue); }

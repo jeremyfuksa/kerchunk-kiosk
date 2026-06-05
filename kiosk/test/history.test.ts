@@ -70,3 +70,43 @@ describe("sites() — distinct transmitter sites for the map's antenna layer", (
     expect(wof.names).toContain("WoF Security");
   });
 });
+
+describe("stats() — aggregates for Insights (Idea 9)", () => {
+  function seed(h: HistoryStore): void {
+    // two channels, tags, durations, one discovery, spread over hours
+    h.record({ ts: 3_600_000 * 1, kind: "active", channelId: "a", freq: 464275000, alphaTag: "WoF Maint", tags: ["business"] });
+    h.release("a", 3_600_000 * 1 + 8000);
+    h.record({ ts: 3_600_000 * 1 + 60_000, kind: "active", channelId: "a", freq: 464275000, alphaTag: "WoF Maint", tags: ["business"] });
+    h.release("a", 3_600_000 * 1 + 64_000);
+    h.record({ ts: 3_600_000 * 2, kind: "active", channelId: "b", freq: 146790000, alphaTag: "W0TE", tags: ["ham"] });
+    h.release("b", 3_600_000 * 2 + 3000);
+    h.record({ ts: 3_600_000 * 2 + 10, kind: "closecall", channelId: "cc", freq: 462887500, alphaTag: "Close Call" });
+  }
+
+  it("totals, top channels with airtime, discoveries", () => {
+    const h = make(); seed(h);
+    const s = h.stats(0);
+    expect(s.totalHits).toBe(4); // 3 actives + 1 closecall
+    expect(s.discoveries).toBe(1);
+    expect(s.topChannels[0]).toMatchObject({ alphaTag: "WoF Maint", hits: 2, airtimeMs: 12000 });
+    expect(s.topChannels[1]).toMatchObject({ alphaTag: "W0TE", hits: 1, airtimeMs: 3000 });
+  });
+
+  it("aggregates by tag and by band", () => {
+    const h = make(); seed(h);
+    const s = h.stats(0);
+    expect(s.byTag.find((t) => t.tag === "business")?.hits).toBe(2);
+    expect(s.byTag.find((t) => t.tag === "ham")?.hits).toBe(1);
+    expect(s.byBand.find((b) => b.band === "uhf")?.hits).toBe(3); // WoF x2 + closecall
+    expect(s.byBand.find((b) => b.band === "vhf")?.hits).toBe(1);
+  });
+
+  it("activity clock buckets by hour and respects since", () => {
+    const h = make(); seed(h);
+    const s = h.stats(0);
+    expect(s.byHour).toHaveLength(24);
+    expect(s.byHour.reduce((a, b) => a + b, 0)).toBe(4);
+    const recent = h.stats(3_600_000 * 2 - 1);
+    expect(recent.totalHits).toBe(2);
+  });
+});
