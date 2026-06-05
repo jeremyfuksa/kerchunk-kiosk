@@ -1,7 +1,17 @@
 import type { Channel } from "../config/schema.js";
 
+// A channel as the engine scans it: the config channel plus per-channel
+// scan-profile overrides resolved from its banks (ROADMAP Idea 7). The
+// engine/helper never see banks — only these concrete numbers.
+export type ScanChannel = Channel & {
+  openAboveFloorDb?: number;
+  noiseQuietDb?: number;
+  hangMs?: number;
+  dwellWeight?: number;
+};
+
 export interface ScanConfig {
-  channels: Channel[];
+  channels: ScanChannel[];
   sampleRate: number;
   squelchLevel: number;
   dwellMs: number;

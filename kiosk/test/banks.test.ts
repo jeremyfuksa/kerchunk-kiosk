@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { bandFor, matchesBank, isScannable, isAudible } from "../src/backend/config/banks.js";
+import { bandFor, matchesBank, isScannable, isAudible, profileFor } from "../src/backend/config/banks.js";
 import type { Channel, Bank } from "../src/backend/config/schema.js";
 
 function ch(freq: number, over: Partial<Channel> = {}): Channel {
@@ -87,5 +87,21 @@ describe("isAudible (hear vs see)", () => {
 
   it("a SEE bank's channels still scan (visible in history)", () => {
     expect(isScannable(ch(160_650_000, { tags: ["rail"] }), banks)).toBe(true);
+  });
+});
+
+describe("profileFor — per-bank scan profiles (Idea 7)", () => {
+  const ch = { id: "c1", freq: 160_650_000, alphaTag: "BNSF Road", mode: "nfm" as const, enabled: true, tags: ["rail"] };
+  it("inherits the first matching enabled bank's knobs, field-wise", () => {
+    const banks = [
+      { id: "b1", name: "Rail", enabled: true, tags: ["rail"], hangMs: 4000 },
+      { id: "b2", name: "VHF", enabled: true, band: "vhf" as const, hangMs: 9999, dwellWeight: 2 },
+    ];
+    // hangMs from Rail (first match wins); dwellWeight falls through to VHF.
+    expect(profileFor(ch, banks)).toEqual({ hangMs: 4000, dwellWeight: 2 });
+  });
+  it("disabled banks contribute nothing; no match = empty (global defaults)", () => {
+    expect(profileFor(ch, [{ id: "b1", name: "Rail", enabled: false, tags: ["rail"], hangMs: 4000 }])).toEqual({});
+    expect(profileFor(ch, [{ id: "b3", name: "Air", enabled: true, tags: ["air"], openAboveFloorDb: 6 }])).toEqual({});
   });
 });

@@ -2,7 +2,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { createInterface, type Interface as ReadlineInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import type {
-  ScannerEngine, ScanConfig, EngineState, EngineEvent, EngineListener,
+  ScannerEngine, ScanConfig, EngineState, EngineEvent, EngineListener, ScanChannel,
 } from "./ScannerEngine.js";
 import type { Channel } from "../config/schema.js";
 import { groupChannels, type ChannelGroup } from "./grouping.js";
@@ -72,7 +72,7 @@ export class WidebandEngine implements ScannerEngine {
   private _state: EngineState = "stopped";
 
   private config: ScanConfig | null = null;
-  private groups: ChannelGroup[] = [];
+  private groups: Array<ChannelGroup<ScanChannel>> = [];
   private groupIndex = 0;
 
   private child: ChildProcess | null = null;
@@ -304,6 +304,11 @@ export class WidebandEngine implements ScannerEngine {
         levelDb: c.levelTrimDb ?? 0,
         mode: c.mode,
         audible: c.audible !== false,
+        // Per-channel squelch profile (ROADMAP Idea 7) — omitted = the
+        // helper's global defaults. Resolved from banks by the server.
+        ...(c.openAboveFloorDb !== undefined ? { openDb: c.openAboveFloorDb } : {}),
+        ...(c.noiseQuietDb !== undefined ? { quietDb: c.noiseQuietDb } : {}),
+        ...(c.hangMs !== undefined ? { hangMs: c.hangMs } : {}),
       })),
       monitor: this.config?.monitor ?? false,
       // Close Call: ON by default for this engine; knownHz carries EVERY
@@ -334,7 +339,14 @@ export class WidebandEngine implements ScannerEngine {
         this.groupStartedAt = this.now();
         return;
       }
-      if (this.now() - this.groupStartedAt >= dwell) {
+      // Weighted dwell (ROADMAP Idea 7): a window's park time scales by
+      // the max dwellWeight among its channels — the busiest bank in a
+      // mixed window dominates. Default weight 1 = the global dwell.
+      const group = this.groups[this.groupIndex];
+      const weight = group
+        ? Math.max(...group.channels.map((c) => c.dwellWeight ?? 1))
+        : 1;
+      if (this.now() - this.groupStartedAt >= dwell * weight) {
         this.groupIndex = (this.groupIndex + 1) % this.groups.length;
         this.sendTune();
       }

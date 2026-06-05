@@ -11,7 +11,7 @@ import type { HistoryStore } from "./history.js";
 import { WsHub } from "./ws.js";
 import type { ScannerEngine, ScanConfig } from "./engine/ScannerEngine.js";
 import { setVolume as amixerVolume, setMuted as amixerMuted, type AmixerOpts } from "./audio.js";
-import { isScannable, isAudible } from "./config/banks.js";
+import { isScannable, isAudible, profileFor } from "./config/banks.js";
 
 export interface ServerDeps {
   /** Optional identification chain — enriches Close Call channel names. */
@@ -51,7 +51,13 @@ export function toScanConfig(
         // Close Call rediscover its frequencies.
         : cfg.channels
             .filter((c) => isScannable(c, cfg.banks ?? []))
-            .map((c) => ({ ...c, audible: isAudible(c, cfg.banks ?? []) }));
+            // Bank scan profiles (Idea 7) resolve here too — the engine and
+            // helper only ever see concrete per-channel numbers.
+            .map((c) => ({
+              ...c,
+              audible: isAudible(c, cfg.banks ?? []),
+              ...profileFor(c, cfg.banks ?? []),
+            }));
   return {
     channels,
     sampleRate: cfg.scan.sampleRate,

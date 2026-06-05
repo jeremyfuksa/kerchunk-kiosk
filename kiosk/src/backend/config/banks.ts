@@ -38,3 +38,27 @@ export function isAudible(channel: Channel, banks: Bank[]): boolean {
   if (channel.audible === false) return false;
   return !banks.some((b) => b.enabled && b.audible === false && matchesBank(channel, b));
 }
+
+// Per-bank scan profiles (ROADMAP Idea 7). Field-wise FIRST-MATCH-WINS in
+// config order, enabled banks only — predictable and documentable, no
+// cleverness. Disabled banks contribute nothing (their channels aren't
+// scanned anyway unless another bank covers them).
+export interface BankProfile {
+  openAboveFloorDb?: number;
+  noiseQuietDb?: number;
+  hangMs?: number;
+  dwellWeight?: number;
+}
+
+const PROFILE_KEYS = ["openAboveFloorDb", "noiseQuietDb", "hangMs", "dwellWeight"] as const;
+
+export function profileFor(channel: Channel, banks: Bank[]): BankProfile {
+  const out: BankProfile = {};
+  for (const b of banks) {
+    if (!b.enabled || !matchesBank(channel, b)) continue;
+    for (const k of PROFILE_KEYS) {
+      if (out[k] === undefined && b[k] !== undefined) out[k] = b[k];
+    }
+  }
+  return out;
+}

@@ -101,6 +101,15 @@ export const configSchema = z.object({
     audible: z.boolean().optional(),
     band: z.enum(["hf", "vhf", "uhf", "shf"]).optional(),
     tags: z.array(z.string().min(1)).optional(),
+    // Per-bank scan profile (ROADMAP Idea 7) — overrides the global scan
+    // block for this bank's channels. Resolution: field-wise first-match
+    // in config order among enabled banks; absent = global. Squelch trio
+    // applies per CHANNEL (windows can mix banks); dwellWeight applies
+    // per WINDOW (max across its channels — the busiest bank dominates).
+    openAboveFloorDb: z.number().positive().optional(),
+    noiseQuietDb: z.number().negative().optional(),
+    hangMs: z.number().positive().optional(),
+    dwellWeight: z.number().positive().optional(),
   })).optional(),
   // Kiosk header extras: clock is always on; weather needs a location
   // (NWS gridpoint resolution wants lat/lon — the operator's zip resolved
