@@ -105,6 +105,11 @@ export const configSchema = z.object({
     weatherLon: z.number(),
     // Maps JavaScript API key for the /map view (operator-chosen provider).
     googleMapsApiKey: z.string().optional(),
+    // Map framing (defaults to the QTH at zoom 10). The operator framed the
+    // metro from a google.com/maps URL: @lat,lon,zoom.
+    mapLat: z.number().optional(),
+    mapLon: z.number().optional(),
+    mapZoom: z.number().int().optional(),
   }).optional(),
   // RepeaterBook lookup (Close Call enrichment). userAgent must be the
   // string REGISTERED with RepeaterBook; states are full names ("Missouri").

@@ -1,10 +1,11 @@
 import { ReconnectingWs } from "../lib/wsClient.js";
 import { api } from "../lib/api.js";
 import { esc, fmtFreq } from "../lib/format.js";
-import { BlipField } from "./blips.js";
+import { BlipField, ringPoint } from "./blips.js";
 import type { EngineEvent } from "../../backend/engine/ScannerEngine.js";
 import icoTower from "lucide-static/icons/radio-tower.svg?raw";
 import icoHouse from "lucide-static/icons/house.svg?raw";
+import icoRadio from "lucide-static/icons/radio.svg?raw";
 import "./map.css";
 
 // Lucide SVGs as Google Maps marker icons: bake the color in (markers can't
@@ -36,6 +37,7 @@ export function renderMap(root: HTMLElement): void {
       <span class="lgAnt"></span> known site
       <span class="lgBlip active"></span> channel hit
       <span class="lgBlip cc"></span> close call
+      <span class="lgBlip nofix"></span> no fix (ring)
       <span class="lgNote">blips mark transmitter sites · fade over 60 s</span>
     </div>
     <div id="mapMsg" class="mapMsg"></div>
@@ -50,20 +52,27 @@ export function renderMap(root: HTMLElement): void {
         Add one in the admin's <b>Scan tuning</b> section (Maps JavaScript API, key restricted to this host).`;
       return;
     }
-    const center = {
+    const home = {
       lat: cfg.display?.weatherLat ?? 39.1,
       lng: cfg.display?.weatherLon ?? -94.58,
+    };
+    const framing = {
+      center: {
+        lat: cfg.display?.mapLat ?? home.lat,
+        lng: cfg.display?.mapLon ?? home.lng,
+      },
+      zoom: cfg.display?.mapZoom ?? 10,
     };
     const s = document.createElement("script");
     s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&v=weekly`;
     s.onerror = () => { msg.textContent = "Google Maps failed to load (network or key)."; };
-    s.onload = () => start(center);
+    s.onload = () => start(home, framing);
     document.head.appendChild(s);
   });
 
-  function start(center: { lat: number; lng: number }): void {
+  function start(home: { lat: number; lng: number }, framing: { center: { lat: number; lng: number }; zoom: number }): void {
     const map = new google.maps.Map(root.querySelector("#gmap")!, {
-      center, zoom: 10,
+      center: framing.center, zoom: framing.zoom,
       disableDefaultUI: true, zoomControl: true,
       backgroundColor: "#1c1f26",
       styles: DARK_STYLE,
@@ -71,7 +80,7 @@ export function renderMap(root: HTMLElement): void {
 
     // Home: the kiosk's own antenna. Small, dim, unmistakable.
     new google.maps.Marker({
-      map, position: center, title: "Kerchunk QTH",
+      map, position: home, title: "Kerchunk QTH",
       icon: lucideMarker(icoHouse, "#9299a5", 18),
       zIndex: 1,
     });
@@ -134,7 +143,52 @@ export function renderMap(root: HTMLElement): void {
       })
       .catch(() => {});
 
-    const COLORS = { active: "#ff6b35", closecall: "#dc3a38" }; // spark / flamingo
+    const COLORS = { active: "#ff6b35", closecall: "#dc3a38", nofix: "#4a7c7e" }; // spark / flamingo / pine
+
+    // ── The unknown-origin ring (operator's pick): a dashed pine circle
+    // around the QTH; activity we can't place pulses at a DETERMINISTIC
+    // spot on it (hash of frequency), so GMRS 19 is always "its" dot —
+    // identity without fake geography.
+    const RING_M = 7000;
+    const ringPath: Array<{ lat: number; lng: number }> = [];
+    for (let i = 0; i <= 64; i++) {
+      const a = (i / 64) * 2 * Math.PI;
+      ringPath.push({
+        lat: home.lat + (RING_M * Math.cos(a)) / 111_320,
+        lng: home.lng + (RING_M * Math.sin(a)) / (111_320 * Math.cos((home.lat * Math.PI) / 180)),
+      });
+    }
+    new google.maps.Polyline({
+      map, path: ringPath, clickable: false,
+      strokeOpacity: 0,
+      icons: [{
+        icon: { path: "M 0,-1 0,1", strokeOpacity: 0.45, strokeColor: COLORS.nofix, scale: 2 },
+        offset: "0", repeat: "14px",
+      }],
+    });
+    new google.maps.Marker({
+      map, position: ringPath[0], clickable: false,
+      icon: { path: "M 0 0", scale: 0 } as any,
+      label: { text: "NO FIX", color: "#4a7c7e", fontSize: "11px", fontFamily: "Barlow Condensed, sans-serif" },
+    });
+
+    // Persistent identity markers for heard-once unlocated channels (the
+    // ring's parallel to the antenna layer — Lucide 'radio', dim pine).
+    const ringIcon = lucideMarker(icoRadio, "#4a7c7e", 15);
+    const ringMarks = new Map<number, any>();
+
+    function nofix(freqHz: number, alphaTag: string, ts: number): void {
+      const pos = ringPoint(home, RING_M, freqHz);
+      field.add({ lat: pos.lat, lon: pos.lng, alphaTag, kind: "nofix", ts });
+      if (Date.now() - ts < 2000) ping(pos.lat, pos.lng, COLORS.nofix);
+      if (!ringMarks.has(freqHz)) {
+        const marker = new google.maps.Marker({
+          map, position: pos, icon: ringIcon,
+          title: `${alphaTag} — origin unknown (ring position is symbolic)`,
+        });
+        ringMarks.set(freqHz, marker);
+      }
+    }
 
     function push(lat: number, lon: number, alphaTag: string, kind: "active" | "closecall", ts: number): void {
       field.add({ lat, lon, alphaTag, kind, ts });
@@ -162,11 +216,18 @@ export function renderMap(root: HTMLElement): void {
     // Live feed.
     const proto = location.protocol === "https:" ? "wss" : "ws";
     new ReconnectingWs(`${proto}://${location.host}/ws`, (ev: EngineEvent) => {
-      if (ev.type === "active" && ev.channel.location?.lat != null && ev.channel.location.lon != null) {
-        push(ev.channel.location.lat, ev.channel.location.lon, ev.channel.alphaTag || fmtFreq(ev.freq), "active", Date.now());
+      if (ev.type === "active") {
+        if (ev.channel.location?.lat != null && ev.channel.location.lon != null) {
+          push(ev.channel.location.lat, ev.channel.location.lon, ev.channel.alphaTag || fmtFreq(ev.freq), "active", Date.now());
+        } else {
+          nofix(ev.freq, ev.channel.alphaTag || fmtFreq(ev.freq), Date.now());
+        }
+      } else if (ev.type === "closecall") {
+        // discoveries are unlocated at the moment they fire (identification
+        // is async) — they pulse on the ring; once enriched, future history
+        // backfills place them properly.
+        nofix(ev.freqHz, `Close Call ${fmtFreq(ev.freqHz)}`, Date.now());
       }
-      // closecall events carry no location yet (identification is async);
-      // the next history backfill will place them once enriched.
     }).connect();
 
     function tick(): void {

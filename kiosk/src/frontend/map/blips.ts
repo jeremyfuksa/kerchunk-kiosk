@@ -7,7 +7,7 @@ export interface BlipInput {
   lat: number;
   lon: number;
   alphaTag: string;
-  kind: "active" | "closecall";
+  kind: "active" | "closecall" | "nofix";
   ts: number;
 }
 
@@ -44,4 +44,21 @@ export class BlipField {
     }
     return out;
   }
+}
+
+// The unknown-origin ring: activity we cannot locate (GMRS simplex, mobiles,
+// unidentified Close Calls) gets a DETERMINISTIC spot on a dashed ring around
+// the QTH — same frequency, same spot, every time — pseudo-spatial identity
+// without claiming real geography. Golden-angle hashing spreads adjacent
+// channels (25 kHz neighbors) far apart around the circle.
+export function ringPoint(
+  home: { lat: number; lng: number },
+  radiusM: number,
+  freqHz: number,
+): { lat: number; lng: number } {
+  const angle = ((freqHz / 12_500) * 137.508) % 360;
+  const rad = (angle * Math.PI) / 180;
+  const dLat = (radiusM * Math.cos(rad)) / 111_320;
+  const dLng = (radiusM * Math.sin(rad)) / (111_320 * Math.cos((home.lat * Math.PI) / 180));
+  return { lat: home.lat + dLat, lng: home.lng + dLng };
 }
