@@ -99,6 +99,9 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
     // can land on fractional zooms (z9.7) — an exact fit to the pin field.
     // Raster maps floor to integer zoom, showing up to double the area.
     // Vector styling lives in the console; in-code styles are raster-only.
+    // Marker scale: the kiosk (output-only) is read from across the room —
+    // icons get ~1.6x; the interactive /map page is at arm's length.
+    const mk = interactive ? 1 : 1.6;
     const map = new google.maps.Map(root, {
       center: framing.center, zoom: framing.zoom,
       disableDefaultUI: true,
@@ -116,7 +119,7 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
     // Home: the kiosk's own antenna. Small, dim, unmistakable.
     new google.maps.Marker({
       map, position: home, title: "Kerchunk QTH",
-      icon: lucideMarker(icoHouse, "#9299a5", 18),
+      icon: lucideMarker(icoHouse, "#9299a5", Math.round(18 * mk)),
       zIndex: 1,
     });
 
@@ -157,7 +160,7 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
     // ── Persistent antenna layer: any site heard at least once gets a small
     // mast icon that STAYS — the map remembers the RF neighborhood; live
     // pulses play on top of it.
-    const antennaIcon = lucideMarker(icoTower, "#ffc05c", 18); // campfire golden-amber (dark)
+    const antennaIcon = lucideMarker(icoTower, "#ffc05c", Math.round(18 * mk)); // campfire golden-amber (dark)
     const antennas = new Map<string, any>();
     const siteInfo = new google.maps.InfoWindow({ disableAutoPan: true });
 
@@ -226,10 +229,16 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
     for (const p of ringPath) bounds.extend(p);
     // Wait for the map's first idle as well as the data: fitBounds against
     // a not-yet-laid-out viewport computes minimum zoom (the whole world).
+    // Kiosk padding is asymmetric: the map runs UNDER the floating topbar
+    // and the now-playing card, so the fit must keep pins clear of both —
+    // Cameron (northernmost) hid behind the bar with uniform 56px.
+    const fitPad = interactive
+      ? 56
+      : { top: 150, left: 120, right: 70, bottom: 70 };
     const mapReady = new Promise<void>((resolve) =>
       google.maps.event.addListenerOnce(map, "idle", resolve));
     void Promise.allSettled([sitesReady, channelsReady, mapReady])
-      .then(() => map.fitBounds(bounds, 56));
+      .then(() => map.fitBounds(bounds, fitPad));
     new google.maps.Polyline({
       map, path: ringPath, clickable: false,
       strokeOpacity: 0,
@@ -241,12 +250,12 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
     new google.maps.Marker({
       map, position: ringPath[0], clickable: false,
       icon: { path: "M 0 0", scale: 0 } as any,
-      label: { text: "NO FIX", color: "#4a7c7e", fontSize: "11px", fontFamily: "Barlow Condensed, sans-serif" },
+      label: { text: "NO FIX", color: "#4a7c7e", fontSize: interactive ? "11px" : "16px", fontFamily: "Barlow Condensed, sans-serif" },
     });
 
     // Persistent identity markers for heard-once unlocated channels (the
     // ring's parallel to the antenna layer — Lucide 'radio', dim pine).
-    const ringIcon = lucideMarker(icoRadio, "#4a7c7e", 15);
+    const ringIcon = lucideMarker(icoRadio, "#4a7c7e", Math.round(15 * mk));
     const ringMarks = new Map<number, any>();
 
     function nofix(freqHz: number, alphaTag: string, ts: number): void {
