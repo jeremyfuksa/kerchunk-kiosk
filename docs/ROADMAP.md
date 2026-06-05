@@ -662,6 +662,64 @@ lane's audio), but *reliable* catch-and-tune wants weather on a held or dedicate
 slot — so its robust form rides on Idea 10. Build the decoder when convenient;
 upgrade its reliability as the weather slot firms up.
 
+## Architecture: modularity (how these fit together)
+
+A recurring question: should these be **plugins/extensions** on the core rather
+than features welded into it? Mostly yes — but the boundary is sharp, and the
+codebase already points to where it falls.
+
+**The dividing line: observe vs. change.** The `EngineEvent` union fanned out
+over the WebSocket is already a clean event bus, and the identification chain
+(RepeaterBook → RadioReference in `lookup.ts`) is already a pluggable provider
+chain. Anything that just **observes** the radio and emits UI or side-effects is
+plugin-shaped almost for free. Anything that **changes how the radio fundamentally
+works** is core and resists a clean plugin seam. Sorting the ideas by that test:
+
+- **Tier A — natural plugins (downstream of the event bus).** Map (2, now
+  shipped — and it validated the thesis: it's a pure consumer of the event
+  stream), artistic mode (3), persistent history (5), stats (9), alerts (6), the
+  weather-radar overlay, SAME *output* handling (11). Each takes the event stream
+  in and emits a panel / a stored row / a notification, touching nothing in the
+  DSP core. This is where a module model genuinely pays off.
+- **Tier B — core data-model changes (plugin-resistant).** Banks (1), hear-vs-see
+  (4), per-bank profiles (7). These mutate the channel/config *schema* itself, and
+  the engine has to honor them at grouping/tune time — so they can't be isolated
+  plugins. They're core features wearing a feature flag, not extensions.
+- **Tier C — DSP / RF pipeline (do *not* make these plugins).** Multi-SDR (10),
+  SAME *decode* (11), DMR (12). They live in the Python flowgraph and the device
+  layer, cross the Node↔Python boundary, and run in the real-time path. A plugin
+  seam here buys complexity and costs latency/clarity. The crown jewel — squelch,
+  quieting, speaker-ownership — stays a small, stable kernel, **not** an
+  extension point.
+
+**The trap to avoid.** Don't build a plugin *SDK* before you've built three
+plugins. You'll guess the seams wrong, then maintain a frozen public contract for
+an audience of one, on a single appliance that isn't a third-party platform yet.
+Plugin systems earn their keep when *others* extend you or you ship different
+feature sets per deployment — neither is true today.
+
+**Recommended shape: a lightweight internal module pattern now; a public SDK
+later, if ever.** Define a small in-tree contract — a "module" gets:
+1. a read-only subscription to the engine event stream;
+2. a **namespaced config slice** — a zod fragment merged into the root schema
+   (this is the one real core change needed, since `schema.ts` is monolithic
+   today);
+3. optional HTTP routes + WS message types;
+4. optional registration of a dashboard panel / admin section (a **panel
+   registry**, which the proposed art/map "modes" were already drifting toward).
+
+Modules live in the repo, are statically listed, and are enable/disable-able from
+config (a nice appliance fit — turn off the art on a low-power box). That's the
+**modular monolith**: it buys the real wins — a lean, pure DSP core; isolation;
+per-feature toggles; forced clean boundaries — without dynamic loading or a frozen
+API. Apply the rule of three: build map, stats, and alerts against the internal
+contract, see what they actually share, and *extract* the interface from real
+usage. If third-party extension appetite ever appears, that battle-tested
+internal contract becomes the public SDK — earned, not speculated.
+
+**The prize isn't a plugin marketplace — it's keeping the radio kernel small and
+stable while the observers multiply.** The event bus is the seam to do it on.
+
 ## Open questions for the operator
 
 - **Map provider:** Google Maps (familiar, but needs an API key, billing, and a
