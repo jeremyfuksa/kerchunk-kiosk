@@ -30,6 +30,9 @@ const HISTORY_BACKFILL_MS = 3_600_000;
 
 declare const google: any; // loaded dynamically with the configured key
 
+// The full-page /map view: the activity map plus its legend. The kiosk
+// dashboard mounts the SAME map via mountActivityMap (map-as-stage), without
+// the legend and without input affordances.
 export function renderMap(root: HTMLElement): void {
   root.innerHTML = `<div class="mapWrap">
     <div id="gmap"></div>
@@ -45,39 +48,63 @@ export function renderMap(root: HTMLElement): void {
   const msg = root.querySelector<HTMLElement>("#mapMsg")!;
   root.querySelector<HTMLElement>(".lgAnt")!.innerHTML = icoTower;
 
-  void api.getConfig().then((cfg) => {
-    const key = cfg.display?.googleMapsApiKey;
-    if (!key) {
-      msg.innerHTML = `No Google Maps API key configured.<br/>
+  void mountActivityMap(root.querySelector<HTMLElement>("#gmap")!, { interactive: true })
+    .then((mounted) => {
+      if (!mounted) {
+        msg.innerHTML = `No Google Maps API key configured.<br/>
         Add one in the admin's <b>Scan tuning</b> section (Maps JavaScript API, key restricted to this host).`;
-      return;
-    }
-    const home = {
-      lat: cfg.display?.weatherLat ?? 39.1,
-      lng: cfg.display?.weatherLon ?? -94.58,
-    };
-    const framing = {
-      center: {
-        lat: cfg.display?.mapLat ?? home.lat,
-        lng: cfg.display?.mapLon ?? home.lng,
-      },
-      zoom: cfg.display?.mapZoom ?? 10,
-    };
+      }
+    })
+    .catch(() => { msg.textContent = "Google Maps failed to load (network or key)."; });
+}
+
+export interface ActivityMapOptions {
+  /** false = output-only surface (the kiosk): no zoom control, no gestures. */
+  interactive?: boolean;
+}
+
+/**
+ * Mount the live activity map into `host`. Resolves false when no Maps API
+ * key is configured (the caller keeps its non-map layout); rejects when the
+ * Maps script itself fails to load.
+ */
+export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptions = {}): Promise<boolean> {
+  const interactive = opts.interactive !== false;
+  const cfg = await api.getConfig();
+  const key = cfg.display?.googleMapsApiKey;
+  if (!key) return false;
+  const home = {
+    lat: cfg.display?.weatherLat ?? 39.1,
+    lng: cfg.display?.weatherLon ?? -94.58,
+  };
+  const framing = {
+    center: {
+      lat: cfg.display?.mapLat ?? home.lat,
+      lng: cfg.display?.mapLon ?? home.lng,
+    },
+    zoom: cfg.display?.mapZoom ?? 10,
+  };
+  await new Promise<void>((resolve, reject) => {
     const s = document.createElement("script");
     s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&v=weekly`;
-    s.onerror = () => { msg.textContent = "Google Maps failed to load (network or key)."; };
-    s.onload = () => start(home, framing, cfg.display?.googleMapsMapId);
+    s.onerror = () => reject(new Error("maps script failed"));
+    s.onload = () => resolve();
     document.head.appendChild(s);
   });
+  start(host, home, framing, cfg.display?.googleMapsMapId, interactive);
+  return true;
 
-  function start(home: { lat: number; lng: number }, framing: { center: { lat: number; lng: number }; zoom: number }, mapId?: string): void {
+  function start(root: HTMLElement, home: { lat: number; lng: number }, framing: { center: { lat: number; lng: number }; zoom: number }, mapId?: string, interactive = true): void {
     // With a cloud-console Map ID the map renders as VECTOR and fitBounds
     // can land on fractional zooms (z9.7) — an exact fit to the pin field.
     // Raster maps floor to integer zoom, showing up to double the area.
     // Vector styling lives in the console; in-code styles are raster-only.
-    const map = new google.maps.Map(root.querySelector("#gmap")!, {
+    const map = new google.maps.Map(root, {
       center: framing.center, zoom: framing.zoom,
-      disableDefaultUI: true, zoomControl: true,
+      disableDefaultUI: true,
+      zoomControl: interactive,
+      gestureHandling: interactive ? "greedy" : "none",
+      keyboardShortcuts: interactive,
       backgroundColor: "#1c1f26",
       ...(mapId
         // colorScheme keeps the base map dark even while the console style

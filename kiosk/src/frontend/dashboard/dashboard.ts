@@ -3,6 +3,7 @@ import { ReconnectingWs } from "../lib/wsClient.js";
 import { api } from "../lib/api.js";
 import { fmtFreq, esc } from "../lib/format.js";
 import icoBellRing from "lucide-static/icons/bell-ring.svg?raw";
+import { mountActivityMap } from "../map/map.js";
 import "./dashboard.css";
 
 const ICO_BELL = icoBellRing;
@@ -89,6 +90,7 @@ export function renderDashboard(root: HTMLElement): void {
 
   root.innerHTML = `
     <div class="dash">
+      <div id="mapBase" class="mapBase"></div>
       <header class="topbar">
         <div id="modeBadge" class="modeBadge"></div>
         <div class="topbarSpacer"></div>
@@ -105,6 +107,11 @@ export function renderDashboard(root: HTMLElement): void {
         <aside class="log"><h2>Recent</h2><ul id="logList"></ul></aside>
       </div>
     </div>`;
+  const dashEl = root.querySelector<HTMLElement>(".dash")!;
+  void mountActivityMap(root.querySelector<HTMLElement>("#mapBase")!, { interactive: false })
+    .then((mounted) => { if (mounted) dashEl.classList.add("mapStage"); })
+    .catch(() => { /* no map = classic dashboard, nothing lost */ });
+
   const nowEl = root.querySelector<HTMLElement>("#now")!;
   const logEl = root.querySelector<HTMLElement>("#logList")!;
   const modeBadge = root.querySelector<HTMLElement>("#modeBadge")!;
@@ -165,9 +172,15 @@ export function renderDashboard(root: HTMLElement): void {
       // onto a bar. -35 dB = floor-ish, +5 dB = hot; clamp outside.
       const db = state.signalDb;
       const pct = db === null ? 0 : Math.max(0, Math.min(100, ((db + 35) / 40) * 100));
+      // Tag-first hierarchy (operator direction): the NAME is what you read
+      // from across the room; the frequency is the supporting detail.
+      const hero = state.nowPlaying.alphaTag || fmtFreq(state.nowPlaying.freq);
+      const freqLine = state.nowPlaying.alphaTag
+        ? `<div class="freq">${fmtFreq(state.nowPlaying.freq)}<span class="unit">MHz</span></div>`
+        : "";
       nowEl.innerHTML = `<div class="active"><span class="dot"></span>ACTIVE</div>
-        <div class="freq">${fmtFreq(state.nowPlaying.freq)}<span class="unit">MHz</span></div>
-        <div class="tag">${esc(state.nowPlaying.alphaTag)}</div>
+        <div class="tag">${esc(hero)}</div>
+        ${freqLine}
         <div class="meter"><div class="meterFill" style="width:${pct.toFixed(0)}%"></div></div>
         <div class="meterDb">${db === null ? "" : db.toFixed(1) + " dB"}</div>`;
     } else {

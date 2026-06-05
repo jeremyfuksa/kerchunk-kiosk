@@ -114,34 +114,36 @@ body {
 }
 @keyframes breathe { 50% { opacity: 0.45; } }
 
-.now .freq {
-  font-size: clamp(4rem, 11vw, 8.5rem);
+/* Tag-first hierarchy (operator direction): the NAME carries the glow and
+   the size — it's what you read from across the room. The frequency is the
+   supporting mono line underneath. */
+.now .tag {
+  font-family: var(--cond);
   font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  line-height: 1.05;
+  font-size: clamp(3rem, 7.5vw, 6.2rem);
+  line-height: 1.08;
   color: var(--amber);
   text-shadow: 0 0 14px color-mix(in srgb, var(--spark) 35%, transparent), 0 0 50px color-mix(in srgb, var(--spark) 15%, transparent);
-  letter-spacing: -0.02em;
+  letter-spacing: 0.01em;
+  max-width: 92%;
+  text-align: center;
+  text-wrap: balance;
+}
+.now .freq {
+  font-size: clamp(1.7rem, 3.6vw, 2.8rem);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--label);
+  margin-top: 0.55rem;
+  letter-spacing: 0.02em;
 }
 .now .freq .unit {
   font-family: var(--cond);
-  font-size: 0.22em; font-weight: 600;
+  font-size: 0.5em; font-weight: 600;
   letter-spacing: 0.3em;
-  color: var(--amber-soft);
-  margin-left: 0.35em;
-  vertical-align: 0.55em;
-  text-shadow: none;
-}
-
-.now .tag {
-  color: var(--ink);
-  font-family: var(--cond);
-  font-weight: 500;
-  font-size: clamp(1.4rem, 3vw, 2.2rem);
-  letter-spacing: 0.06em;
-  margin-top: 0.4rem;
-  max-width: 90%;
-  text-align: center;
+  color: var(--dim);
+  margin-left: 0.4em;
+  vertical-align: 0.18em;
 }
 
 /* Scanning idle state: label + sweeping bar (the radio is WORKING) */
@@ -304,3 +306,61 @@ body {
   40% { transform: rotate(-10deg); }
   60% { transform: rotate(6deg); }
 }
+
+/* ── Map as stage (operator direction): when the activity map mounts, it IS
+   the dashboard — fullscreen behind everything. The Recent rail dies (the
+   blips are the recent list); now-playing becomes a floating instrument
+   card in the upper-left; topbar floats translucent over the map. Without
+   a Maps key the .mapStage class never lands and the classic layout stands. */
+.dash { position: relative; }
+.dash .mapBase { display: none; }
+.dash.mapStage .mapBase {
+  display: block;
+  position: absolute; inset: 0; z-index: 0;
+}
+.dash.mapStage .topbar {
+  position: relative; z-index: 2;
+  background: color-mix(in srgb, var(--bg) 74%, transparent);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid color-mix(in srgb, var(--panel-edge) 70%, transparent);
+}
+.dash.mapStage .alertBar { position: relative; z-index: 2; }
+.dash.mapStage .dashBody {
+  position: relative; z-index: 1;
+  display: block;
+  padding: 1.3rem 1.6rem;
+  pointer-events: none;   /* output-only surface: the map shows, never takes */
+}
+.dash.mapStage .log { display: none; }
+.dash.mapStage .now {
+  flex: none;
+  display: inline-flex;
+  width: fit-content;
+  min-width: 21rem;
+  max-width: min(38rem, 46vw);
+  align-items: flex-start;
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  border: 1px solid var(--panel-edge);
+  border-radius: 10px;
+  padding: 1.2rem 1.6rem 1.4rem;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.45);
+}
+.dash.mapStage .now .active { font-size: 1rem; }
+.dash.mapStage .now .tag {
+  font-size: clamp(1.9rem, 3.2vw, 3.1rem);
+  text-align: left;
+  max-width: 100%;
+  margin-top: 0.5rem;
+}
+.dash.mapStage .now .freq { font-size: 1.45rem; margin-top: 0.4rem; }
+.dash.mapStage .meter {
+  width: 100%; max-width: 300px; height: 12px;
+  margin: 1.1rem 0 0;
+}
+.dash.mapStage .meterDb { font-size: 0.8rem; }
+.dash.mapStage .now .scanning { text-align: left; }
+.dash.mapStage .now .scanning .scanText { font-size: 1.35rem; }
+.dash.mapStage .now .scanning .sweep { width: 230px; margin: 1rem 0 0; }
+.dash.mapStage .now .scanning .standbyHint { font-size: 0.85rem; }
+.dash.mapStage .now .err { font-size: 1.05rem; max-width: 100%; padding: 0.9rem; }
