@@ -266,7 +266,36 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
     const mapReady = new Promise<void>((resolve) =>
       google.maps.event.addListenerOnce(map, "idle", resolve));
     void Promise.allSettled([sitesReady, channelsReady, mapReady])
-      .then(() => map.fitBounds(bounds, fitPad));
+      .then(() => {
+        map.fitBounds(bounds, fitPad);
+        // Remember the home zoom once the fit settles — the punch zoom and
+        // the pull-back both reference it.
+        google.maps.event.addListenerOnce(map, "idle", () => { homeZoom = map.getZoom(); });
+      });
+
+    // ── Activity camera (kiosk only): when a transmission opens, ease in
+    // toward its site; when the band goes quiet, pull back out to the full
+    // pin field. Vector maps animate panTo/setZoom natively, so this reads
+    // as camera work, not jumps. The interactive /map page never moves on
+    // its own — a self-steering camera fights the user's mouse.
+    const PUNCH_HOLD_MS = 12_000;   // quiet time before pulling back out
+    const PUNCH_ZOOM_IN = 2;        // levels closer than the home framing
+    let homeZoom: number | null = null;
+    let punchedUntil = 0;
+    function punch(lat: number, lng: number): void {
+      if (interactive) return;
+      punchedUntil = Date.now() + PUNCH_HOLD_MS;
+      map.panTo({ lat, lng });
+      map.setZoom(Math.min((homeZoom ?? map.getZoom()) + PUNCH_ZOOM_IN, 13));
+    }
+    if (!interactive) {
+      setInterval(() => {
+        if (punchedUntil && Date.now() >= punchedUntil) {
+          punchedUntil = 0;
+          map.fitBounds(bounds, fitPad);
+        }
+      }, 1500);
+    }
     new google.maps.Polyline({
       map, path: ringPath, clickable: false,
       strokeOpacity: 0,
@@ -289,7 +318,7 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
     function nofix(freqHz: number, alphaTag: string, ts: number): void {
       const pos = ringPoint(home, RING_M, freqHz);
       field.add({ lat: pos.lat, lon: pos.lng, alphaTag, kind: "nofix", ts });
-      if (Date.now() - ts < 2000) ping(pos.lat, pos.lng, COLORS.nofix);
+      if (Date.now() - ts < 2000) { ping(pos.lat, pos.lng, COLORS.nofix); punch(pos.lat, pos.lng); }
       if (!ringMarks.has(freqHz)) {
         const marker = new google.maps.Marker({
           map, position: pos, icon: ringIcon,
@@ -305,6 +334,7 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
       if (Date.now() - ts < 2000) {
         ping(lat, lon, COLORS[kind]);
         antenna(lat, lon, [alphaTag], 1, ts, true);
+        punch(lat, lon);
       }
     }
 
