@@ -395,3 +395,15 @@ describe("leveler trim persistence", () => {
     expect(lv && lv.type === "level" && lv.db).toBe(-6.3);
   });
 });
+
+describe("hear-vs-see passthrough", () => {
+  it("tune carries each channel's audible flag", async () => {
+    const tunes = tmpFile("tunes");
+    const { engine } = makeEngine({ FAKE_WB_TUNES_FILE: tunes });
+    await engine.start(cfg([{ ...VHF_A, audible: false }, VHF_B]));
+    await waitFor(() => lines(tunes).length >= 1, 1000);
+    await engine.stop();
+    const first = JSON.parse(lines(tunes)[0]!);
+    expect(first.channels.map((c: { audible: boolean }) => c.audible)).toEqual([false, true]);
+  });
+});

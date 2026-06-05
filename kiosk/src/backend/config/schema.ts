@@ -18,6 +18,10 @@ export const channelSchema = z.object({
   alphaTag: z.string(),
   mode: z.enum(["fm", "nfm", "am"]),
   enabled: z.boolean(),
+  // Hear-vs-see (ROADMAP Idea 4): an enabled channel with audible:false gets
+  // a DSP lane (hits land in history/Recent/map) but never owns the speaker.
+  // Absent = true (hear). enabled:false remains fully off.
+  audible: z.boolean().optional(),
   // Priority channels preempt the speaker from non-priority ones when both
   // are active in the same group (hardware-scanner "priority scan").
   priority: z.boolean().optional(),
@@ -87,6 +91,9 @@ export const configSchema = z.object({
     id: z.string().min(1),
     name: z.string().min(1),
     enabled: z.boolean(),
+    // Bank-level hear-vs-see: audible:false = SEE (channels scan but are
+    // muted; mute-wins like off-wins). Absent = hear.
+    audible: z.boolean().optional(),
     band: z.enum(["hf", "vhf", "uhf", "shf"]).optional(),
     tags: z.array(z.string().min(1)).optional(),
   })).optional(),

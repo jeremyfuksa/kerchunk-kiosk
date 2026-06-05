@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { bandFor, matchesBank, isScannable } from "../src/backend/config/banks.js";
+import { bandFor, matchesBank, isScannable, isAudible } from "../src/backend/config/banks.js";
 import type { Channel, Bank } from "../src/backend/config/schema.js";
 
 function ch(freq: number, over: Partial<Channel> = {}): Channel {
@@ -64,5 +64,28 @@ describe("isScannable (off-wins)", () => {
 
   it("no banks configured = enabled channels scan (v1 behavior unchanged)", () => {
     expect(isScannable(ch(146_790_000), [])).toBe(true);
+  });
+});
+
+describe("isAudible (hear vs see)", () => {
+  const banks: Bank[] = [
+    bank({ id: "vhf", name: "VHF", band: "vhf", enabled: true }),
+    bank({ id: "rail", name: "Rail", tags: ["rail"], enabled: true, audible: false }), // SEE
+  ];
+
+  it("default channels are audible", () => {
+    expect(isAudible(ch(146_790_000), banks)).toBe(true);
+  });
+
+  it("a see-only channel never owns the speaker", () => {
+    expect(isAudible(ch(146_790_000, { audible: false }), banks)).toBe(false);
+  });
+
+  it("a SEE bank mutes every channel it matches — mute wins", () => {
+    expect(isAudible(ch(160_650_000, { tags: ["rail"] }), banks)).toBe(false);
+  });
+
+  it("a SEE bank's channels still scan (visible in history)", () => {
+    expect(isScannable(ch(160_650_000, { tags: ["rail"] }), banks)).toBe(true);
   });
 });

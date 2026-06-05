@@ -92,7 +92,7 @@ export function renderAdmin(root: HTMLElement): void {
         <div class="tableWrap">
           <table class="chTable">
             <thead><tr>
-              <th>Freq (MHz)</th><th>Name</th><th>Mode</th><th>Priority</th><th>Enabled</th><th></th>
+              <th>Freq (MHz)</th><th>Name</th><th>Mode</th><th>Priority</th><th>Listen</th><th></th>
             </tr></thead>
             <tbody id="chRows"></tbody>
           </table>
@@ -188,8 +188,10 @@ export function renderAdmin(root: HTMLElement): void {
       : banks.map((b) => {
           const n = channels.filter((c) => matchesBank(c, b)).length;
           const what = [b.band?.toUpperCase(), ...(b.tags ?? [])].filter(Boolean).join(" · ") || "everything";
-          return `<button class="bankChip${b.enabled ? " on" : ""}" data-id="${esc(b.id)}" title="${esc(what)} — click to ${b.enabled ? "mute" : "unmute"}">
-            <span class="bankState"></span>${esc(b.name)} <span class="bankCount">${n}</span>
+          const state = !b.enabled ? "off" : b.audible === false ? "see" : "on";
+          const next = state === "on" ? "SEE (scan, stay silent)" : state === "see" ? "OFF" : "HEAR";
+          return `<button class="bankChip ${state}" data-id="${esc(b.id)}" title="${esc(what)} — ${state.toUpperCase()}; click for ${next}">
+            <span class="bankState"></span>${esc(b.name)}${state === "see" ? ' <span class="bankSee">SEE</span>' : ""} <span class="bankCount">${n}</span>
             <span class="bankDel" data-id="${esc(b.id)}" title="Delete bank">×</span>
           </button>`;
         }).join("");
@@ -202,7 +204,13 @@ export function renderAdmin(root: HTMLElement): void {
           if (!b || !confirm(`Delete bank ${b.name}? Its channels keep scanning.`)) return;
           cfg.banks = (cfg.banks ?? []).filter((x) => x.id !== id);
         } else {
-          cfg.banks = (cfg.banks ?? []).map((x) => x.id === id ? { ...x, enabled: !x.enabled } : x);
+          // Cycle Hear -> See -> Off -> Hear (see = scanned but silent).
+          cfg.banks = (cfg.banks ?? []).map((x) => {
+            if (x.id !== id) return x;
+            if (x.enabled && x.audible !== false) return { ...x, audible: false };
+            if (x.enabled) return { ...x, enabled: false, audible: true };
+            return { ...x, enabled: true, audible: true };
+          });
         }
         await api.putConfig(cfg);
         refreshBanks();
@@ -254,7 +262,11 @@ export function renderAdmin(root: HTMLElement): void {
       <td class="rowOpen">${esc(c.alphaTag)}${locChip(c.location)}</td>
       <td class="rowOpen">${esc(c.mode.toUpperCase())}</td>
       <td><input type="checkbox" class="prio" ${c.priority ? "checked" : ""} /></td>
-      <td><input type="checkbox" class="en" ${c.enabled ? "checked" : ""} /></td>
+      <td><select class="hs hs-${!c.enabled ? "off" : c.audible === false ? "see" : "hear"}">
+        <option value="hear" ${c.enabled && c.audible !== false ? "selected" : ""}>Hear</option>
+        <option value="see" ${c.enabled && c.audible === false ? "selected" : ""}>See</option>
+        <option value="off" ${!c.enabled ? "selected" : ""}>Off</option>
+      </select></td>
       <td class="actions">${iconBtn("listen", "listen", "Listen — park the radio on this channel (unsquelched)")}${iconBtn("lock", "lockout", "Lockout — remove and never Close-Call this frequency again")}${iconBtn("del", "del", "Delete channel")}</td>
     </tr>`;
   }
@@ -332,8 +344,9 @@ export function renderAdmin(root: HTMLElement): void {
         await api.updateChannel(id, { priority: (ev.target as HTMLInputElement).checked });
         await refresh();
       });
-      tr.querySelector<HTMLInputElement>(".en")?.addEventListener("change", async (ev) => {
-        await api.updateChannel(id, { enabled: (ev.target as HTMLInputElement).checked });
+      tr.querySelector<HTMLSelectElement>(".hs")?.addEventListener("change", async (ev) => {
+        const v = (ev.target as HTMLSelectElement).value;
+        await api.updateChannel(id, { enabled: v !== "off", audible: v !== "see" });
         await refresh();
       });
       tr.querySelector<HTMLButtonElement>(".save")?.addEventListener("click", () => saveRow(tr));
@@ -391,7 +404,11 @@ export function renderAdmin(root: HTMLElement): void {
         <label>Mode <select id="dwMode">${modeOptions(c.mode)}</select></label>
         <label>Tags <input id="dwTags" value="${esc((c.tags ?? []).join(", "))}" placeholder="air, rail, ham" /></label>
         <label><input id="dwPrio" type="checkbox" ${c.priority ? "checked" : ""} /> Priority</label>
-        <label><input id="dwEn" type="checkbox" ${c.enabled ? "checked" : ""} /> Enabled</label>
+        <label>Listen <select id="dwHs">
+          <option value="hear" ${c.enabled && c.audible !== false ? "selected" : ""}>Hear — scan + speaker</option>
+          <option value="see" ${c.enabled && c.audible === false ? "selected" : ""}>See — log hits, stay silent</option>
+          <option value="off" ${!c.enabled ? "selected" : ""}>Off</option>
+        </select></label>
         <div><button id="dwSave" class="save">Save</button> <span id="dwErr" class="err"></span></div>
       </div>
       <dl class="dwInfo">
@@ -419,12 +436,14 @@ export function renderAdmin(root: HTMLElement): void {
           alphaTag: drawer.querySelector<HTMLInputElement>("#dwTag")!.value,
           mode: drawer.querySelector<HTMLSelectElement>("#dwMode")!.value,
         });
+        const hs = drawer.querySelector<HTMLSelectElement>("#dwHs")!.value;
         await api.updateChannel(c.id, {
           ...base,
           tags: drawer.querySelector<HTMLInputElement>("#dwTags")!.value
             .split(",").map((t) => t.trim()).filter(Boolean),
           priority: drawer.querySelector<HTMLInputElement>("#dwPrio")!.checked,
-          enabled: drawer.querySelector<HTMLInputElement>("#dwEn")!.checked,
+          enabled: hs !== "off",
+          audible: hs !== "see",
         });
         await refresh();
         err.textContent = "saved";

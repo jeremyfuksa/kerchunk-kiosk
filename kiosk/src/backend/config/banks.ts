@@ -29,3 +29,12 @@ export function isScannable(channel: Channel, banks: Bank[]): boolean {
   if (!channel.enabled) return false;
   return !banks.some((b) => !b.enabled && matchesBank(channel, b));
 }
+
+// Hear-vs-see: may this channel own the SPEAKER? Mute-wins, mirroring
+// isScannable's off-wins — a SEE bank silences everything it matches, however
+// the channel itself is set. (Scanning is unaffected: see = demodulated and
+// logged, just never audible.)
+export function isAudible(channel: Channel, banks: Bank[]): boolean {
+  if (channel.audible === false) return false;
+  return !banks.some((b) => b.enabled && b.audible === false && matchesBank(channel, b));
+}

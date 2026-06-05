@@ -198,6 +198,7 @@ class Chain:
 
         self.gain = 0.0          # current gate value (fade_to bookkeeping)
         self.kind = "fm"         # demod selection: "fm" (nbfm) or "am" (airband)
+        self.allow_audio = True  # hear-vs-see: False = detect/report, never speak
         self.level_db = 0.0      # learned per-channel loudness correction (dB)
         self.level_emitted = 0.0 # last trim value reported to Node
         self.speech_db = None    # smoothed voiced-audio level (leveler input)
@@ -236,9 +237,11 @@ class Chain:
         self.skip_until = 0.0
         self.warmup = WARMUP_POLLS
 
-    def assign(self, channel_id, offset_hz, priority=False, level_db=0.0, mode="nfm"):
+    def assign(self, channel_id, offset_hz, priority=False, level_db=0.0,
+               mode="nfm", audible=True):
         self.channel_id = channel_id
         self.priority = priority
+        self.allow_audio = audible
         self.kind = "am" if mode == "am" else "fm"
         self.xlate.set_center_freq(offset_hz)
         self.gate.set_k(0.0)   # hard cut is fine: we just retuned, no audio context
@@ -255,6 +258,7 @@ class Chain:
     def park(self):
         self.channel_id = None
         self.priority = False
+        self.allow_audio = True
         self.kind = "fm"
         self.xlate.set_center_freq(0)
         self.gate.set_k(0.0)
@@ -354,7 +358,8 @@ class Helper(gr.top_block):
                 chain.assign(c["id"], c["freqHz"] - center_hz,
                              bool(c.get("priority", False)),
                              float(c.get("levelDb", 0.0)),
-                             str(c.get("mode", "nfm")))
+                             str(c.get("mode", "nfm")),
+                             bool(c.get("audible", True)))
             else:
                 chain.park()
         emit({"ev": "tuned", "centerHz": center_hz})
@@ -483,7 +488,9 @@ class Helper(gr.top_block):
                         chain.below_since = None
                         emit({"ev": "open", "id": chain.channel_id,
                               "db": round(db, 1)})
-                        if self.audible is None:   # first-active-wins...
+                        if not chain.allow_audio:
+                            pass               # see-only: report, never speak
+                        elif self.audible is None:   # first-active-wins...
                             self.set_audible(chain)
                         elif chain.priority and not self.audible.priority:
                             # ...except priority channels take the speaker
@@ -597,7 +604,7 @@ class Helper(gr.top_block):
     def next_open_chain(self):
         best = None
         for chain in self.chains:
-            if chain.channel_id is not None and chain.open:
+            if chain.channel_id is not None and chain.open and chain.allow_audio:
                 if chain.priority:
                     return chain   # open priority channel wins the handoff
                 if best is None:

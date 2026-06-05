@@ -303,6 +303,7 @@ export class WidebandEngine implements ScannerEngine {
         id: c.id, freqHz: c.freq, priority: c.priority ?? false,
         levelDb: c.levelTrimDb ?? 0,
         mode: c.mode,
+        audible: c.audible !== false,
       })),
       monitor: this.config?.monitor ?? false,
       // Close Call: ON by default for this engine; knownHz carries EVERY
