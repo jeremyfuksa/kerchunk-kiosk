@@ -1,0 +1,99 @@
+{
+  "variant": "dark",
+  "styles": [
+    {
+      "id": "infrastructure.roadNetwork",
+      "geometry": {
+        "visible": true,
+        "fillColor": "#2b303b",
+        "strokeColor": "#42454e"
+      },
+      "label": {
+        "visible": false
+      }
+    },
+    {
+      "id": "infrastructure.roadNetwork.roadShield",
+      "label": {
+        "visible": false
+      }
+    },
+    {
+      "id": "natural.land",
+      "geometry": {
+        "fillColor": "#1c1f26"
+      }
+    },
+    {
+      "id": "natural.water",
+      "geometry": {
+        "fillColor": "#13161c"
+      },
+      "label": {
+        "textFillColor": "#4d515c",
+        "textStrokeColor": "#13161c"
+      }
+    },
+    {
+      "id": "pointOfInterest",
+      "geometry": {
+        "visible": false
+      },
+      "label": {
+        "visible": false
+      }
+    },
+    {
+      "id": "pointOfInterest.emergency.hospital",
+      "label": {
+        "visible": true,
+        "textFillColor": "#747b8a",
+        "textStrokeColor": "#1c1f26",
+        "pinFillColor": "#5e6371"
+      }
+    },
+    {
+      "id": "pointOfInterest.emergency.police",
+      "label": {
+        "visible": true,
+        "textFillColor": "#747b8a",
+        "textStrokeColor": "#1c1f26",
+        "pinFillColor": "#5e6371"
+      }
+    },
+    {
+      "id": "pointOfInterest.emergency.fireStation",
+      "label": {
+        "visible": true,
+        "textFillColor": "#747b8a",
+        "textStrokeColor": "#1c1f26",
+        "pinFillColor": "#5e6371"
+      }
+    },
+    {
+      "id": "pointOfInterest.transportation.airport",
+      "label": {
+        "visible": true,
+        "textFillColor": "#747b8a",
+        "textStrokeColor": "#1c1f26",
+        "pinFillColor": "#5e6371"
+      }
+    },
+    {
+      "id": "pointOfInterest.entertainment.themePark",
+      "label": {
+        "visible": true,
+        "textFillColor": "#747b8a",
+        "textStrokeColor": "#1c1f26",
+        "pinFillColor": "#5e6371"
+      }
+    },
+    {
+      "id": "settlement",
+      "label": {
+        "textFillColor": "#5e6371",
+        "textStrokeColor": "#1c1f26"
+      }
+    }
+  ]
+}
