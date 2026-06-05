@@ -708,3 +708,19 @@ describe("alerts (ROADMAP Idea 6)", () => {
     expect(sent.filter((e) => (e as { type: string }).type === "alert")).toHaveLength(0);
   });
 });
+
+describe("kiosk reload", () => {
+  it("POST /api/kiosk/reload broadcasts a reload event to WS clients", async () => {
+    const { server } = makeApp();
+    // makeApp's hub has no client; attach one through a fresh app instead.
+    dir = mkdtempSync(join(tmpdir(), "ksrv-"));
+    const configStore = new ConfigStore(join(dir, "config.json"));
+    const wsHub = new WsHub();
+    const sent: unknown[] = [];
+    wsHub.add({ readyState: 1, OPEN: 1, send: (d: string) => sent.push(JSON.parse(d)) });
+    const { server: srv } = createServer({ configStore, engine: new FakeEngine(), activityLog: new ActivityLog(10), wsHub, staticDir: dir });
+    await request(srv).post("/api/kiosk/reload").expect(200);
+    expect(sent.some((e) => (e as { type: string }).type === "reload")).toBe(true);
+    void server;
+  });
+});

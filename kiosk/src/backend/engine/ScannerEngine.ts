@@ -55,6 +55,10 @@ export type EngineEvent =
   // it like any other event.
   | { type: "alert"; channel: Channel; freq: number; holdSeconds: number; ts: number }
   | { type: "status"; state: EngineState; ts: number }
+  // Operator pressed "Reload kiosk" in the admin: dashboard pages reload
+  // themselves (fresh JS/CSS/map style without touching the display
+  // service). Synthesized by the server, like "alert".
+  | { type: "reload"; ts: number }
   | { type: "error"; code: string; message: string; ts: number };
 
 export type EngineListener = (event: EngineEvent) => void;
