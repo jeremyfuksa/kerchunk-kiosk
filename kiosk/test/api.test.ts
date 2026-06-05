@@ -561,3 +561,19 @@ describe("GET /api/weather", () => {
     expect((await request(server).get("/api/weather")).status).toBe(404);
   });
 });
+
+describe("banks gate scanning", () => {
+  it("a disabled bank's channels are excluded from engine.start (off-wins); knownHz keeps them", async () => {
+    const { server, engine } = makeApp();
+    await request(server).post("/api/channels").send({ freq: 146790000, alphaTag: "VHF ham", mode: "nfm", enabled: true });
+    await request(server).post("/api/channels").send({ freq: 464275000, alphaTag: "UHF biz", mode: "nfm", enabled: true });
+    const cfg = (await request(server).get("/api/config")).body;
+    cfg.banks = [{ id: "b_vhf", name: "VHF", enabled: false, band: "vhf" }];
+    let lastStart: any = null;
+    const realStart = engine.start.bind(engine);
+    engine.start = async (sc) => { lastStart = sc; return realStart(sc); };
+    await request(server).put("/api/config").send(cfg);
+    expect(lastStart.channels.map((c: { freq: number }) => c.freq)).toEqual([464275000]);
+    expect(lastStart.knownHz).toEqual(expect.arrayContaining([146790000, 464275000]));
+  });
+});

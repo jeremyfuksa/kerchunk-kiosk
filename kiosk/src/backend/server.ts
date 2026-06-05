@@ -10,6 +10,7 @@ import type { NwsWeather } from "./weather.js";
 import { WsHub } from "./ws.js";
 import type { ScannerEngine, ScanConfig } from "./engine/ScannerEngine.js";
 import { setVolume as amixerVolume, setMuted as amixerMuted, type AmixerOpts } from "./audio.js";
+import { isScannable } from "./config/banks.js";
 
 export interface ServerDeps {
   /** Optional identification chain — enriches Close Call channel names. */
@@ -40,7 +41,10 @@ export function toScanConfig(
       ? (cfg.weatherChannel ? [{ ...cfg.weatherChannel, enabled: true }] : [])
       : mode === "monitor"
         ? (monitorChannel ? [{ ...monitorChannel, enabled: true }] : [])
-        : cfg.channels;
+        // Banks gate scanning here, the same chokepoint as channel.enabled.
+        // knownHz below intentionally still covers EVERY configured channel —
+        // muting a bank must not make Close Call rediscover its frequencies.
+        : cfg.channels.filter((c) => isScannable(c, cfg.banks ?? []));
   return {
     channels,
     sampleRate: cfg.scan.sampleRate,
