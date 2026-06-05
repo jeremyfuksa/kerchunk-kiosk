@@ -1,0 +1,40 @@
+.mapWrap { position: fixed; inset: 0; }
+#gmap { width: 100%; height: 100%; background: var(--bg-base, #1c1f26); }
+
+.mapLegend {
+  position: fixed; left: 1rem; bottom: 1.2rem; z-index: 5;
+  display: flex; align-items: center; gap: 0.6rem;
+  padding: 0.45rem 0.9rem;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.8rem;
+  color: var(--text-secondary, #9299a5);
+  background: color-mix(in srgb, var(--bg-base, #1c1f26) 85%, transparent);
+  border: 1px solid var(--border-default, #42454e);
+  border-radius: 6px;
+}
+.mapLegend .lgBlip {
+  width: 0.7em; height: 0.7em; border-radius: 50%;
+  display: inline-block;
+}
+.mapLegend .lgBlip.active { background: #ff6b35; box-shadow: 0 0 8px rgba(255, 107, 53, 0.6); }
+.mapLegend .lgBlip.cc { background: #dc3a38; box-shadow: 0 0 8px rgba(220, 58, 56, 0.6); }
+.mapLegend .lgNote { color: var(--text-tertiary, #747b8a); margin-left: 0.4rem; }
+
+.mapMsg {
+  position: fixed; inset: 0; z-index: 4;
+  display: flex; align-items: center; justify-content: center;
+  text-align: center;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  color: var(--text-secondary, #9299a5);
+  line-height: 1.8;
+  pointer-events: none;
+}
+.mapMsg:empty { display: none; }
+.blipInfo { color: #1c1f26; font-weight: 600; }
+
+.mapLegend .lgAnt { color: #ffb866; font-size: 1rem; line-height: 0; }
+.blipMeta { color: #5e6371; font-size: 0.8em; font-weight: 400; margin-top: 0.2rem; }
+
+.mapLegend .lgAnt svg { width: 14px; height: 14px; color: #ffb866; display: inline-block; vertical-align: -2px; }
+
+.mapLegend .lgBlip.nofix { background: #4a7c7e; box-shadow: 0 0 8px rgba(74, 124, 126, 0.6); }

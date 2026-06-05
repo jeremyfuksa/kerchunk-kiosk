@@ -53,3 +53,20 @@ describe("HistoryStore", () => {
     expect(rows[0]!.alphaTag).toBe("new");
   });
 });
+
+describe("sites() — distinct transmitter sites for the map's antenna layer", () => {
+  it("groups located events by site with names, counts, last-heard", () => {
+    const h = make();
+    h.record({ ts: 1, kind: "active", channelId: "a", freq: 1, alphaTag: "WoF Maint", lat: 39.17, lon: -94.48 });
+    h.record({ ts: 5, kind: "active", channelId: "b", freq: 2, alphaTag: "WoF Security", lat: 39.17, lon: -94.48 });
+    h.record({ ts: 3, kind: "active", channelId: "c", freq: 3, alphaTag: "W0TE", lat: 39.3, lon: -94.4 });
+    h.record({ ts: 4, kind: "active", channelId: "d", freq: 4, alphaTag: "no fix" }); // unlocated: excluded
+    const sites = h.sites();
+    expect(sites).toHaveLength(2);
+    const wof = sites.find((s) => s.lat === 39.17)!;
+    expect(wof.hits).toBe(2);
+    expect(wof.lastTs).toBe(5);
+    expect(wof.names).toContain("WoF Maint");
+    expect(wof.names).toContain("WoF Security");
+  });
+});

@@ -21,7 +21,7 @@ export interface ServerDeps {
   /** Optional current-conditions provider for the kiosk header. */
   weather?: Pick<NwsWeather, "current">;
   /** Optional durable activity history (ROADMAP Idea 5). */
-  history?: Pick<HistoryStore, "record" | "release" | "query">;
+  history?: Pick<HistoryStore, "record" | "release" | "query" | "sites">;
   configStore: ConfigStore;
   engine: ScannerEngine;
   activityLog: ActivityLog;
@@ -459,6 +459,11 @@ export function createServer(deps: ServerDeps): { server: Server } {
       }));
     }
 
+    if (method === "GET" && path === "/api/history/sites") {
+      if (!deps.history) return json(res, 404, { error: "no history store" });
+      return json(res, 200, deps.history.sites());
+    }
+
     if (method === "GET" && path === "/api/weather") {
       if (!deps.weather) return json(res, 404, { error: "no weather configured" });
       return json(res, 200, await deps.weather.current());
@@ -479,7 +484,7 @@ export function createServer(deps: ServerDeps): { server: Server } {
 
   function serveStatic(path: string, res: ServerResponse): void {
     const safe = normalize(path).replace(/^(\.\.[/\\])+/, "");
-    let filePath = join(staticDir, safe === "/" ? "index.html" : safe);
+    let filePath = join(staticDir, safe === "/" || safe === "/map" ? "index.html" : safe);
     if (!existsSync(filePath) || !extname(filePath)) filePath = join(staticDir, "index.html");
     if (!existsSync(filePath)) { res.writeHead(404); res.end("not found"); return; }
     const mime = MIME[extname(filePath)] ?? "application/octet-stream";

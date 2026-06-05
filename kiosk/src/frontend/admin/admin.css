@@ -533,3 +533,9 @@ body {
   font-family: var(--cond); font-size: 0.68rem; font-weight: 700;
   letter-spacing: 0.15em; color: var(--blue);
 }
+
+.admin h1 .mapLink {
+  font-size: 0.7em; letter-spacing: 0.2em;
+  color: var(--blue); text-decoration: none;
+  margin-left: 0.8rem; vertical-align: 2px;
+}

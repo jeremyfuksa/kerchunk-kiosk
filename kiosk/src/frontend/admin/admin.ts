@@ -3,6 +3,14 @@ import { NOAA_CHANNELS } from "../../backend/config/noaa.js";
 import { api } from "../lib/api.js";
 import { fmtFreq, esc } from "../lib/format.js";
 import { bandFor, matchesBank } from "../../backend/config/banks.js";
+import icoHeadphones from "lucide-static/icons/headphones.svg?raw";
+import icoPencil from "lucide-static/icons/pencil.svg?raw";
+import icoBan from "lucide-static/icons/ban.svg?raw";
+import icoTrash from "lucide-static/icons/trash-2.svg?raw";
+import icoPlus from "lucide-static/icons/circle-plus.svg?raw";
+import icoX from "lucide-static/icons/x.svg?raw";
+import icoCheck from "lucide-static/icons/check.svg?raw";
+import icoUnlock from "lucide-static/icons/lock-open.svg?raw";
 import type { Bank } from "../../backend/config/schema.js";
 import { ReconnectingWs } from "../lib/wsClient.js";
 import type { EngineEvent } from "../../backend/engine/ScannerEngine.js";
@@ -27,29 +35,28 @@ export function weatherFormToChannel(form: { mhz: string; alphaTag: string; mode
 
 
 
-// Inline feather-style icons (stroke = currentColor, so the existing
-// consequence color-coding on button classes carries straight through).
+// Icons come from Lucide (lucide-static raw SVGs, stroke = currentColor, so
+// the consequence color-coding on button classes carries straight through).
 const ICONS: Record<string, string> = {
-  listen: '<path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/>',
-  edit: '<path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>',
-  lockout: '<circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>',
-  del: '<polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>',
-  add: '<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>',
-  dismiss: '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
-  save: '<polyline points="20 6 9 17 4 12"/>',
-  cancel: '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
-  unlock: '<rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/>',
+  listen: icoHeadphones,
+  edit: icoPencil,
+  lockout: icoBan,
+  del: icoTrash,
+  add: icoPlus,
+  dismiss: icoX,
+  save: icoCheck,
+  cancel: icoX,
+  unlock: icoUnlock,
 };
 
 function iconBtn(cls: string, icon: string, label: string, attrs = ""): string {
-  return `<button class="${cls} iconBtn" title="${label}" aria-label="${label}"${attrs ? " " + attrs : ""}>`
-    + `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[icon]}</svg></button>`;
+  return `<button class="${cls} iconBtn" title="${label}" aria-label="${label}"${attrs ? " " + attrs : ""}>${ICONS[icon]}</button>`;
 }
 
 export function renderAdmin(root: HTMLElement): void {
   root.innerHTML = `
     <main class="admin">
-      <h1>Kerchunk Kiosk — Admin</h1>
+      <h1>Kerchunk Kiosk — Admin <a class="mapLink" href="/map" target="_blank" title="Live activity map">MAP ↗</a></h1>
       <section class="nowCard">
         <h2>Now playing</h2>
         <div class="npWhat"><span id="npName" class="npName">scanning…</span> <span id="npFreq" class="npFreq"></span></div>
@@ -106,6 +113,7 @@ export function renderAdmin(root: HTMLElement): void {
         <label>Hang time (ms) <input id="tHang" type="number" min="100" step="100" placeholder="2000" /></label>
         <label>Squelch open (dB over floor) <input id="tOpenDb" type="number" min="1" step="0.5" placeholder="9" /></label>
         <label>Quieting threshold (dB) <input id="tQuietDb" type="number" max="-1" step="0.5" placeholder="-86" /></label>
+        <label>Google Maps key <input id="tMapsKey" type="text" placeholder="AIza…" /></label>
         <label><input id="tCloseCall" type="checkbox" /> Close Call</label>
         <label>Close Call threshold (dB over floor) <input id="tCloseCallDb" type="number" min="5" step="1" placeholder="15" /></label>
         <button id="tSave">Save tuning</button>
@@ -403,6 +411,7 @@ export function renderAdmin(root: HTMLElement): void {
         <label>Name <input id="dwTag" value="${esc(c.alphaTag)}" /></label>
         <label>Mode <select id="dwMode">${modeOptions(c.mode)}</select></label>
         <label>Tags <input id="dwTags" value="${esc((c.tags ?? []).join(", "))}" placeholder="air, rail, ham" /></label>
+        <label>Site lat, lon <input id="dwLoc" value="${c.location?.lat != null ? `${c.location.lat}, ${c.location.lon}` : ""}" placeholder="39.1755, -94.4861" title="Transmitter site — drives the map blip" /></label>
         <label><input id="dwPrio" type="checkbox" ${c.priority ? "checked" : ""} /> Priority</label>
         <label>Listen <select id="dwHs">
           <option value="hear" ${c.enabled && c.audible !== false ? "selected" : ""}>Hear — scan + speaker</option>
@@ -437,7 +446,20 @@ export function renderAdmin(root: HTMLElement): void {
           mode: drawer.querySelector<HTMLSelectElement>("#dwMode")!.value,
         });
         const hs = drawer.querySelector<HTMLSelectElement>("#dwHs")!.value;
+        const locRaw = drawer.querySelector<HTMLInputElement>("#dwLoc")!.value.trim();
+        let location = c.location;
+        if (locRaw === "") {
+          location = undefined;
+        } else {
+          const m = locRaw.split(",").map((x) => Number(x.trim()));
+          if (m.length === 2 && m.every(Number.isFinite)) {
+            location = { ...(c.location ?? {}), lat: m[0]!, lon: m[1]!, source: "operator" };
+          } else {
+            throw new Error("site must be 'lat, lon'");
+          }
+        }
         await api.updateChannel(c.id, {
+          location,
           ...base,
           tags: drawer.querySelector<HTMLInputElement>("#dwTags")!.value
             .split(",").map((t) => t.trim()).filter(Boolean),
@@ -747,6 +769,7 @@ export function renderAdmin(root: HTMLElement): void {
   const tHang = root.querySelector<HTMLInputElement>("#tHang")!;
   const tOpenDb = root.querySelector<HTMLInputElement>("#tOpenDb")!;
   const tQuietDb = root.querySelector<HTMLInputElement>("#tQuietDb")!;
+  const tMapsKey = root.querySelector<HTMLInputElement>("#tMapsKey")!;
   const tCloseCall = root.querySelector<HTMLInputElement>("#tCloseCall")!;
   const tCloseCallDb = root.querySelector<HTMLInputElement>("#tCloseCallDb")!;
   const tErr = root.querySelector<HTMLElement>("#tErr")!;
@@ -756,6 +779,7 @@ export function renderAdmin(root: HTMLElement): void {
     tHang.value = String(cfg.scan.dwellMs);
     tOpenDb.value = cfg.scan.openAboveFloorDb != null ? String(cfg.scan.openAboveFloorDb) : "";
     tQuietDb.value = cfg.scan.noiseQuietDb != null ? String(cfg.scan.noiseQuietDb) : "";
+    tMapsKey.value = cfg.display?.googleMapsApiKey ?? "";
     tCloseCall.checked = cfg.scan.closeCall ?? true;   // engine default: ON
     tCloseCallDb.value = cfg.scan.closeCallDb != null ? String(cfg.scan.closeCallDb) : "";
   });
@@ -771,6 +795,7 @@ export function renderAdmin(root: HTMLElement): void {
       cfg.scan.noiseQuietDb = num(tQuietDb);
       cfg.scan.closeCall = tCloseCall.checked;
       cfg.scan.closeCallDb = num(tCloseCallDb);
+      if (tMapsKey.value.trim() && cfg.display) cfg.display.googleMapsApiKey = tMapsKey.value.trim();
       const hang = num(tHang);
       if (hang !== undefined) cfg.scan.dwellMs = hang;
       await api.putConfig(cfg);

@@ -117,6 +117,22 @@ export class HistoryStore {
       .map((r) => ({ ...r, tags: JSON.parse(String(r.tags)) }) as unknown as HistoryRow);
   }
 
+  /** Distinct transmitter sites for the map's persistent antenna layer. */
+  sites(): Array<{ lat: number; lon: number; hits: number; lastTs: number; names: string[] }> {
+    const rows = this.db.prepare(`
+      SELECT ROUND(lat, 5) AS lat, ROUND(lon, 5) AS lon,
+             COUNT(*) AS hits, MAX(ts) AS lastTs,
+             GROUP_CONCAT(DISTINCT alphaTag) AS names
+      FROM events WHERE lat IS NOT NULL AND lon IS NOT NULL
+      GROUP BY ROUND(lat, 5), ROUND(lon, 5)
+    `).all() as Array<Record<string, unknown>>;
+    return rows.map((r) => ({
+      lat: Number(r.lat), lon: Number(r.lon),
+      hits: Number(r.hits), lastTs: Number(r.lastTs),
+      names: String(r.names ?? "").split(",").filter(Boolean),
+    }));
+  }
+
   /** Drop rows beyond the retention window (call at boot + daily). */
   prune(): void {
     const cutoff = Date.now() - this.retentionDays * 86_400_000;
