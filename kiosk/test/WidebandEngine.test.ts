@@ -165,10 +165,30 @@ describe("WidebandEngine", () => {
       { autoRestart: true },
     );
     await engine.start(cfg([VHF_A]));
-    await waitFor(() => lines(args).length >= 2, 2000);
+    await waitFor(() => events.some((e) => e.type === "error"), 3000);
     await engine.stop();
     const err = events.find((e) => e.type === "error");
     expect(err && err.type === "error" && err.code).toBe("HELPER_EXITED");
+    expect(lines(args).length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("the FIRST exit is a soft restart (status starting), error only on repeat", async () => {
+    // Operator-reported: a rapid bank toggle shows a scary red error for a
+    // race that self-heals in ~1s. One failed spawn is expected during
+    // reconfiguration; only repetition means something is wrong.
+    const args = tmpFile("args");
+    const { engine, events } = makeEngine(
+      { FAKE_WB_ARGS_FILE: args, FAKE_WB_MODE: "crash" },
+      { autoRestart: true },
+    );
+    await engine.start(cfg([VHF_A]));
+    await waitFor(() => events.some((e) => e.type === "error"), 3000);
+    await engine.stop();
+    const firstErrorIdx = events.findIndex((e) => e.type === "error");
+    // a soft status:starting precedes the first hard error
+    const before = events.slice(0, firstErrorIdx);
+    expect(before.some((e) => e.type === "status" && e.state === "starting")).toBe(true);
+    // and the error only fired once a SECOND spawn attempt had failed
     expect(lines(args).length).toBeGreaterThanOrEqual(2);
   });
 

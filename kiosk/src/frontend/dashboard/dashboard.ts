@@ -12,6 +12,8 @@ export interface DashState {
   error: string | null;
   /** Latest signal level (dB) of the audible channel; null when silent. */
   signalDb: number | null;
+  /** Engine state from status events — "starting" renders as retuning. */
+  engineState: string;
   // True once an "audible" event has been seen: the engine reports speaker
   // ownership explicitly (wideband), so "active" stops driving nowPlaying —
   // many channels can be active while exactly one is audible. RtlFm never
@@ -20,7 +22,7 @@ export interface DashState {
 }
 
 export function initialState(): DashState {
-  return { nowPlaying: null, log: [], error: null, signalDb: null, audibleDriven: false };
+  return { nowPlaying: null, log: [], error: null, signalDb: null, engineState: "running", audibleDriven: false };
 }
 
 export function reduce(s: DashState, ev: EngineEvent): DashState {
@@ -57,8 +59,8 @@ export function reduce(s: DashState, ev: EngineEvent): DashState {
       // now-playing must not survive it — a fresh active/audible
       // re-establishes it (audibleDriven resets too: the engine kind may change).
       return ev.state === "running"
-        ? { ...s, error: null, nowPlaying: null, signalDb: null, audibleDriven: false }
-        : { ...s, nowPlaying: null, signalDb: null, audibleDriven: false };
+        ? { ...s, error: null, nowPlaying: null, signalDb: null, engineState: ev.state, audibleDriven: false }
+        : { ...s, nowPlaying: null, signalDb: null, engineState: ev.state, audibleDriven: false };
     default:
       return s;
   }
@@ -101,12 +103,23 @@ export function renderDashboard(root: HTMLElement): void {
         modeBadge.textContent =
           s.mode === "weather" ? "WEATHER"
           : s.mode === "monitor" ? "MONITORING" : "";
+        scanCount = s.scanCount ?? -1;
+        paint();
       })
       .catch(() => {});
   }
   paintBadge();
 
+  let scanCount = -1; // unknown until the first status fetch
+
   function paint(): void {
+    if (state.engineState === "starting" && !state.nowPlaying && !state.error) {
+      nowEl.innerHTML = `<div class="scanning">
+        <div class="scanText">RETUNING</div>
+        <div class="sweep"><div class="sweepBar"></div></div>
+      </div>`;
+      return;
+    }
     if (state.error) {
       nowEl.innerHTML = `<div class="err">${esc(state.error)}</div>`;
     } else if (state.nowPlaying) {
@@ -120,7 +133,10 @@ export function renderDashboard(root: HTMLElement): void {
         <div class="meter"><div class="meterFill" style="width:${pct.toFixed(0)}%"></div></div>
         <div class="meterDb">${db === null ? "" : db.toFixed(1) + " dB"}</div>`;
     } else {
-      nowEl.innerHTML = `<div class="scanning">
+      nowEl.innerHTML = scanCount === 0
+        ? `<div class="scanning"><div class="scanText standby">STANDBY</div>
+           <div class="standbyHint">no channels enabled — check banks</div></div>`
+        : `<div class="scanning">
         <div class="scanText">SCANNING</div>
         <div class="sweep"><div class="sweepBar"></div></div>
       </div>`;

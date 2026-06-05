@@ -138,3 +138,12 @@ describe("signal meter", () => {
     expect(s.signalDb).toBeNull();
   });
 });
+
+describe("engine state in dash state", () => {
+  it("status events track engineState (starting renders as retuning)", () => {
+    let s = reduce(initialState(), { type: "status", state: "starting", ts: 1 });
+    expect(s.engineState).toBe("starting");
+    s = reduce(s, { type: "status", state: "running", ts: 2 });
+    expect(s.engineState).toBe("running");
+  });
+});
