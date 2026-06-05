@@ -49,6 +49,10 @@ export type EngineEvent =
   // persists it (channel.levelTrimDb) so trims survive hops and restarts.
   | { type: "level"; channelId: string; db: number; ts: number }
   | { type: "signal"; dbfs: number; ts: number }
+  // The engine (re)tuned its window: which channels are under demod RIGHT
+  // NOW. Fires on every group hop (~groupDwellMs) — drives the kiosk's
+  // bank indicator (which bank is being scanned, hardware-scanner style).
+  | { type: "tuned"; freqHz: number; channelIds: string[]; ts: number }
   // Alert fired (ROADMAP Idea 6): a hit on a channel flagged alert, outside
   // its cooldown. Synthesized by the SERVER (which owns alert config), not
   // the engine — it rides the same union so the WS hub and dashboards treat
