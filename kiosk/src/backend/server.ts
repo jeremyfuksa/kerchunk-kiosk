@@ -21,7 +21,7 @@ export interface ServerDeps {
   /** Optional current-conditions provider for the kiosk header. */
   weather?: Pick<NwsWeather, "current">;
   /** Optional durable activity history (ROADMAP Idea 5). */
-  history?: Pick<HistoryStore, "record" | "release" | "query">;
+  history?: Pick<HistoryStore, "record" | "release" | "query" | "sites">;
   configStore: ConfigStore;
   engine: ScannerEngine;
   activityLog: ActivityLog;
@@ -457,6 +457,11 @@ export function createServer(deps: ServerDeps): { server: Server } {
         tag: sp.get("tag") ?? undefined,
         limit: num("limit"),
       }));
+    }
+
+    if (method === "GET" && path === "/api/history/sites") {
+      if (!deps.history) return json(res, 404, { error: "no history store" });
+      return json(res, 200, deps.history.sites());
     }
 
     if (method === "GET" && path === "/api/weather") {
