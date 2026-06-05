@@ -74,14 +74,20 @@ export function renderDashboard(root: HTMLElement): void {
 
   root.innerHTML = `
     <div class="dash">
-      <div id="modeBadge" class="modeBadge"></div>
-      <div class="skyline">
-        <div id="clock" class="clock"></div>
-        <div id="clockDate" class="clockDate"></div>
+      <header class="topbar">
+        <div id="modeBadge" class="modeBadge"></div>
+        <div class="topbarSpacer"></div>
         <div id="wx" class="wx"></div>
+        <div class="topbarDivider"></div>
+        <div class="clockBlock">
+          <div id="clock" class="clock"></div>
+          <div id="clockDate" class="clockDate"></div>
+        </div>
+      </header>
+      <div class="dashBody">
+        <section class="now" id="now"></section>
+        <aside class="log"><h2>Recent</h2><ul id="logList"></ul></aside>
       </div>
-      <section class="now" id="now"></section>
-      <aside class="log"><h2>Recent</h2><ul id="logList"></ul></aside>
     </div>`;
   const nowEl = root.querySelector<HTMLElement>("#now")!;
   const logEl = root.querySelector<HTMLElement>("#logList")!;
@@ -135,14 +141,41 @@ export function renderDashboard(root: HTMLElement): void {
   paintClock();
   setInterval(paintClock, 5000);
 
-  // Weather: NWS via the backend cache; absent/failed = the line just hides.
+  // Weather: NWS via the backend cache; absent/failed = the block just hides.
   const wxEl = root.querySelector<HTMLElement>("#wx")!;
+
+  const WX_ICONS: Record<string, string> = {
+    sun: '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="23"/><line x1="4.2" y1="4.2" x2="6.3" y2="6.3"/><line x1="17.7" y1="17.7" x2="19.8" y2="19.8"/><line x1="1" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="23" y2="12"/><line x1="4.2" y1="19.8" x2="6.3" y2="17.7"/><line x1="17.7" y1="6.3" x2="19.8" y2="4.2"/>',
+    moon: '<path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z"/>',
+    cloud: '<path d="M18 10h-1.3A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>',
+    cloudsun: '<path d="M12 2v2"/><path d="m4.9 4.9 1.4 1.4"/><path d="M20 12h2"/><path d="m19.1 4.9-1.4 1.4"/><path d="M15.5 8.5a4 4 0 0 0-7.4 1.8"/><path d="M16 16h.5a4.5 4.5 0 1 0-.4-9"/><path d="M7 16a4 4 0 0 0 0 8h8a4 4 0 0 0 .6-7.95"/>',
+    rain: '<path d="M18 9h-1.3A8 8 0 1 0 9 19"/><line x1="11" y1="15" x2="10" y2="21"/><line x1="15" y1="15" x2="14" y2="21"/><line x1="19" y1="15" x2="18" y2="21"/>',
+    storm: '<path d="M18 9h-1.3A8 8 0 1 0 9 19"/><polyline points="13 12 10 17 14 17 11 22"/>',
+    snow: '<path d="M18 9h-1.3A8 8 0 1 0 9 19"/><line x1="11" y1="16" x2="11" y2="16.01"/><line x1="15" y1="16" x2="15" y2="16.01"/><line x1="13" y1="19" x2="13" y2="19.01"/><line x1="11" y1="22" x2="11" y2="22.01"/><line x1="15" y1="22" x2="15" y2="22.01"/>',
+    fog: '<path d="M18 9h-1.3A8 8 0 1 0 9 17"/><line x1="6" y1="20" x2="20" y2="20"/><line x1="8" y1="23" x2="18" y2="23"/>',
+    wind: '<path d="M9.6 4.6A2 2 0 1 1 11 8H2"/><path d="M12.6 19.4A2 2 0 1 0 14 16H2"/><path d="M17.7 7.7A2.5 2.5 0 1 1 19.5 12H2"/>',
+  };
+
+  function wxIcon(condition: string, day: boolean): string {
+    const c = condition.toLowerCase();
+    const name =
+      /thunder|t-storm|tstm/.test(c) ? "storm"
+      : /snow|sleet|ice|flurr|wintry/.test(c) ? "snow"
+      : /rain|shower|drizzle/.test(c) ? "rain"
+      : /fog|mist|haze|smoke/.test(c) ? "fog"
+      : /wind|breezy|blustery/.test(c) ? "wind"
+      : /partly|mostly sunny|mostly clear/.test(c) ? (day ? "cloudsun" : "moon")
+      : /cloud|overcast/.test(c) ? "cloud"
+      : day ? "sun" : "moon";
+    return `<svg class="wxIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${WX_ICONS[name]}</svg>`;
+  }
+
   function paintWeather(): void {
     fetch("/api/weather")
       .then((r) => (r.ok ? r.json() : null))
-      .then((wx: { tempF: number; condition: string; wind: string } | null) => {
+      .then((wx: { tempF: number; condition: string; wind: string; isDaytime: boolean } | null) => {
         wxEl.innerHTML = wx
-          ? `<span class="wxTemp">${Math.round(wx.tempF)}°</span> ${esc(wx.condition)}${wx.wind ? `<span class="wxWind">${esc(wx.wind)}</span>` : ""}`
+          ? `${wxIcon(wx.condition, wx.isDaytime)}<span class="wxTemp">${Math.round(wx.tempF)}°</span><span class="wxCond">${esc(wx.condition)}</span>${wx.wind ? `<span class="wxWind">${esc(wx.wind)}</span>` : ""}`
           : "";
       })
       .catch(() => {});
