@@ -41,7 +41,7 @@ export function renderMap(root: HTMLElement): void {
       <span class="lgBlip active"></span> channel hit
       <span class="lgBlip cc"></span> close call
       <span class="lgBlip nofix"></span> no fix (ring)
-      <span class="lgNote">blips mark transmitter sites · fade over 60 s</span>
+      <span class="lgNote">blips mark transmitter sites · glow = 30-day traffic</span>
     </div>
     <div id="mapMsg" class="mapMsg"></div>
   </div>`;
@@ -102,6 +102,9 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
     // Marker scale: the kiosk (output-only) is read from across the room —
     // icons get ~1.6x; the interactive /map page is at arm's length.
     const mk = interactive ? 1 : 1.6;
+    // Geographic scale for blips/pings: metro-wide framing needs km-class
+    // circles to register at all; the kiosk gets an extra bump on top.
+    const geo = interactive ? 1 : 1.6;
     const map = new google.maps.Map(root, {
       center: framing.center, zoom: framing.zoom,
       disableDefaultUI: true,
@@ -151,7 +154,7 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
         born: Date.now(),
         ring: new google.maps.Circle({
           map, center: { lat, lng: lon },
-          radius: 200, strokeColor: color, strokeWeight: 2,
+          radius: 400 * geo, strokeColor: color, strokeWeight: 2,
           strokeOpacity: 0.9, fillOpacity: 0, clickable: false,
         }),
       });
@@ -160,25 +163,50 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
     // ── Persistent antenna layer: any site heard at least once gets a small
     // mast icon that STAYS — the map remembers the RF neighborhood; live
     // pulses play on top of it.
+    // Heat (ROADMAP Idea 8): each antenna carries a golden-amber glow disc
+    // scaled by its 30-day hit count, so the busy corners of the band burn
+    // visibly brighter. Log scale — site traffic spans 1..hundreds. (Not
+    // Google's HeatmapLayer: deprecated May 2025, and per-site glow matches
+    // the instrument aesthetic anyway.)
     const antennaIcon = lucideMarker(icoTower, "#ffc05c", Math.round(18 * mk)); // campfire golden-amber (dark)
     const antennas = new Map<string, any>();
     const siteInfo = new google.maps.InfoWindow({ disableAutoPan: true });
 
-    function antenna(lat: number, lon: number, names: string[], hits: number, lastTs: number): void {
+    function heatFor(hits: number): { radius: number; opacity: number } {
+      const h = Math.log2(1 + Math.max(0, hits));
+      return {
+        radius: Math.min(3000, 280 * (1 + h)),
+        opacity: Math.min(0.18, 0.03 + 0.022 * h),
+      };
+    }
+
+    function antenna(lat: number, lon: number, names: string[], hits: number, lastTs: number, increment = false): void {
       const key = `${lat.toFixed(5)},${lon.toFixed(5)}`;
       const existing = antennas.get(key);
       if (existing) {
         existing.names = Array.from(new Set([...existing.names, ...names]));
-        existing.hits = Math.max(existing.hits, hits);
+        // Seeds carry cumulative store counts (merge = max); a live hit is
+        // one MORE transmission (merge = increment) so glow grows tonight,
+        // not just after the next reload.
+        existing.hits = increment ? existing.hits + hits : Math.max(existing.hits, hits);
         existing.lastTs = Math.max(existing.lastTs, lastTs);
+        const heat = heatFor(existing.hits);
+        existing.glow.setOptions({ radius: heat.radius, fillOpacity: heat.opacity });
         return;
       }
+      const heat = heatFor(hits);
+      const glow = new google.maps.Circle({
+        map, center: { lat, lng: lon },
+        radius: heat.radius,
+        strokeOpacity: 0, clickable: false,
+        fillColor: "#ffc05c", fillOpacity: heat.opacity,
+      });
       const marker = new google.maps.Marker({
         map, position: { lat, lng: lon },
         icon: antennaIcon,
         title: names.join(", "),
       });
-      const entry = { marker, names: [...names], hits, lastTs };
+      const entry = { marker, glow, names: [...names], hits, lastTs };
       marker.addListener("click", () => {
         siteInfo.setContent(`<div class="blipInfo">${entry.names.map((n: string) => esc(n)).join("<br/>")}
           <div class="blipMeta">${entry.hits} hit${entry.hits === 1 ? "" : "s"} · last ${new Date(entry.lastTs).toLocaleTimeString()}</div></div>`);
@@ -217,7 +245,7 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
     // around the QTH; activity we can't place pulses at a DETERMINISTIC
     // spot on it (hash of frequency), so GMRS 19 is always "its" dot —
     // identity without fake geography.
-    const RING_M = 7000;
+    const RING_M = 12_000;
     const ringPath: Array<{ lat: number; lng: number }> = [];
     for (let i = 0; i <= 64; i++) {
       const a = (i / 64) * 2 * Math.PI;
@@ -276,7 +304,7 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
       // live hits ping and plant/refresh the persistent antenna
       if (Date.now() - ts < 2000) {
         ping(lat, lon, COLORS[kind]);
-        antenna(lat, lon, [alphaTag], 1, ts);
+        antenna(lat, lon, [alphaTag], 1, ts, true);
       }
     }
 
@@ -333,7 +361,7 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
           circles.set(key, entry);
         }
         entry.circle.setOptions({
-          radius: 350 + 250 * Math.min(b.hits, 6),
+          radius: (3750 + 625 * Math.min(b.hits, 6)) * geo,
           strokeColor: COLORS[b.kind],
           strokeOpacity: Math.min(1, b.opacity * 1.4),
           fillColor: COLORS[b.kind],
@@ -356,7 +384,7 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
           pings.splice(i, 1);
           continue;
         }
-        p.ring.setOptions({ radius: 200 + 3300 * t, strokeOpacity: 0.9 * (1 - t) });
+        p.ring.setOptions({ radius: (400 + 5200 * t) * geo, strokeOpacity: 0.9 * (1 - t) });
       }
       requestAnimationFrame(() => setTimeout(tick, pings.length ? 40 : 200));
     }
