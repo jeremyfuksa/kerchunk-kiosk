@@ -66,16 +66,24 @@ export function renderMap(root: HTMLElement): void {
     const s = document.createElement("script");
     s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&v=weekly`;
     s.onerror = () => { msg.textContent = "Google Maps failed to load (network or key)."; };
-    s.onload = () => start(home, framing);
+    s.onload = () => start(home, framing, cfg.display?.googleMapsMapId);
     document.head.appendChild(s);
   });
 
-  function start(home: { lat: number; lng: number }, framing: { center: { lat: number; lng: number }; zoom: number }): void {
+  function start(home: { lat: number; lng: number }, framing: { center: { lat: number; lng: number }; zoom: number }, mapId?: string): void {
+    // With a cloud-console Map ID the map renders as VECTOR and fitBounds
+    // can land on fractional zooms (z9.7) — an exact fit to the pin field.
+    // Raster maps floor to integer zoom, showing up to double the area.
+    // Vector styling lives in the console; in-code styles are raster-only.
     const map = new google.maps.Map(root.querySelector("#gmap")!, {
       center: framing.center, zoom: framing.zoom,
       disableDefaultUI: true, zoomControl: true,
       backgroundColor: "#1c1f26",
-      styles: DARK_STYLE,
+      ...(mapId
+        // colorScheme keeps the base map dark even while the console style
+        // is unassociated or still propagating — never a white flash.
+        ? { mapId, isFractionalZoomEnabled: true, colorScheme: "DARK" }
+        : { styles: DARK_STYLE }),
     });
 
     // Home: the kiosk's own antenna. Small, dim, unmistakable.
@@ -84,6 +92,21 @@ export function renderMap(root: HTMLElement): void {
       icon: lucideMarker(icoHouse, "#9299a5", 18),
       zIndex: 1,
     });
+
+    // ── Auto-framing: the pins decide the view. Bounds collect the QTH,
+    // the no-fix ring, every located channel, and every remembered site;
+    // one fitBounds once the data lands. Config mapLat/Lon/Zoom is only
+    // the pre-data first paint. The ring's 7 km radius doubles as a zoom
+    // floor, so two close pins can't zoom the map into a parking lot.
+    const bounds = new google.maps.LatLngBounds();
+    bounds.extend(home);
+    // Framing is for the neighborhood: a corrupt row at (0,0) or a typo'd
+    // site must not yank the view across an ocean. ~3° ≈ 300 km.
+    function frame(lat: number, lon: number): void {
+      if (Math.abs(lat - home.lat) < 3 && Math.abs(lon - home.lng) < 3) {
+        bounds.extend({ lat, lng: lon });
+      }
+    }
 
     const field = new BlipField(BLIP_LIFETIME_MS);
     // site key -> rendered circle + label marker
@@ -107,7 +130,7 @@ export function renderMap(root: HTMLElement): void {
     // ── Persistent antenna layer: any site heard at least once gets a small
     // mast icon that STAYS — the map remembers the RF neighborhood; live
     // pulses play on top of it.
-    const antennaIcon = lucideMarker(icoTower, "#ffb866", 18);
+    const antennaIcon = lucideMarker(icoTower, "#ffc05c", 18); // campfire golden-amber (dark)
     const antennas = new Map<string, any>();
     const siteInfo = new google.maps.InfoWindow({ disableAutoPan: true });
 
@@ -136,10 +159,25 @@ export function renderMap(root: HTMLElement): void {
     }
 
     // Seed from everything the store has ever located.
-    void fetch("/api/history/sites")
+    const sitesReady = fetch("/api/history/sites")
       .then((r) => (r.ok ? r.json() : []))
       .then((sites: Array<{ lat: number; lon: number; hits: number; lastTs: number; names: string[] }>) => {
-        for (const sgt of sites) antenna(sgt.lat, sgt.lon, sgt.names, sgt.hits, sgt.lastTs);
+        for (const sgt of sites) {
+          antenna(sgt.lat, sgt.lon, sgt.names, sgt.hits, sgt.lastTs);
+          frame(sgt.lat, sgt.lon);
+        }
+      })
+      .catch(() => {});
+
+    // Located channels frame the view even before they're first heard.
+    const channelsReady = fetch("/api/channels")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((chs: Array<{ location?: { lat?: number; lon?: number } }>) => {
+        for (const c of chs) {
+          if (c.location?.lat != null && c.location.lon != null) {
+            frame(c.location.lat, c.location.lon);
+          }
+        }
       })
       .catch(() => {});
 
@@ -158,6 +196,13 @@ export function renderMap(root: HTMLElement): void {
         lng: home.lng + (RING_M * Math.sin(a)) / (111_320 * Math.cos((home.lat * Math.PI) / 180)),
       });
     }
+    for (const p of ringPath) bounds.extend(p);
+    // Wait for the map's first idle as well as the data: fitBounds against
+    // a not-yet-laid-out viewport computes minimum zoom (the whole world).
+    const mapReady = new Promise<void>((resolve) =>
+      google.maps.event.addListenerOnce(map, "idle", resolve));
+    void Promise.allSettled([sitesReady, channelsReady, mapReady])
+      .then(() => map.fitBounds(bounds, 56));
     new google.maps.Polyline({
       map, path: ringPath, clickable: false,
       strokeOpacity: 0,

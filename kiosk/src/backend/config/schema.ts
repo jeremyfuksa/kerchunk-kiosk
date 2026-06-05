@@ -105,6 +105,11 @@ export const configSchema = z.object({
     weatherLon: z.number(),
     // Maps JavaScript API key for the /map view (operator-chosen provider).
     googleMapsApiKey: z.string().optional(),
+    // Cloud-console Map ID: switches /map to a VECTOR map with fractional
+    // zoom so auto-fit lands exactly on the pin field (raster maps floor to
+    // integer zoom — z9.7 becomes z9, double the area). Dark cartography
+    // then lives in the console style; absent = raster + in-code style.
+    googleMapsMapId: z.string().optional(),
     // Map framing (defaults to the QTH at zoom 10). The operator framed the
     // metro from a google.com/maps URL: @lat,lon,zoom.
     mapLat: z.number().optional(),
