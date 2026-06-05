@@ -586,15 +586,17 @@ this roadmap.
 
 ## Stretch items (named, not obvious-tier)
 
-- **FCC proximity lookup.** The RadioReference WSDL exposes
-  `fccGetProxCallsigns(lat, lon, range)` — raw FCC license data near the kiosk,
-  with licensee names and transmitter coordinates. This is the missing path to
-  **coordinates for business-band channels** (the WoF channels are RR-identified
-  by name but geo-less today: `searchCountyFreq` carries no location, only
-  RepeaterBook does, and it only knows ham/GMRS). Smallest of the stretch items:
-  one more SOAP op on the existing client, slotted third in the identification
-  chain. Response is heavy (every license in range) so cache like the
-  RepeaterBook state exports.
+- **FCC proximity lookup — SHIPPED 2026-06-05 (PRs #56/#57)** and it grew:
+  19-probe cached license grid, name-hint + frequency-confirmed placement
+  (locationNumber-aware, nearest-home, 80 km sanity cap), licensed power +
+  antenna height harvested into coverage-radius blips, background-primed
+  metro index for bare-frequency (Close Call) identification with emission-
+  based voice/data triage. Spawned two unplanned siblings: the **ERP
+  estimator** (helper measures median received RF per transmission;
+  FCC-licensed channels anchor a path-loss inversion; regulatory ceilings
+  clamp where the law is known) and **Close Call triage** (listenability
+  verdicts, service-allocation chips with OUTBAND flagging, mirror-bin
+  image rejection, persistence-before-filing).
 - **Close Call band-sweep mode (phase 2 of the CC spec).** Today Close Call
   watches the window the scanner is already parked on. The deferred second
   phase from `specs/2026-06-05-close-call-design.md`: when idle, deliberately
