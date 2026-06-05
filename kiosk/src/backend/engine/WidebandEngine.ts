@@ -233,6 +233,7 @@ export class WidebandEngine implements ScannerEngine {
       case "close":
         if (typeof ev.id !== "string") return;
         this.openIds.delete(ev.id);
+        this.emit({ type: "release", channelId: ev.id, ts: this.now() });
         if (this.openIds.size === 0) {
           this.emit({ type: "idle", ts: this.now() });
           // Idle again: dwell restarts from now, so a long hold doesn't cause

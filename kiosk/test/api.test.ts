@@ -601,3 +601,45 @@ describe("banks gate scanning", () => {
     expect(lastStart.knownHz).toEqual(expect.arrayContaining([146790000, 464275000]));
   });
 });
+
+describe("activity history (Idea 5)", () => {
+  function makeWithHistory() {
+    dir = mkdtempSync(join(tmpdir(), "ksrv-"));
+    const configStore = new ConfigStore(join(dir, "config.json"));
+    const engine = new FakeEngine();
+    const recorded: any[] = [];
+    const released: any[] = [];
+    const history = {
+      record: (e: any) => recorded.push(e),
+      release: (id: string, ts: number) => released.push([id, ts]),
+      query: () => [{ id: 1, ts: 5, kind: "active", freq: 464275000, alphaTag: "WoF", mode: "nfm", band: "uhf", tags: ["business"], lat: null, lon: null, durationMs: 1500 }],
+    };
+    const { server } = createServer({ configStore, engine, activityLog: new ActivityLog(10), wsHub: new WsHub(), staticDir: dir, history });
+    return { server, engine, recorded, released };
+  }
+
+  it("tees active/release/closecall into the store with channel context", async () => {
+    const { engine, recorded, released } = makeWithHistory();
+    engine.emitActive({ id: "c1", freq: 464275000, alphaTag: "WoF", mode: "nfm", enabled: true, tags: ["business"] });
+    engine.emitRelease("c1");
+    engine.emitCloseCall(462887500);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(recorded).toHaveLength(2);
+    expect(recorded[0]).toMatchObject({ kind: "active", freq: 464275000, tags: ["business"] });
+    expect(recorded[1]).toMatchObject({ kind: "closecall", freq: 462887500 });
+    expect(released).toHaveLength(1);
+    expect(released[0][0]).toBe("c1");
+  });
+
+  it("GET /api/history serves the store", async () => {
+    const { server } = makeWithHistory();
+    const res = await request(server).get("/api/history?since=1&limit=10");
+    expect(res.status).toBe(200);
+    expect(res.body[0].alphaTag).toBe("WoF");
+  });
+
+  it("404s without a store", async () => {
+    const { server } = makeApp();
+    expect((await request(server).get("/api/history")).status).toBe(404);
+  });
+});

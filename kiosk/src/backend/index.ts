@@ -13,6 +13,7 @@ import { RepeaterBook } from "./repeaterbook.js";
 import { RadioReference } from "./radioreference.js";
 import { composeLookups, type LookupProvider } from "./lookup.js";
 import { NwsWeather } from "./weather.js";
+import { HistoryStore } from "./history.js";
 import { dirname } from "node:path";
 import type { EngineEvent } from "./engine/ScannerEngine.js";
 
@@ -76,7 +77,13 @@ const weather = config.display
     })
   : undefined;
 
-const { server } = createServer({ configStore, engine, activityLog, wsHub, staticDir: STATIC_DIR, lookup, weather });
+// Durable activity history beside the config (StateDirectory is writable).
+const history = new HistoryStore({ path: join(dirname(CONFIG_PATH), "history.db") });
+history.prune();
+const pruneTimer = setInterval(() => history.prune(), 24 * 3600 * 1000);
+pruneTimer.unref?.();
+
+const { server } = createServer({ configStore, engine, activityLog, wsHub, staticDir: STATIC_DIR, lookup, weather, history });
 
 const wss = new WebSocketServer({ server, path: "/ws" });
 wss.on("connection", (ws) => wsHub.attach(ws));

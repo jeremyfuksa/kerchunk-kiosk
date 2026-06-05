@@ -37,6 +37,9 @@ export type EngineEvent =
   // can be active while exactly one is audible (first-active-wins hold).
   // RtlFmEngine never emits this — there, active IS audible.
   | { type: "audible"; channel: Channel | null; ts: number }
+  // Per-channel squelch close (idle fires only when ALL channels close) —
+  // lets history pair openings with closings for durations.
+  | { type: "release"; channelId: string; ts: number }
   | { type: "idle"; ts: number }
   // Close Call discovery: strong RF on a non-configured frequency in the
   // tuned window. The server persists it as a disabled channel; any audio
