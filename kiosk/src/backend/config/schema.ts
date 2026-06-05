@@ -10,6 +10,10 @@ export const locationSchema = z.object({
   city: z.string().optional(),
   state: z.string().optional(),
   source: z.string(),
+  // FCC license data (fccprox): transmitter power and antenna height feed
+  // the map's coverage-radius blips.
+  powerWatts: z.number().positive().optional(),
+  antennaHaatM: z.number().positive().optional(),
 });
 
 export const channelSchema = z.object({

@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { composeLookups, normalizeMode } from "../src/backend/lookup.js";
 
 describe("composeLookups", () => {
@@ -46,5 +46,24 @@ describe("mode inference from identified names", () => {
   it("never overrides a mode the source actually provided", async () => {
     const hit = await composeLookups([{ lookup: async () => ({ tag: "Something (DMR)", mode: "NFM" }) }]).lookup(1);
     expect(hit?.mode).toBe("NFM");
+  });
+});
+
+describe("location merge (FccProx backfill)", () => {
+  it("first hit keeps tag/mode; a later provider donates the missing location", async () => {
+    const rr = { lookup: async () => ({ tag: "Worlds of Fun Security", mode: "NFM" }) };
+    const fcc = { lookup: async () => ({ tag: "ignored", location: { lat: 39.176, lon: -94.491, source: "fcc" } }) };
+    const hit = await composeLookups([rr, fcc]).lookup(463425000, { name: "Worlds of Fun Security" });
+    expect(hit).toEqual({
+      tag: "Worlds of Fun Security", mode: "NFM",
+      location: { lat: 39.176, lon: -94.491, source: "fcc" },
+    });
+  });
+  it("a located first hit short-circuits — later providers never run", async () => {
+    const a = { lookup: async () => ({ tag: "A", location: { lat: 1, lon: 2, source: "x" } }) };
+    const spy = { lookup: vi.fn(async () => null) };
+    const hit = await composeLookups([a, spy]).lookup(146790000);
+    expect(hit?.tag).toBe("A");
+    expect(spy.lookup).not.toHaveBeenCalled();
   });
 });

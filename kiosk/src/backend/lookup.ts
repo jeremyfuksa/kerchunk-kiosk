@@ -16,12 +16,22 @@ export interface LookupHit {
     lon?: number;
     city?: string;
     state?: string;
+    /** Licensed transmitter power (FCC), for coverage-radius blips. */
+    powerWatts?: number;
+    /** Antenna height above terrain (FCC), same use. */
+    antennaHaatM?: number;
     source: string;
   };
 }
 
+// Context the caller already knows about the frequency. Providers that can
+// exploit it do (FccProx name-gates licenses with it); the rest ignore it.
+export interface LookupHint {
+  name?: string;
+}
+
 export interface LookupProvider {
-  lookup(freqHz: number): Promise<LookupHit | null>;
+  lookup(freqHz: number, hint?: LookupHint): Promise<LookupHit | null>;
 }
 
 // RadioReference leaves mode nil on trunked-SYSTEM site rows (mode belongs
@@ -40,20 +50,29 @@ export function inferModeFromName(tag: string): string | undefined {
 
 export function composeLookups(providers: LookupProvider[]): LookupProvider {
   return {
-    async lookup(freqHz: number): Promise<LookupHit | null> {
+    async lookup(freqHz: number, hint?: LookupHint): Promise<LookupHit | null> {
+      // First hit wins tag/mode — but a hit WITHOUT a location keeps the
+      // chain walking for location only (RadioReference names business
+      // channels but carries no geo; FccProx exists to fill exactly that).
+      let best: LookupHit | null = null;
       for (const p of providers) {
         try {
-          const hit = await p.lookup(freqHz);
-          if (hit) {
-            if (!hit.mode) {
-              const inferred = inferModeFromName(hit.tag);
-              if (inferred) return { ...hit, mode: inferred };
-            }
-            return hit;
+          const hit = await p.lookup(freqHz, hint);
+          if (!hit) continue;
+          const prev: LookupHit | null = best;
+          if (prev === null) {
+            best = hit;
+          } else if (!prev.location && hit.location) {
+            best = { ...(prev as LookupHit), location: hit.location };
           }
+          if (best?.location) break;
         } catch { /* provider failure: fall through to the next */ }
       }
-      return null;
+      if (best && !best.mode) {
+        const inferred = inferModeFromName(best.tag);
+        if (inferred) return { ...best, mode: inferred };
+      }
+      return best;
     },
   };
 }

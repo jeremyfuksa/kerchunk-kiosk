@@ -161,7 +161,7 @@ function leaf(xml: string, name: string): string | null {
 // (&#8211;) references; "Harrah&apos;s ..." reached the operator's screen
 // when only a hand-picked subset was decoded. &amp; goes LAST so encoded
 // ampersands can't re-trigger earlier replacements.
-function decodeXml(s: string): string {
+export function decodeXml(s: string): string {
   return s
     .replace(/&#x([0-9a-fA-F]+);/g, (_, h) => String.fromCodePoint(parseInt(h, 16)))
     .replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(Number(d)))

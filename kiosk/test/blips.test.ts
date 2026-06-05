@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { BlipField, ringPoint } from "../src/frontend/map/blips.js";
+import { BlipField, ringPoint, coverageRadiusM } from "../src/frontend/map/blips.js";
 
 describe("BlipField", () => {
   it("adds blips and computes decaying opacity over the lifetime", () => {
@@ -53,5 +53,20 @@ describe("ringPoint — deterministic no-fix placement", () => {
     const dLat = (p.lat - HOME.lat) * 111_320;
     const dLon = (p.lng - HOME.lng) * 111_320 * Math.cos(HOME.lat * Math.PI / 180);
     expect(Math.hypot(dLat, dLon)).toBeCloseTo(7000, -2);
+  });
+});
+
+describe("coverageRadiusM — power-rated blips", () => {
+  it("scales with power and antenna height, clamped to sane bounds", () => {
+    const wof = coverageRadiusM(110, 15);          // KUT966: 110 W at 15 m
+    expect(wof).toBeGreaterThan(10_000);
+    expect(wof).toBeLessThan(25_000);
+    expect(coverageRadiusM(5, 3)).toBeGreaterThanOrEqual(2_000);     // handheld floor
+    expect(coverageRadiusM(5000, 300)).toBeLessThanOrEqual(30_000);  // broadcast cap
+    expect(coverageRadiusM(110, 30)).toBeGreaterThan(coverageRadiusM(110, 10));
+    expect(coverageRadiusM(100, 15)).toBeGreaterThan(coverageRadiusM(10, 15));
+  });
+  it("assumes a typical mast when FCC omitted the height", () => {
+    expect(coverageRadiusM(50)).toBe(coverageRadiusM(50, 15));
   });
 });
