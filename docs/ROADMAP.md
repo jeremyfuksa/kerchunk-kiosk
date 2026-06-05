@@ -575,6 +575,35 @@ this roadmap.
 
 ## Stretch items (named, not obvious-tier)
 
+- **FCC proximity lookup.** The RadioReference WSDL exposes
+  `fccGetProxCallsigns(lat, lon, range)` — raw FCC license data near the kiosk,
+  with licensee names and transmitter coordinates. This is the missing path to
+  **coordinates for business-band channels** (the WoF channels are RR-identified
+  by name but geo-less today: `searchCountyFreq` carries no location, only
+  RepeaterBook does, and it only knows ham/GMRS). Smallest of the stretch items:
+  one more SOAP op on the existing client, slotted third in the identification
+  chain. Response is heavy (every license in range) so cache like the
+  RepeaterBook state exports.
+- **Close Call band-sweep mode (phase 2 of the CC spec).** Today Close Call
+  watches the window the scanner is already parked on. The deferred second
+  phase from `specs/2026-06-05-close-call-design.md`: when idle, deliberately
+  sweep windows across whole bands hunting for activity away from the
+  programmed channels. Interacts with banks/profiles (sweep ranges per bank?)
+  and costs scan coverage while sweeping — needs its own dwell policy.
+- **AM demod / CB band.** Tabled 2026-06-04 with a design sketch: the R820T
+  reaches 27 MHz (deaf-ish at its 24 MHz floor + antenna mismatch), all 40 CB
+  channels fit ONE window, and `mode: "am"` has been in the schema since day
+  one — no engine has ever honored it. Build shape: a per-lane AM path
+  (magnitude → DC-block → audio) alongside the NBFM demod, keyed off
+  channel.mode in the tune command. Airband (118–137 MHz AM) falls out of the
+  same work and is the more rewarding listen.
+- **Polyphase filter-bank channelizer.** Replace the per-channel
+  freq-xlating FIRs with a PFB (the sdrtrunk model): one shared filter + FFT
+  produces ALL channels in the window, so channel count becomes ~free
+  (~2.4 cores for 12 lanes today; a PFB holds roughly flat at 50). Pure DSP
+  refactor behind the same helper protocol; only matters when a window wants
+  dozens of channels — which Banks bulk-toggling and band-sweep could both
+  cause.
 - **Transcription.** Speech-to-text over captured audio → a searchable log of
   *what was said*, not just when. Powerful and modern, but heavier (a model on the
   appliance or an off-box API) and depends on capturing audio, so it sits well
@@ -607,6 +636,10 @@ These interlock; a sensible order:
    bank to its own radio for true parallel, hop-free coverage. Heaviest item
    (a cross-device audio arbiter is net-new); wants banks + per-bank profiles
    first.
+
+**The identification/DSP stretch items** slot opportunistically: FCC proximity
+is a small win any time; AM/CB and the PFB channelizer ride whichever of
+band-sweep or banks-scale demand them first.
 
 **SAME / NOAA alert decoding (Idea 11)** sits across this order rather than at a
 fixed step: a basic decoder + kiosk banner can land early (it only needs the NWR
