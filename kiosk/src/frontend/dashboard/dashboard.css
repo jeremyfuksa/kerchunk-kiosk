@@ -320,10 +320,15 @@ body {
 }
 .dash.mapStage .topbar {
   position: relative; z-index: 2;
-  background: color-mix(in srgb, var(--bg) 74%, transparent);
-  backdrop-filter: blur(8px);
+  /* No backdrop-filter here or below: blur over an animating WebGL map
+     recomposites the whole screen every frame (fans, 2014 iGPU). Higher
+     opacity instead — indistinguishable at kiosk distance. */
+  background: color-mix(in srgb, var(--bg) 90%, transparent);
   border-bottom: 1px solid color-mix(in srgb, var(--panel-edge) 70%, transparent);
 }
+/* The CRT scanline overlay is a full-screen layer — fine over a static
+   panel, a per-frame compositing tax over the live map. */
+.dash.mapStage::before { display: none; }
 .dash.mapStage .alertBar { position: relative; z-index: 2; }
 .dash.mapStage .dashBody {
   position: relative; z-index: 1;
@@ -339,11 +344,10 @@ body {
   min-width: 21rem;
   max-width: min(38rem, 46vw);
   align-items: flex-start;
-  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  background: color-mix(in srgb, var(--bg) 90%, transparent);
   border: 1px solid var(--panel-edge);
   border-radius: 10px;
   padding: 1.2rem 1.6rem 1.4rem;
-  backdrop-filter: blur(10px);
   box-shadow: 0 10px 34px rgba(0, 0, 0, 0.45);
 }
 .dash.mapStage .now .active { font-size: 1rem; }
