@@ -103,6 +103,8 @@ export const configSchema = z.object({
   display: z.object({
     weatherLat: z.number(),
     weatherLon: z.number(),
+    // Maps JavaScript API key for the /map view (operator-chosen provider).
+    googleMapsApiKey: z.string().optional(),
   }).optional(),
   // RepeaterBook lookup (Close Call enrichment). userAgent must be the
   // string REGISTERED with RepeaterBook; states are full names ("Missouri").

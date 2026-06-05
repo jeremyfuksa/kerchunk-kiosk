@@ -49,7 +49,7 @@ function iconBtn(cls: string, icon: string, label: string, attrs = ""): string {
 export function renderAdmin(root: HTMLElement): void {
   root.innerHTML = `
     <main class="admin">
-      <h1>Kerchunk Kiosk — Admin</h1>
+      <h1>Kerchunk Kiosk — Admin <a class="mapLink" href="/map" target="_blank" title="Live activity map">MAP ↗</a></h1>
       <section class="nowCard">
         <h2>Now playing</h2>
         <div class="npWhat"><span id="npName" class="npName">scanning…</span> <span id="npFreq" class="npFreq"></span></div>
@@ -106,6 +106,7 @@ export function renderAdmin(root: HTMLElement): void {
         <label>Hang time (ms) <input id="tHang" type="number" min="100" step="100" placeholder="2000" /></label>
         <label>Squelch open (dB over floor) <input id="tOpenDb" type="number" min="1" step="0.5" placeholder="9" /></label>
         <label>Quieting threshold (dB) <input id="tQuietDb" type="number" max="-1" step="0.5" placeholder="-86" /></label>
+        <label>Google Maps key <input id="tMapsKey" type="text" placeholder="AIza…" /></label>
         <label><input id="tCloseCall" type="checkbox" /> Close Call</label>
         <label>Close Call threshold (dB over floor) <input id="tCloseCallDb" type="number" min="5" step="1" placeholder="15" /></label>
         <button id="tSave">Save tuning</button>
@@ -747,6 +748,7 @@ export function renderAdmin(root: HTMLElement): void {
   const tHang = root.querySelector<HTMLInputElement>("#tHang")!;
   const tOpenDb = root.querySelector<HTMLInputElement>("#tOpenDb")!;
   const tQuietDb = root.querySelector<HTMLInputElement>("#tQuietDb")!;
+  const tMapsKey = root.querySelector<HTMLInputElement>("#tMapsKey")!;
   const tCloseCall = root.querySelector<HTMLInputElement>("#tCloseCall")!;
   const tCloseCallDb = root.querySelector<HTMLInputElement>("#tCloseCallDb")!;
   const tErr = root.querySelector<HTMLElement>("#tErr")!;
@@ -756,6 +758,7 @@ export function renderAdmin(root: HTMLElement): void {
     tHang.value = String(cfg.scan.dwellMs);
     tOpenDb.value = cfg.scan.openAboveFloorDb != null ? String(cfg.scan.openAboveFloorDb) : "";
     tQuietDb.value = cfg.scan.noiseQuietDb != null ? String(cfg.scan.noiseQuietDb) : "";
+    tMapsKey.value = cfg.display?.googleMapsApiKey ?? "";
     tCloseCall.checked = cfg.scan.closeCall ?? true;   // engine default: ON
     tCloseCallDb.value = cfg.scan.closeCallDb != null ? String(cfg.scan.closeCallDb) : "";
   });
@@ -771,6 +774,7 @@ export function renderAdmin(root: HTMLElement): void {
       cfg.scan.noiseQuietDb = num(tQuietDb);
       cfg.scan.closeCall = tCloseCall.checked;
       cfg.scan.closeCallDb = num(tCloseCallDb);
+      if (tMapsKey.value.trim() && cfg.display) cfg.display.googleMapsApiKey = tMapsKey.value.trim();
       const hang = num(tHang);
       if (hang !== undefined) cfg.scan.dwellMs = hang;
       await api.putConfig(cfg);
