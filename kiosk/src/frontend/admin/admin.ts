@@ -106,6 +106,15 @@ export function renderAdmin(root: HTMLElement): void {
         </div>
         <span id="chErr" class="err"></span>
       </section>
+      <section class="insights collapsible" data-key="insights">
+        <h2>Insights <span class="hint" id="inPeriodHint"></span></h2>
+        <div class="inToolbar">
+          <button class="inPeriod" data-h="24">24 h</button>
+          <button class="inPeriod" data-h="168">7 d</button>
+          <button class="inPeriod" data-h="720">30 d</button>
+        </div>
+        <div id="inBody" class="inBody"></div>
+      </section>
       <div class="moduleRow">
       <section class="tuning collapsible" data-key="tuning">
         <h2>Scan tuning</h2>
@@ -249,6 +258,62 @@ export function renderAdmin(root: HTMLElement): void {
     root.querySelector<HTMLInputElement>("#bkTags")!.value = "";
     refreshBanks();
   });
+
+  // ── Insights (ROADMAP Idea 9): aggregates over the history store ──
+  const inBody = root.querySelector<HTMLElement>("#inBody")!;
+  let inHours = 24;
+
+  function fmtAir(ms: number): string {
+    const m = Math.round(ms / 60000);
+    return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : m >= 1 ? `${m}m` : `${Math.round(ms / 1000)}s`;
+  }
+
+  async function renderInsights(): Promise<void> {
+    const since = Date.now() - inHours * 3_600_000;
+    const r = await fetch(`/api/stats?since=${since}`);
+    if (!r.ok) { inBody.innerHTML = `<div class="empty">history store unavailable</div>`; return; }
+    const st: {
+      totalHits: number; totalAirtimeMs: number; discoveries: number;
+      topChannels: Array<{ alphaTag: string; freq: number; hits: number; airtimeMs: number }>;
+      byTag: Array<{ tag: string; hits: number }>;
+      byBand: Array<{ band: string; hits: number }>;
+      byHour: number[];
+    } = await r.json();
+
+    const maxHits = Math.max(1, ...st.topChannels.map((c) => c.hits));
+    const maxHour = Math.max(1, ...st.byHour);
+    const nowHour = new Date().getHours();
+
+    inBody.innerHTML = `
+      <div class="inTotals">
+        <span><b>${st.totalHits}</b> hits</span>
+        <span><b>${fmtAir(st.totalAirtimeMs)}</b> airtime</span>
+        <span><b>${st.discoveries}</b> close calls</span>
+      </div>
+      <div class="inClock" title="activity by hour of day">
+        ${st.byHour.map((n, h) => `<div class="inHr${h === nowHour ? " now" : ""}" style="height:${(4 + 26 * n / maxHour).toFixed(0)}px" title="${String(h).padStart(2, "0")}:00 — ${n}"></div>`).join("")}
+      </div>
+      <table class="inTop">
+        ${st.topChannels.slice(0, 8).map((c) => `<tr>
+          <td class="inName">${esc(c.alphaTag) || fmtFreq(c.freq)}</td>
+          <td class="inBar"><div style="width:${(100 * c.hits / maxHits).toFixed(0)}%"></div></td>
+          <td class="inN">${c.hits}</td>
+          <td class="inAir">${fmtAir(c.airtimeMs)}</td>
+        </tr>`).join("")}
+      </table>
+      <div class="inSplit">
+        ${st.byBand.map((b) => `<span class="inChip">${esc(b.band.toUpperCase())} ${b.hits}</span>`).join("")}
+        ${st.byTag.map((t) => `<span class="inChip tag">${esc(t.tag)} ${t.hits}</span>`).join("")}
+      </div>`;
+    root.querySelector<HTMLElement>("#inPeriodHint")!.textContent =
+      inHours === 24 ? "last 24 hours" : inHours === 168 ? "last 7 days" : "last 30 days";
+    root.querySelectorAll<HTMLButtonElement>(".inPeriod").forEach((b) =>
+      b.classList.toggle("active", Number(b.dataset.h) === inHours));
+  }
+  root.querySelectorAll<HTMLButtonElement>(".inPeriod").forEach((b) =>
+    b.addEventListener("click", () => { inHours = Number(b.dataset.h); void renderInsights(); }));
+  void renderInsights();
+  setInterval(() => { renderInsights().catch(() => {}); }, 60_000);
 
   // Inline-editable CRUD table. One row at a time is editable: editingId is a
   // channel id, "new" (blank row pending creation), or null. Checkboxes on

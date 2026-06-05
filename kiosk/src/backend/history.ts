@@ -133,6 +133,52 @@ export class HistoryStore {
     }));
   }
 
+  /** Aggregates for the admin Insights panel (ROADMAP Idea 9). */
+  stats(sinceMs: number): {
+    totalHits: number;
+    totalAirtimeMs: number;
+    discoveries: number;
+    topChannels: Array<{ alphaTag: string; freq: number; hits: number; airtimeMs: number }>;
+    byTag: Array<{ tag: string; hits: number }>;
+    byBand: Array<{ band: string; hits: number }>;
+    byHour: number[];
+  } {
+    const one = (sql: string) =>
+      this.db.prepare(sql).get(sinceMs) as Record<string, unknown>;
+    const all = (sql: string) =>
+      this.db.prepare(sql).all(sinceMs) as Array<Record<string, unknown>>;
+
+    const totals = one(`SELECT COUNT(*) n, COALESCE(SUM(durationMs), 0) air,
+        SUM(kind = 'closecall') cc FROM events WHERE ts >= ?`);
+    const top = all(`SELECT alphaTag, freq, COUNT(*) hits,
+        COALESCE(SUM(durationMs), 0) airtimeMs
+      FROM events WHERE ts >= ? AND kind = 'active'
+      GROUP BY freq ORDER BY hits DESC, airtimeMs DESC LIMIT 12`);
+    const byTag = all(`SELECT je.value tag, COUNT(*) hits
+      FROM events, json_each(events.tags) je WHERE ts >= ?
+      GROUP BY je.value ORDER BY hits DESC`);
+    const byBand = all(`SELECT band, COUNT(*) hits FROM events WHERE ts >= ?
+      GROUP BY band ORDER BY hits DESC`);
+    // Hour-of-day activity clock in the appliance's local time.
+    const hours = all(`SELECT CAST(strftime('%H', ts / 1000, 'unixepoch', 'localtime') AS INTEGER) h,
+        COUNT(*) n FROM events WHERE ts >= ? GROUP BY h`);
+    const byHour = Array.from({ length: 24 }, () => 0);
+    for (const r of hours) byHour[Number(r.h)] = Number(r.n);
+
+    return {
+      totalHits: Number(totals.n),
+      totalAirtimeMs: Number(totals.air),
+      discoveries: Number(totals.cc ?? 0),
+      topChannels: top.map((r) => ({
+        alphaTag: String(r.alphaTag), freq: Number(r.freq),
+        hits: Number(r.hits), airtimeMs: Number(r.airtimeMs),
+      })),
+      byTag: byTag.map((r) => ({ tag: String(r.tag), hits: Number(r.hits) })),
+      byBand: byBand.map((r) => ({ band: String(r.band), hits: Number(r.hits) })),
+      byHour,
+    };
+  }
+
   /** Drop rows beyond the retention window (call at boot + daily). */
   prune(): void {
     const cutoff = Date.now() - this.retentionDays * 86_400_000;

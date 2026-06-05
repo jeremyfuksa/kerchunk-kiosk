@@ -21,7 +21,7 @@ export interface ServerDeps {
   /** Optional current-conditions provider for the kiosk header. */
   weather?: Pick<NwsWeather, "current">;
   /** Optional durable activity history (ROADMAP Idea 5). */
-  history?: Pick<HistoryStore, "record" | "release" | "query" | "sites">;
+  history?: Pick<HistoryStore, "record" | "release" | "query" | "sites" | "stats">;
   configStore: ConfigStore;
   engine: ScannerEngine;
   activityLog: ActivityLog;
@@ -462,6 +462,13 @@ export function createServer(deps: ServerDeps): { server: Server } {
     if (method === "GET" && path === "/api/history/sites") {
       if (!deps.history) return json(res, 404, { error: "no history store" });
       return json(res, 200, deps.history.sites());
+    }
+
+    if (method === "GET" && path === "/api/stats") {
+      if (!deps.history) return json(res, 404, { error: "no history store" });
+      const sp = new URL(req.url ?? "/", "http://localhost").searchParams;
+      const since = sp.has("since") ? Number(sp.get("since")) : Date.now() - 86_400_000;
+      return json(res, 200, deps.history.stats(since));
     }
 
     if (method === "GET" && path === "/api/weather") {
