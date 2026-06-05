@@ -368,3 +368,36 @@ body {
 .dash.mapStage .now .scanning .sweep { width: 320px; margin: 1.1rem 0 0; }
 .dash.mapStage .now .scanning .standbyHint { font-size: 1.05rem; }
 .dash.mapStage .now .err { font-size: 1.05rem; max-width: 100%; padding: 0.9rem; }
+
+/* ── Bank rail: hardware-scanner bank LEDs along the bottom. The chip(s)
+   covering the currently-tuned window glow as the radio hops. */
+.bankRail {
+  position: relative; z-index: 2;
+  display: flex; gap: 0.7rem; flex-wrap: wrap;
+  padding: 0.55rem 1.6rem 0.75rem;
+  justify-content: center;
+}
+.dash.mapStage .bankRail {
+  position: absolute; left: 1.6rem; bottom: 1.2rem;
+  padding: 0;
+  justify-content: flex-start;
+}
+.bankRail:empty { display: none; }
+.bankChipK {
+  font-family: var(--cond);
+  font-weight: 600; font-size: 1.05rem;
+  letter-spacing: 0.18em; text-transform: uppercase;
+  padding: 0.3rem 0.85rem;
+  border: 1px solid var(--panel-edge);
+  border-radius: 4px;
+  color: var(--dim);
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  transition: color 0.3s, border-color 0.3s, box-shadow 0.3s;
+}
+.bankChipK.lit {
+  color: var(--amber);
+  border-color: var(--amber-soft);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--spark) 30%, transparent),
+              inset 0 0 8px color-mix(in srgb, var(--spark) 12%, transparent);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--spark) 40%, transparent);
+}

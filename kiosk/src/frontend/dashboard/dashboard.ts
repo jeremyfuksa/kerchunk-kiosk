@@ -4,6 +4,8 @@ import { api } from "../lib/api.js";
 import { fmtFreq, esc } from "../lib/format.js";
 import icoBellRing from "lucide-static/icons/bell-ring.svg?raw";
 import { mountActivityMap } from "../map/map.js";
+import { matchesBank } from "../../backend/config/banks.js";
+import type { Bank, Channel } from "../../backend/config/schema.js";
 import "./dashboard.css";
 
 const ICO_BELL = icoBellRing;
@@ -13,6 +15,8 @@ export interface LogRow { freq: number; alphaTag: string; ts: number; }
 export interface AlertBanner { freq: number; alphaTag: string; until: number; }
 export interface DashState {
   nowPlaying: NowPlaying | null;
+  /** Channel ids in the currently-tuned window (drives the bank rail). */
+  tunedIds: string[];
   /** Active alert banner; cleared by paint once `until` passes. */
   alert: AlertBanner | null;
   log: LogRow[];
@@ -29,7 +33,7 @@ export interface DashState {
 }
 
 export function initialState(): DashState {
-  return { nowPlaying: null, alert: null, log: [], error: null, signalDb: null, engineState: "running", audibleDriven: false };
+  return { nowPlaying: null, tunedIds: [], alert: null, log: [], error: null, signalDb: null, engineState: "running", audibleDriven: false };
 }
 
 export function reduce(s: DashState, ev: EngineEvent): DashState {
@@ -56,6 +60,8 @@ export function reduce(s: DashState, ev: EngineEvent): DashState {
       };
     case "signal":
       return { ...s, signalDb: ev.dbfs };
+    case "tuned":
+      return { ...s, tunedIds: ev.channelIds };
     case "alert":
       // The banner outlives the transmission: holdSeconds is the operator's
       // attention window, not the squelch's.
@@ -106,6 +112,7 @@ export function renderDashboard(root: HTMLElement): void {
         <section class="now" id="now"></section>
         <aside class="log"><h2>Recent</h2><ul id="logList"></ul></aside>
       </div>
+      <div id="bankRail" class="bankRail"></div>
     </div>`;
   const dashEl = root.querySelector<HTMLElement>(".dash")!;
   void mountActivityMap(root.querySelector<HTMLElement>("#mapBase")!, { interactive: false })
@@ -132,6 +139,32 @@ export function renderDashboard(root: HTMLElement): void {
   paintBadge();
 
   let scanCount = -1; // unknown until the first status fetch
+
+  // ── Bank rail: hardware-scanner bank LEDs. Every enabled bank is a chip;
+  // the chips covering the currently-tuned window light up as the radio
+  // hops (~groupDwellMs cadence). Needs the config snapshot for bank
+  // predicates; status transitions refetch it (config edits restart the
+  // engine, so the snapshot can never go stale silently).
+  const railEl = root.querySelector<HTMLElement>("#bankRail")!;
+  let cfgBanks: Bank[] = [];
+  let cfgChannels: Channel[] = [];
+  function loadBanks(): void {
+    void api.getConfig().then((cfg) => {
+      cfgBanks = (cfg.banks ?? []).filter((b: Bank) => b.enabled);
+      cfgChannels = cfg.channels ?? [];
+      paintRail();
+    }).catch(() => {});
+  }
+  loadBanks();
+
+  function paintRail(): void {
+    if (!cfgBanks.length) { railEl.innerHTML = ""; return; }
+    const tuned = cfgChannels.filter((c) => state.tunedIds.includes(c.id));
+    railEl.innerHTML = cfgBanks.map((b) => {
+      const lit = tuned.some((c) => matchesBank(c, b));
+      return `<span class="bankChipK${lit ? " lit" : ""}">${esc(b.name)}</span>`;
+    }).join("");
+  }
 
   const alertEl = root.querySelector<HTMLElement>("#alertBar")!;
   let alertTimer: ReturnType<typeof setTimeout> | null = null;
@@ -255,7 +288,8 @@ export function renderDashboard(root: HTMLElement): void {
   new ReconnectingWs(`${proto}://${location.host}/ws`, (ev) => {
     if (ev.type === "reload") { location.reload(); return; }
     state = reduce(state, ev);
-    if (ev.type === "status") paintBadge();
+    if (ev.type === "status") { paintBadge(); loadBanks(); }
+    if (ev.type === "tuned") paintRail();
     paint();
   }).connect();
   paint();

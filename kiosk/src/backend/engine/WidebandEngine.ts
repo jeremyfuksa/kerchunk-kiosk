@@ -317,6 +317,11 @@ export class WidebandEngine implements ScannerEngine {
       ],
     };
     this.child.stdin.write(JSON.stringify(cmd) + "\n");
+    // Tell the UIs where the radio is parked (bank indicator).
+    this.emit({
+      type: "tuned", freqHz: group.centerHz,
+      channelIds: group.channels.map((c) => c.id), ts: this.now(),
+    });
   }
 
   private startDwellTimer(): void {

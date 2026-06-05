@@ -170,3 +170,12 @@ describe("alert banner (ROADMAP Idea 6)", () => {
     expect(s.nowPlaying?.alphaTag).toBe("Skywarn");
   });
 });
+
+describe("bank rail (tuned window)", () => {
+  it("tuned event replaces the tuned id set", () => {
+    let s = reduce(initialState(), { type: "tuned", freqHz: 155_000_000, channelIds: ["a", "b"], ts: 1 });
+    expect(s.tunedIds).toEqual(["a", "b"]);
+    s = reduce(s, { type: "tuned", freqHz: 460_000_000, channelIds: ["c"], ts: 2 });
+    expect(s.tunedIds).toEqual(["c"]);
+  });
+});
