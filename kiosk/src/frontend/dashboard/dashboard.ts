@@ -253,6 +253,7 @@ export function renderDashboard(root: HTMLElement): void {
   api.getLogs().then((rows) => { state = { ...state, log: rows }; paint(); }).catch(() => {});
   const proto = location.protocol === "https:" ? "wss" : "ws";
   new ReconnectingWs(`${proto}://${location.host}/ws`, (ev) => {
+    if (ev.type === "reload") { location.reload(); return; }
     state = reduce(state, ev);
     if (ev.type === "status") paintBadge();
     paint();

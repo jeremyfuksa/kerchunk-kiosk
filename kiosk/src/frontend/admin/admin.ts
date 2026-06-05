@@ -69,6 +69,7 @@ export function renderAdmin(root: HTMLElement): void {
           <button id="skipBtn" title="Force-close the current transmission">Skip ▶</button>
           <button id="tlockBtn" title="Suppress this channel for 30 minutes (clears on restart)" disabled>Temp lockout 30m</button>
           <button id="lockBtn" title="Remove this channel and never Close-Call its frequency again" disabled>Lockout</button>
+          <button id="kioskReload" title="Reload the kiosk display page (fresh bundle + map style)">⟳ Reload kiosk</button>
         </div>
       </section>
       <section class="discoveries">
@@ -840,6 +841,9 @@ export function renderAdmin(root: HTMLElement): void {
   syncMode();
   paintNow();
 
+  root.querySelector<HTMLButtonElement>("#kioskReload")!.addEventListener("click", () => {
+    void fetch("/api/kiosk/reload", { method: "POST" }).catch(() => {});
+  });
   tlockBtn.addEventListener("click", () => api.skip(1800));
   lockBtn.addEventListener("click", () => {
     if (!nowPlaying) return;

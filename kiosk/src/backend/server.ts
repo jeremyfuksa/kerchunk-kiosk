@@ -485,6 +485,13 @@ export function createServer(deps: ServerDeps): { server: Server } {
       return json(res, 200, { mode, state: engine.state });
     }
 
+    if (method === "POST" && path === "/api/kiosk/reload") {
+      // Soft kiosk reload: the dashboard WS client reloads its page —
+      // fresh bundle + re-fetched Maps script/style, no systemd involved.
+      deps.wsHub.broadcast({ type: "reload", ts: Date.now() });
+      return json(res, 200, { ok: true });
+    }
+
     if (method === "GET" && path === "/api/history") {
       if (!deps.history) return json(res, 404, { error: "no history store" });
       const sp = new URL(req.url ?? "/", "http://localhost").searchParams;
