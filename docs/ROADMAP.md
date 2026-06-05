@@ -519,6 +519,60 @@ continuous NWR coverage. Ties this idea tightly to Idea 10.
 
 ---
 
+## Idea 12 — Digital voice decode (DMR, and the P25 path) — *low priority*
+
+**Priority: low.** Captured for the record; a real but heavy, far-future item.
+Decoding *unencrypted* analog-adjacent digital voice would turn signals Kerchunk
+currently recognizes-but-can't-hear into audio — but it's a parallel decode
+pipeline, not a tweak, so it sits well behind the rest of this roadmap.
+
+**Is it possible? Yes.** DMR decoding on an RTL-SDR is well-trodden: **DSD-FME**
+and **SDRTrunk** decode DMR voice today. The realistic path is integrating one of
+those (exactly how the README backlog frames P25: "integrate DSD-FME or OP25"),
+not writing a C4FM + vocoder stack from scratch.
+
+**Why it's not a small change.** `wideband_helper.py` is built entirely around
+analog FM (`nbfm_rx`) with a power-plus-quieting squelch (`noiseQuietDb`,
+open-above-floor). DMR needs a parallel path:
+- **Frame/symbol sync** instead of "is there a carrier" — DMR is 4FSK (C4FM
+  family, 4800 sym/s) and you detect it by locking to its burst sync, so the
+  analog quieting metric doesn't apply.
+- **TDMA slot tracking** — one 12.5 kHz channel carries *two* timeslots / two
+  simultaneous conversations; you follow both and read each burst's data type.
+- **Vocoder** — DMR voice is **AMBE+2** (DVSI). Bits → audio needs an AMBE
+  decoder; the open-source **mbelib** (what DSD uses) does it at good-enough
+  quality, and the core AMBE patents have largely aged out. Hardware AMBE dongles
+  (ThumbDV) are the "proper" alternative.
+
+The RF front-end *is* reusable (the existing channelizer/discriminator can feed
+4FSK symbol recovery), and CPU is a non-issue — one or a few digital channels is
+light next to 12 analog channelizers. The cost is engineering a second pipeline,
+not compute.
+
+**Two very different effort tiers.**
+- **Conventional DMR** (fixed simplex / single repeater) — decode the channel
+  directly. Tractable; comparable to adding any one digital mode.
+- **Trunked DMR** (Tier III / Capacity Plus) — a control channel dynamically
+  assigns talkgroups to frequencies, so you follow control and retune. Same
+  complexity class as the P25 trunking already parked at the far end of the
+  backlog. Much bigger.
+
+**Caveats.**
+- **Encryption.** Unencrypted DMR is just a mode (legal to receive), but much
+  business / public-safety DMR is **encrypted** (AES/ARC4) — no decoder gets audio
+  without the key, so those channels read "encrypted, no audio" regardless.
+- **It already half-exists in spirit.** Close Call tags each discovery's `mode`
+  ("FMN, DMR, P25…") specifically to tell the operator *whether a discovery is
+  even decodable as analog*. Kerchunk already recognizes DMR and files it as
+  undecodable; a decoder is what turns those silent discoveries into audio.
+
+**Stance.** Conventional DMR via DSD-FME/SDRTrunk is a reasonable *post-analog*
+milestone if the itch arises; trunked DMR and P25 trunking are far-future,
+same-tier work; encrypted traffic is off the table either way. Lowest priority on
+this roadmap.
+
+---
+
 ## Stretch items (named, not obvious-tier)
 
 - **Transcription.** Speech-to-text over captured audio → a searchable log of
