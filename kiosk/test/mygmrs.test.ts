@@ -8,6 +8,8 @@ const ITEMS = { success: true, info: { total: 3 }, items: [
   { ID: 1, Name: "Eastern Independence", Location: "Independence", State: "MO", Frequency: "462.550", Status: "Online", Latitude: 39.0723, Longitude: -94.3102 },
   { ID: 2, Name: "OLATHE 550", Location: "Olathe", State: "KS", Frequency: "462.550", Status: "Online", Latitude: 38.9032, Longitude: -94.7994 },
   { ID: 3, Name: "Dead 575", Location: "Nowhere", State: "MO", Frequency: "462.575", Status: "Offline", Latitude: 39.2, Longitude: -94.5 },
+  { ID: 4, Name: "  Messy   700 ", Location: "basehor ", State: "ks", Frequency: "462.700", Status: "Online", Latitude: 39.1471, Longitude: -94.944 },
+  { ID: 5, Name: "Irish 725", Location: "o'fallon heights", State: "MO", Frequency: "462.725", Status: "Online", Latitude: 39.2, Longitude: -94.5 },
 ] };
 
 function make() {
@@ -32,6 +34,15 @@ describe("MyGmrs", () => {
     const { g } = make();
     expect(await g.lookup(462575000)).toBeNull(); // only an Offline candidate
     expect(await g.lookup(146790000)).toBeNull(); // not GMRS
+  });
+
+  it("tidies owner-typed names and cities at the boundary", async () => {
+    const { g } = make();
+    const hit = await g.lookup(462700000);
+    expect(hit?.tag).toBe("Messy 700 · Basehor, KS");
+    expect(hit?.location).toMatchObject({ city: "Basehor", state: "KS" });
+    const irish = await g.lookup(462725000);
+    expect(irish?.location?.city).toBe("O'Fallon Heights");
   });
 
   it("caches per state and identifies with the UA", async () => {

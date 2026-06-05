@@ -73,14 +73,16 @@ export class MyGmrs implements LookupProvider {
     }
     if (!best) return null;
     const r = best.item;
-    const st = r.State ?? "";
-    const where = [r.Location, st].filter(Boolean).join(", ");
+    const name = tidy(r.Name ?? "");
+    const city = tidyCity(r.Location ?? "");
+    const st = tidy(r.State ?? "").toUpperCase();
+    const where = [city, st].filter(Boolean).join(", ");
     return {
-      tag: `${r.Name ?? "GMRS repeater"}${where ? ` · ${where}` : ""}`,
+      tag: `${name || "GMRS repeater"}${where ? ` · ${where}` : ""}`,
       mode: "FM",
       location: {
         lat: r.Latitude!, lon: r.Longitude!,
-        ...(r.Location ? { city: r.Location } : {}),
+        ...(city ? { city } : {}),
         ...(st ? { state: st } : {}),
         source: "mygmrs",
       },
@@ -122,6 +124,21 @@ export class MyGmrs implements LookupProvider {
       return [];
     }
   }
+}
+
+// Directory entries are owner-typed free text — "Basehor ", "shawnee" —
+// so tidy at the provider boundary before anything is stored or displayed.
+function tidy(s: string): string {
+  return s.replace(/\s+/g, " ").trim();
+}
+
+// Capitalize only letters that START lowercase ("shawnee" → "Shawnee",
+// "o'fallon" → "O'Fallon") — interior caps like McPherson survive untouched,
+// and a lone letter after an apostrophe stays down (Smith's, not Smith'S).
+function tidyCity(s: string): string {
+  return tidy(s)
+    .replace(/(^|[\s-])([a-z])/g, (_, pre, ch) => pre + ch.toUpperCase())
+    .replace(/'([a-z])(?=[a-z])/g, (_, ch) => `'${ch.toUpperCase()}`);
 }
 
 function distKm(home: { lat: number; lon: number }, lat: number, lon: number): number {
