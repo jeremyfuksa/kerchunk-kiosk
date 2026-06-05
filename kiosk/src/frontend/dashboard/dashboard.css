@@ -341,8 +341,8 @@ body {
   flex: none;
   display: inline-flex;
   width: fit-content;
-  min-width: 21rem;
-  max-width: min(38rem, 46vw);
+  min-width: 26rem;
+  max-width: min(46rem, 52vw);
   align-items: flex-start;
   background: color-mix(in srgb, var(--bg) 90%, transparent);
   border: 1px solid var(--panel-edge);
@@ -350,21 +350,21 @@ body {
   padding: 1.2rem 1.6rem 1.4rem;
   box-shadow: 0 10px 34px rgba(0, 0, 0, 0.45);
 }
-.dash.mapStage .now .active { font-size: 1rem; }
+.dash.mapStage .now .active { font-size: 1.3rem; }
 .dash.mapStage .now .tag {
-  font-size: clamp(1.9rem, 3.2vw, 3.1rem);
+  font-size: clamp(2.7rem, 4.6vw, 4.5rem);
   text-align: left;
   max-width: 100%;
   margin-top: 0.5rem;
 }
-.dash.mapStage .now .freq { font-size: 1.45rem; margin-top: 0.4rem; }
+.dash.mapStage .now .freq { font-size: 2.1rem; margin-top: 0.45rem; }
 .dash.mapStage .meter {
-  width: 100%; max-width: 300px; height: 12px;
-  margin: 1.1rem 0 0;
+  width: 100%; max-width: 400px; height: 15px;
+  margin: 1.2rem 0 0;
 }
-.dash.mapStage .meterDb { font-size: 0.8rem; }
+.dash.mapStage .meterDb { font-size: 1rem; }
 .dash.mapStage .now .scanning { text-align: left; }
-.dash.mapStage .now .scanning .scanText { font-size: 1.35rem; }
-.dash.mapStage .now .scanning .sweep { width: 230px; margin: 1rem 0 0; }
-.dash.mapStage .now .scanning .standbyHint { font-size: 0.85rem; }
+.dash.mapStage .now .scanning .scanText { font-size: 1.9rem; }
+.dash.mapStage .now .scanning .sweep { width: 320px; margin: 1.1rem 0 0; }
+.dash.mapStage .now .scanning .standbyHint { font-size: 1.05rem; }
 .dash.mapStage .now .err { font-size: 1.05rem; max-width: 100%; padding: 0.9rem; }
