@@ -674,6 +674,51 @@ without the key show as undecodable, same as any other crypto.
 
 ---
 
+## Idea 15 — Admin IA: analytics home, config in pages
+
+**The pitch.** Make the admin **home an analytics dashboard** — at-a-glance
+insights, alerts, now-playing, recent activity — and move the operational
+surfaces (channels, banks, scan tuning, audio, Close Call lockouts, weather,
+identification keys) into their **own pages** behind a nav. Config becomes a
+destination you go to, not the thing you land in.
+
+**What we have.** One long, progressively-disclosed page. `admin.ts` (~1040
+lines) renders stacked sections — Now Playing, Discoveries, Banks, Channels,
+Insights, Alerts, Scan tuning, Close Call lockouts, Weather — with the minor ones
+collapsed behind their legends (`section.collapsible`). Vanilla TS + Vite, no
+framework and no router. Notably, **Insights (Idea 9), Alerts (Idea 6) and Banks
+(Idea 1) already exist as sections** — the analytics raw material for the home is
+already on the page; this is about *promotion and layout*, not new data.
+
+**Why now.** Progressive disclosure is a stopgap that doesn't scale: as features
+multiply (history, per-bank profiles, ADS-B, mesh, radar), one scroll gets
+unwieldy. And it mismatches usage — a running appliance is *mostly monitored,
+occasionally configured*, so the landing view should be the glance (what's
+happening, what fired, what's busy), with configuration one click away.
+
+**Build shape.** Frontend-only; no backend/API change.
+1. A tiny **hash router** (`#/`, `#/channels`, `#/banks`, `#/scan`, `#/audio`,
+   `#/closecall`, `#/weather`, `#/identification`, `#/history`) — vanilla, no
+   framework, matching the stack. Keep routes deep-linkable so admin bookmarks
+   survive.
+2. **Home = analytics:** promote Insights (Idea 9) + the Alert feed (Idea 6) +
+   now-playing + a discoveries summary + recent activity (and later, history
+   charts from Idea 5) into a read-only glance.
+3. **Port each operational section into its own page.** The existing per-section
+   render functions are already modular, so they mostly move as page bodies —
+   low-risk, mechanical.
+4. A nav rail/tabs; reuse the existing Campfire responsive workspace + tokens.
+5. **Ties to the modularity note:** this *is* the admin **page/panel registry** —
+   each module (history, stats, ADS-B, mesh, …) registers a nav entry + page, and
+   the home is assembled from module-contributed analytics widgets. Build the
+   shell now and future modules slot in without touching it.
+
+**Scope note.** Genuinely a restructure, not a rewrite: the risk is re-layout + a
+router, not new behavior. Worth doing *before* the next few panels land, so they
+arrive as pages instead of more sections to collapse.
+
+---
+
 ## Stretch items (named, not obvious-tier)
 
 - **FCC proximity lookup — SHIPPED 2026-06-05 (PRs #56/#57)** and it grew:
