@@ -70,6 +70,7 @@ export function renderAdmin(root: HTMLElement): void {
           <button id="tlockBtn" title="Suppress this channel for 30 minutes (clears on restart)" disabled>Temp lockout 30m</button>
           <button id="lockBtn" title="Remove this channel and never Close-Call its frequency again" disabled>Lockout</button>
           <button id="kioskReload" title="Reload the kiosk display page (fresh bundle + map style)">⟳ Reload kiosk</button>
+          <button id="streamBtn" title="Listen to the live speaker feed in this browser">▶ Listen here</button>
         </div>
       </section>
       <section class="discoveries">
@@ -916,6 +917,20 @@ export function renderAdmin(root: HTMLElement): void {
   syncMode();
   paintNow();
 
+  // Remote listening: an <audio> on the endless-WAV stream. Recreated per
+  // press — reusing a stalled stream element resumes seconds in the past.
+  let streamEl: HTMLAudioElement | null = null;
+  const streamBtn = root.querySelector<HTMLButtonElement>("#streamBtn")!;
+  streamBtn.addEventListener("click", () => {
+    if (streamEl) {
+      streamEl.pause(); streamEl.src = ""; streamEl = null;
+      streamBtn.textContent = "▶ Listen here";
+      return;
+    }
+    streamEl = new Audio(`/api/stream.wav?t=${Date.now()}`);
+    void streamEl.play().catch(() => { streamEl = null; });
+    streamBtn.textContent = "⏹ Stop listening";
+  });
   root.querySelector<HTMLButtonElement>("#kioskReload")!.addEventListener("click", () => {
     void fetch("/api/kiosk/reload", { method: "POST" }).catch(() => {});
   });

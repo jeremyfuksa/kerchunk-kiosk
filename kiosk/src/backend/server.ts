@@ -627,6 +627,32 @@ export function createServer(deps: ServerDeps): { server: Server } {
       return json(res, 200, runPowerEstimate());
     }
 
+    if (method === "GET" && path === "/api/stream.wav") {
+      // Remote listening (ROADMAP stretch): the live speaker feed as an
+      // endless WAV. 48 kHz mono s16 = ~94 KB/s — trivial on the LAN.
+      const onAudio = (engine as { onAudio?: (l: (c: Buffer) => void) => () => void }).onAudio?.bind(engine);
+      if (!onAudio) return json(res, 404, { error: "engine has no audio tee" });
+      const hdr = Buffer.alloc(44);
+      hdr.write("RIFF", 0); hdr.writeUInt32LE(0xffffffff, 4); hdr.write("WAVE", 8);
+      hdr.write("fmt ", 12); hdr.writeUInt32LE(16, 16); hdr.writeUInt16LE(1, 20);
+      hdr.writeUInt16LE(1, 22); hdr.writeUInt32LE(48000, 24);
+      hdr.writeUInt32LE(48000 * 2, 28); hdr.writeUInt16LE(2, 32); hdr.writeUInt16LE(16, 34);
+      hdr.write("data", 36); hdr.writeUInt32LE(0xffffffff, 40);
+      res.writeHead(200, {
+        "Content-Type": "audio/wav",
+        "Cache-Control": "no-store",
+        Connection: "close",
+      });
+      res.write(hdr);
+      const unsub = onAudio((chunk) => {
+        // Slow client: drop chunks rather than buffer unboundedly — live
+        // audio has no business being seconds behind.
+        if (res.writableLength < 256 * 1024) res.write(chunk);
+      });
+      req.on("close", unsub);
+      return;
+    }
+
     if (method === "POST" && path === "/api/kiosk/reload") {
       // Soft kiosk reload: the dashboard WS client reloads its page —
       // fresh bundle + re-fetched Maps script/style, no systemd involved.
