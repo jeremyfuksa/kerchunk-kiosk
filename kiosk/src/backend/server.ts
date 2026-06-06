@@ -14,6 +14,9 @@ import { setVolume as amixerVolume, setMuted as amixerMuted, type AmixerOpts } f
 import { isScannable, isAudible, profileFor } from "./config/banks.js";
 import { solveK, estimateWatts, distKm, type Anchor } from "./powerEstimator.js";
 import { parseSame, fipsMatch, isTest } from "./same.js";
+import { Transcriber } from "./transcriber.js";
+import { dirname, join as pathJoin } from "node:path";
+import { fileURLToPath } from "node:url";
 
 export interface ServerDeps {
   /** Optional identification chain — enriches Close Call channel names. */
@@ -23,7 +26,9 @@ export interface ServerDeps {
   /** Optional current-conditions provider for the kiosk header. */
   weather?: Pick<NwsWeather, "current">;
   /** Optional durable activity history (ROADMAP Idea 5). */
-  history?: Pick<HistoryStore, "record" | "release" | "query" | "sites" | "stats">;
+  history?: Pick<HistoryStore, "record" | "release" | "query" | "sites" | "stats" | "setTranscript">;
+  /** Override the transcription worker command (tests). */
+  transcriberCmd?: string[];
   configStore: ConfigStore;
   engine: ScannerEngine;
   activityLog: ActivityLog;
@@ -351,6 +356,29 @@ export function createServer(deps: ServerDeps): { server: Server } {
   const estTimer = setInterval(() => { runPowerEstimate(); }, 12 * 3600 * 1000);
   estTimer.unref?.();
 
+  // ── Transcription (stretch, opt-in): segments ride the remote-listening
+  // audio tee, cut on audible transitions; the python worker (faster-
+  // whisper tiny.en, nice 15) files text back onto history rows.
+  if (config.transcribe && deps.history) {
+    const onAudio = (engine as { onAudio?: (l: (c: Buffer) => void) => () => void }).onAudio?.bind(engine);
+    if (onAudio) {
+      const here = dirname(fileURLToPath(import.meta.url));
+      const transcriber = new Transcriber({
+        workerCmd: deps.transcriberCmd ?? [
+          "/var/lib/kerchunk-kiosk/venv-whisper/bin/python",
+          pathJoin(here, "..", "..", "scripts", "transcribe_worker.py"),
+        ],
+        tmpDir: "/tmp/kerchunk-transcribe",
+        onText: ({ channelId, text }) => deps.history!.setTranscript(channelId, text),
+      });
+      transcriber.start();
+      onAudio((c) => transcriber.audio(c));
+      engine.on((ev) => {
+        if (ev.type === "audible") transcriber.audible(ev.channel?.id ?? null, ev.ts);
+      });
+    }
+  }
+
   // ── SAME / EAS (ROADMAP Idea 11): decoded headers off the NWR lane.
   // Visiting-slot tier — the decoder only hears NWR while its window is
   // tuned, so this catches SOME alert bursts, honestly supplementary.
@@ -668,6 +696,7 @@ export function createServer(deps: ServerDeps): { server: Server } {
         sinceMs: num("since"), untilMs: num("until"), freq: num("freq"),
         tag: sp.get("tag") ?? undefined,
         kind: sp.get("kind") ?? undefined,
+        transcribed: sp.has("transcribed"),
         limit: num("limit"),
       }));
     }

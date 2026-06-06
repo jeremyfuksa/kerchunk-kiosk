@@ -31,10 +31,12 @@ export interface HistoryRow {
   lat: number | null;
   lon: number | null;
   durationMs: number | null;
+  transcript: string | null;
 }
 
 export interface HistoryQuery {
   kind?: string;
+  transcribed?: boolean;
   sinceMs?: number;
   untilMs?: number;
   freq?: number;
@@ -53,6 +55,9 @@ export class HistoryStore {
   private readonly retentionDays: number;
   // channelId -> rowid of its currently-open event, for duration pairing.
   private open = new Map<string, number>();
+  // channelId -> rowid of its most recently CLOSED event — transcripts
+  // arrive seconds after release, so they pair against this.
+  private lastClosed = new Map<string, number>();
 
   constructor(opts: HistoryStoreOptions) {
     this.retentionDays = opts.retentionDays ?? 30;
@@ -74,6 +79,12 @@ export class HistoryStore {
       CREATE INDEX IF NOT EXISTS idx_events_ts ON events(ts);
       CREATE INDEX IF NOT EXISTS idx_events_freq ON events(freq);
     `);
+    // Transcription (stretch): lazy column migration for stores created
+    // before the feature existed.
+    const cols = this.db.prepare("PRAGMA table_info(events)").all() as Array<{ name: string }>;
+    if (!cols.some((c) => c.name === "transcript")) {
+      this.db.exec("ALTER TABLE events ADD COLUMN transcript TEXT");
+    }
   }
 
   record(ev: HistoryEvent): void {
@@ -95,15 +106,24 @@ export class HistoryStore {
     const rowid = this.open.get(channelId);
     if (rowid === undefined) return;
     this.open.delete(channelId);
+    this.lastClosed.set(channelId, rowid);
     this.db.prepare(
       `UPDATE events SET durationMs = MAX(0, ? - ts) WHERE id = ? AND durationMs IS NULL`,
     ).run(ts, rowid);
+  }
+
+  /** Attach what was said to the channel's most recent transmission. */
+  setTranscript(channelId: string, text: string): void {
+    const rowid = this.lastClosed.get(channelId) ?? this.open.get(channelId);
+    if (rowid === undefined) return;
+    this.db.prepare("UPDATE events SET transcript = ? WHERE id = ?").run(text, rowid);
   }
 
   query(q: HistoryQuery): HistoryRow[] {
     const where: string[] = [];
     const args: Array<number | string> = [];
     if (q.kind !== undefined) { where.push("kind = ?"); args.push(q.kind); }
+    if (q.transcribed) where.push("transcript IS NOT NULL");
     if (q.sinceMs !== undefined) { where.push("ts >= ?"); args.push(q.sinceMs); }
     if (q.untilMs !== undefined) { where.push("ts <= ?"); args.push(q.untilMs); }
     if (q.freq !== undefined) { where.push("freq = ?"); args.push(q.freq); }
