@@ -865,11 +865,22 @@ trusted, and SAME decodes on the visiting-slot tier. What remains:
 - **Idea 10 multi-SDR** — the only hardware item; now ALSO the reliability
   upgrade for SAME (a parked weather radio) and the realization of per-bank
   gain. Next major build when a second dongle lands.
-- **Idea 12 digital voice** — parked low by design.
-- **Idea 3 artistic** — premise rethink required (operator note above:
-  sparse traffic demands accumulation/memory, not decay).
-- Stretch still open: CC band-sweep, polyphase channelizer, transcription,
-  remote audio streaming.
+- **Idea 12 digital voice** — REAFFIRMED PARKED (2026-06-06): the local DMR
+  Close Call keeps finding (MotoNet CP+, KC Wireless) is trunked Tier III /
+  Cap+, which conventional-DSD decode can't follow — a source-built
+  integration that would decode almost nothing actually heard here. Revisit
+  when a conventional DMR signal worth hearing shows up.
+- **Idea 3 artistic** — first skin SHIPPED (PR #66): ambient auto-replay on
+  the kiosk map (quiet band → last 3 h replayed compressed, REPLAY badge,
+  snaps to live) — the premise note honored: memory, not decay. Further
+  skins remain open.
+- Stretch: **CC band-sweep SHIPPED** (PR #66, scan.sweepRanges, off by
+  default); **remote audio streaming SHIPPED** (PR #67, /api/stream.wav +
+  admin Listen here); **transcription SHIPPED opt-in** (PR #68, whisper-tiny
+  at nice 15, default OFF for thermals). **Polyphase channelizer DECLINED
+  for now**: a high-risk rewrite of the field-calibrated DSP core with no
+  driving need — parked until band-sweep or bank scale actually wants >12
+  lanes per window.
 
 ## Suggested sequencing (historical)
 
