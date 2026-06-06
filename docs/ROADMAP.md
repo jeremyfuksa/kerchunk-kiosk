@@ -152,6 +152,27 @@ pins, the bank rail/toggles (Idea 1), the legend, and the art skins (Idea 3) —
 a bank is the same color across the whole UI. It's a design-system task that
 underpins Idea 1 and this pin vocabulary both.
 
+**Accessibility — color is never the only cue.** The layered encoding above is
+already half the a11y story; make the rest explicit:
+
+- **Don't encode meaning by color alone (WCAG 1.4.1).** Glyph carries *type* and
+  motion carries *audibility*, but *bank* rides on color only — so it needs a
+  **redundant non-color cue**: the pin's text label / callout, the always-visible
+  legend, or a secondary pattern. Someone with color-vision deficiency (CVD —
+  ~8% of men) must be able to tell banks apart without relying on hue.
+- **Start from a CVD-safe categorical set, then verify.** Don't hand-pick hues
+  off a color wheel; begin from a palette engineered for color-universal design —
+  the **Okabe–Ito** 8-color set is the canonical reference — and check it under
+  *protan / deutan / tritan* simulation (not just deuteranopia). Maximize
+  perceptual separation (Lab / CIEDE2000 distance), not even hue spacing.
+- **Non-text contrast ≥3:1 (WCAG 1.4.11).** Pins are graphical objects over a
+  variable dark map; give each a consistent **outline/halo** so it clears 3:1
+  against whatever tile sits behind it and stays separable from adjacent pins.
+- **`prefers-reduced-motion`.** Since motion encodes audibility (ring/pulse), a
+  reduced-motion user needs that distinction shown *without* animation — a static
+  ring or weight difference. Same redundancy principle as color.
+- Optional **high-contrast / a11y mode** honoring `prefers-contrast`.
+
 **Weather radar overlay.** The map can carry a live NEXRAD radar layer — a
 semi-transparent raster tile layer drawn above the base map and below the blips.
 Mechanically small: both the open stack (`L.tileLayer.wms(...)` / an XYZ layer in
