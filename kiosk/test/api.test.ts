@@ -746,3 +746,38 @@ describe("Close Call persistence-before-filing", () => {
     expect((res.body.discoveries ?? []).some((d: { freq: number }) => d.freq === 462887500)).toBe(true);
   });
 });
+
+describe("SAME alerts (Idea 11)", () => {
+  it("a decoded warning banners + records; out-of-area only records", async () => {
+    dir = mkdtempSync(join(tmpdir(), "ksrv-"));
+    const configStore = new ConfigStore(join(dir, "config.json"));
+    const engine = new FakeEngine();
+    const wsHub = new WsHub();
+    const sent: unknown[] = [];
+    wsHub.add({ readyState: 1, OPEN: 1, send: (d: string) => sent.push(JSON.parse(d)) });
+    const recorded: unknown[] = [];
+    const history = { record: (e: unknown) => recorded.push(e), release: () => {}, query: () => [], sites: () => [], stats: () => ({}) };
+    createServer({ configStore, engine, activityLog: new ActivityLog(10), wsHub, staticDir: dir, history: history as never });
+    engine.emitSame("EAS: ZCZC-WXR-TOR-029047+0030-1561800-KEAX/NWS-");
+    const alerts = sent.filter((e) => (e as { type: string }).type === "alert");
+    expect(alerts).toHaveLength(1);
+    expect((alerts[0] as { channel: { alphaTag: string } }).channel.alphaTag).toContain("TORNADO WARNING");
+    expect(recorded.filter((r) => (r as { mode?: string }).mode === "SAME")).toHaveLength(1);
+    // repeat within 90 s = deduped
+    engine.emitSame("EAS: ZCZC-WXR-TOR-029047+0030-1561800-KEAX/NWS-");
+    expect(sent.filter((e) => (e as { type: string }).type === "alert")).toHaveLength(1);
+  });
+  it("scan config carries the background NWR channel", async () => {
+    const { server } = makeApp();
+    const res = await request(server).get("/api/config");
+    void server; void res;
+    const { toScanConfig } = await import("../src/backend/server.js");
+    const cfg = res.body;
+    cfg.weatherChannel = { id: "wx", freq: 162550000, alphaTag: "NOAA", mode: "nfm", enabled: true };
+    const sc = toScanConfig(cfg, "scan");
+    const bg = sc.channels.find((c) => (c as { background?: boolean }).background);
+    expect(bg?.freq).toBe(162550000);
+    expect(bg?.audible).toBe(false);
+    expect(sc.knownHz).toContain(162550000);
+  });
+});

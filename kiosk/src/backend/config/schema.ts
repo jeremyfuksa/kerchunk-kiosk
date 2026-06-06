@@ -154,6 +154,11 @@ export const configSchema = z.object({
     cooldownMinutes: z.number().positive().optional(),
     holdSeconds: z.number().positive().optional(),
     ntfyUrl: z.string().url().optional(),
+    // SAME/EAS scoping: county FIPS codes (5-digit SSCCC or 6-digit
+    // PSSCCC). Empty = every decoded alert fires. Tests (RWT/RMT) always
+    // land in the feed but only banner when sameTests is true.
+    sameFips: z.array(z.string()).optional(),
+    sameTests: z.boolean().optional(),
   }).optional(),
   // RepeaterBook lookup (Close Call enrichment). userAgent must be the
   // string REGISTERED with RepeaterBook; states are full names ("Missouri").

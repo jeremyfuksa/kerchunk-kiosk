@@ -54,7 +54,10 @@ uses a separate fast ~10 ms power estimate so the speaker mutes within
 import argparse
 import json
 import math
+import os
 import queue
+import shutil
+import subprocess
 import sys
 import threading
 import time
@@ -116,6 +119,8 @@ CC_EVERY = 10            # check every 10th poll (~200 ms)
 CC_CONFIRM = 2           # consecutive checks on the same raster freq to fire
 CC_COOLDOWN_S = 300      # per-frequency re-fire suppression
 CC_RASTER_HZ = 12_500      # discoveries round to the 12.5 kHz channel raster
+SAME_RATE = 22_050         # multimon-ng's native raw input rate
+SAME_SCALE = 16_384        # float demod (±~1) -> s16 headroom
 CC_IMAGE_REJECT_DB = 6.0   # mirror bin this much hotter = candidate is an image
 CC_GUARD_HZ = 12_500     # suppression half-width around known frequencies
 CC_DC_FRAC = 0.02        # exclude +-2% of bins around DC (RTL center spike)
@@ -136,7 +141,7 @@ def emit(obj):
 class Chain:
     """One channelizer lane: xlating filter + power probe + NBFM + gate."""
 
-    def __init__(self, tb, src, taps, samp_rate, adder, port):
+    def __init__(self, tb, src, taps, samp_rate, adder, port, same_fd=None):
         self.xlate = grfilter.freq_xlating_fir_filter_ccf(
             samp_rate // QUAD_RATE, taps, 0, samp_rate)
         self.mag2 = blocks.complex_to_mag_squared(1)
@@ -191,6 +196,17 @@ class Chain:
         tb.connect(self.demod, (self.audio_sq, 0))
         tb.connect(self.demod, (self.audio_sq, 1))
         tb.connect(self.audio_sq, self.audio_avg, self.audio_probe)
+        # SAME decoder tap (last lane only): demod audio, pre-gate, resampled
+        # to multimon-ng's 22.05 kHz s16 and pushed down a pipe. Runs whether
+        # or not a weather channel is assigned — a parked lane feeds noise,
+        # which decodes to nothing.
+        if same_fd is not None:
+            self.same_resamp = grfilter.rational_resampler_fff(
+                interpolation=147, decimation=320)  # 48k -> 22.05k
+            self.same_s16 = blocks.float_to_short(1, SAME_SCALE)
+            self.same_sink = blocks.file_descriptor_sink(
+                gr.sizeof_short, same_fd)
+            tb.connect(self.demod, self.same_resamp, self.same_s16, self.same_sink)
         tb.connect(self.demod, self.noise_hpf)
         tb.connect(self.noise_hpf, (self.noise_sq, 0))
         tb.connect(self.noise_hpf, (self.noise_sq, 1))
@@ -205,6 +221,7 @@ class Chain:
         self.open_db_o = None
         self.quiet_db_o = None
         self.hang_ms_o = None
+        self.background = False
         self.rf_samples = []     # received power while open (ERP estimator)
         self.level_db = 0.0      # learned per-channel loudness correction (dB)
         self.level_emitted = 0.0 # last trim value reported to Node
@@ -246,7 +263,12 @@ class Chain:
 
     def assign(self, channel_id, offset_hz, priority=False, level_db=0.0,
                mode="nfm", audible=True,
-               open_db=None, quiet_db=None, hang_ms=None):
+               open_db=None, quiet_db=None, hang_ms=None,
+               background=False):
+        # Background channels (continuous-carrier, e.g. NWR for SAME): the
+        # lane demodulates — feeding the decoder tap — but the channel never
+        # opens, never holds the hop, never touches the speaker or history.
+        self.background = background
         self.channel_id = channel_id
         self.priority = priority
         self.allow_audio = audible
@@ -288,6 +310,7 @@ class Chain:
         self.open_db_o = None
         self.quiet_db_o = None
         self.hang_ms_o = None
+        self.background = False
         self.rf_samples = []
         self.kind = "fm"
         self.xlate.set_center_freq(0)
@@ -343,7 +366,27 @@ class Helper(gr.top_block):
 
         # Channel filter: pass the NFM channel (~16 kHz), reject neighbors.
         taps = firdes.low_pass(1.0, args.rate, 8_000, 4_000)
-        self.chains = [Chain(self, self.src, taps, args.rate, self.adder, i)
+        # SAME decoder (ROADMAP Idea 11, visiting-slot tier): the LAST lane
+        # carries a permanent audio tap into multimon-ng -a EAS. Whatever
+        # background channel (NWR) is assigned there gets decoded whenever
+        # its window is tuned; a parked lane feeds noise, which decodes to
+        # nothing. Absent multimon-ng the tap is simply not built.
+        self.same_proc = None
+        same_fd = None
+        if shutil.which("multimon-ng"):
+            rfd, wfd = os.pipe()
+            os.set_inheritable(rfd, True)
+            self.same_proc = subprocess.Popen(
+                ["multimon-ng", "-t", "raw", "-a", "EAS", "-"],
+                stdin=rfd, stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL, close_fds=False, text=True)
+            os.close(rfd)
+            same_fd = wfd
+            threading.Thread(target=self._same_reader, daemon=True).start()
+        else:
+            emit({"ev": "log", "msg": "multimon-ng not found: SAME decoding disabled"})
+        self.chains = [Chain(self, self.src, taps, args.rate, self.adder, i,
+                             same_fd=(same_fd if i == MAX_CHANS - 1 else None))
                        for i in range(MAX_CHANS)]
 
         # Close Call: FFT over the full window. Median bin power = noise
@@ -382,16 +425,28 @@ class Helper(gr.top_block):
         self.center_hz = center_hz
         self.src.set_frequency(0, center_hz)
         self.set_audible(None)
+        bgs = [c for c in channels if c.get("background")]
+        regs = [c for c in channels if not c.get("background")]
+        if bgs:
+            regs = regs[:MAX_CHANS - 1]   # the SAME lane is spoken for
         for i, chain in enumerate(self.chains):
-            if i < len(channels):
-                c = channels[i]
+            is_same_lane = (i == MAX_CHANS - 1)
+            c = None
+            if is_same_lane and bgs:
+                c = bgs[0]
+            elif not is_same_lane and i < len(regs):
+                c = regs[i]
+            elif is_same_lane and i < len(regs):
+                c = regs[i]   # no background in this group: lane scans normally
+            if c is not None:
                 chain.assign(c["id"], c["freqHz"] - center_hz,
                              bool(c.get("priority", False)),
                              float(c.get("levelDb", 0.0)),
                              str(c.get("mode", "nfm")),
                              bool(c.get("audible", True)),
                              c.get("openDb"), c.get("quietDb"),
-                             c.get("hangMs"))
+                             c.get("hangMs"),
+                             bool(c.get("background", False)))
             else:
                 chain.park()
         emit({"ev": "tuned", "centerHz": center_hz})
@@ -460,6 +515,8 @@ class Helper(gr.top_block):
         for chain in self.chains:
             if chain.channel_id is None or chain.channel_id not in readings:
                 continue
+            if chain.background:
+                continue   # decoder-only lane: no squelch, no speaker, no hold
             # Per-channel squelch profile (banks): fall back to the globals.
             open_db = chain.open_db_o if chain.open_db_o is not None else g_open_db
             quiet_db = chain.quiet_db_o if chain.quiet_db_o is not None else g_quiet_db
@@ -658,6 +715,13 @@ class Helper(gr.top_block):
             chain.park()
         else:
             chain.skip_until = now + holdoff_s
+
+    def _same_reader(self):
+        for line in self.same_proc.stdout:
+            line = line.strip()
+            # multimon-ng emits "EAS: ZCZC-WXR-TOR-..." and "EAS: NNNN".
+            if "ZCZC" in line or "NNNN" in line:
+                emit({"ev": "same", "raw": line})
 
     def alert_unmute(self, channel_id, hold_s):
         """Alert pull-in (ROADMAP Idea 6): route a see-only chain's audio to

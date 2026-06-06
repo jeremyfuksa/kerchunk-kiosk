@@ -58,6 +58,7 @@ interface HelperEvent {
   levels?: Record<string, number>;
   centerHz?: number;
   msg?: string;
+  raw?: string;
 }
 
 export class WidebandEngine implements ScannerEngine {
@@ -251,6 +252,11 @@ export class WidebandEngine implements ScannerEngine {
           this.emit({ type: "rf", channelId: ev.id, db: ev.db, ts: this.now() });
         }
         break;
+      case "same":
+        if (typeof ev.raw === "string") {
+          this.emit({ type: "same", raw: ev.raw, ts: this.now() });
+        }
+        break;
       case "closecall":
         if (typeof ev.freqHz === "number") {
           this.emit({ type: "closecall", freqHz: ev.freqHz, ts: this.now() });
@@ -309,6 +315,7 @@ export class WidebandEngine implements ScannerEngine {
         levelDb: c.levelTrimDb ?? 0,
         mode: c.mode,
         audible: c.audible !== false,
+        ...(c.background ? { background: true } : {}),
         // Per-channel squelch profile (ROADMAP Idea 7) — omitted = the
         // helper's global defaults. Resolved from banks by the server.
         ...(c.openAboveFloorDb !== undefined ? { openDb: c.openAboveFloorDb } : {}),

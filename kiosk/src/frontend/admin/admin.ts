@@ -137,6 +137,8 @@ export function renderAdmin(root: HTMLElement): void {
         <label>Alert cooldown (min) <input id="tAlertCool" type="number" min="1" step="1" placeholder="15" /></label>
         <label>Alert hold (s) <input id="tAlertHold" type="number" min="5" step="5" placeholder="30" /></label>
         <label>Alert push URL <input id="tAlertNtfy" type="text" placeholder="https://ntfy.sh/your-topic" /></label>
+        <label>SAME FIPS codes <input id="tSameFips" type="text" placeholder="029047, 029095 (empty = all)" title="County FIPS codes for SAME/EAS scoping — 5-digit SSCCC or 6-digit PSSCCC" /></label>
+        <label><input id="tSameTests" type="checkbox" /> Banner SAME tests (RWT/RMT)</label>
         <label><input id="tCloseCall" type="checkbox" /> Close Call</label>
         <label>Close Call threshold (dB over floor) <input id="tCloseCallDb" type="number" min="5" step="1" placeholder="15" /></label>
         <button id="tSave">Save tuning</button>
@@ -946,6 +948,8 @@ export function renderAdmin(root: HTMLElement): void {
   const tAlertCool = root.querySelector<HTMLInputElement>("#tAlertCool")!;
   const tAlertHold = root.querySelector<HTMLInputElement>("#tAlertHold")!;
   const tAlertNtfy = root.querySelector<HTMLInputElement>("#tAlertNtfy")!;
+  const tSameFips = root.querySelector<HTMLInputElement>("#tSameFips")!;
+  const tSameTests = root.querySelector<HTMLInputElement>("#tSameTests")!;
   const tCloseCall = root.querySelector<HTMLInputElement>("#tCloseCall")!;
   const tCloseCallDb = root.querySelector<HTMLInputElement>("#tCloseCallDb")!;
   const tErr = root.querySelector<HTMLElement>("#tErr")!;
@@ -960,6 +964,8 @@ export function renderAdmin(root: HTMLElement): void {
     tAlertCool.value = cfg.alerts?.cooldownMinutes != null ? String(cfg.alerts.cooldownMinutes) : "";
     tAlertHold.value = cfg.alerts?.holdSeconds != null ? String(cfg.alerts.holdSeconds) : "";
     tAlertNtfy.value = cfg.alerts?.ntfyUrl ?? "";
+    tSameFips.value = (cfg.alerts?.sameFips ?? []).join(", ");
+    tSameTests.checked = cfg.alerts?.sameTests ?? false;
     tCloseCall.checked = cfg.scan.closeCall ?? true;   // engine default: ON
     tCloseCallDb.value = cfg.scan.closeCallDb != null ? String(cfg.scan.closeCallDb) : "";
   });
@@ -984,10 +990,13 @@ export function renderAdmin(root: HTMLElement): void {
       }
       // Alert knobs: empty fields fall back to defaults (15 min / 30 s).
       const ntfy = tAlertNtfy.value.trim();
+      const fips = tSameFips.value.split(",").map((x) => x.trim()).filter(Boolean);
       const alerts = {
         ...(num(tAlertCool) !== undefined ? { cooldownMinutes: num(tAlertCool) } : {}),
         ...(num(tAlertHold) !== undefined ? { holdSeconds: num(tAlertHold) } : {}),
         ...(ntfy ? { ntfyUrl: ntfy } : {}),
+        ...(fips.length ? { sameFips: fips } : {}),
+        ...(tSameTests.checked ? { sameTests: true } : {}),
       };
       if (Object.keys(alerts).length) cfg.alerts = alerts;
       else delete cfg.alerts;
