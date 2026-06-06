@@ -363,6 +363,14 @@ class Helper(gr.top_block):
         self.limiter = analog.rail_ff(-0.8, 0.8)
         self.sink = audio.sink(AUDIO_RATE, args.sink, True)
         self.connect(self.adder, self.limiter, self.sink)
+        # Remote-listening tee (ROADMAP stretch): the exact post-limiter
+        # speaker feed, as s16 PCM, down an fd Node inherits. Node MUST
+        # always drain it (a full pipe would stall the GR audio thread).
+        if args.audio_fd >= 0:
+            self.stream_s16 = blocks.float_to_short(1, 28_000)
+            self.stream_sink = blocks.file_descriptor_sink(
+                gr.sizeof_short, args.audio_fd)
+            self.connect(self.limiter, self.stream_s16, self.stream_sink)
 
         # Channel filter: pass the NFM channel (~16 kHz), reject neighbors.
         taps = firdes.low_pass(1.0, args.rate, 8_000, 4_000)
@@ -786,6 +794,8 @@ def main():
                          "Default bench-calibrated on this hardware: dead "
                          "channels read ~-82, voice carriers -94..-96 "
                          "(2026-06-04, see PR)")
+    ap.add_argument("--audio-fd", type=int, default=-1,
+                    help="fd to tee the speaker feed to as s16 PCM (remote listen)")
     ap.add_argument("--hang-ms", type=float, default=2000.0,
                     help="sustained silence before close")
     args = ap.parse_args()

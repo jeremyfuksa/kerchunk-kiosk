@@ -75,6 +75,7 @@ export class WidebandEngine implements ScannerEngine {
   private config: ScanConfig | null = null;
   private groups: Array<ChannelGroup<ScanChannel>> = [];
   private sweeps: number[] = [];
+  private audioListeners = new Set<(chunk: Buffer) => void>();
   private sweepIndex = 0;
   private sweeping = false;
   private groupIndex = 0;
@@ -166,6 +167,7 @@ export class WidebandEngine implements ScannerEngine {
     const args = [
       "--sink", cfg.audioSink,
       "--hang-ms", String(cfg.dwellMs),
+      "--audio-fd", "3",
       "--open-db", String(cfg.openAboveFloorDb ?? 9),
     ];
     if (cfg.gain !== "auto") args.push("--gain", String(cfg.gain));
@@ -181,9 +183,17 @@ export class WidebandEngine implements ScannerEngine {
     this.lastSpawnAt = this.now();
     const argv = [...this.helperCmd, ...this.helperArgs()];
     const child = spawn(argv[0]!, argv.slice(1), {
-      stdio: ["pipe", "pipe", "pipe"],
+      // fd 3: the helper tees the speaker feed (s16 PCM) for remote
+      // listening. The engine ALWAYS drains it — an unread pipe would
+      // stall the GR audio thread.
+      stdio: ["pipe", "pipe", "pipe", "pipe"],
       env: { ...process.env, ...this.helperEnv },
     });
+    child.stdio[3]?.on("data", (chunk: Buffer) => {
+      if (this.child !== child) return;
+      for (const l of this.audioListeners) l(chunk);
+    });
+    child.stdio[3]?.on("error", () => { /* tee is best-effort */ });
     this.child = child;
     this.openIds.clear();
     this.audibleId = null;
@@ -490,6 +500,13 @@ export class WidebandEngine implements ScannerEngine {
     if (this.child?.stdin?.writable) {
       this.child.stdin.write(JSON.stringify({ cmd: "known", knownHz }) + "\n");
     }
+  }
+
+  /** Subscribe to the live speaker feed (48 kHz mono s16le). Returns an
+   *  unsubscribe. Used by the /stream.wav route for remote listening. */
+  onAudio(listener: (chunk: Buffer) => void): () => void {
+    this.audioListeners.add(listener);
+    return () => this.audioListeners.delete(listener);
   }
 
   alertUnmute(channelId: string, holdSeconds: number): void {
