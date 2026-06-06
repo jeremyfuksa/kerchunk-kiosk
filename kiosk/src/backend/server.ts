@@ -668,6 +668,9 @@ export function createServer(deps: ServerDeps): { server: Server } {
         // How many channels the current mode actually scans — 0 with every
         // bank muted, where the kiosk should say "standby", not "scanning".
         scanCount: toScanConfig(config, mode, monitorChannel).channels.length,
+        // The kiosk shows a MUTED badge — mute doesn't restart the engine,
+        // so the dashboard polls this instead of waiting for a WS event.
+        muted: config.audio.muted,
       });
     }
     if (method === "GET" && path === "/api/logs") return json(res, 200, activityLog.entries());
