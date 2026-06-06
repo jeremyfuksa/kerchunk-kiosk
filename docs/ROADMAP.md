@@ -249,6 +249,24 @@ all," which the hardware can't always afford.
 4. Ties to Idea 1 and 2: "show all of Marine on the map, only let Public Safety
    reach the speaker" = set the Marine bank to *See*, Public Safety to *Hear*.
 
+**Map-stage behavior — the camera follows the ear, not the eye (operator note,
+2026-06-06).** On the shipped map-as-stage kiosk, an audible hit earns the stage:
+the auto-fit framing zooms/pans to it because it's what you're hearing. A
+**see-only** hit must NOT move the camera — otherwise a whole *See* bank would
+constantly yank the view toward channels the operator isn't even listening to.
+Instead, a see-only hit just plays a **blip-ring animation** (an expanding ripple
+that fades) at the transmitter site, in place, leaving the camera where it is.
+
+- **Audible hit** → frame it (existing auto-fit) *and* ring it.
+- **See-only hit** → ring only; camera stays put.
+
+This keeps the stage calm and meaningful — movement is reserved for what's on the
+speaker, while the rings still register "something was seen here." It also plays
+nicely with the Idea 3 sparse-traffic note: rings read as deliberate punctuation
+rather than a camera that twitches at every distant, unheard opening. Build: gate
+the map's framing/auto-fit on `audible` events; render `active`-but-visible-only
+hits as a non-camera ripple layer.
+
 ---
 
 ## Idea 5 — Persistent activity history (the keystone)
