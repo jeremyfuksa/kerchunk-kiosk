@@ -14,9 +14,11 @@ echo "[setup] Installing packages..."
 sudo apt-get update
 sudo apt-get install -y rtl-sdr alsa-utils cage chromium-browser curl ca-certificates
 
-echo "[setup] Installing Node.js LTS (NodeSource) if node is missing or <20..."
-if ! command -v node >/dev/null || [ "$(node -p 'process.versions.node.split(".")[0]')" -lt 20 ]; then
-  curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+echo "[setup] Installing Node.js 24 (NodeSource) if node is missing or <24..."
+# Node >=24: the history store imports node:sqlite (built in, but only Node
+# >=22.5, unflagged on 24).
+if ! command -v node >/dev/null || [ "$(node -p 'process.versions.node.split(".")[0]')" -lt 24 ]; then
+  curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -
   sudo apt-get install -y nodejs
 fi
 

@@ -33,7 +33,35 @@ sudo apt-get update
 sudo apt-get install -y \
   rtl-sdr soapysdr-tools soapysdr-module-rtlsdr gnuradio python3-numpy \
   alsa-utils \
-  cage wlrctl nodejs npm
+  cage wlrctl curl ca-certificates
+
+echo "[setup] Ensuring a SYSTEM Node >=24 at /usr/bin/node (NodeSource)..."
+# The systemd unit runs ExecStart=/usr/bin/node, and the history store imports
+# node:sqlite — built in, but only on Node >=22.5, and unflagged on Node 24. So
+# Ubuntu's apt `nodejs` (often older) isn't enough; pin Node 24 from NodeSource.
+# Install only if /usr/bin/node is missing or too old (check the path, not PATH —
+# a per-user mise/nvm node must not satisfy the systemd unit's /usr/bin/node).
+need_node=1
+if [ -x /usr/bin/node ] && [ "$(/usr/bin/node -p 'process.versions.node.split(".")[0]')" -ge 24 ]; then
+  need_node=0
+fi
+if [ "$need_node" -eq 1 ]; then
+  # Avoid piping a remote script straight into a root shell. Fetch it, verify a
+  # pinned SHA-256 if provided, then run it without -E. Update NODESOURCE_SHA256
+  # when bumping the Node major: `curl -fsSL https://deb.nodesource.com/setup_24.x | sha256sum`.
+  NODESOURCE_SHA256="${NODESOURCE_SHA256:-}"
+  tmp_ns="$(mktemp)"
+  curl -fsSL https://deb.nodesource.com/setup_24.x -o "$tmp_ns"
+  if [ -n "$NODESOURCE_SHA256" ]; then
+    echo "${NODESOURCE_SHA256}  ${tmp_ns}" | sha256sum -c - || { echo "[setup] NodeSource setup script failed checksum verification" >&2; exit 1; }
+  else
+    echo "[setup] WARNING: NODESOURCE_SHA256 not pinned; running the NodeSource setup script unverified." >&2
+  fi
+  sudo bash "$tmp_ns"
+  rm -f "$tmp_ns"
+  sudo apt-get install -y nodejs
+fi
+echo "[setup] system node: $(/usr/bin/node --version)"
 
 echo "[setup] Installing Chromium (snap — the only Chromium on Ubuntu)..."
 snap list chromium >/dev/null 2>&1 || sudo snap install chromium
