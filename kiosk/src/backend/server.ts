@@ -13,6 +13,7 @@ import type { ScannerEngine, ScanConfig } from "./engine/ScannerEngine.js";
 import { setVolume as amixerVolume, setMuted as amixerMuted, type AmixerOpts } from "./audio.js";
 import { isScannable, isAudible, profileFor } from "./config/banks.js";
 import { solveK, estimateWatts, distKm, type Anchor } from "./powerEstimator.js";
+import { parseSame, fipsMatch, isTest } from "./same.js";
 
 export interface ServerDeps {
   /** Optional identification chain — enriches Close Call channel names. */
@@ -50,15 +51,27 @@ export function toScanConfig(
         // engine/helper need no bank knowledge. knownHz below intentionally
         // still covers EVERY configured channel — muting a bank must not make
         // Close Call rediscover its frequencies.
-        : cfg.channels
-            .filter((c) => isScannable(c, cfg.banks ?? []))
-            // Bank scan profiles (Idea 7) resolve here too — the engine and
-            // helper only ever see concrete per-channel numbers.
-            .map((c) => ({
-              ...c,
-              audible: isAudible(c, cfg.banks ?? []),
-              ...profileFor(c, cfg.banks ?? []),
-            }));
+        : [
+            ...cfg.channels
+              .filter((c) => isScannable(c, cfg.banks ?? []))
+              // Bank scan profiles (Idea 7) resolve here too — the engine and
+              // helper only ever see concrete per-channel numbers.
+              .map((c) => ({
+                ...c,
+                audible: isAudible(c, cfg.banks ?? []),
+                ...profileFor(c, cfg.banks ?? []),
+              })),
+            // SAME (Idea 11, visiting-slot tier): NWR rides along as a
+            // BACKGROUND channel — its own group, demodulated into the
+            // decoder tap whenever the hop visits, never opens/holds/speaks.
+            ...(cfg.weatherChannel
+              ? [{
+                  ...cfg.weatherChannel,
+                  id: "wx_same", alphaTag: "NWR (SAME decode)",
+                  enabled: true, audible: false, background: true,
+                }]
+              : []),
+          ];
   return {
     channels,
     sampleRate: cfg.scan.sampleRate,
@@ -77,6 +90,7 @@ export function toScanConfig(
     // Close Call suppression covers everything already known about:
     // configured channels, filed discoveries, and permanent lockouts.
     knownHz: [
+      ...(cfg.weatherChannel ? [cfg.weatherChannel.freq] : []),
       ...cfg.channels.map((c) => c.freq),
       ...(cfg.discoveries ?? []).map((d) => d.freq),
       ...(cfg.scan.lockoutHz ?? []),
@@ -335,6 +349,49 @@ export function createServer(deps: ServerDeps): { server: Server } {
   }
   const estTimer = setInterval(() => { runPowerEstimate(); }, 12 * 3600 * 1000);
   estTimer.unref?.();
+
+  // ── SAME / EAS (ROADMAP Idea 11): decoded headers off the NWR lane.
+  // Visiting-slot tier — the decoder only hears NWR while its window is
+  // tuned, so this catches SOME alert bursts, honestly supplementary.
+  // Headers repeat 3x: dedupe by raw text for 90 s. Matching alerts ride
+  // the existing alert plumbing (banner + feed + ntfy).
+  let lastSame: { raw: string; ts: number } | null = null;
+  engine.on((ev) => {
+    if (ev.type !== "same") return;
+    const hdr = parseSame(ev.raw);
+    if (!hdr) return;
+    if (lastSame && lastSame.raw === hdr.raw && ev.ts - lastSame.ts < 90_000) return;
+    lastSame = { raw: hdr.raw, ts: ev.ts };
+    const covered = fipsMatch(hdr.fips, config.alerts?.sameFips);
+    const test = isTest(hdr.event);
+    // Everything decoded lands in history (the proof the lossy tier works);
+    // the banner fires for covered real alerts (tests only when asked).
+    deps.history?.record({
+      ts: ev.ts, kind: "alert", channelId: "same",
+      freq: config.weatherChannel?.freq ?? 162_550_000,
+      alphaTag: `${hdr.eventName} — ${hdr.sender}${covered ? "" : " (out of area)"}`,
+      mode: "SAME", tags: ["same"],
+    });
+    if (!covered || (test && !config.alerts?.sameTests)) return;
+    const holdSeconds = Math.min(300, Math.max(60, hdr.purgeMinutes * 60));
+    deps.wsHub.broadcast({
+      type: "alert",
+      channel: {
+        id: "same", freq: config.weatherChannel?.freq ?? 162_550_000,
+        alphaTag: `${hdr.eventName} — ${hdr.sender}`, mode: "nfm", enabled: true,
+      },
+      freq: config.weatherChannel?.freq ?? 162_550_000,
+      holdSeconds, ts: ev.ts,
+    });
+    const ntfyUrl = config.alerts?.ntfyUrl;
+    if (ntfyUrl) {
+      void fetch(ntfyUrl, {
+        method: "POST",
+        headers: { Title: `SAME: ${hdr.eventName}`, Priority: "urgent", Tags: "warning" },
+        body: `${hdr.eventName} from ${hdr.sender}, ${hdr.purgeMinutes} min — ${hdr.raw}`,
+      }).catch(() => { /* push is best-effort */ });
+    }
+  });
 
   // Persistence-before-filing: one FFT transient used to file a discovery
   // forever; now a frequency must hit TWICE (helper cooldown spaces hits

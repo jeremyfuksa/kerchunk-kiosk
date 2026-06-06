@@ -47,6 +47,9 @@ export class FakeEngine implements ScannerEngine {
   emitLevel(channelId: string, db: number): void {
     this.emit({ type: "level", channelId, db, ts: nextTs() });
   }
+  emitSame(raw: string): void {
+    this.emit({ type: "same", raw, ts: nextTs() });
+  }
   emitCloseCall(freqHz: number): void {
     this.emit({ type: "closecall", freqHz, ts: nextTs() });
   }

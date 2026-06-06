@@ -8,6 +8,9 @@ export type ScanChannel = Channel & {
   noiseQuietDb?: number;
   hangMs?: number;
   dwellWeight?: number;
+  /** Continuous-carrier decoder feed (NWR/SAME): demodulated on the SAME
+   *  lane, never opens/holds/speaks. */
+  background?: boolean;
 };
 
 export interface ScanConfig {
@@ -61,6 +64,9 @@ export type EngineEvent =
   // Median received RF power over one closed transmission (helper telemetry)
   // — feeds the ERP estimator (channel.rfDb -> location.powerWatts).
   | { type: "rf"; channelId: string; db: number; ts: number }
+  // A SAME/EAS line decoded off the weather channel (multimon-ng via the
+  // helper's SAME lane). Raw text; the server parses and decides.
+  | { type: "same"; raw: string; ts: number }
   | { type: "signal"; dbfs: number; ts: number }
   // The engine (re)tuned its window: which channels are under demod RIGHT
   // NOW. Fires on every group hop (~groupDwellMs) — drives the kiosk's
