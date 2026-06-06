@@ -139,6 +139,19 @@ colors), not a glyph per bank. Pure frontend — the renderer maps
 `kind → glyph`, `bank → color`, `audible → motion`, `flags → decoration`; no new
 backend data (bank comes from Idea 1, audibility from Idea 4).
 
+**This needs an extended Campfire palette (prerequisite).** Color-by-bank only
+works if the colors are genuinely tellable apart — and Campfire's *semantic*
+tokens (primary / accent / success / warn / danger / neutral) are not a
+*categorical* scale. The prerequisite is a dedicated **categorical palette** in
+the Campfire tokens: ~8–10 perceptually-separated, **colorblind-safe** hues
+(survive deuteranopia — no red/green-only distinctions) that hold up on the dark
+map-stage background and stay distinct at small pin size and at a glance. Define
+the **bank → color mapping once** (rail = amber, marine = blue, …) as the single
+source of truth and reference it *everywhere the same category appears* — map
+pins, the bank rail/toggles (Idea 1), the legend, and the art skins (Idea 3) — so
+a bank is the same color across the whole UI. It's a design-system task that
+underpins Idea 1 and this pin vocabulary both.
+
 **Weather radar overlay.** The map can carry a live NEXRAD radar layer — a
 semi-transparent raster tile layer drawn above the base map and below the blips.
 Mechanically small: both the open stack (`L.tileLayer.wms(...)` / an XYZ layer in
