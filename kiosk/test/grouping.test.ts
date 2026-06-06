@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { groupChannels } from "../src/backend/engine/grouping.js";
+import { groupChannels, sweepCenters } from "../src/backend/engine/grouping.js";
 import type { Channel } from "../src/backend/config/schema.js";
 
 function ch(freq: number, over: Partial<Channel> = {}): Channel {
@@ -83,5 +83,20 @@ describe("maxPerGroup cap", () => {
         expect(Math.abs(c.freq - g.centerHz)).toBeLessThanOrEqual(WINDOW / 2);
       }
     }
+  });
+});
+
+describe("sweepCenters — CC band-sweep stops", () => {
+  const groups = [{ centerHz: 461_000_000, channels: [] }];
+  it("steps windows across ranges, skipping windows a real group covers", () => {
+    const c = sweepCenters([{ loHz: 450_000_000, hiHz: 470_000_000 }], 2_000_000, groups);
+    expect(c.length).toBeGreaterThan(7);
+    expect(c[0]).toBe(451_000_000);
+    expect(c).not.toContain(461_000_000);          // covered by the real group
+    expect(c.every((x) => x > 450_000_000 && x < 470_000_000)).toBe(true);
+  });
+  it("empty/degenerate ranges produce nothing", () => {
+    expect(sweepCenters([], 2_000_000, groups)).toEqual([]);
+    expect(sweepCenters([{ loHz: 470_000_000, hiHz: 450_000_000 }], 2_000_000, groups)).toEqual([]);
   });
 });

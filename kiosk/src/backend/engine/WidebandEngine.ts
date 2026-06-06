@@ -5,7 +5,7 @@ import type {
   ScannerEngine, ScanConfig, EngineState, EngineEvent, EngineListener, ScanChannel,
 } from "./ScannerEngine.js";
 import type { Channel } from "../config/schema.js";
-import { groupChannels, type ChannelGroup } from "./grouping.js";
+import { groupChannels, sweepCenters, type ChannelGroup } from "./grouping.js";
 import { setVolume as amixerVolume, setMuted as amixerMuted } from "../audio.js";
 
 // Wideband group-hop scanner.
@@ -74,6 +74,9 @@ export class WidebandEngine implements ScannerEngine {
 
   private config: ScanConfig | null = null;
   private groups: Array<ChannelGroup<ScanChannel>> = [];
+  private sweeps: number[] = [];
+  private sweepIndex = 0;
+  private sweeping = false;
   private groupIndex = 0;
 
   private child: ChildProcess | null = null;
@@ -136,6 +139,14 @@ export class WidebandEngine implements ScannerEngine {
       MAX_CHANNELS_PER_GROUP,
     );
     this.groupIndex = 0;
+    // Band-sweep stops: empty windows Close Call hunts in, one per rotation.
+    this.sweeps = sweepCenters(
+      config.sweepRanges ?? [],
+      config.windowBandwidthHz ?? DEFAULT_WINDOW_HZ,
+      this.groups,
+    );
+    this.sweepIndex = 0;
+    this.sweeping = false;
     this.stopping = false;
 
     this.setState("starting");
@@ -301,6 +312,20 @@ export class WidebandEngine implements ScannerEngine {
     return group?.channels.find((c) => c.id === id) ?? null;
   }
 
+  private sendSweepTune(centerHz: number): void {
+    if (!this.child?.stdin?.writable) return;
+    this.openIds.clear();
+    this.audibleId = null;
+    this.groupStartedAt = this.now();
+    this.child.stdin.write(JSON.stringify({
+      cmd: "tune", centerHz, channels: [],
+      monitor: false, closeCall: true,
+      closeCallDb: this.config?.closeCallDb ?? 15,
+      knownHz: this.config?.knownHz ?? [],
+    }) + "\n");
+    this.emit({ type: "tuned", freqHz: centerHz, channelIds: [], ts: this.now() });
+  }
+
   private sendTune(): void {
     const group = this.groups[this.groupIndex];
     if (!group || !this.child?.stdin?.writable) return;
@@ -343,7 +368,7 @@ export class WidebandEngine implements ScannerEngine {
 
   private startDwellTimer(): void {
     this.clearDwellTimer();
-    if (this.groups.length <= 1) return; // single group: park forever
+    if (this.groups.length <= 1 && this.sweeps.length === 0) return; // single group: park forever
     const dwell = this.groupDwellMs();
     this.dwellTimer = setInterval(() => {
       if (this.openIds.size > 0) {
@@ -358,7 +383,24 @@ export class WidebandEngine implements ScannerEngine {
       const weight = group
         ? Math.max(...group.channels.map((c) => c.dwellWeight ?? 1))
         : 1;
+      if (this.sweeping) {
+        // A sweep stop lasts one plain dwell, then the rotation resumes.
+        if (this.now() - this.groupStartedAt >= dwell) {
+          this.sweeping = false;
+          this.groupIndex = 0;
+          this.sendTune();
+        }
+        return;
+      }
       if (this.now() - this.groupStartedAt >= dwell * weight) {
+        const wrapped = this.groupIndex === this.groups.length - 1;
+        if (wrapped && this.sweeps.length > 0) {
+          // Full pass done: spend one stop hunting in the sweep ranges.
+          this.sweeping = true;
+          this.sendSweepTune(this.sweeps[this.sweepIndex % this.sweeps.length]!);
+          this.sweepIndex++;
+          return;
+        }
         this.groupIndex = (this.groupIndex + 1) % this.groups.length;
         this.sendTune();
       }

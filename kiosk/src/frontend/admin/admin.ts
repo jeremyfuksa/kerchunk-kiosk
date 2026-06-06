@@ -141,6 +141,7 @@ export function renderAdmin(root: HTMLElement): void {
         <label><input id="tSameTests" type="checkbox" /> Banner SAME tests (RWT/RMT)</label>
         <label><input id="tCloseCall" type="checkbox" /> Close Call</label>
         <label>Close Call threshold (dB over floor) <input id="tCloseCallDb" type="number" min="5" step="1" placeholder="15" /></label>
+        <label>CC sweep ranges (MHz) <input id="tSweep" type="text" placeholder="450-470, 150-162 (empty = off)" title="Band-sweep: one empty-window stop per rotation hunts for activity inside these ranges" /></label>
         <button id="tSave">Save tuning</button>
         <span id="tErr" class="err"></span>
       </section>
@@ -952,6 +953,7 @@ export function renderAdmin(root: HTMLElement): void {
   const tSameTests = root.querySelector<HTMLInputElement>("#tSameTests")!;
   const tCloseCall = root.querySelector<HTMLInputElement>("#tCloseCall")!;
   const tCloseCallDb = root.querySelector<HTMLInputElement>("#tCloseCallDb")!;
+  const tSweep = root.querySelector<HTMLInputElement>("#tSweep")!;
   const tErr = root.querySelector<HTMLElement>("#tErr")!;
 
   api.getConfig().then((cfg) => {
@@ -968,6 +970,8 @@ export function renderAdmin(root: HTMLElement): void {
     tSameTests.checked = cfg.alerts?.sameTests ?? false;
     tCloseCall.checked = cfg.scan.closeCall ?? true;   // engine default: ON
     tCloseCallDb.value = cfg.scan.closeCallDb != null ? String(cfg.scan.closeCallDb) : "";
+    tSweep.value = (cfg.scan.sweepRanges ?? [])
+      .map((r) => `${r.loHz / 1e6}-${r.hiHz / 1e6}`).join(", ");
   });
 
   root.querySelector<HTMLButtonElement>("#tSave")!.addEventListener("click", async () => {
@@ -981,6 +985,14 @@ export function renderAdmin(root: HTMLElement): void {
       cfg.scan.noiseQuietDb = num(tQuietDb);
       cfg.scan.closeCall = tCloseCall.checked;
       cfg.scan.closeCallDb = num(tCloseCallDb);
+      const sweeps = tSweep.value.split(",").map((x) => x.trim()).filter(Boolean)
+        .map((x) => {
+          const m = /^([\d.]+)\s*-\s*([\d.]+)$/.exec(x);
+          if (!m) throw new Error(`sweep range "${x}" must be lo-hi in MHz`);
+          return { loHz: Math.round(Number(m[1]) * 1e6), hiHz: Math.round(Number(m[2]) * 1e6) };
+        });
+      if (sweeps.length) cfg.scan.sweepRanges = sweeps;
+      else delete cfg.scan.sweepRanges;
       if (tMapsKey.value.trim() && cfg.display) cfg.display.googleMapsApiKey = tMapsKey.value.trim();
       if (cfg.display) {
         // Clearable: an emptied field drops back to the raster map.

@@ -84,6 +84,7 @@ export function toScanConfig(
     groupDwellMs: cfg.scan.groupDwellMs,
     openAboveFloorDb: cfg.scan.openAboveFloorDb,
     noiseQuietDb: cfg.scan.noiseQuietDb,
+    sweepRanges: cfg.scan.sweepRanges,
     // Weather-only AND direct-tune both hold the lone channel open/audible
     // with no squelch — the operator chose to listen to exactly this.
     monitor: mode === "weather" || mode === "monitor",
