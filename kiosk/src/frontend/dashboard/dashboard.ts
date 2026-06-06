@@ -3,6 +3,7 @@ import { ReconnectingWs } from "../lib/wsClient.js";
 import { api } from "../lib/api.js";
 import { fmtFreq, esc } from "../lib/format.js";
 import icoBellRing from "lucide-static/icons/bell-ring.svg?raw";
+import icoVolumeX from "lucide-static/icons/volume-x.svg?raw";
 import { mountActivityMap } from "../map/map.js";
 import { matchesBank, spectrumLabelFor } from "../../backend/config/banks.js";
 import type { Bank, Channel } from "../../backend/config/schema.js";
@@ -134,13 +135,18 @@ export function renderDashboard(root: HTMLElement): void {
           s.mode === "weather" ? "WEATHER"
           : s.mode === "monitor" ? "MONITORING" : "";
         scanCount = s.scanCount ?? -1;
+        muted = s.muted ?? false;
         paint();
       })
       .catch(() => {});
   }
   paintBadge();
+  // Mute flips in the admin without an engine restart — poll lightly so the
+  // kiosk's MUTED badge tracks it within a few seconds.
+  setInterval(paintBadge, 5000);
 
   let scanCount = -1; // unknown until the first status fetch
+  let muted = false;
 
   // ── Bank rail: hardware-scanner bank LEDs. Every enabled bank is a chip;
   // the chips covering the currently-tuned window light up as the radio
@@ -198,6 +204,7 @@ export function renderDashboard(root: HTMLElement): void {
 
   function paint(): void {
     paintAlert();
+    nowEl.classList.toggle("isMuted", muted);
     if (state.engineState === "starting" && !state.nowPlaying && !state.error) {
       nowEl.innerHTML = `<div class="scanning">
         <div class="scanText">RETUNING</div>
@@ -235,6 +242,12 @@ export function renderDashboard(root: HTMLElement): void {
     logEl.innerHTML = state.log
       .map((r) => `<li><span class="t">${fmtTime(r.ts)}</span> ${fmtFreq(r.freq)} ${esc(r.alphaTag)}</li>`)
       .join("");
+    if (muted) {
+      const b = document.createElement("div");
+      b.className = "mutedBadge";
+      b.innerHTML = `${icoVolumeX} MUTED`;
+      nowEl.appendChild(b);
+    }
   }
 
   // Clock: tick on the minute boundary (kiosk readout, no seconds noise).

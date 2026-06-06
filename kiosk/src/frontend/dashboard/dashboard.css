@@ -409,3 +409,22 @@ body {
   border-color: color-mix(in srgb, var(--blue) 60%, transparent);
   font-variant-numeric: tabular-nums;
 }
+
+/* ── MUTED badge: the speaker is off — say so where the eyes already are. */
+.now { position: relative; }
+.now .mutedBadge {
+  position: absolute; top: 0.9rem; right: 1.1rem;
+  display: flex; align-items: center; gap: 0.45rem;
+  font-family: var(--cond);
+  font-weight: 700; font-size: 1.05rem;
+  letter-spacing: 0.22em; text-indent: 0.22em;
+  color: var(--red);
+  border: 1px solid color-mix(in srgb, var(--red) 60%, transparent);
+  border-radius: 4px;
+  padding: 0.25rem 0.7rem;
+  background: color-mix(in srgb, var(--red) 10%, transparent);
+}
+.now .mutedBadge svg { width: 1.15em; height: 1.15em; }
+/* Muted = the meter is theater; dim the card's signal life a touch. */
+.now.isMuted .meter, .now.isMuted .meterDb { opacity: 0.45; }
+.dash.mapStage .now .mutedBadge { top: 0.7rem; right: 0.8rem; font-size: 0.85rem; }
