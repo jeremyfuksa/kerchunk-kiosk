@@ -35,6 +35,9 @@ export interface ScanConfig {
   // config channels by the engine.
   closeCall?: boolean;
   closeCallDb?: number;
+  // Band-sweep (stretch): empty windows the rotation visits so Close Call
+  // can hunt away from programmed channels. Costs one stop per cycle.
+  sweepRanges?: Array<{ loHz: number; hiHz: number }>;
   lockoutHz?: number[];
   // Frequencies Close Call must never fire on (channels + discoveries +
   // lockouts). Computed by the server, which owns all three lists.

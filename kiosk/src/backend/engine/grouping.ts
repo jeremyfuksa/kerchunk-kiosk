@@ -39,3 +39,25 @@ function toGroup<T extends Channel>(channels: T[]): ChannelGroup<T> {
   const hi = channels[channels.length - 1]!.freq;
   return { centerHz: (lo + hi) / 2, channels };
 }
+
+// Close Call band-sweep (ROADMAP stretch, phase 2 of the CC spec): when
+// configured, the scanner spends one stop per rotation parked on an EMPTY
+// window inside the operator's sweep ranges, letting the CC FFT hunt for
+// activity away from every programmed channel. Centers step across each
+// range; windows already covered by a real group are skipped (the FFT
+// watches those every cycle anyway).
+export function sweepCenters(
+  ranges: Array<{ loHz: number; hiHz: number }>,
+  windowHz: number,
+  groups: ChannelGroup[],
+): number[] {
+  const out: number[] = [];
+  for (const r of ranges) {
+    if (r.hiHz <= r.loHz) continue;
+    for (let c = r.loHz + windowHz / 2; c - windowHz / 2 < r.hiHz; c += windowHz) {
+      const covered = groups.some((g) => Math.abs(g.centerHz - c) < windowHz / 2);
+      if (!covered) out.push(Math.round(c));
+    }
+  }
+  return out;
+}
