@@ -126,6 +126,10 @@ export function renderAdmin(root: HTMLElement): void {
         <h2>Alerts <span class="hint">what fired while you were away — flag channels with the bell</span></h2>
         <ul id="alertRows" class="alertList"></ul>
       </section>
+      <section class="transcripts collapsible" data-key="transcripts">
+        <h2>Transcripts <span class="hint">what was said — whisper-tiny gist, not gospel</span></h2>
+        <ul id="trRows" class="alertList"></ul>
+      </section>
       <div class="moduleRow">
       <section class="tuning collapsible" data-key="tuning">
         <h2>Scan tuning</h2>
@@ -140,6 +144,7 @@ export function renderAdmin(root: HTMLElement): void {
         <label>Alert push URL <input id="tAlertNtfy" type="text" placeholder="https://ntfy.sh/your-topic" /></label>
         <label>SAME FIPS codes <input id="tSameFips" type="text" placeholder="029047, 029095 (empty = all)" title="County FIPS codes for SAME/EAS scoping — 5-digit SSCCC or 6-digit PSSCCC" /></label>
         <label><input id="tSameTests" type="checkbox" /> Banner SAME tests (RWT/RMT)</label>
+        <label title="Speech-to-text on every transmission the speaker plays (whisper tiny, low priority). Costs CPU — the fans may notice. Takes effect at service restart."><input id="tTranscribe" type="checkbox" /> Transcribe audio (CPU)</label>
         <label><input id="tCloseCall" type="checkbox" /> Close Call</label>
         <label>Close Call threshold (dB over floor) <input id="tCloseCallDb" type="number" min="5" step="1" placeholder="15" /></label>
         <label>CC sweep ranges (MHz) <input id="tSweep" type="text" placeholder="450-470, 150-162 (empty = off)" title="Band-sweep: one empty-window stop per rotation hunts for activity inside these ranges" /></label>
@@ -411,6 +416,20 @@ export function renderAdmin(root: HTMLElement): void {
   }
   void renderAlertFeed().catch(() => {});
   setInterval(() => { renderAlertFeed().catch(() => {}); }, 60_000);
+
+  // ── Transcripts (stretch, opt-in): the searchable voice log.
+  const trRows = root.querySelector<HTMLElement>("#trRows")!;
+  async function renderTranscripts(): Promise<void> {
+    const rows = await fetch("/api/history?transcribed=1&limit=20")
+      .then((r) => (r.ok ? r.json() : [])) as
+      Array<{ ts: number; freq: number; alphaTag: string; transcript: string | null }>;
+    trRows.innerHTML = rows.length
+      ? rows.map((r) => `<li><span class="alertWhen">${new Date(r.ts).toLocaleTimeString()}</span>
+          <span class="alertWhat"><b>${esc(r.alphaTag)}</b> ${esc(r.transcript ?? "")}</span></li>`).join("")
+      : `<li class="hint">nothing transcribed yet — enable “Transcribe audio” in Scan tuning (takes effect at restart)</li>`;
+  }
+  void renderTranscripts().catch(() => {});
+  setInterval(() => { renderTranscripts().catch(() => {}); }, 60_000);
 
   // Inline-editable CRUD table. One row at a time is editable: editingId is a
   // channel id, "new" (blank row pending creation), or null. Checkboxes on
@@ -966,6 +985,7 @@ export function renderAdmin(root: HTMLElement): void {
   const tAlertNtfy = root.querySelector<HTMLInputElement>("#tAlertNtfy")!;
   const tSameFips = root.querySelector<HTMLInputElement>("#tSameFips")!;
   const tSameTests = root.querySelector<HTMLInputElement>("#tSameTests")!;
+  const tTranscribe = root.querySelector<HTMLInputElement>("#tTranscribe")!;
   const tCloseCall = root.querySelector<HTMLInputElement>("#tCloseCall")!;
   const tCloseCallDb = root.querySelector<HTMLInputElement>("#tCloseCallDb")!;
   const tSweep = root.querySelector<HTMLInputElement>("#tSweep")!;
@@ -983,6 +1003,7 @@ export function renderAdmin(root: HTMLElement): void {
     tAlertNtfy.value = cfg.alerts?.ntfyUrl ?? "";
     tSameFips.value = (cfg.alerts?.sameFips ?? []).join(", ");
     tSameTests.checked = cfg.alerts?.sameTests ?? false;
+    tTranscribe.checked = cfg.transcribe ?? false;
     tCloseCall.checked = cfg.scan.closeCall ?? true;   // engine default: ON
     tCloseCallDb.value = cfg.scan.closeCallDb != null ? String(cfg.scan.closeCallDb) : "";
     tSweep.value = (cfg.scan.sweepRanges ?? [])
@@ -1027,6 +1048,8 @@ export function renderAdmin(root: HTMLElement): void {
       };
       if (Object.keys(alerts).length) cfg.alerts = alerts;
       else delete cfg.alerts;
+      if (tTranscribe.checked) cfg.transcribe = true;
+      else delete cfg.transcribe;
       const hang = num(tHang);
       if (hang !== undefined) cfg.scan.dwellMs = hang;
       await api.putConfig(cfg);

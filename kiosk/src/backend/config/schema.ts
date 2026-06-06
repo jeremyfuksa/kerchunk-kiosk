@@ -151,6 +151,9 @@ export const configSchema = z.object({
     mapLon: z.number().optional(),
     mapZoom: z.number().int().optional(),
   }).optional(),
+  // Transcription (stretch, opt-in — costs CPU on an already-warm chassis):
+  // what was SAID, attached to history rows. Takes effect at service restart.
+  transcribe: z.boolean().optional(),
   // Alert behavior (ROADMAP Idea 6) — deliberately a couple of knobs, not a
   // rules engine. cooldownMinutes: a channel re-alerts only after this quiet
   // window (first hit fires, repeats don't). holdSeconds: how long a see-only
