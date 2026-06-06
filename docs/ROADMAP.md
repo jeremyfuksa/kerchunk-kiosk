@@ -114,6 +114,65 @@ channel has a location, pulse at that lat/lon." No new backend data path.
 5. Optional heat accumulation: a per-site hit counter drives a heatmap layer so
    "the busy corners of the band" emerge over a session.
 
+**Pin vocabulary — encode each dimension on its own visual channel.** The map has
+several categorically different things to show at once; one pin style for all of
+them is unreadable. The blip object already carries a `kind` — lean on it, and
+spread the distinctions across independent visual channels so the map reads at a
+glance:
+
+- **Glyph / shape → *what kind* of hit it is** (the `kind` field). The distinction
+  that earns the most is **configured-channel hit vs. Close Call discovery** —
+  "a channel I chose" vs. "something new the radio just found" should never look
+  alike. Beyond that, the naturally-separate layers get their own glyphs:
+  **aircraft** (ADS-B, Idea 13), **mesh nodes** (Meshtastic, Idea 14), and the
+  **affected-county / weather-alert** marker (SAME, Idea 11).
+- **Color → bank / service** (Idea 1): air / rail / marine / public-safety / ham
+  each a hue (colorblind-safe palette). This is the existing "color by bank" —
+  *don't* also vary glyph by bank; that's what color is for.
+- **Motion → audibility** (Idea 4 + the see-only refinement): audible = framed
+  *and* ring; see-only = ring only, camera held.
+- **Decoration → state**: a priority halo, the shipped **NO-FIX ring** for
+  unlocated hits, a pulsing treatment for an active weather warning.
+
+Restraint is the whole game: a small, legible legend (a handful of glyphs × bank
+colors), not a glyph per bank. Pure frontend — the renderer maps
+`kind → glyph`, `bank → color`, `audible → motion`, `flags → decoration`; no new
+backend data (bank comes from Idea 1, audibility from Idea 4).
+
+**This needs an extended Campfire palette (prerequisite).** Color-by-bank only
+works if the colors are genuinely tellable apart — and Campfire's *semantic*
+tokens (primary / accent / success / warn / danger / neutral) are not a
+*categorical* scale. The prerequisite is a dedicated **categorical palette** in
+the Campfire tokens: ~8–10 perceptually-separated, **colorblind-safe** hues
+(survive deuteranopia — no red/green-only distinctions) that hold up on the dark
+map-stage background and stay distinct at small pin size and at a glance. Define
+the **bank → color mapping once** (rail = amber, marine = blue, …) as the single
+source of truth and reference it *everywhere the same category appears* — map
+pins, the bank rail/toggles (Idea 1), the legend, and the art skins (Idea 3) — so
+a bank is the same color across the whole UI. It's a design-system task that
+underpins Idea 1 and this pin vocabulary both.
+
+**Accessibility — color is never the only cue.** The layered encoding above is
+already half the a11y story; make the rest explicit:
+
+- **Don't encode meaning by color alone (WCAG 1.4.1).** Glyph carries *type* and
+  motion carries *audibility*, but *bank* rides on color only — so it needs a
+  **redundant non-color cue**: the pin's text label / callout, the always-visible
+  legend, or a secondary pattern. Someone with color-vision deficiency (CVD —
+  ~8% of men) must be able to tell banks apart without relying on hue.
+- **Start from a CVD-safe categorical set, then verify.** Don't hand-pick hues
+  off a color wheel; begin from a palette engineered for color-universal design —
+  the **Okabe–Ito** 8-color set is the canonical reference — and check it under
+  *protan / deutan / tritan* simulation (not just deuteranopia). Maximize
+  perceptual separation (Lab / CIEDE2000 distance), not even hue spacing.
+- **Non-text contrast ≥3:1 (WCAG 1.4.11).** Pins are graphical objects over a
+  variable dark map; give each a consistent **outline/halo** so it clears 3:1
+  against whatever tile sits behind it and stays separable from adjacent pins.
+- **`prefers-reduced-motion`.** Since motion encodes audibility (ring/pulse), a
+  reduced-motion user needs that distinction shown *without* animation — a static
+  ring or weight difference. Same redundancy principle as color.
+- Optional **high-contrast / a11y mode** honoring `prefers-contrast`.
+
 **Weather radar overlay.** The map can carry a live NEXRAD radar layer — a
 semi-transparent raster tile layer drawn above the base map and below the blips.
 Mechanically small: both the open stack (`L.tileLayer.wms(...)` / an XYZ layer in
