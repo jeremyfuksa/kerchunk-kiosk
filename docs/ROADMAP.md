@@ -812,6 +812,58 @@ arrive as pages instead of more sections to collapse.
 
 ---
 
+## Idea 16 — System/host stats in admin (machine stress)
+
+**The pitch.** Show host health in the admin — CPU, load, RAM, temperature, disk,
+and (most diagnostically) the DSP helper's own load — so the operator can *see*
+the machine under stress. The motivating symptom: it sometimes spikes, and right
+now there's no way to tell what or why.
+
+**What we have.** Nothing host-facing. Note `/api/stats` already exists but it's
+**activity analytics** (history aggregates, Idea 9) — *not* machine metrics — so
+this is a new surface; name it `/api/system` (or `/api/health`) to avoid
+collision. Node gives most of it for free; the appliance is Linux (Intel laptop
+or Pi 4), so the platform-specific bits read from sysfs.
+
+**The real culprit, and why generic gauges aren't enough.** The heavy thing is
+the GNU Radio flowgraph: the wideband helper is a separate process
+(`WidebandEngine` spawns it; `child.pid` is right there), and load spikes most
+plausibly come from **group-hops, many simultaneous active channels, or the Close
+Call FFT sweep**. So the stat that actually explains a spike is the *helper
+process's* CPU, **correlated with engine state** (active-channel count, hop
+events, Close Call). That correlation turns "it spikes" into "it spikes when 11
+channels open during a hop."
+
+**Build shape.**
+1. Backend `SystemStats` collector polled ~2–5 s (cheap):
+   - CPU% + load (`os.loadavg()`, `os.cpus()` deltas), RAM (`os.totalmem/freemem`),
+     backend RSS (`process.memoryUsage()`) — all Node built-ins.
+   - **Helper-process** CPU/RSS via `/proc/<pid>/stat` using the engine's known
+     helper PID — the diagnostic signal.
+   - **Temperature** from sysfs (`/sys/class/thermal/thermal_zone*/temp`,
+     millidegrees), auto-detecting the zone; **optional/null** when absent
+     (VM/permission), same graceful-degrade pattern as other optional features.
+     Throttle flags where available (Pi `vcgencmd get_throttled`).
+   - **Disk free** on the writable partition — ties to the history store (Idea 5)
+     growing the card; surfaces retention pressure.
+   Expose `/api/system` and push a periodic `system` event over the existing WS.
+2. Frontend: a **System health** panel — gauges with warning thresholds (temp
+   especially) **plus short rolling sparklines**, because a spike is invisible on
+   an instantaneous gauge. Lands naturally on the analytics home / a health page
+   from the admin-IA work (Idea 15).
+3. **Spike diagnosis:** keep a short in-memory ring for the sparklines; optionally
+   persist samples to history (Idea 5) to review past spikes, and overlay engine
+   state so a spike is explainable. Optional **alert (Idea 6)** when temp/CPU
+   crosses a threshold.
+
+**Caveats.** Temperature source is platform-specific and may be missing — degrade
+to "n/a", don't break. Keep the poll light so monitoring doesn't itself add load.
+Thermal throttling (Intel frequency drop / Pi throttle flags) is worth surfacing
+explicitly: a "spike" the operator feels as audio stutter may actually be the SoC
+throttling, which a bare CPU% gauge would hide.
+
+---
+
 ## Stretch items (named, not obvious-tier)
 
 - **FCC proximity lookup — SHIPPED 2026-06-05 (PRs #56/#57)** and it grew:
