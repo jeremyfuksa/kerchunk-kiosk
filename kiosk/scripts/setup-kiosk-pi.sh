@@ -27,27 +27,28 @@ sudo apt-get update
 # ExecStartPost) — cage 0.2.0 has no flag to hide the pointer.
 sudo apt-get install -y rtl-sdr alsa-utils cage chromium curl ca-certificates wlrctl
 
-echo "[setup] Ensuring a SYSTEM Node >=20 at /usr/bin/node (NodeSource)..."
+echo "[setup] Ensuring a SYSTEM Node >=24 at /usr/bin/node (NodeSource)..."
 # The systemd unit runs ExecStart=/usr/bin/node, which must exist independent of
-# any per-user node manager (mise/nvm). Install only if /usr/bin/node is missing
-# or too old — note we check /usr/bin/node specifically, not `command -v node`.
+# any per-user node manager (mise/nvm). Node >=24: the history store imports
+# node:sqlite (built in, but only Node >=22.5, unflagged on 24). Install only if
+# /usr/bin/node is missing or too old — check /usr/bin/node, not `command -v node`.
 need_node=1
-if [ -x /usr/bin/node ] && [ "$(/usr/bin/node -p 'process.versions.node.split(".")[0]')" -ge 20 ]; then
+if [ -x /usr/bin/node ] && [ "$(/usr/bin/node -p 'process.versions.node.split(".")[0]')" -ge 24 ]; then
   need_node=0
 fi
 if [ "$need_node" -eq 1 ]; then
   # Avoid piping a remote script straight into a root shell. Fetch it, verify a
   # pinned SHA-256, then run it without -E (don't leak this shell's env into root).
   # Update NODESOURCE_SHA256 when bumping the Node major; get it from the file you
-  # intend to trust: `curl -fsSL https://deb.nodesource.com/setup_20.x | sha256sum`.
+  # intend to trust: `curl -fsSL https://deb.nodesource.com/setup_24.x | sha256sum`.
   NODESOURCE_SHA256="${NODESOURCE_SHA256:-}"
   tmp_ns="$(mktemp)"
-  curl -fsSL https://deb.nodesource.com/setup_20.x -o "$tmp_ns"
+  curl -fsSL https://deb.nodesource.com/setup_24.x -o "$tmp_ns"
   if [ -n "$NODESOURCE_SHA256" ]; then
     echo "${NODESOURCE_SHA256}  ${tmp_ns}" | sha256sum -c - || { echo "[setup] NodeSource setup script failed checksum verification" >&2; exit 1; }
   else
     echo "[setup] WARNING: NODESOURCE_SHA256 not pinned; running the NodeSource setup script unverified." >&2
-    echo "[setup] Set NODESOURCE_SHA256=<sha> to enforce, or install Debian's own nodejs (>=20) instead." >&2
+    echo "[setup] Set NODESOURCE_SHA256=<sha> to enforce, or install Debian's own nodejs (>=24) instead." >&2
   fi
   sudo bash "$tmp_ns"
   rm -f "$tmp_ns"
