@@ -30,7 +30,12 @@ The pieces these ideas plug into already exist:
 
 ---
 
-## Idea 1 — Banks (toggleable service groups)
+## Idea 1 — Banks (toggleable service groups) — *SHIPPED 2026-06-04/05*
+
+> Shipped as band+tags predicates with off-wins (PR #36-era), then evolved:
+> per-bank scan profiles (Idea 7, PR #54), loHz/hiHz range predicates and a
+> SERVICE-ONLY mixer after the operator's design review (PR #57) — spectrum
+> became a computed read-only chip on the kiosk rail, not a toggle.
 
 **The pitch.** Group channels into named *banks* the operator can toggle on/off
 as a unit — UHF and VHF first, then service-oriented banks like Air, Rail,
@@ -258,7 +263,12 @@ directly thematic to the project's name.
 
 ---
 
-## Idea 4 — Hear vs. see: decouple audio from visibility
+## Idea 4 — Hear vs. see: decouple audio from visibility — *SHIPPED 2026-06-05*
+
+> Shipped as the enabled+audible tri-state (Hear/See/Off) with mute-wins
+> bank semantics; visible-muted tier chosen (SEE costs a DSP lane, catches
+> every hit). Now also the substrate for alert pull-ins and CC triage
+> verdicts.
 
 **The pitch.** "See all, hear only select." Today `enabled` conflates two things:
 *does this channel get a DSP slot and the speaker* vs. *does it show up on the
@@ -328,7 +338,11 @@ hits as a non-camera ripple layer.
 
 ---
 
-## Idea 5 — Persistent activity history (the keystone)
+## Idea 5 — Persistent activity history (the keystone) — *SHIPPED 2026-06-05*
+
+> node:sqlite store (events + durations, 30-day retention), /api/history +
+> /sites + /stats. Proved keystone as predicted: map antennas/heat, Insights,
+> alert feed, SAME proof-of-life, and the ERP estimator all ride it.
 
 **The pitch.** Keep a durable record of every channel opening that survives a
 reboot, so the map can replay, stats can be computed, and alerts can be reviewed.
@@ -357,7 +371,11 @@ process. Build this first and the rest become mostly queries.
 
 ---
 
-## Idea 6 — Alerts / notifications
+## Idea 6 — Alerts / notifications — *SHIPPED 2026-06-05 (PR #47)*
+
+> channel.alert flag, kiosk banner, see-only speaker break-in (helper
+> alert_unmute), admin alert feed, ntfy push, cooldown/hold knobs. SAME
+> (Idea 11) reuses this exact plumbing as its action side.
 
 **The pitch.** The counterpart to "see-only" (Idea 4): some channels you don't
 listen to live but still want to be *pulled into* when they key up — a watched
@@ -383,7 +401,12 @@ fire itself, but reviewing missed alerts wants Idea 5.
 
 ---
 
-## Idea 7 — Per-bank scan profiles
+## Idea 7 — Per-bank scan profiles — *SHIPPED 2026-06-05 (PR #54)*
+
+> The design pass resolved the mixed-window caveat: squelch trio (open/
+> quieting/hang) applies per CHANNEL, dwellWeight per WINDOW (max across
+> its channels), field-wise first-match in config order. Per-bank gain
+> deferred to Idea 10 (device property); bank priority + audio trim cut.
 
 **The pitch.** Different services genuinely want different radio settings:
 airband is AM with its own squelch/gain regime; marine VHF wants its own volume;
@@ -433,7 +456,11 @@ home — an output-only surface):**
 
 ---
 
-## Idea 9 — Stats & insights
+## Idea 9 — Stats & insights — *SHIPPED 2026-06-05 (PR #42)*
+
+> Admin Insights panel: totals/airtime/discoveries, top channels, by-tag/
+> band, hour-of-day clock; 24h/7d/30d periods. Doubles as Idea 3's data
+> source, as planned.
 
 **The pitch.** "Busiest channel today, busiest bank, quietest hours, first Close
 Call of the day." A quiet analytics surface over the persisted history.
@@ -542,7 +569,14 @@ the end of the banks track, not the start.
 
 ---
 
-## Idea 11 — SAME / NOAA alert decoding
+## Idea 11 — SAME / NOAA alert decoding — *SHIPPED 2026-06-05 (PR #63, visiting-slot tier)*
+
+> Operator chose the honest-lossy tier: the helper's last lane carries a
+> permanent multimon-ng tap; NWR rides the scan as a BACKGROUND channel
+> (demodulated, never opens/holds/speaks) in its own group, decoded each
+> hop visit. FIPS scoping + test-banner knobs; alerts ride Idea 6's
+> plumbing. The dedicated-SDR tier (Idea 10) upgrades reliability with
+> zero pipeline changes — exactly as the tiers below predicted.
 
 **The pitch.** Decode the Specific Area Message Encoding (SAME) headers on NOAA
 Weather Radio. When an alert for the operator's area is decoded: **display the
@@ -821,9 +855,25 @@ arrive as pages instead of more sections to collapse.
 
 ---
 
-## Suggested sequencing
+## Where things stand (2026-06-05)
 
-These interlock; a sensible order:
+Ideas 1, 2, 4, 5, 6, 7, 8, 9, 11 are shipped or resolved; the kiosk became
+the map (map-as-stage redesign) with coverage-physics blips (FCC licenses +
+the RF-derived ERP estimator), Close Calls arrive identified/triaged/
+trusted, and SAME decodes on the visiting-slot tier. What remains:
+
+- **Idea 10 multi-SDR** — the only hardware item; now ALSO the reliability
+  upgrade for SAME (a parked weather radio) and the realization of per-bank
+  gain. Next major build when a second dongle lands.
+- **Idea 12 digital voice** — parked low by design.
+- **Idea 3 artistic** — premise rethink required (operator note above:
+  sparse traffic demands accumulation/memory, not decay).
+- Stretch still open: CC band-sweep, polyphase channelizer, transcription,
+  remote audio streaming.
+
+## Suggested sequencing (historical)
+
+These interlock; a sensible order — kept as written for the record:
 
 1. **Banks (Idea 1)** — the data backbone; banks + tags + derived band. Unlocks
    bulk control and gives the map and hear/see something to pivot on.
