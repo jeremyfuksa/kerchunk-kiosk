@@ -114,6 +114,31 @@ channel has a location, pulse at that lat/lon." No new backend data path.
 5. Optional heat accumulation: a per-site hit counter drives a heatmap layer so
    "the busy corners of the band" emerge over a session.
 
+**Pin vocabulary — encode each dimension on its own visual channel.** The map has
+several categorically different things to show at once; one pin style for all of
+them is unreadable. The blip object already carries a `kind` — lean on it, and
+spread the distinctions across independent visual channels so the map reads at a
+glance:
+
+- **Glyph / shape → *what kind* of hit it is** (the `kind` field). The distinction
+  that earns the most is **configured-channel hit vs. Close Call discovery** —
+  "a channel I chose" vs. "something new the radio just found" should never look
+  alike. Beyond that, the naturally-separate layers get their own glyphs:
+  **aircraft** (ADS-B, Idea 13), **mesh nodes** (Meshtastic, Idea 14), and the
+  **affected-county / weather-alert** marker (SAME, Idea 11).
+- **Color → bank / service** (Idea 1): air / rail / marine / public-safety / ham
+  each a hue (colorblind-safe palette). This is the existing "color by bank" —
+  *don't* also vary glyph by bank; that's what color is for.
+- **Motion → audibility** (Idea 4 + the see-only refinement): audible = framed
+  *and* ring; see-only = ring only, camera held.
+- **Decoration → state**: a priority halo, the shipped **NO-FIX ring** for
+  unlocated hits, a pulsing treatment for an active weather warning.
+
+Restraint is the whole game: a small, legible legend (a handful of glyphs × bank
+colors), not a glyph per bank. Pure frontend — the renderer maps
+`kind → glyph`, `bank → color`, `audible → motion`, `flags → decoration`; no new
+backend data (bank comes from Idea 1, audibility from Idea 4).
+
 **Weather radar overlay.** The map can carry a live NEXRAD radar layer — a
 semi-transparent raster tile layer drawn above the base map and below the blips.
 Mechanically small: both the open stack (`L.tileLayer.wms(...)` / an XYZ layer in
