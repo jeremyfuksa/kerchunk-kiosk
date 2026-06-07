@@ -593,6 +593,51 @@ body {
 .spark { width: 100%; height: 28px; }
 .spark polyline { stroke: var(--pine, #75acaf); stroke-width: 1.5; }
 .spark.hot polyline { stroke: var(--flamingo, #f08080); }
+.healthBanner {
+  margin: 0 0 1rem;
+  border: 1px solid var(--golden-amber);
+  border-left: 4px solid var(--golden-amber);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--golden-amber) 9%, var(--bg-subtle));
+}
+.healthBanner.healthClear { display: none; }
+.healthBanner.severe { border-color: var(--flamingo); background: color-mix(in srgb, var(--flamingo) 12%, var(--bg-subtle)); }
+.healthAlert { display: flex; align-items: center; gap: 1rem; padding: 0.8rem 1rem; }
+.healthAlert + .healthAlert { border-top: 1px solid var(--border-default); }
+.healthAlert div { display: grid; gap: 0.2rem; }
+.healthAlert span, .healthAlert small { color: var(--text-secondary); }
+.healthAlert a { margin-left: auto; color: var(--golden-amber); white-space: nowrap; }
+.safetyMode { padding: 0.7rem 1rem; border-bottom: 1px solid var(--flamingo); color: var(--flamingo); }
+
+.inChannel { cursor: pointer; }
+.inChannel:hover td, .inChannel:focus td { background: color-mix(in srgb, var(--pine) 10%, transparent); }
+.analyticsSummary { display: flex; flex-wrap: wrap; gap: 0.6rem; margin: 1rem 0; }
+.analyticsSummary span { padding: 0.5rem 0.7rem; border: 1px solid var(--border-default); border-radius: 5px; }
+.signalChart { position: relative; padding: 0.8rem; border: 1px solid var(--border-default); border-radius: 6px; }
+.signalChart svg { width: 100%; height: 150px; overflow: visible; }
+.signalChart polyline { stroke: var(--pine); stroke-width: 2; vector-effect: non-scaling-stroke; }
+.chartLabel { margin-bottom: 0.5rem; color: var(--text-secondary); }
+.chartRange { position: absolute; inset: 2.5rem 0.4rem 0.4rem auto; display: flex; flex-direction: column; justify-content: space-between; color: var(--text-tertiary); font-size: 0.68rem; }
+.transmissionList { padding: 0; margin: 1rem 0; list-style: none; }
+.transmissionList li { display: grid; grid-template-columns: 1fr auto auto; gap: 1rem; padding: 0.45rem 0; border-bottom: 1px solid var(--etch); }
+.transmissionList b { color: var(--pine); }
+
+.locationEditor { margin: 1rem 0 !important; padding: 1rem !important; }
+.locationEditor h4 { margin: 0 0 0.7rem; }
+.locationEditor label { display: grid; gap: 0.25rem; margin-bottom: 0.5rem; }
+.locationSearch { display: flex; gap: 0.35rem; }
+.locationSearch input { flex: 1; min-width: 0; }
+.locationSuggestions { display: grid; gap: 0.25rem; margin: 0.35rem 0; }
+.locationSuggestions button { text-align: left; text-transform: none; letter-spacing: 0; }
+.locationMap { height: 230px; margin: 0.6rem 0; border: 1px solid var(--border-default); border-radius: 5px; background: var(--bg-base); display: grid; place-items: center; overflow: hidden; }
+
+.suppressedPanel, .archiveRecommendations { margin-top: 1rem; padding: 0.8rem; border: 1px solid var(--border-default); border-radius: 6px; }
+.suppressedPanel summary { cursor: pointer; color: var(--text-secondary); }
+.suppressedRow, .archiveRec { display: flex; align-items: center; gap: 0.7rem; padding: 0.5rem 0; border-top: 1px solid var(--etch); }
+.suppressedRow span, .archiveRec span { flex: 1; }
+.suppressedRow small { color: var(--text-tertiary); }
+.archiveRecommendations h3 { margin: 0; }
+.archiveRecommendations p { color: var(--text-secondary); }
 
 /* ── Admin IA (Idea 15): nav rail + page visibility. Pure re-layout. */
 .pageHidden { display: none !important; }
@@ -1044,6 +1089,10 @@ body { font-family: var(--font-sans, sans-serif); }
   .bankBuilder summary span { display: block; margin: 0.25rem 0 0 1rem; }
   .admin .tuning .settingGroups label { grid-template-columns: 1fr; gap: 0.4rem; }
   .admin .tuning .settingGroups .switchRow { grid-template-columns: 1fr auto; }
+  .healthAlert, .suppressedRow, .archiveRec { align-items: stretch; flex-direction: column; }
+  .healthAlert a { margin-left: 0; }
+  .drawer { width: min(100vw, 100%) !important; }
+  .locationMap { height: 190px; }
 }
 
 .confirmDialog {

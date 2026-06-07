@@ -27,7 +27,8 @@ export interface ServerDeps {
   /** Optional current-conditions provider for the kiosk header. */
   weather?: Pick<NwsWeather, "current">;
   /** Optional durable activity history (ROADMAP Idea 5). */
-  history?: Pick<HistoryStore, "record" | "release" | "query" | "sites" | "stats" | "setTranscript">;
+  history?: Pick<HistoryStore, "record" | "release" | "query" | "sites" | "stats" | "setTranscript">
+    & Partial<Pick<HistoryStore, "setRf">>;
   /** Override the transcription worker command (tests). */
   transcriberCmd?: string[];
   /** Dedicated weather radio engine (Idea 10): its SAME events feed the
@@ -40,6 +41,8 @@ export interface ServerDeps {
   staticDir: string;
   /** Request a supervised backend-process restart after the response is sent. */
   restartBackend?: () => void;
+  /** Enable temporary thermal load-shedding on the appliance process. */
+  selfProtect?: boolean;
 }
 
 const MIME: Record<string, string> = {
@@ -311,6 +314,7 @@ export function createServer(deps: ServerDeps): { server: Server } {
   let rfSaveTimer: NodeJS.Timeout | null = null;
   engine.on((ev) => {
     if (ev.type !== "rf") return;
+    deps.history?.setRf?.(ev.channelId, ev.db);
     const ch = config.channels.find((c) => c.id === ev.channelId);
     if (!ch) return;
     const next = ch.rfDb === undefined ? ev.db : ch.rfDb + 0.3 * (ev.db - ch.rfDb);
@@ -372,10 +376,25 @@ export function createServer(deps: ServerDeps): { server: Server } {
     else if (ev.type === "release") openIds.delete(ev.channelId);
     else if (ev.type === "status" || ev.type === "idle") openIds.clear();
   });
+  let safetyMode = false;
+  let safetyTransition = false;
   const sysStats = new SystemStats({
     helperPid: () => (engine as { helperPid?: number | null }).helperPid ?? null,
     openCount: () => openIds.size,
     dataDir: "/var/lib/kerchunk-kiosk",
+    onSample: (sample) => {
+      if (!deps.selfProtect) return;
+      const shouldProtect = sample.tempC !== null && sample.tempC >= 90;
+      const recovered = sample.tempC !== null && sample.tempC <= 78;
+      if (safetyTransition || (shouldProtect === safetyMode) || (!safetyMode && !shouldProtect) || (safetyMode && !recovered)) return;
+      safetyTransition = true;
+      safetyMode = shouldProtect;
+      const effective = safetyMode
+        ? { ...config, scan: { ...config.scan, closeCall: false, sweepRanges: [] } }
+        : config;
+      void engine.stop().then(() => engine.start(toScanConfig(effective, mode, monitorChannel)))
+        .finally(() => { safetyTransition = false; });
+    },
   });
   sysStats.start();
 
@@ -474,7 +493,21 @@ export function createServer(deps: ServerDeps): { server: Server } {
     if (ev.type !== "closecall") return;
     // Channels are the operator's choices; discoveries are the radio's finds.
     if (config.channels.some((c) => c.freq === ev.freqHz)) return;
-    if ((config.discoveries ?? []).some((d) => d.freq === ev.freqHz)) return;
+    const existing = (config.discoveries ?? []).find((d) => d.freq === ev.freqHz);
+    if (existing) {
+      const hitCount = (existing.hitCount ?? CC_FILE_AFTER) + 1;
+      const unidentified = existing.alphaTag.startsWith("Close Call ") && !existing.location && !existing.mode;
+      config = {
+        ...config,
+        discoveries: (config.discoveries ?? []).map((d) => d.id === existing.id ? {
+          ...d, hitCount, lastSeenAt: ev.ts,
+          ...(unidentified && hitCount >= 6 && !d.suppressedAt
+            ? { suppressedAt: ev.ts, suppressionReason: "Repeated unidentified carrier" } : {}),
+        } : d),
+      };
+      configStore.save(config);
+      return;
+    }
     const seen = (ccSeen.get(ev.freqHz) ?? 0) + 1;
     ccSeen.set(ev.freqHz, seen);
     if (seen < CC_FILE_AFTER) return;
@@ -483,6 +516,8 @@ export function createServer(deps: ServerDeps): { server: Server } {
       freq: ev.freqHz,
       alphaTag: `Close Call ${(ev.freqHz / 1e6).toFixed(4)}`,
       ts: Date.now(),
+      hitCount: seen,
+      lastSeenAt: ev.ts,
     };
     config = { ...config, discoveries: [...(config.discoveries ?? []), discovery] };
     configStore.save(config);
@@ -698,7 +733,18 @@ export function createServer(deps: ServerDeps): { server: Server } {
     }
 
     if (method === "GET" && path === "/api/system") {
-      return json(res, 200, sysStats.snapshot());
+      return json(res, 200, { ...sysStats.snapshot(), safetyMode });
+    }
+
+    if (method === "GET" && path === "/api/recommendations/archive") {
+      if (!deps.history) return json(res, 404, { error: "no history store" });
+      const cutoff = Date.now() - 30 * 86_400_000;
+      const heard = new Set(deps.history.query({ sinceMs: cutoff, kind: "active", limit: 5000 }).map((r) => r.freq));
+      const heardBefore = new Set(deps.history.query({ untilMs: cutoff, kind: "active", limit: 5000 }).map((r) => r.freq));
+      return json(res, 200, config.channels
+        .filter((c) => c.enabled && !c.priority && c.location?.source !== "operator"
+          && heardBefore.has(c.freq) && !heard.has(c.freq))
+        .map((c) => ({ id: c.id, freq: c.freq, alphaTag: c.alphaTag, audible: c.audible !== false })));
     }
 
     if (method === "GET" && path === "/api/stream.wav") {

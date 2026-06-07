@@ -217,6 +217,12 @@ export const configSchema = z.object({
     // Listenability triage (Close Call pipeline): false = identified as
     // paging/data/undecodable digital — promote as seen-not-heard.
     audible: z.boolean().optional(),
+    // Repeated unidentified carriers can be hidden from normal triage without
+    // being forgotten or rediscovered. Restoring clears these fields.
+    hitCount: z.number().int().positive().optional(),
+    lastSeenAt: z.number().optional(),
+    suppressedAt: z.number().optional(),
+    suppressionReason: z.string().optional(),
   })).optional(),
   // One channel designated as "the weather channel", stored separately from the
   // scan list. Weather-only mode (server runtime) holds this channel.

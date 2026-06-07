@@ -110,6 +110,7 @@ export function renderDashboard(root: HTMLElement): void {
           <div id="clockDate" class="clockDate"></div>
         </div>
       </header>
+      <div id="systemRisk" class="systemRisk"></div>
       <div id="alertBar" class="alertBar"></div>
       <div class="dashBody">
         <section class="now" id="now"></section>
@@ -118,9 +119,21 @@ export function renderDashboard(root: HTMLElement): void {
       <div id="bankRail" class="bankRail"></div>
     </div>`;
   const dashEl = root.querySelector<HTMLElement>(".dash")!;
+  const systemRisk = root.querySelector<HTMLElement>("#systemRisk")!;
   void mountActivityMap(root.querySelector<HTMLElement>("#mapBase")!, { interactive: false })
     .then((mounted) => { if (mounted) dashEl.classList.add("mapStage"); })
     .catch(() => { /* no map = classic dashboard, nothing lost */ });
+  function paintSystemRisk(): void {
+    void fetch("/api/system").then((r) => r.ok ? r.json() : null).then((s) => {
+      const severe = s?.alerts?.filter((a: { severity: string }) => a.severity === "severe") ?? [];
+      systemRisk.innerHTML = severe.length
+        ? `<strong>MACHINE WARNING</strong> ${severe.map((a: { title: string }) => esc(a.title)).join(" · ")}`
+        : "";
+      systemRisk.classList.toggle("on", severe.length > 0);
+    }).catch(() => {});
+  }
+  paintSystemRisk();
+  setInterval(paintSystemRisk, 10_000);
 
   const nowEl = root.querySelector<HTMLElement>("#now")!;
   const logEl = root.querySelector<HTMLElement>("#logList")!;

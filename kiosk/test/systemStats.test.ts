@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { SystemStats, procStatTicks } from "../src/backend/systemStats.js";
+import { SystemStats, classifySystemAlerts, procStatTicks, type SystemSample } from "../src/backend/systemStats.js";
 
 const STAT = "1234 (python3 (gr)) S 1 1 1 0 -1 4194304 0 0 0 0 5000 2500 0 0 20 0 12 0 100 0 0 18446744073709551615";
 
@@ -35,5 +35,23 @@ describe("SystemStats", () => {
     expect(now!.openCount).toBe(3);
     expect(now!.helperCpuPct).toBeGreaterThan(100); // 2.5 s of ticks in ~30 ms
     expect(now!.tempC === null || typeof now!.tempC === "number").toBe(true);
+  });
+});
+
+describe("classifySystemAlerts", () => {
+  const base: SystemSample = {
+    ts: 1, cpuPct: 10, helperCpuPct: 20, helperRssMb: 100, load1: 1,
+    memUsedPct: 40, backendRssMb: 100, tempC: 50, throttled: false,
+    diskFreeMb: 10_000, openCount: 1,
+  };
+  it("raises actionable attention alerts and clears after recovery", () => {
+    expect(classifySystemAlerts({ ...base, tempC: 84 })[0]).toMatchObject({
+      id: "temperature-high", severity: "attention",
+    });
+    expect(classifySystemAlerts(base)).toEqual([]);
+  });
+  it("reserves severe warnings for machine-risk conditions", () => {
+    expect(classifySystemAlerts({ ...base, tempC: 92 }).some((a) => a.severity === "severe")).toBe(true);
+    expect(classifySystemAlerts({ ...base, diskFreeMb: 300 }).some((a) => a.id === "disk-critical")).toBe(true);
   });
 });
