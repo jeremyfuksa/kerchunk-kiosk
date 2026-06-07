@@ -344,7 +344,10 @@ class Helper(gr.top_block):
         gr.top_block.__init__(self, "kerchunk-wideband-helper")
         self.args = args
 
-        self.src = soapy.source("driver=rtlsdr", "fc32", 1, "", "", [""], [""])
+        # Device selection (multi-SDR): rtl=N picks the librtlsdr index Node
+        # resolved from the configured USB PORT just before spawning us.
+        dev_args = "driver=rtlsdr" if args.rtl_index < 0 else f"driver=rtlsdr,rtl={args.rtl_index}"
+        self.src = soapy.source(dev_args, "fc32", 1, "", "", [""], [""])
         self.src.set_sample_rate(0, args.rate)
         if args.gain == "auto":
             self.src.set_gain_mode(0, True)
@@ -361,7 +364,13 @@ class Helper(gr.top_block):
         # clipped instead of slamming the speakers at full scale.
         self.adder = blocks.add_ff(1)
         self.limiter = analog.rail_ff(-0.8, 0.8)
-        self.sink = audio.sink(AUDIO_RATE, args.sink, True)
+        # sink "none": a decode-only radio (parked NWR for SAME) has no
+        # speaker claim — audio terminates in a null sink until the
+        # cross-device arbiter exists (Idea 10 phase 2).
+        if args.sink == "none":
+            self.sink = blocks.null_sink(gr.sizeof_float)
+        else:
+            self.sink = audio.sink(AUDIO_RATE, args.sink, True)
         self.connect(self.adder, self.limiter, self.sink)
         # Remote-listening tee (ROADMAP stretch): the exact post-limiter
         # speaker feed, as s16 PCM, down an fd Node inherits. Node MUST
@@ -794,6 +803,8 @@ def main():
                          "Default bench-calibrated on this hardware: dead "
                          "channels read ~-82, voice carriers -94..-96 "
                          "(2026-06-04, see PR)")
+    ap.add_argument("--rtl-index", type=int, default=-1,
+                    help="librtlsdr device index (multi-SDR); -1 = first found")
     ap.add_argument("--audio-fd", type=int, default=-1,
                     help="fd to tee the speaker feed to as s16 PCM (remote listen)")
     ap.add_argument("--hang-ms", type=float, default=2000.0,

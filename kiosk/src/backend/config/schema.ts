@@ -151,6 +151,16 @@ export const configSchema = z.object({
     mapLon: z.number().optional(),
     mapZoom: z.number().int().optional(),
   }).optional(),
+  // Multi-SDR (ROADMAP Idea 10): role assignments by USB PORT PATH — the
+  // physical jack is the identity (these RTL clones ignore EEPROM serials).
+  // scan = the group-hopping voice radio; weather = parked on NWR 24/7
+  // (SAME gold tier, decode-only, no speaker); adsb = reserved for the
+  // dump1090 sidecar. Absent = single-radio behavior, first device found.
+  radios: z.array(z.object({
+    port: z.string().min(1),                       // e.g. "1-1.2"
+    role: z.enum(["scan", "weather", "adsb"]),
+    label: z.string().optional(),
+  })).optional(),
   // Transcription (stretch, opt-in — costs CPU on an already-warm chassis):
   // what was SAID, attached to history rows. Takes effect at service restart.
   transcribe: z.boolean().optional(),

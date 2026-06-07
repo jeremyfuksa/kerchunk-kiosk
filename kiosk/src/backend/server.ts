@@ -9,7 +9,7 @@ import type { LookupProvider } from "./lookup.js";
 import type { NwsWeather } from "./weather.js";
 import type { HistoryStore } from "./history.js";
 import { WsHub } from "./ws.js";
-import type { ScannerEngine, ScanConfig } from "./engine/ScannerEngine.js";
+import type { EngineEvent, ScannerEngine, ScanConfig } from "./engine/ScannerEngine.js";
 import { setVolume as amixerVolume, setMuted as amixerMuted, type AmixerOpts } from "./audio.js";
 import { isScannable, isAudible, profileFor } from "./config/banks.js";
 import { solveK, estimateWatts, distKm, type Anchor } from "./powerEstimator.js";
@@ -30,6 +30,9 @@ export interface ServerDeps {
   history?: Pick<HistoryStore, "record" | "release" | "query" | "sites" | "stats" | "setTranscript">;
   /** Override the transcription worker command (tests). */
   transcriberCmd?: string[];
+  /** Dedicated weather radio engine (Idea 10): its SAME events feed the
+   *  same tee as the main engine's. */
+  weatherEngine?: ScannerEngine;
   configStore: ConfigStore;
   engine: ScannerEngine;
   activityLog: ActivityLog;
@@ -67,10 +70,12 @@ export function toScanConfig(
                 audible: isAudible(c, cfg.banks ?? []),
                 ...profileFor(c, cfg.banks ?? []),
               })),
-            // SAME (Idea 11, visiting-slot tier): NWR rides along as a
-            // BACKGROUND channel — its own group, demodulated into the
-            // decoder tap whenever the hop visits, never opens/holds/speaks.
-            ...(cfg.weatherChannel
+            // SAME (Idea 11): with a dedicated weather radio (Idea 10) the
+            // decode moves there full-time (gold tier) and the scan stops
+            // visiting; otherwise NWR rides along as a BACKGROUND channel —
+            // its own group, demodulated into the decoder tap whenever the
+            // hop visits, never opens/holds/speaks (visiting-slot tier).
+            ...(cfg.weatherChannel && !cfg.radios?.some((r) => r.role === "weather")
               ? [{
                   ...cfg.weatherChannel,
                   id: "wx_same", alphaTag: "NWR (SAME decode)",
@@ -402,7 +407,8 @@ export function createServer(deps: ServerDeps): { server: Server } {
   // Headers repeat 3x: dedupe by raw text for 90 s. Matching alerts ride
   // the existing alert plumbing (banner + feed + ntfy).
   let lastSame: { raw: string; ts: number } | null = null;
-  engine.on((ev) => {
+  let sameRevertTimer: NodeJS.Timeout | null = null;
+  const onSameEvent = (ev: EngineEvent): void => {
     if (ev.type !== "same") return;
     const hdr = parseSame(ev.raw);
     if (!hdr) return;
@@ -420,6 +426,22 @@ export function createServer(deps: ServerDeps): { server: Server } {
     });
     if (!covered || (test && !config.alerts?.sameTests)) return;
     const holdSeconds = Math.min(300, Math.max(60, hdr.purgeMinutes * 60));
+    // Tune to weather (the Idea 11 pitch's second behavior): preempt the
+    // scan so the NWR voice message PLAYS, then revert — consumer
+    // weather-radio break-in. Never preempts an operator's monitor mode.
+    if (!test && mode === "scan" && config.weatherChannel) {
+      mode = "weather";
+      monitorChannel = null;
+      void engine.stop().then(() => engine.start(toScanConfig(config, "weather")));
+      if (sameRevertTimer) clearTimeout(sameRevertTimer);
+      sameRevertTimer = setTimeout(() => {
+        sameRevertTimer = null;
+        if (mode !== "weather") return;   // operator changed it; leave alone
+        mode = "scan";
+        void engine.stop().then(() => engine.start(toScanConfig(config, "scan")));
+      }, Math.min(10 * 60_000, Math.max(120_000, hdr.purgeMinutes * 60_000)));
+      sameRevertTimer.unref?.();
+    }
     deps.wsHub.broadcast({
       type: "alert",
       channel: {
@@ -437,7 +459,9 @@ export function createServer(deps: ServerDeps): { server: Server } {
         body: `${hdr.eventName} from ${hdr.sender}, ${hdr.purgeMinutes} min — ${hdr.raw}`,
       }).catch(() => { /* push is best-effort */ });
     }
-  });
+  };
+  engine.on(onSameEvent);
+  deps.weatherEngine?.on(onSameEvent);
 
   // Persistence-before-filing: one FFT transient used to file a discovery
   // forever; now a frequency must hit TWICE (helper cooldown spaces hits
