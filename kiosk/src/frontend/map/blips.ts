@@ -9,6 +9,8 @@ export interface BlipInput {
   alphaTag: string;
   kind: "active" | "closecall" | "nofix";
   ts: number;
+  /** Frequency, when known — drives service coloring (pin palette). */
+  freq?: number;
 }
 
 export interface Blip extends BlipInput {
