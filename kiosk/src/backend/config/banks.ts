@@ -116,3 +116,26 @@ export function spectrumLabelFor(freqHz: number): string {
   return SPECTRUM.find((b) => freqHz >= b.lo && freqHz <= b.hi)?.name
     ?? bandFor(freqHz).toUpperCase();
 }
+
+// The unified Channels page (spec 2026-06-06): banks as structure. A
+// channel's HOME is its first matching bank — the same config-order
+// precedence profileFor() uses, so "first match" means one thing
+// everywhere. Channels matching no bank land in a trailing Unbanked
+// group (bank: null); empty banks still render so they can be found
+// and deleted.
+export interface BankGroup {
+  bank: Bank | null;
+  channels: Channel[];
+}
+
+export function groupChannelsByBank(channels: Channel[], banks: Bank[]): BankGroup[] {
+  const groups: BankGroup[] = banks.map((b) => ({ bank: b, channels: [] }));
+  const unbanked: Channel[] = [];
+  for (const c of [...channels].sort((a, b) => a.freq - b.freq)) {
+    const home = groups.find((g) => matchesBank(c, g.bank!));
+    if (home) home.channels.push(c);
+    else unbanked.push(c);
+  }
+  if (unbanked.length > 0) groups.push({ bank: null, channels: unbanked });
+  return groups;
+}
