@@ -785,7 +785,14 @@ export function createServer(deps: ServerDeps): { server: Server } {
     if (!existsSync(filePath) || !extname(filePath)) filePath = join(staticDir, "index.html");
     if (!existsSync(filePath)) { res.writeHead(404); res.end("not found"); return; }
     const mime = MIME[extname(filePath)] ?? "application/octet-stream";
-    res.writeHead(200, { "content-type": mime });
+    // Cache discipline: HTML must revalidate every load (it names the
+    // hashed bundles — a cached copy resurrects the OLD UI after deploys,
+    // bitten 2026-06-07); the hashed assets themselves are immutable.
+    const hashed = /assets\//.test(filePath);
+    res.writeHead(200, {
+      "content-type": mime,
+      "Cache-Control": hashed ? "public, max-age=31536000, immutable" : "no-cache",
+    });
     res.end(readFileSync(filePath));
   }
 
