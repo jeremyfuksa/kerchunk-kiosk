@@ -913,7 +913,15 @@ Ideas 1, 2, 4, 5, 6, 7, 8, 9, 11, 16 are shipped or resolved; the stretch
 sweep landed ambient replay, CC band-sweep, remote listening, and opt-in
 transcription (PRs #66–#68). What's open, in execution order:
 
-### Build next (software-only, in order)
+### PHASE: CONSOLIDATION (operator, 2026-06-06)
+> "We are going to nail the stuff we have before adding." No new features
+> until the existing surface is field-proven. What nailing looks like:
+> live with everything, fix what use reveals, verify the watch items
+> (SAME proof-of-life, estimator anchors, FCC priming), harden rough
+> edges (e.g. zombie helper on hot-unplug). New builds — including
+> Idea 15 — wait until the operator reopens the gate.
+
+### Build next when the gate reopens (software-only, in order)
 1. **Idea 15 — Admin IA** (analytics home + config pages). The prerequisite
    shell for every future panel. Frontend-only restructure.
 2. **Idea 3 — further ambient skins** (constellation, kerchunk wall, data
