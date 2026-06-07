@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { bandFor, matchesBank, isScannable, isAudible, profileFor, serviceFor, spectrumLabelFor } from "../src/backend/config/banks.js";
+import { bandFor, matchesBank, isScannable, isAudible, profileFor, serviceFor, spectrumLabelFor, groupChannelsByBank } from "../src/backend/config/banks.js";
 import type { Channel, Bank } from "../src/backend/config/schema.js";
 
 function ch(freq: number, over: Partial<Channel> = {}): Channel {
@@ -146,5 +146,37 @@ describe("spectrumLabelFor — the kiosk's tuned-window chip", () => {
     expect(spectrumLabelFor(443_775_000)).toBe("70CM");
     expect(spectrumLabelFor(462_675_000)).toBe("UHF-T");
     expect(spectrumLabelFor(180_000_000)).toBe("VHF");  // outband fallback
+  });
+});
+
+describe("groupChannelsByBank — the unified Channels page's skeleton", () => {
+  const mk = (id: string, freq: number, tags?: string[]) =>
+    ({ id, freq, alphaTag: id, mode: "nfm" as const, enabled: true, ...(tags ? { tags } : {}) });
+  const banks = [
+    { id: "b1", name: "Rail", enabled: true, tags: ["rail"] },
+    { id: "b2", name: "VHF-ish", enabled: true, band: "vhf" as const },
+    { id: "b3", name: "GMRS", enabled: false, tags: ["gmrs"] },
+  ];
+  it("homes each channel under its FIRST matching bank, groups in config order", () => {
+    const chans = [
+      mk("rail1", 160_650_000, ["rail"]),   // matches b1 AND b2 -> homes b1
+      mk("ham1", 146_790_000, ["ham"]),     // matches b2 only
+      mk("gmrs1", 462_675_000, ["gmrs"]),   // matches b3 (disabled banks still group)
+      mk("uhf-stray", 446_000_000),         // matches nothing -> Unbanked
+    ];
+    const g = groupChannelsByBank(chans, banks);
+    expect(g.map((x) => x.bank?.name ?? "UNBANKED")).toEqual(["Rail", "VHF-ish", "GMRS", "UNBANKED"]);
+    expect(g[0]!.channels.map((c) => c.id)).toEqual(["rail1"]);
+    expect(g[1]!.channels.map((c) => c.id)).toEqual(["ham1"]);
+    expect(g[2]!.channels.map((c) => c.id)).toEqual(["gmrs1"]);
+    expect(g[3]!.channels.map((c) => c.id)).toEqual(["uhf-stray"]);
+  });
+  it("sorts channels by frequency within a group; empty banks still render; no empty Unbanked", () => {
+    const chans = [mk("hi", 161_100_000, ["rail"]), mk("lo", 160_215_000, ["rail"]), mk("stray9", 950_000_000), mk("stray1", 920_000_000)];
+    const g = groupChannelsByBank(chans, banks);
+    expect(g[0]!.channels.map((c) => c.id)).toEqual(["lo", "hi"]);
+    expect(g.length).toBe(4);                       // Rail, VHF-ish, GMRS, Unbanked
+    expect(g[1]!.channels).toEqual([]);             // empty bank still listed (findable, deletable)
+    expect(g[3]!.channels.map((c) => c.id)).toEqual(["stray1", "stray9"]);
   });
 });

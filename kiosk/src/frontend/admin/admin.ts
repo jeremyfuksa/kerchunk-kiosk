@@ -2,7 +2,8 @@ import type { Channel } from "../../backend/config/schema.js";
 import { NOAA_CHANNELS } from "../../backend/config/noaa.js";
 import { api } from "../lib/api.js";
 import { fmtFreq, esc } from "../lib/format.js";
-import { bandFor, matchesBank, serviceFor } from "../../backend/config/banks.js";
+import { bandFor, matchesBank, serviceFor, groupChannelsByBank } from "../../backend/config/banks.js";
+import type { BankGroup } from "../../backend/config/banks.js";
 import icoHeadphones from "lucide-static/icons/headphones.svg?raw";
 import icoPencil from "lucide-static/icons/pencil.svg?raw";
 import icoBan from "lucide-static/icons/ban.svg?raw";
@@ -12,6 +13,11 @@ import icoX from "lucide-static/icons/x.svg?raw";
 import icoCheck from "lucide-static/icons/check.svg?raw";
 import icoUnlock from "lucide-static/icons/lock-open.svg?raw";
 import icoBell from "lucide-static/icons/bell-ring.svg?raw";
+import icoGauge from "lucide-static/icons/gauge.svg?raw";
+import icoInbox from "lucide-static/icons/inbox.svg?raw";
+import icoList from "lucide-static/icons/list.svg?raw";
+import icoSliders from "lucide-static/icons/sliders-horizontal.svg?raw";
+import icoGear from "lucide-static/icons/settings-2.svg?raw";
 import type { Bank } from "../../backend/config/schema.js";
 import { ReconnectingWs } from "../lib/wsClient.js";
 import type { EngineEvent } from "../../backend/engine/ScannerEngine.js";
@@ -49,6 +55,7 @@ const ICONS: Record<string, string> = {
   cancel: icoX,
   unlock: icoUnlock,
   bell: icoBell,
+  gear: icoGear,
 };
 
 function iconBtn(cls: string, icon: string, label: string, attrs = ""): string {
@@ -58,8 +65,19 @@ function iconBtn(cls: string, icon: string, label: string, attrs = ""): string {
 export function renderAdmin(root: HTMLElement): void {
   root.innerHTML = `
     <main class="admin">
-      <h1>Kerchunk Kiosk — Admin <a class="mapLink" href="/map" target="_blank" title="Live activity map">MAP ↗</a></h1>
-      <section class="nowCard">
+      <header class="adminHead">
+        <span class="brand">KERCHUNK <span class="brandSub">mission control</span></span>
+        <a class="mapLink" href="/map" target="_blank" title="Live activity map">MAP ↗</a>
+      </header>
+      <div class="workspace">
+      <nav class="adminNav" id="adminNav" aria-label="Admin sections">
+        <a href="#/" data-route="home"><span class="navIco" data-ico="home"></span>Home</a>
+        <a href="#/triage" data-route="triage"><span class="navIco" data-ico="triage"></span>Triage <span id="navDcCount" class="navBadge"></span></a>
+        <a href="#/channels" data-route="channels"><span class="navIco" data-ico="channels"></span>Channels</a>
+        <a href="#/scan" data-route="scan"><span class="navIco" data-ico="scan"></span>Scan</a>
+      </nav>
+      <div class="pages">
+      <section class="nowCard hero" data-page="home">
         <h2>Now playing</h2>
         <div class="npWhat"><span id="npName" class="npName">scanning…</span> <span id="npFreq" class="npFreq"></span></div>
         <div class="npControls">
@@ -73,11 +91,11 @@ export function renderAdmin(root: HTMLElement): void {
           <button id="streamBtn" title="Listen to the live speaker feed in this browser">▶ Listen here</button>
         </div>
       </section>
-      <section class="sysHealth collapsible" data-key="system">
+      <section class="sysHealth collapsible" data-key="system" data-page="home">
         <h2>System health <span class="hint">the machine under the radio — helper CPU is the usual suspect</span></h2>
         <div id="sysBody" class="sysBody"></div>
       </section>
-      <section class="discoveries">
+      <section class="discoveries" data-page="triage">
         <h2>Discoveries <span class="count" id="dcCount"></span><span class="hint">found by Close Call — listen, then decide</span></h2>
         <div class="dcToolbar">
           <button id="dcDismissSel" disabled>Dismiss selected</button>
@@ -91,10 +109,8 @@ export function renderAdmin(root: HTMLElement): void {
           </table>
         </div>
       </section>
-      <section class="banks">
-        <h2>Banks <span class="hint">toggle a group to mute/unmute it — off wins</span></h2>
-        <div id="bankChips" class="bankChips"></div>
-        <div id="bankProfile" class="bankProfile"></div>
+      <section class="channels" data-page="channels">
+        <h2>Channels <span class="count" id="chCount"></span><button id="addBtn">+ Add</button></h2>
         <div class="bankAdd">
           <input id="bkName" placeholder="Bank name (Air, Rail, …)" />
           <select id="bkBand"><option value="">any band</option><option value="hf">HF</option><option value="vhf">VHF</option><option value="uhf">UHF</option><option value="shf">SHF</option></select>
@@ -104,9 +120,7 @@ export function renderAdmin(root: HTMLElement): void {
           <button id="bkAdd">+ Bank</button>
           <span id="bkErr" class="err"></span>
         </div>
-      </section>
-      <section class="channels">
-        <h2>Channels <span class="count" id="chCount"></span><button id="addBtn">+ Add</button></h2>
+        <div id="bankProfile" class="bankProfile"></div>
         <div class="tableWrap">
           <table class="chTable">
             <thead><tr>
@@ -117,7 +131,8 @@ export function renderAdmin(root: HTMLElement): void {
         </div>
         <span id="chErr" class="err"></span>
       </section>
-      <section class="insights collapsible" data-key="insights">
+      <div class="statRow" data-page="home" id="statRow"></div>
+      <section class="insights collapsible" data-key="insights" data-page="home">
         <h2>Insights <span class="hint" id="inPeriodHint"></span></h2>
         <div class="inToolbar">
           <button class="inPeriod" data-h="24">24 h</button>
@@ -126,15 +141,17 @@ export function renderAdmin(root: HTMLElement): void {
         </div>
         <div id="inBody" class="inBody"></div>
       </section>
-      <section class="alertFeed collapsible" data-key="alerts">
+      <div class="feedsRow" data-page="home">
+      <section class="alertFeed collapsible" data-key="alerts" data-page="home">
         <h2>Alerts <span class="hint">what fired while you were away — flag channels with the bell</span></h2>
         <ul id="alertRows" class="alertList"></ul>
       </section>
-      <section class="transcripts collapsible" data-key="transcripts">
+      <section class="transcripts collapsible" data-key="transcripts" data-page="home">
         <h2>Transcripts <span class="hint">what was said — whisper-tiny gist, not gospel</span></h2>
         <ul id="trRows" class="alertList"></ul>
       </section>
-      <div class="moduleRow">
+      </div>
+      <div class="moduleRow" data-page="scan">
       <section class="tuning collapsible" data-key="tuning">
         <h2>Scan tuning</h2>
         <label>Group dwell (ms) <input id="tGroupDwell" type="number" min="500" step="100" placeholder="3000" /></label>
@@ -159,7 +176,7 @@ export function renderAdmin(root: HTMLElement): void {
         <h2>Close Call lockouts</h2>
         <ul id="loList"></ul>
       </section>
-      <section class="weather collapsible" data-key="weather">
+      <section class="weather collapsible" data-key="weather" data-page="scan">
         <h2>Weather</h2>
         <label>Channel <select id="wxFreq">${NOAA_CHANNELS.map((c) => `<option value="${c.mhz}">${c.label} — ${c.mhz} MHz</option>`).join("")}</select></label>
         <label>Tag <input id="wxTag" type="text" placeholder="NOAA WX" /></label>
@@ -171,13 +188,45 @@ export function renderAdmin(root: HTMLElement): void {
       </section>
       </div>
     </main>
+      </div>
+      </div>
     <div id="drawerScrim" class="drawerScrim"></div>
     <aside id="chDrawer" class="drawer" aria-label="Channel details"></aside>`;
 
   // Progressive disclosure: minor modules collapse behind their legends.
   // State persists per device (an operator who tunes often keeps it open).
   const COLLAPSE_KEY = "kerchunk.admin.collapsed";
-  const collapsed = new Set<string>(JSON.parse(localStorage.getItem(COLLAPSE_KEY) ?? '["tuning","lockouts","weather"]'));
+  const collapsed = new Set<string>(JSON.parse(localStorage.getItem(COLLAPSE_KEY) ?? '["tuning","lockouts","weather","insights","transcripts"]'));
+  // ── Admin IA (ROADMAP Idea 15): config is a destination, monitoring is
+  // the landing. Pure re-layout — all sections stay wired as before; the
+  // route only decides which data-page group is visible. Unknown = home.
+  const ROUTES = new Set(["home", "triage", "channels", "scan"]);
+  const NAV_ICONS: Record<string, string> = {
+    home: icoGauge, triage: icoInbox, channels: icoList, scan: icoSliders,
+  };
+  root.querySelectorAll<HTMLElement>(".navIco").forEach((el) => {
+    el.innerHTML = NAV_ICONS[el.dataset.ico!] ?? "";
+  });
+  function currentRoute(): string {
+    let r = location.hash.replace(/^#\/?/, "") || "home";
+    if (r === "banks") r = "channels";   // pre-unification bookmarks survive
+    return ROUTES.has(r) ? r : "home";
+  }
+  function applyRoute(): void {
+    const route = currentRoute();
+    root.querySelectorAll<HTMLElement>("[data-page]").forEach((el) => {
+      el.classList.toggle("pageHidden", el.dataset.page !== route);
+    });
+    root.querySelectorAll<HTMLAnchorElement>("#adminNav a").forEach((a) => {
+      const active = a.dataset.route === route;
+      a.classList.toggle("active", active);
+      if (active) a.setAttribute("aria-current", "page");
+      else a.removeAttribute("aria-current");
+    });
+  }
+  window.addEventListener("hashchange", applyRoute);
+  applyRoute();
+
   root.querySelectorAll<HTMLElement>("section.collapsible").forEach((sec) => {
     const key = sec.dataset.key!;
     if (collapsed.has(key)) sec.classList.add("collapsed");
@@ -223,56 +272,7 @@ export function renderAdmin(root: HTMLElement): void {
   }
 
   // ── Banks: toggleable predicates over band/tags (ROADMAP Idea 1) ──
-  const bankChips = root.querySelector<HTMLElement>("#bankChips")!;
   const bkErr = root.querySelector<HTMLElement>("#bkErr")!;
-
-  function renderBanks(banks: Bank[]): void {
-    bankChips.innerHTML = banks.length === 0
-      ? `<span class="empty">no banks — add one to bulk-toggle a slice of the channel list</span>`
-      : banks.map((b) => {
-          const n = channels.filter((c) => matchesBank(c, b)).length;
-          const range = b.loHz || b.hiHz
-            ? `${b.loHz ? (b.loHz / 1e6).toFixed(b.loHz % 1e6 ? 3 : 0) : "…"}–${b.hiHz ? (b.hiHz / 1e6).toFixed(b.hiHz % 1e6 ? 3 : 0) : "…"} MHz`
-            : undefined;
-          const what = [b.band?.toUpperCase(), range, ...(b.tags ?? [])].filter(Boolean).join(" · ") || "everything";
-          const state = !b.enabled ? "off" : b.audible === false ? "see" : "on";
-          const next = state === "on" ? "SEE (scan, stay silent)" : state === "see" ? "OFF" : "HEAR";
-          return `<button class="bankChip ${state}" data-id="${esc(b.id)}" title="${esc(what)} — ${state.toUpperCase()}; click for ${next}">
-            <span class="bankState"></span>${esc(b.name)}${state === "see" ? ' <span class="bankSee">SEE</span>' : ""} <span class="bankCount">${n}</span>${hasProfile(b) ? ' <span class="bankProf" title="Has a scan profile">*</span>' : ""}
-            <span class="bankGear" data-id="${esc(b.id)}" title="Scan profile (squelch/dwell overrides)">⚙</span>
-            <span class="bankDel" data-id="${esc(b.id)}" title="Delete bank">×</span>
-          </button>`;
-        }).join("");
-    bankChips.querySelectorAll<HTMLButtonElement>(".bankChip").forEach((chip) =>
-      chip.addEventListener("click", async (ev) => {
-        const cfg = await api.getConfig();
-        const id = chip.dataset.id!;
-        if ((ev.target as HTMLElement).classList.contains("bankGear")) {
-          openProfileEditor((cfg.banks ?? []).find((x) => x.id === id));
-          return;
-        }
-        if ((ev.target as HTMLElement).classList.contains("bankDel")) {
-          const b = (cfg.banks ?? []).find((x) => x.id === id);
-          if (!b || !confirm(`Delete bank ${b.name}? Its channels keep scanning.`)) return;
-          cfg.banks = (cfg.banks ?? []).filter((x) => x.id !== id);
-        } else {
-          // Cycle Hear -> See -> Off -> Hear (see = scanned but silent).
-          cfg.banks = (cfg.banks ?? []).map((x) => {
-            if (x.id !== id) return x;
-            if (x.enabled && x.audible !== false) return { ...x, audible: false };
-            if (x.enabled) return { ...x, enabled: false, audible: true };
-            return { ...x, enabled: true, audible: true };
-          });
-        }
-        await api.putConfig(cfg);
-        refreshBanks();
-      }));
-  }
-
-  function hasProfile(b: Bank): boolean {
-    return b.openAboveFloorDb !== undefined || b.noiseQuietDb !== undefined
-      || b.hangMs !== undefined || b.dwellWeight !== undefined;
-  }
 
   // ── Per-bank scan profile editor (ROADMAP Idea 7): squelch trio applies
   // to the bank's channels; dwell weight scales its windows' park time.
@@ -316,14 +316,9 @@ export function renderAdmin(root: HTMLElement): void {
         await api.putConfig(cfg);
         bankProfBox.classList.remove("open");
         bankProfBox.innerHTML = "";
-        refreshBanks();
+        await refresh();
       } catch (e) { err.textContent = (e as Error).message; }
     });
-  }
-
-  async function refreshBanks(): Promise<void> {
-    const cfg = await api.getConfig();
-    renderBanks(cfg.banks ?? []);
   }
 
   root.querySelector<HTMLButtonElement>("#bkAdd")!.addEventListener("click", async () => {
@@ -347,7 +342,7 @@ export function renderAdmin(root: HTMLElement): void {
     await api.putConfig(cfg);
     root.querySelector<HTMLInputElement>("#bkName")!.value = "";
     root.querySelector<HTMLInputElement>("#bkTags")!.value = "";
-    refreshBanks();
+    await refresh();
   });
 
   // ── Insights (ROADMAP Idea 9): aggregates over the history store ──
@@ -405,6 +400,51 @@ export function renderAdmin(root: HTMLElement): void {
     b.addEventListener("click", () => { inHours = Number(b.dataset.h); void renderInsights(); }));
   void renderInsights();
   setInterval(() => { renderInsights().catch(() => {}); }, 60_000);
+
+  // ── Home stat tiles (Idea 15): the glance numbers. One /api/stats(24h)
+  // + config fetch feeds all four tiles and the hour clock.
+  const statRow = root.querySelector<HTMLElement>("#statRow")!;
+  function fmtAirShort(ms: number): string {
+    const m = Math.round(ms / 60000);
+    return m >= 60 ? `${(m / 60).toFixed(1)}h` : `${m}m`;
+  }
+  async function renderStatTiles(): Promise<void> {
+    const since = Date.now() - 24 * 3600 * 1000;
+    const [stats, cfg, alerts] = await Promise.all([
+      fetch(`/api/stats?since=${since}`).then((r) => r.json()),
+      api.getConfig(),
+      fetch(`/api/history?kind=alert&since=${since}&limit=200`).then((r) => (r.ok ? r.json() : [])),
+    ]);
+    const pending = (cfg.discoveries ?? []).length;
+    const navBadge = root.querySelector<HTMLElement>("#navDcCount");
+    if (navBadge) navBadge.textContent = pending > 0 ? String(pending) : "";
+    const byHour = stats.byHour as number[];
+    const max = Math.max(1, ...byHour);
+    const nowHour = new Date().getHours();
+    const total = byHour.reduce((a, b) => a + b, 0);
+    const peak = byHour.indexOf(Math.max(...byHour));
+    const clock = total === 0
+      ? `<div class="clkEmpty">no traffic yet today</div>`
+      : byHour.map((n, h) =>
+        `<div class="clkBar${h === nowHour ? " now" : ""}" style="height:${Math.max(4, (n / max) * 100)}%" title="${String(h).padStart(2, "0")}:00 — ${n} hits"></div>`).join("");
+    const tile = (label: string, value: string, sub: string, href?: string) =>
+      `<${href ? `a href="${href}"` : "div"} class="statTile">
+        <div class="stLabel">${label}</div>
+        <div class="stValue">${value}</div>
+        <div class="stSub">${sub}</div>
+      </${href ? "a" : "div"}>`;
+    statRow.innerHTML =
+      tile("Hits · 24h", String(stats.totalHits), `${stats.topChannels[0] ? esc(stats.topChannels[0].alphaTag) + " leads" : "quiet band"}`)
+      + tile("Airtime", fmtAirShort(stats.totalAirtimeMs), `${stats.discoveries} close call${stats.discoveries === 1 ? "" : "s"} heard`)
+      + tile("Triage queue", String(pending), pending > 0 ? "discoveries await review" : "inbox zero", "#/triage")
+      + tile("Alerts · 24h", String((alerts as unknown[]).length), "bell + SAME, feed below")
+      + `<div class="statTile clockTile">
+          <div class="stLabel">Activity by hour</div>
+          <div class="hourClock" role="img" aria-label="${total === 0 ? "No traffic yet today" : `${total} hits today, busiest around ${String(peak).padStart(2, "0")}:00`}">${clock}</div>
+        </div>`;
+  }
+  void renderStatTiles().catch(() => {});
+  setInterval(() => { renderStatTiles().catch(() => {}); }, 60_000);
 
   // ── Alert feed (ROADMAP Idea 6): the durable "what fired while I was
   // away" review, straight off history rows with kind=alert.
@@ -480,6 +520,15 @@ export function renderAdmin(root: HTMLElement): void {
   // display rows act immediately (PUT patch); text/mode edits go through
   // edit -> save / cancel, with Enter/Escape shortcuts.
   let channels: Channel[] = [];
+  let banksCache: Bank[] = [];
+  // Per-group add: the new-channel row renders inside this bank's section
+  // and the saved channel carries the bank's first tag, so a channel added
+  // "into Rail" actually matches Rail.
+  let pendingTags: string[] = [];
+  let pendingGroup: string | null = null;
+  // Collapsed bank groups (persisted like the collapsible modules).
+  const GROUPS_KEY = "kerchunk.admin.banksCollapsed";
+  const collapsedBanks = new Set<string>(JSON.parse(localStorage.getItem(GROUPS_KEY) ?? "[]"));
   let editingId: string | null = null;
 
   const MODES: Channel["mode"][] = ["nfm", "fm", "am"];
@@ -489,10 +538,55 @@ export function renderAdmin(root: HTMLElement): void {
       `<option value="${m}" ${m === selected ? "selected" : ""}>${m.toUpperCase()}</option>`).join("");
   }
 
+  function profileSummary(b: Bank): string {
+    const bits: string[] = [];
+    if (b.dwellWeight !== undefined) bits.push(`dwell ×${b.dwellWeight}`);
+    if (b.hangMs !== undefined) bits.push(`hang ${b.hangMs / 1000} s`);
+    if (b.openAboveFloorDb !== undefined) bits.push(`open ${b.openAboveFloorDb} dB`);
+    if (b.noiseQuietDb !== undefined) bits.push(`quiet ${b.noiseQuietDb} dB`);
+    return bits.join(" · ");
+  }
+
+  function bankHeaderRow(g: BankGroup): string {
+    if (!g.bank) {
+      return `<tr class="bankRow" data-bank="unbanked">
+        <td colspan="6"><span class="bkCaret">${collapsedBanks.has("unbanked") ? "▸" : "▾"}</span>
+        <span class="bkName">UNBANKED</span> <span class="bankCount">${g.channels.length}</span>
+        <span class="hint">matches no bank — tag these or add a bank that covers them</span></td>
+      </tr>`;
+    }
+    const b = g.bank;
+    const state = !b.enabled ? "off" : b.audible === false ? "see" : "on";
+    const next = state === "on" ? "SEE (scan, stay silent)" : state === "see" ? "OFF" : "HEAR";
+    const summary = profileSummary(b);
+    return `<tr class="bankRow bk-${state}" data-bank="${esc(b.id)}">
+      <td colspan="6">
+        <span class="bkCaret">${collapsedBanks.has(b.id) ? "▸" : "▾"}</span>
+        <span class="bkName">${esc(b.name)}</span>
+        <span class="bankCount">${g.channels.length}</span>
+        <button class="bkCycle" title="${state.toUpperCase()} — click for ${next}"><span class="bankState"></span>${state === "see" ? "SEE" : state === "off" ? "OFF" : "HEAR"}</button>
+        ${iconBtn("bkGear", "gear", "Scan profile (squelch/dwell overrides)")}
+        ${iconBtn("bkAddCh", "add", `Add a channel into ${esc(b.name)}`)}
+        ${iconBtn("bkDel", "del", "Delete bank — its channels keep scanning")}
+        ${summary ? `<span class="bkSummary">${summary}</span>` : ""}
+      </td>
+    </tr>`;
+  }
+
+  // A channel can match several banks (they're predicates); its row lives
+  // under the FIRST match, and these dim chips name the others.
+  function membershipChips(c: Channel): string {
+    const others = banksCache.filter((b) => matchesBank(c, b));
+    if (others.length <= 1) return "";
+    const home = others[0]!;
+    return others.slice(1).map((b) =>
+      `<span class="memChip" title="Also matches ${esc(b.name)} (home: ${esc(home.name)})">${esc(b.name)}</span>`).join("");
+  }
+
   function displayRow(c: Channel): string {
     return `<tr data-id="${esc(c.id)}">
       <td class="rowOpen">${fmtFreq(c.freq)}</td>
-      <td class="rowOpen">${esc(c.alphaTag)}${c.alert ? `<span class="bellChip" title="Alerts on a hit">${ICONS.bell}</span>` : ""}${locChip(c.location)}</td>
+      <td class="rowOpen">${esc(c.alphaTag)}${c.alert ? `<span class="bellChip" title="Alerts on a hit">${ICONS.bell}</span>` : ""}${membershipChips(c)}${locChip(c.location)}</td>
       <td class="rowOpen">${esc(c.mode.toUpperCase())}</td>
       <td><input type="checkbox" class="prio" ${c.priority ? "checked" : ""} /></td>
       <td><select class="hs hs-${!c.enabled ? "off" : c.audible === false ? "see" : "hear"}">
@@ -516,14 +610,28 @@ export function renderAdmin(root: HTMLElement): void {
   }
 
   function renderRows(): void {
-    const sorted = [...channels].sort((a, b) => a.freq - b.freq);
+    const groups = groupChannelsByBank(channels, banksCache);
+    // Where does the new-channel editor render? A per-group add (pendingGroup
+    // set) renders inside ITS bank's group; the global + Add renders at the
+    // very top (index 0). Either way the saved channel re-homes by its own
+    // predicate match on the post-save refresh.
+    const editorGroup = pendingGroup === null
+      ? 0
+      : Math.max(0, groups.findIndex((g) => (g.bank?.id ?? "unbanked") === pendingGroup));
     chRows.innerHTML =
-      (editingId === "new" ? editRow() : "") +
-      sorted.map((c) => (editingId === c.id ? editRow(c) : displayRow(c))).join("") +
+      groups.map((g, i) => {
+        const key = g.bank?.id ?? "unbanked";
+        const body = collapsedBanks.has(key)
+          ? ""
+          : (editingId === "new" && i === editorGroup ? editRow() : "")
+            + g.channels.map((c) => (editingId === c.id ? editRow(c) : displayRow(c))).join("");
+        return bankHeaderRow(g) + body;
+      }).join("") +
       (channels.length === 0 && editingId !== "new"
         ? `<tr><td colspan="6" class="empty">no channels — hit + Add</td></tr>` : "");
     addBtn.disabled = editingId !== null;
     wireRows();
+    wireBankRows();
   }
 
   function rowPatch(tr: HTMLElement): Omit<Channel, "id"> {
@@ -539,6 +647,7 @@ export function renderAdmin(root: HTMLElement): void {
       ...base,
       priority: tr.querySelector<HTMLInputElement>(".fPrio")!.checked,
       enabled: tr.querySelector<HTMLInputElement>(".fEn")!.checked,
+      ...(tr.dataset.id === "new" && pendingTags.length ? { tags: pendingTags } : {}),
     };
   }
 
@@ -549,6 +658,8 @@ export function renderAdmin(root: HTMLElement): void {
       if (tr.dataset.id === "new") await api.addChannel(payload);
       else await api.updateChannel(tr.dataset.id!, payload);
       editingId = null;
+      pendingTags = [];
+      pendingGroup = null;
       await refresh();
     } catch (e) { chErr.textContent = (e as Error).message; }
   }
@@ -584,14 +695,57 @@ export function renderAdmin(root: HTMLElement): void {
       });
       tr.querySelector<HTMLButtonElement>(".save")?.addEventListener("click", () => saveRow(tr));
       tr.querySelector<HTMLButtonElement>(".cancel")?.addEventListener("click", () => {
-        editingId = null; chErr.textContent = ""; renderRows();
+        editingId = null; pendingTags = []; pendingGroup = null; chErr.textContent = ""; renderRows();
       });
       if (tr.classList.contains("editing")) {
         tr.addEventListener("keydown", (ev) => {
           if (ev.key === "Enter") { ev.preventDefault(); saveRow(tr); }
-          if (ev.key === "Escape") { editingId = null; chErr.textContent = ""; renderRows(); }
+          if (ev.key === "Escape") { editingId = null; pendingTags = []; pendingGroup = null; chErr.textContent = ""; renderRows(); }
         });
       }
+    });
+  }
+
+  function wireBankRows(): void {
+    chRows.querySelectorAll<HTMLElement>("tr.bankRow").forEach((tr) => {
+      const id = tr.dataset.bank!;
+      tr.querySelector<HTMLElement>(".bkCaret")?.addEventListener("click", () => {
+        if (collapsedBanks.has(id)) collapsedBanks.delete(id);
+        else collapsedBanks.add(id);
+        localStorage.setItem(GROUPS_KEY, JSON.stringify([...collapsedBanks]));
+        renderRows();
+      });
+      if (id === "unbanked") return;
+      // Hear -> See -> Off cycle: IDENTICAL semantics to the old chip.
+      tr.querySelector<HTMLButtonElement>(".bkCycle")?.addEventListener("click", async () => {
+        const cfg = await api.getConfig();
+        cfg.banks = (cfg.banks ?? []).map((x) => {
+          if (x.id !== id) return x;
+          if (x.enabled && x.audible !== false) return { ...x, audible: false };
+          if (x.enabled) return { ...x, enabled: false, audible: true };
+          return { ...x, enabled: true, audible: true };
+        });
+        await api.putConfig(cfg);
+        await refresh();
+      });
+      tr.querySelector<HTMLButtonElement>(".bkGear")?.addEventListener("click", () =>
+        openProfileEditor(banksCache.find((x) => x.id === id)));
+      tr.querySelector<HTMLButtonElement>(".bkAddCh")?.addEventListener("click", () => {
+        const b = banksCache.find((x) => x.id === id);
+        pendingTags = b?.tags?.length ? [b.tags[0]!] : [];
+        pendingGroup = id;
+        editingId = "new";
+        collapsedBanks.delete(id);
+        renderRows();
+      });
+      tr.querySelector<HTMLButtonElement>(".bkDel")?.addEventListener("click", async () => {
+        const b = banksCache.find((x) => x.id === id);
+        if (!b || !confirm(`Delete bank ${b.name}? Its channels keep scanning.`)) return;
+        const cfg = await api.getConfig();
+        cfg.banks = (cfg.banks ?? []).filter((x) => x.id !== id);
+        await api.putConfig(cfg);
+        await refresh();
+      });
     });
   }
 
@@ -765,10 +919,11 @@ export function renderAdmin(root: HTMLElement): void {
   });
 
   async function refresh(): Promise<void> {
-    channels = await api.getChannels();
+    const [chs, cfg] = await Promise.all([api.getChannels(), api.getConfig()]);
+    channels = chs;
+    banksCache = cfg.banks ?? [];
     chCount.textContent = String(channels.length);
     renderRows();
-    refreshBanks();
     if (drawerId) renderDrawer(); // keep an open dossier fresh after saves
   }
 
@@ -911,7 +1066,7 @@ export function renderAdmin(root: HTMLElement): void {
   renderLockouts();
 
   addBtn.addEventListener("click", () => {
-    editingId = "new"; chErr.textContent = ""; renderRows(); tr0Focus();
+    pendingTags = []; pendingGroup = null; editingId = "new"; chErr.textContent = ""; renderRows(); tr0Focus();
   });
 
   // ---- Now Playing card ----
@@ -1101,7 +1256,7 @@ export function renderAdmin(root: HTMLElement): void {
     } catch (e) { tErr.textContent = (e as Error).message; }
   });
 
-  refresh();
+  refresh().catch((e) => { chErr.textContent = (e as Error).message; });
 
   const wxFreq = root.querySelector<HTMLSelectElement>("#wxFreq")!;
   const wxTag = root.querySelector<HTMLInputElement>("#wxTag")!;
