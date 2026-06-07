@@ -620,3 +620,19 @@ body {
   border-color: var(--flamingo, #f08080);
   font-weight: 700;
 }
+
+/* ── System health (Idea 16) */
+.sysBody { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 0.8rem; }
+.sysCell {
+  padding: 0.6rem 0.8rem;
+  border: 1px solid var(--border-default, #42454e);
+  border-radius: 6px;
+  background: var(--bg-subtle, #2b303b);
+}
+.sysCell.hot { border-color: var(--flamingo, #f08080); }
+.sysCell.hot .sysValue { color: var(--flamingo, #f08080); }
+.sysLabel { font-size: 0.7rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-tertiary, #747b8a); }
+.sysValue { font-family: var(--font-mono, monospace); font-size: 1.1rem; margin: 0.15rem 0 0.3rem; font-variant-numeric: tabular-nums; }
+.spark { width: 100%; height: 28px; }
+.spark polyline { stroke: var(--pine, #75acaf); stroke-width: 1.5; }
+.spark.hot polyline { stroke: var(--flamingo, #f08080); }
