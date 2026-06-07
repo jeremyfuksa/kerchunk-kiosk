@@ -787,3 +787,33 @@ a.statTile:focus-visible,
 @media (prefers-reduced-motion: reduce) {
   .admin *, .admin *::before, .admin *::after { animation: none !important; transition: none !important; }
 }
+
+/* ── Unified Channels page (spec 2026-06-06): banks as section headers. */
+tr.bankRow td {
+  background: var(--bg-subtle, #2b303b);
+  border-top: 1px solid var(--border-strong, #4d515c);
+  padding: 0.45rem 0.6rem;
+}
+tr.bankRow .bkCaret { cursor: pointer; padding: 0 0.4rem 0 0.1rem; color: var(--text-tertiary, #747b8a); }
+tr.bankRow .bkName {
+  font-family: var(--font-sans, sans-serif);
+  font-weight: 700; font-size: 0.8rem;
+  letter-spacing: 0.18em; text-transform: uppercase;
+  color: var(--text-primary, #f7f8f9);
+  margin-right: 0.5rem;
+}
+tr.bankRow.bk-see .bkName { color: var(--pine, #75acaf); }
+tr.bankRow.bk-off .bkName { color: var(--text-disabled, #5e6371); text-decoration: line-through; }
+tr.bankRow .bkCycle {
+  font-size: 0.7rem; font-weight: 700; letter-spacing: 0.14em;
+  padding: 0.15rem 0.6rem; margin: 0 0.45rem;
+}
+tr.bankRow .bkSummary { font-size: 0.72rem; color: var(--text-secondary, #9299a5); margin-left: 0.6rem; }
+.memChip {
+  font-size: 0.62rem; letter-spacing: 0.08em; text-transform: uppercase;
+  padding: 0.08em 0.4em; margin-left: 0.45em;
+  border: 1px solid var(--border-default, #42454e);
+  border-radius: 3px;
+  color: var(--text-tertiary, #747b8a);
+  vertical-align: 0.12em;
+}
