@@ -31,5 +31,7 @@ export const api = {
     fetch("/api/mode", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ mode }) }).then(j<{ mode: "scan" | "weather"; state: string }>),
   skip: (holdoffSeconds?: number) =>
     fetch("/api/scan/skip", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(holdoffSeconds ? { holdoffSeconds } : {}) }),
+  reloadKiosk: () => fetch("/api/kiosk/reload", { method: "POST" }).then(j<{ ok: boolean }>),
+  restartBackend: () => fetch("/api/backend/restart", { method: "POST" }).then(j<{ ok: boolean }>),
   getLogs: () => fetch("/api/logs").then(j<{ freq: number; alphaTag: string; ts: number }[]>),
 };

@@ -25,17 +25,17 @@ export const channelSchema = z.object({
   alphaTag: z.string(),
   mode: z.enum(["fm", "nfm", "am"]),
   enabled: z.boolean(),
-  // Hear-vs-see (ROADMAP Idea 4): an enabled channel with audible:false gets
+  // Audibility: an enabled channel with audible:false gets
   // a DSP lane (hits land in history/Recent/map) but never owns the speaker.
-  // Absent = true (hear). enabled:false remains fully off.
+  // Absent = true. enabled:false means archived: identity/location remain, but
+  // the channel stops consuming scanner capacity.
   audible: z.boolean().optional(),
   // Priority channels preempt the speaker from non-priority ones when both
   // are active in the same group (hardware-scanner "priority scan").
   priority: z.boolean().optional(),
   // Alerts (ROADMAP Idea 6): a hit on this channel flashes the kiosk, lands
-  // in the alert feed, and — if the channel is see-only — pulls its audio
-  // into the speaker for the hold window. Needs Hear or See to fire (an Off
-  // channel is never demodulated, so there is nothing to detect).
+  // in the alert feed, and temporarily plays a silent tracked channel through
+  // the speaker. An archived channel is never demodulated, so it cannot alert.
   alert: z.boolean().optional(),
   // Median received RF power (dB, helper units), EMA over transmissions —
   // the ERP estimator's measurement input. Telemetry like levelTrimDb.
@@ -105,15 +105,15 @@ export const configSchema = z.object({
     mixerCard: z.union([z.number().int().nonnegative(), z.string().min(1)]).optional(),
     mixerControl: z.string().min(1).optional(),
   }),
-  // Banks (ROADMAP Idea 1): toggleable channel groups. A bank is a predicate
-  // over derived band and/or service tags; disabling one mutes every channel
-  // it matches (off-wins). See config/banks.ts.
+  // Banks (ROADMAP Idea 1): channel collections. A bank is a predicate over
+  // derived band and/or service tags. Its controls apply explicit bulk edits;
+  // individual channel state remains authoritative. See config/banks.ts.
   banks: z.array(z.object({
     id: z.string().min(1),
     name: z.string().min(1),
     enabled: z.boolean(),
-    // Bank-level hear-vs-see: audible:false = SEE (channels scan but are
-    // muted; mute-wins like off-wins). Absent = hear.
+    // Legacy bank-state fields remain parseable for existing configs but no
+    // longer override individual channels.
     audible: z.boolean().optional(),
     band: z.enum(["hf", "vhf", "uhf", "shf"]).optional(),
     // Explicit frequency range (Hz) — finer than band: "2m" = 144-148 MHz,

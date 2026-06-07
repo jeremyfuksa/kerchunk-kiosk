@@ -1,12 +1,12 @@
 import type { Channel, Bank } from "./schema.js";
 
-// Banks (ROADMAP Idea 1): named groups the operator toggles as a unit.
+// Banks (ROADMAP Idea 1): named channel collections.
 // Two orthogonal axes, per the roadmap's recommended model:
 //  - band: a frequency RANGE, derived from freq — never stored, never wrong;
 //  - tags: operator-applied SERVICE labels ("air", "rail", "ham").
-// A bank is a predicate over both. Semantics are OFF-WINS: a channel matched
-// by ANY disabled bank is muted, however many enabled banks also match — the
-// point of a bank is bulk-silencing, so off must be decisive.
+// A bank is a predicate over both. Channel state is authoritative: bank
+// controls in the admin apply explicit bulk edits instead of hidden runtime
+// overrides, so overlapping collections can never produce surprising results.
 
 export type BandName = "hf" | "vhf" | "uhf" | "shf";
 
@@ -27,24 +27,19 @@ export function matchesBank(channel: Channel, bank: Bank): boolean {
   return true; // predicate-less bank = master switch over everything
 }
 
-export function isScannable(channel: Channel, banks: Bank[]): boolean {
-  if (!channel.enabled) return false;
-  return !banks.some((b) => !b.enabled && matchesBank(channel, b));
+export function isScannable(channel: Channel, _banks: Bank[]): boolean {
+  return channel.enabled;
 }
 
-// Hear-vs-see: may this channel own the SPEAKER? Mute-wins, mirroring
-// isScannable's off-wins — a SEE bank silences everything it matches, however
-// the channel itself is set. (Scanning is unaffected: see = demodulated and
-// logged, just never audible.)
-export function isAudible(channel: Channel, banks: Bank[]): boolean {
-  if (channel.audible === false) return false;
-  return !banks.some((b) => b.enabled && b.audible === false && matchesBank(channel, b));
+// May this tracked channel own the speaker? Absent remains true for legacy
+// configs; banks never override the individual choice.
+export function isAudible(channel: Channel, _banks: Bank[]): boolean {
+  return channel.audible !== false;
 }
 
 // Per-bank scan profiles (ROADMAP Idea 7). Field-wise FIRST-MATCH-WINS in
-// config order, enabled banks only — predictable and documentable, no
-// cleverness. Disabled banks contribute nothing (their channels aren't
-// scanned anyway unless another bank covers them).
+// config order — predictable and documentable, no cleverness. The legacy
+// bank enabled/audible fields do not affect membership or channel state.
 export interface BankProfile {
   openAboveFloorDb?: number;
   noiseQuietDb?: number;
@@ -57,7 +52,7 @@ const PROFILE_KEYS = ["openAboveFloorDb", "noiseQuietDb", "hangMs", "dwellWeight
 export function profileFor(channel: Channel, banks: Bank[]): BankProfile {
   const out: BankProfile = {};
   for (const b of banks) {
-    if (!b.enabled || !matchesBank(channel, b)) continue;
+    if (!matchesBank(channel, b)) continue;
     for (const k of PROFILE_KEYS) {
       if (out[k] === undefined && b[k] !== undefined) out[k] = b[k];
     }

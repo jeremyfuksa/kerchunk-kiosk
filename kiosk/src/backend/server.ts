@@ -38,6 +38,8 @@ export interface ServerDeps {
   activityLog: ActivityLog;
   wsHub: WsHub;
   staticDir: string;
+  /** Request a supervised backend-process restart after the response is sent. */
+  restartBackend?: () => void;
 }
 
 const MIME: Record<string, string> = {
@@ -55,11 +57,10 @@ export function toScanConfig(
       ? (cfg.weatherChannel ? [{ ...cfg.weatherChannel, enabled: true }] : [])
       : mode === "monitor"
         ? (monitorChannel ? [{ ...monitorChannel, enabled: true }] : [])
-        // Banks gate scanning here, the same chokepoint as channel.enabled;
-        // hear-vs-see resolves to a concrete audible flag per channel so the
-        // engine/helper need no bank knowledge. knownHz below intentionally
-        // still covers EVERY configured channel — muting a bank must not make
-        // Close Call rediscover its frequencies.
+        // Individual channel state is authoritative. Banks are collections
+        // whose admin controls apply explicit bulk edits, never hidden runtime
+        // overrides. knownHz below intentionally still covers EVERY configured
+        // channel so archived channels are not rediscovered by Close Call.
         : [
             ...cfg.channels
               .filter((c) => isScannable(c, cfg.banks ?? []))
@@ -731,6 +732,13 @@ export function createServer(deps: ServerDeps): { server: Server } {
       // fresh bundle + re-fetched Maps script/style, no systemd involved.
       deps.wsHub.broadcast({ type: "reload", ts: Date.now() });
       return json(res, 200, { ok: true });
+    }
+
+    if (method === "POST" && path === "/api/backend/restart") {
+      if (!deps.restartBackend) return json(res, 503, { error: "backend restart unavailable" });
+      json(res, 202, { ok: true });
+      setTimeout(() => deps.restartBackend?.(), 100).unref?.();
+      return;
     }
 
     if (method === "GET" && path === "/api/history") {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { BlipField, ringPoint, coverageRadiusM } from "../src/frontend/map/blips.js";
+import { BlipField, syntheticPoint, coverageRadiusM } from "../src/frontend/map/blips.js";
 
 describe("BlipField", () => {
   it("adds blips and computes decaying opacity over the lifetime", () => {
@@ -32,27 +32,39 @@ describe("BlipField", () => {
   });
 });
 
-describe("ringPoint — deterministic no-fix placement", () => {
+describe("syntheticPoint — deterministic unknown placement", () => {
   const HOME = { lat: 39.2915, lng: -94.4953 };
 
-  it("same frequency always lands on the same ring spot", () => {
-    const a = ringPoint(HOME, 7000, 462_587_500);
-    const b = ringPoint(HOME, 7000, 462_587_500);
+  it("same frequency and known sites always produce the same spot", () => {
+    const occupied = [{ lat: 39.31, lng: -94.48 }];
+    const a = syntheticPoint(HOME, 18_000, 462_587_500, occupied);
+    const b = syntheticPoint(HOME, 18_000, 462_587_500, occupied);
     expect(a).toEqual(b);
   });
 
-  it("adjacent channels spread around the ring, not next to each other", () => {
-    const a = ringPoint(HOME, 7000, 462_550_000);
-    const b = ringPoint(HOME, 7000, 462_575_000); // next GMRS channel
+  it("adjacent channels receive distinct synthetic identities", () => {
+    const a = syntheticPoint(HOME, 18_000, 462_550_000);
+    const b = syntheticPoint(HOME, 18_000, 462_575_000);
     const dist = Math.hypot(a.lat - b.lat, a.lng - b.lng);
-    expect(dist).toBeGreaterThan(0.02); // far apart in degrees
+    expect(dist).toBeGreaterThan(0.01);
   });
 
-  it("points sit ~radius meters from home", () => {
-    const p = ringPoint(HOME, 7000, 146_790_000);
+  it("keeps synthetic points inside the local field and away from home", () => {
+    const p = syntheticPoint(HOME, 18_000, 146_790_000);
     const dLat = (p.lat - HOME.lat) * 111_320;
     const dLon = (p.lng - HOME.lng) * 111_320 * Math.cos(HOME.lat * Math.PI / 180);
-    expect(Math.hypot(dLat, dLon)).toBeCloseTo(7000, -2);
+    expect(Math.hypot(dLat, dLon)).toBeGreaterThan(4_000);
+    expect(Math.hypot(dLat, dLon)).toBeLessThanOrEqual(18_000);
+  });
+
+  it("selects an empty area away from a cluster of known sites", () => {
+    const occupied = [
+      { lat: HOME.lat + 0.07, lng: HOME.lng },
+      { lat: HOME.lat + 0.06, lng: HOME.lng + 0.03 },
+      { lat: HOME.lat + 0.06, lng: HOME.lng - 0.03 },
+    ];
+    const p = syntheticPoint(HOME, 18_000, 146_790_000, occupied);
+    expect(p.lat).toBeLessThan(HOME.lat + 0.04);
   });
 });
 

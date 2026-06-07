@@ -131,7 +131,16 @@ history.prune();
 const pruneTimer = setInterval(() => history.prune(), 24 * 3600 * 1000);
 pruneTimer.unref?.();
 
-const { server } = createServer({ configStore, engine, weatherEngine, activityLog, wsHub, staticDir: STATIC_DIR, lookup, weather, history });
+const { server } = createServer({
+  configStore, engine, weatherEngine, activityLog, wsHub, staticDir: STATIC_DIR,
+  lookup, weather, history,
+  // systemd uses Restart=on-failure, so an intentional non-zero exit performs
+  // a full backend/helper restart without requiring passwordless systemctl.
+  restartBackend: () => {
+    void Promise.all([engine.stop(), weatherEngine?.stop() ?? Promise.resolve()])
+      .finally(() => process.exit(1));
+  },
+});
 
 const wss = new WebSocketServer({ server, path: "/ws" });
 wss.on("connection", (ws) => wsHub.attach(ws));
