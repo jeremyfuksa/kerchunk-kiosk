@@ -23,6 +23,23 @@ import { ReconnectingWs } from "../lib/wsClient.js";
 import type { EngineEvent } from "../../backend/engine/ScannerEngine.js";
 import "./admin.css";
 
+declare const google: any;
+let mapsReady: Promise<boolean> | null = null;
+async function loadAdminMaps(): Promise<boolean> {
+  if (typeof google !== "undefined" && google.maps) return true;
+  if (mapsReady) return mapsReady;
+  mapsReady = api.getConfig().then((cfg) => new Promise<boolean>((resolve) => {
+    const key = cfg.display?.googleMapsApiKey;
+    if (!key) { resolve(false); return; }
+    const s = document.createElement("script");
+    s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&v=weekly`;
+    s.onload = () => resolve(true);
+    s.onerror = () => resolve(false);
+    document.head.appendChild(s);
+  }));
+  return mapsReady;
+}
+
 export function mhzToHz(mhz: string): number {
   const n = Number(mhz);
   if (!Number.isFinite(n)) throw new Error(`invalid frequency: ${mhz}`);
@@ -80,6 +97,7 @@ export function renderAdmin(root: HTMLElement): void {
         <a href="#/scan" data-route="scan"><span class="navIco" data-ico="scan"></span><span class="navCopy"><b>Settings</b><small>Scanning and integrations</small></span></a>
       </nav>
       <div class="pages">
+      <div id="healthBanner" class="healthBanner healthClear" data-page="home" role="alert"></div>
       <div class="pageIntro" data-page="home">
         <div><span class="eyebrow">Overview</span><h1>Radio status</h1><p>Monitor what is playing, check system health, and review recent activity.</p></div>
       </div>
@@ -126,6 +144,10 @@ export function renderAdmin(root: HTMLElement): void {
             <tbody id="dcRows"></tbody>
           </table>
         </div>
+        <details id="suppressedPanel" class="suppressedPanel">
+          <summary>Suppressed likely noise <span id="suppressedCount"></span></summary>
+          <div id="suppressedRows"></div>
+        </details>
       </section>
       <section class="channels" data-page="channels">
         <div class="pageIntro sectionIntro">
@@ -154,6 +176,7 @@ export function renderAdmin(root: HTMLElement): void {
           </table>
         </div>
         <span id="chErr" class="err"></span>
+        <div id="archiveRecommendations" class="archiveRecommendations"></div>
       </section>
       <div class="statRow" data-page="home" id="statRow"></div>
       <section class="insights collapsible" data-key="insights" data-page="home">
@@ -471,7 +494,7 @@ export function renderAdmin(root: HTMLElement): void {
         ${st.byHour.map((n, h) => `<div class="inHr${h === nowHour ? " now" : ""}" style="height:${(4 + 26 * n / maxHour).toFixed(0)}px" title="${String(h).padStart(2, "0")}:00 — ${n}"></div>`).join("")}
       </div>
       <table class="inTop">
-        ${st.topChannels.slice(0, 8).map((c) => `<tr>
+        ${st.topChannels.slice(0, 8).map((c) => `<tr class="inChannel" data-freq="${c.freq}" tabindex="0" title="Open channel analytics">
           <td class="inName">${esc(c.alphaTag) || fmtFreq(c.freq)}</td>
           <td class="inBar"><div style="width:${(100 * c.hits / maxHits).toFixed(0)}%"></div></td>
           <td class="inN">${c.hits}</td>
@@ -486,6 +509,11 @@ export function renderAdmin(root: HTMLElement): void {
       inHours === 24 ? "last 24 hours" : inHours === 168 ? "last 7 days" : "last 30 days";
     root.querySelectorAll<HTMLButtonElement>(".inPeriod").forEach((b) =>
       b.classList.toggle("active", Number(b.dataset.h) === inHours));
+    inBody.querySelectorAll<HTMLElement>(".inChannel").forEach((row) => {
+      const open = () => openAnalytics(Number(row.dataset.freq));
+      row.addEventListener("click", open);
+      row.addEventListener("keydown", (ev) => { if (ev.key === "Enter" || ev.key === " ") open(); });
+    });
   }
   root.querySelectorAll<HTMLButtonElement>(".inPeriod").forEach((b) =>
     b.addEventListener("click", () => { inHours = Number(b.dataset.h); void renderInsights(); }));
@@ -554,6 +582,7 @@ export function renderAdmin(root: HTMLElement): void {
 
   // ── System health (Idea 16): gauges + sparklines off /api/system.
   const sysBody = root.querySelector<HTMLElement>("#sysBody")!;
+  const healthBanner = root.querySelector<HTMLElement>("#healthBanner")!;
   function spark(values: Array<number | null>, max: number, warn: number): string {
     const W = 120; const H = 28;
     const pts = values.map((v, i) => {
@@ -566,11 +595,19 @@ export function renderAdmin(root: HTMLElement): void {
     return `<svg class="spark${hot ? " hot" : ""}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"><polyline points="${pts}" fill="none" /></svg>`;
   }
   async function renderSystem(): Promise<void> {
-    const { now, ring } = await fetch("/api/system").then((r) => r.json()) as {
+    const { now, ring, alerts, safetyMode } = await fetch("/api/system").then((r) => r.json()) as {
       now: Record<string, number | boolean | null> | null;
       ring: Array<Record<string, number | boolean | null>>;
+      alerts: Array<{ id: string; severity: "attention" | "severe"; title: string; message: string; help: string }>;
+      safetyMode: boolean;
     };
     if (!now) { sysBody.textContent = "no samples yet"; return; }
+    healthBanner.classList.toggle("healthClear", alerts.length === 0);
+    healthBanner.classList.toggle("severe", alerts.some((a) => a.severity === "severe"));
+    healthBanner.innerHTML = alerts.length ? `${safetyMode ? `<div class="safetyMode"><strong>Protection active:</strong> Close Call and sweep ranges are paused until temperature recovers.</div>` : ""}${alerts.map((a) => `<div class="healthAlert">
+      <div><strong>${esc(a.title)}</strong><span>${esc(a.message)}</span><small>${esc(a.help)}</small></div>
+      ${a.id.startsWith("cpu-") || a.id.startsWith("memory-") ? `<a href="#/scan">Reduce processing load</a>` : ""}
+    </div>`).join("")}` : "";
     const num = (k: string) => ring.map((r) => (typeof r[k] === "number" ? r[k] as number : null));
     const cell = (label: string, value: string, sparkHtml: string, hot = false) =>
       `<div class="sysCell${hot ? " hot" : ""}"><div class="sysLabel">${label}</div>
@@ -591,6 +628,9 @@ export function renderAdmin(root: HTMLElement): void {
   }
   void renderSystem().catch(() => {});
   setInterval(() => { renderSystem().catch(() => {}); }, 3000);
+  setInterval(() => {
+    if (drawerKind === "analytics" && analyticsFreq !== null) void renderAnalyticsDrawer(analyticsFreq);
+  }, 5000);
 
   // ── Transcripts (stretch, opt-in): the searchable voice log.
   const trRows = root.querySelector<HTMLElement>("#trRows")!;
@@ -859,7 +899,8 @@ export function renderAdmin(root: HTMLElement): void {
   const drawer = root.querySelector<HTMLElement>("#chDrawer")!;
   const scrim = root.querySelector<HTMLElement>("#drawerScrim")!;
   let drawerId: string | null = null;
-  let drawerKind: "channel" | "discovery" = "channel";
+  let drawerKind: "channel" | "discovery" | "analytics" = "channel";
+  let analyticsFreq: number | null = null;
 
   function closeDrawer(): void {
     drawerId = null;
@@ -875,8 +916,18 @@ export function renderAdmin(root: HTMLElement): void {
     scrim.classList.add("open");
   }
 
+  function openAnalytics(freq: number): void {
+    drawerKind = "analytics";
+    analyticsFreq = freq;
+    drawerId = `analytics_${freq}`;
+    drawer.classList.add("open");
+    scrim.classList.add("open");
+    void renderAnalyticsDrawer(freq);
+  }
+
   function renderDrawer(): void {
     if (drawerKind === "discovery") { renderDiscoveryDrawer(); return; }
+    if (drawerKind === "analytics") { if (analyticsFreq) void renderAnalyticsDrawer(analyticsFreq); return; }
     const c = channels.find((x) => x.id === drawerId);
     if (!c) { closeDrawer(); return; }
     const loc = c.location;
@@ -959,6 +1010,35 @@ export function renderAdmin(root: HTMLElement): void {
     });
   }
 
+  async function renderAnalyticsDrawer(freq: number): Promise<void> {
+    const since = Date.now() - 24 * 3_600_000;
+    const rows = await fetch(`/api/history?freq=${freq}&since=${since}&limit=1000`)
+      .then((r) => r.ok ? r.json() : []) as Array<{ ts: number; durationMs: number | null; rfDb: number | null; alphaTag: string }>;
+    const active = rows.filter((r) => r.durationMs !== null || r.rfDb !== null);
+    const name = active[0]?.alphaTag || channels.find((c) => c.freq === freq)?.alphaTag || fmtFreq(freq);
+    const signals = [...active].filter((r) => r.rfDb !== null).reverse();
+    const W = 420; const H = 150;
+    const min = signals.length ? Math.min(...signals.map((r) => r.rfDb!)) - 2 : -40;
+    const max = signals.length ? Math.max(...signals.map((r) => r.rfDb!)) + 2 : 0;
+    const points = signals.map((r, i) => {
+      const x = signals.length === 1 ? W / 2 : i * W / (signals.length - 1);
+      const y = H - ((r.rfDb! - min) / Math.max(1, max - min)) * H;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    }).join(" ");
+    const airtime = active.reduce((n, r) => n + (r.durationMs ?? 0), 0);
+    drawer.innerHTML = `
+      <header class="dwHead"><div><span class="drawerEyebrow">Channel analytics · live 24h</span><h3>${esc(name)}</h3></div>${iconBtn("dwClose", "dismiss", "Close")}</header>
+      <div class="dwFreq">${fmtFreq(freq)}<span class="dwUnit">MHz</span></div>
+      <div class="analyticsSummary"><span><b>${active.length}</b> transmissions</span><span><b>${fmtAir(airtime)}</b> airtime</span><span><b>${signals.length}</b> strength samples</span></div>
+      <div class="signalChart">
+        <div class="chartLabel">Signal strength per transmission</div>
+        ${signals.length ? `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"><polyline points="${points}" fill="none" /></svg>
+          <div class="chartRange"><span>${max.toFixed(1)} dB</span><span>${min.toFixed(1)} dB</span></div>` : `<div class="empty">Signal strength will appear after new transmissions close.</div>`}
+      </div>
+      <ol class="transmissionList">${active.slice(0, 30).map((r) => `<li><time>${new Date(r.ts).toLocaleTimeString()}</time><span>${r.durationMs === null ? "open" : `${(r.durationMs / 1000).toFixed(1)}s`}</span><b>${r.rfDb === null ? "—" : `${r.rfDb.toFixed(1)} dB`}</b></li>`).join("")}</ol>`;
+    drawer.querySelector<HTMLButtonElement>(".dwClose")!.addEventListener("click", closeDrawer);
+  }
+
   function renderDiscoveryDrawer(): void {
     const d = discoveries.find((x) => x.id === drawerId);
     if (!d) { closeDrawer(); return; }
@@ -980,9 +1060,20 @@ export function renderAdmin(root: HTMLElement): void {
         <dt>looked up</dt><dd>${d.lookedUpAt ? new Date(d.lookedUpAt).toLocaleString() : "pending"}</dd>
         <dt>id</dt><dd>${esc(d.id)}</dd>
       </dl>
+      <section class="locationEditor">
+        <h4>Identify and locate</h4>
+        <label>Display name <input id="dcLocateName" value="${esc(d.alphaTag.startsWith("Close Call ") ? "" : d.alphaTag)}" placeholder="Business or site name" /></label>
+        <div class="locationSearch"><input id="dcLocateSearch" placeholder="Search business or address" /><button id="dcLocateFind">Search nearby</button></div>
+        <div id="dcLocateSuggestions" class="locationSuggestions"></div>
+        <div id="dcLocateMap" class="locationMap"><span>Loading map…</span></div>
+        <label>Pin location <input id="dcLocateCoords" value="${loc?.lat != null ? `${loc.lat}, ${loc.lon}` : ""}" placeholder="Drag/drop pin or enter lat, lon" /></label>
+        <button id="dcLocateSave" class="save">Save located channel</button>
+        <span id="dcLocateErr" class="err"></span>
+      </section>
       <div class="dwActions">
         <button id="dwListen" class="listen">Listen</button>
         <button id="dwAdd" class="dAdd">Add</button>
+        <button id="dwSuppress">Suppress likely noise</button>
         <button id="dwLock" class="lock">Lockout</button>
         <button id="dwDismiss" class="dDismiss">Dismiss</button>
       </div>`;
@@ -993,6 +1084,14 @@ export function renderAdmin(root: HTMLElement): void {
       await mutateDiscovery(d.id, promoteDiscovery);
       closeDrawer();
     });
+    drawer.querySelector<HTMLButtonElement>("#dwSuppress")!.addEventListener("click", async () => {
+      const cfg = await api.getConfig();
+      cfg.discoveries = (cfg.discoveries ?? []).map((x) => x.id === d.id
+        ? { ...x, suppressedAt: Date.now(), suppressionReason: "Suppressed by operator" } : x);
+      await api.putConfig(cfg);
+      closeDrawer();
+      await renderDiscoveries();
+    });
     drawer.querySelector<HTMLButtonElement>("#dwLock")!.addEventListener("click", async () => {
       await lockoutFreq(d.freq, d.alphaTag);
       closeDrawer();
@@ -1000,6 +1099,60 @@ export function renderAdmin(root: HTMLElement): void {
     drawer.querySelector<HTMLButtonElement>("#dwDismiss")!.addEventListener("click", async () => {
       await mutateDiscovery(d.id, () => {});
       closeDrawer();
+    });
+    void mountDiscoveryLocationEditor(d);
+  }
+
+  async function mountDiscoveryLocationEditor(d: Discovery): Promise<void> {
+    const mapEl = drawer.querySelector<HTMLElement>("#dcLocateMap");
+    const coords = drawer.querySelector<HTMLInputElement>("#dcLocateCoords");
+    const search = drawer.querySelector<HTMLInputElement>("#dcLocateSearch");
+    const suggestions = drawer.querySelector<HTMLElement>("#dcLocateSuggestions");
+    if (!mapEl || !coords || !search || !suggestions) return;
+    const cfg = await api.getConfig();
+    const home = { lat: cfg.display?.weatherLat ?? 39.1, lng: cfg.display?.weatherLon ?? -94.58 };
+    if (!await loadAdminMaps() || !drawer.contains(mapEl)) {
+      mapEl.innerHTML = `<span>Google Maps key unavailable. Enter coordinates manually.</span>`;
+    } else {
+      const initial = d.location?.lat != null ? { lat: d.location.lat, lng: d.location.lon! } : home;
+      const map = new google.maps.Map(mapEl, { center: initial, zoom: d.location?.lat != null ? 14 : 10, mapTypeControl: false });
+      const marker = new google.maps.Marker({ map, position: initial, draggable: true });
+      const set = (p: { lat: number; lng: number }) => {
+        marker.setPosition(p); map.panTo(p); coords.value = `${p.lat.toFixed(6)}, ${p.lng.toFixed(6)}`;
+      };
+      marker.addListener("dragend", () => set(marker.getPosition().toJSON()));
+      map.addListener("click", (ev: any) => set(ev.latLng.toJSON()));
+      const geocoder = new google.maps.Geocoder();
+      drawer.querySelector<HTMLButtonElement>("#dcLocateFind")?.addEventListener("click", () => {
+        if (!search.value.trim()) return;
+        geocoder.geocode({ address: search.value, bounds: map.getBounds() }, (results: any[], status: string) => {
+          if (status !== "OK" || !results?.length) { suggestions.textContent = "No nearby matches found"; return; }
+          suggestions.innerHTML = results.slice(0, 5).map((r, i) => `<button data-i="${i}">${esc(r.formatted_address)}</button>`).join("");
+          suggestions.querySelectorAll<HTMLButtonElement>("button").forEach((b) => b.addEventListener("click", () => {
+            const r = results[Number(b.dataset.i)];
+            set(r.geometry.location.toJSON());
+            if (!drawer.querySelector<HTMLInputElement>("#dcLocateName")!.value) {
+              drawer.querySelector<HTMLInputElement>("#dcLocateName")!.value = r.formatted_address.split(",")[0];
+            }
+          }));
+        });
+      });
+    }
+    drawer.querySelector<HTMLButtonElement>("#dcLocateSave")?.addEventListener("click", async () => {
+      const err = drawer.querySelector<HTMLElement>("#dcLocateErr")!;
+      try {
+        const name = drawer.querySelector<HTMLInputElement>("#dcLocateName")!.value.trim();
+        if (!name) throw new Error("Enter a display name");
+        const pair = coords.value.split(",").map((v) => Number(v.trim()));
+        if (pair.length !== 2 || !pair.every(Number.isFinite)) throw new Error("Drop a pin or enter lat, lon");
+        await mutateDiscovery(d.id, (cfg2, current) => {
+          promoteDiscovery(cfg2, {
+            ...current, alphaTag: name,
+            location: { ...(current.location ?? {}), lat: pair[0]!, lon: pair[1]!, source: "operator" },
+          });
+        });
+        closeDrawer();
+      } catch (e) { err.textContent = (e as Error).message; }
     });
   }
 
@@ -1014,7 +1167,21 @@ export function renderAdmin(root: HTMLElement): void {
     banksCache = cfg.banks ?? [];
     chCount.textContent = String(channels.length);
     renderRows();
+    void renderArchiveRecommendations();
     if (drawerId) renderDrawer(); // keep an open dossier fresh after saves
+  }
+
+  async function renderArchiveRecommendations(): Promise<void> {
+    const host = root.querySelector<HTMLElement>("#archiveRecommendations")!;
+    const recs = await fetch("/api/recommendations/archive").then((r) => r.ok ? r.json() : []) as
+      Array<{ id: string; freq: number; alphaTag: string; audible: boolean }>;
+    if (!recs.length) { host.innerHTML = ""; return; }
+    host.innerHTML = `<h3>Archive suggestions</h3><p>Not heard in 30 days. Priority and manually located channels are excluded.</p>
+      ${recs.slice(0, 12).map((c) => `<div class="archiveRec"><span><b>${esc(c.alphaTag)}</b> ${fmtFreq(c.freq)}${c.audible ? " · audible" : ""}</span><button data-id="${esc(c.id)}">Archive</button></div>`).join("")}`;
+    host.querySelectorAll<HTMLButtonElement>("button").forEach((b) => b.addEventListener("click", async () => {
+      await api.updateChannel(b.dataset.id!, { enabled: false });
+      await refresh();
+    }));
   }
 
   const dcRows = root.querySelector<HTMLElement>("#dcRows")!;
@@ -1022,6 +1189,8 @@ export function renderAdmin(root: HTMLElement): void {
   const dcDismissSel = root.querySelector<HTMLButtonElement>("#dcDismissSel")!;
   const dcLockSel = root.querySelector<HTMLButtonElement>("#dcLockSel")!;
   const dcSelCount = root.querySelector<HTMLElement>("#dcSelCount")!;
+  const suppressedRows = root.querySelector<HTMLElement>("#suppressedRows")!;
+  const suppressedCount = root.querySelector<HTMLElement>("#suppressedCount")!;
   // Selection survives the 15 s auto-refresh (a triage session shouldn't
   // lose its checkmarks because a new discovery arrived).
   const dcSelected = new Set<string>();
@@ -1063,9 +1232,23 @@ export function renderAdmin(root: HTMLElement): void {
   async function renderDiscoveries(): Promise<void> {
     const cfg = await api.getConfig();
     syncAudioControls(cfg); // one poll feeds both (was a separate 5s loop)
-    const ds = [...(cfg.discoveries ?? [])].sort((a, b) => b.ts - a.ts);
+    const all = [...(cfg.discoveries ?? [])].sort((a, b) => b.ts - a.ts);
+    const ds = all.filter((d) => !d.suppressedAt);
+    const suppressed = all.filter((d) => d.suppressedAt);
     discoveries = ds;
     root.querySelector<HTMLElement>("#dcCount")!.textContent = String(ds.length);
+    suppressedCount.textContent = suppressed.length ? `(${suppressed.length})` : "";
+    suppressedRows.innerHTML = suppressed.length
+      ? suppressed.map((d) => `<div class="suppressedRow" data-id="${esc(d.id)}"><span><b>${fmtFreq(d.freq)}</b> ${esc(d.alphaTag)}</span><small>${esc(d.suppressionReason ?? "Likely repeated noise")} · ${d.hitCount ?? "several"} hits</small><button>Restore to triage</button></div>`).join("")
+      : `<div class="empty">No suppressed frequencies</div>`;
+    suppressedRows.querySelectorAll<HTMLButtonElement>("button").forEach((button) => button.addEventListener("click", async () => {
+      const id = (button.closest(".suppressedRow") as HTMLElement).dataset.id;
+      const cfg2 = await api.getConfig();
+      cfg2.discoveries = (cfg2.discoveries ?? []).map((d) => d.id === id
+        ? { ...d, suppressedAt: undefined, suppressionReason: undefined } : d);
+      await api.putConfig(cfg2);
+      await renderDiscoveries();
+    }));
     const present = new Set(ds.map((d) => d.id));
     for (const id of dcSelected) if (!present.has(id)) dcSelected.delete(id);
     dcRows.innerHTML = ds.length === 0

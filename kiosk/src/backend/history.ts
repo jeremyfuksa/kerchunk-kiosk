@@ -17,6 +17,7 @@ export interface HistoryEvent {
   tags?: string[];
   lat?: number;
   lon?: number;
+  rfDb?: number;
 }
 
 export interface HistoryRow {
@@ -32,6 +33,7 @@ export interface HistoryRow {
   lon: number | null;
   durationMs: number | null;
   transcript: string | null;
+  rfDb: number | null;
 }
 
 export interface HistoryQuery {
@@ -85,6 +87,9 @@ export class HistoryStore {
     if (!cols.some((c) => c.name === "transcript")) {
       this.db.exec("ALTER TABLE events ADD COLUMN transcript TEXT");
     }
+    if (!cols.some((c) => c.name === "rfDb")) {
+      this.db.exec("ALTER TABLE events ADD COLUMN rfDb REAL");
+    }
   }
 
   record(ev: HistoryEvent): void {
@@ -117,6 +122,13 @@ export class HistoryStore {
     const rowid = this.lastClosed.get(channelId) ?? this.open.get(channelId);
     if (rowid === undefined) return;
     this.db.prepare("UPDATE events SET transcript = ? WHERE id = ?").run(text, rowid);
+  }
+
+  /** Attach the closed transmission's median RF strength to its history row. */
+  setRf(channelId: string, db: number): void {
+    const rowid = this.lastClosed.get(channelId) ?? this.open.get(channelId);
+    if (rowid === undefined) return;
+    this.db.prepare("UPDATE events SET rfDb = ? WHERE id = ?").run(db, rowid);
   }
 
   query(q: HistoryQuery): HistoryRow[] {

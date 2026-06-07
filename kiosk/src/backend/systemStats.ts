@@ -22,6 +22,56 @@ export interface SystemSample {
   openCount: number;         // channels open at sample time (the correlation)
 }
 
+export interface SystemAlert {
+  id: string;
+  severity: "attention" | "severe";
+  title: string;
+  message: string;
+  help: string;
+}
+
+/** Turn raw host telemetry into operator-facing, self-clearing alerts. */
+export function classifySystemAlerts(sample: SystemSample | null): SystemAlert[] {
+  if (!sample) return [];
+  const alerts: SystemAlert[] = [];
+  if (sample.tempC !== null && sample.tempC >= 90) alerts.push({
+    id: "temperature-critical", severity: "severe", title: "Machine temperature critical",
+    message: `${sample.tempC.toFixed(1)}°C; hardware is at risk.`,
+    help: "Check airflow immediately. Stop Close Call or shut down the machine if temperature keeps rising.",
+  });
+  else if ((sample.tempC !== null && sample.tempC >= 82) || sample.throttled) alerts.push({
+    id: "temperature-high", severity: "attention", title: "Machine is running hot",
+    message: `${sample.tempC?.toFixed(1) ?? "Unknown"}°C${sample.throttled ? " and CPU throttling detected" : ""}.`,
+    help: "Check vents and fans. Consider disabling transcription and Close Call sweeps until it cools.",
+  });
+  if (sample.diskFreeMb !== null && sample.diskFreeMb < 512) alerts.push({
+    id: "disk-critical", severity: "severe", title: "Storage almost full",
+    message: `${sample.diskFreeMb} MB remains; history writes may fail.`,
+    help: "Remove old files or expand storage immediately.",
+  });
+  else if (sample.diskFreeMb !== null && sample.diskFreeMb < 2048) alerts.push({
+    id: "disk-low", severity: "attention", title: "Storage running low",
+    message: `${(sample.diskFreeMb / 1024).toFixed(1)} GB remains.`,
+    help: "Review retained history and free space before recording stops.",
+  });
+  if (sample.memUsedPct >= 95) alerts.push({
+    id: "memory-critical", severity: "severe", title: "Memory critically high",
+    message: `${sample.memUsedPct}% of memory is in use.`,
+    help: "Restart the radio backend. Disable transcription if memory climbs again.",
+  });
+  else if (sample.memUsedPct >= 88) alerts.push({
+    id: "memory-high", severity: "attention", title: "Memory usage high",
+    message: `${sample.memUsedPct}% of memory is in use.`,
+    help: "Watch for continued growth; restart the backend if it does not recover.",
+  });
+  if (sample.cpuPct >= 95 || (sample.helperCpuPct ?? 0) >= 380) alerts.push({
+    id: "cpu-saturated", severity: "attention", title: "Radio processing saturated",
+    message: `CPU ${sample.cpuPct}%${sample.helperCpuPct === null ? "" : `; DSP helper ${sample.helperCpuPct}%`}.`,
+    help: "Disable transcription first, then Close Call sweep ranges if scanning becomes unstable.",
+  });
+  return alerts;
+}
+
 export interface SystemStatsOptions {
   /** The DSP helper's pid right now (null when not running). */
   helperPid: () => number | null;
@@ -32,6 +82,8 @@ export interface SystemStatsOptions {
   ringSize?: number;
   /** Injectable for tests. */
   readFile?: (path: string) => string;
+  /** Called after each sample; used for temporary machine self-protection. */
+  onSample?: (sample: SystemSample) => void;
 }
 
 const CLK_TCK = 100; // Linux USER_HZ; constant on every platform we run on
@@ -49,6 +101,7 @@ export class SystemStats {
       intervalMs: 2_500,
       ringSize: 120,           // ~5 minutes
       readFile: (p) => readFileSync(p, "utf8"),
+      onSample: () => {},
       ...opts,
     };
     try {
@@ -68,13 +121,14 @@ export class SystemStats {
     this.timer = null;
   }
 
-  snapshot(): { now: SystemSample | null; ring: SystemSample[] } {
-    return { now: this.ring[this.ring.length - 1] ?? null, ring: this.ring };
+  snapshot(): { now: SystemSample | null; ring: SystemSample[]; alerts: SystemAlert[] } {
+    const now = this.ring[this.ring.length - 1] ?? null;
+    return { now, ring: this.ring, alerts: classifySystemAlerts(now) };
   }
 
   private sample(): void {
     const ts = Date.now();
-    this.ring.push({
+    const sample: SystemSample = {
       ts,
       cpuPct: this.cpuPct(),
       ...this.helper(ts),
@@ -85,8 +139,10 @@ export class SystemStats {
       throttled: this.throttled(),
       diskFreeMb: this.diskFreeMb(),
       openCount: this.opts.openCount(),
-    });
+    };
+    this.ring.push(sample);
     if (this.ring.length > this.opts.ringSize) this.ring.shift();
+    this.opts.onSample(sample);
   }
 
   private cpuPct(): number {

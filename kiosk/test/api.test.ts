@@ -770,6 +770,43 @@ describe("Close Call persistence-before-filing", () => {
     res = await request(server).get("/api/config");
     expect((res.body.discoveries ?? []).some((d: { freq: number }) => d.freq === 462887500)).toBe(true);
   });
+
+  it("suppresses a repeatedly rediscovered unidentified carrier and keeps it restorable", async () => {
+    const { server, engine } = makeApp();
+    for (let i = 0; i < 6; i++) engine.emitCloseCall(462887500);
+    const cfg = (await request(server).get("/api/config")).body;
+    const d = cfg.discoveries.find((x: { freq: number }) => x.freq === 462887500);
+    expect(d).toMatchObject({
+      hitCount: 6,
+      suppressionReason: "Repeated unidentified carrier",
+    });
+    expect(d.suppressedAt).toBeTypeOf("number");
+  });
+});
+
+describe("archive recommendations", () => {
+  it("suggests enabled unheard channels while excluding priority and manually located channels", async () => {
+    dir = mkdtempSync(join(tmpdir(), "ksrv-"));
+    const configStore = new ConfigStore(join(dir, "config.json"));
+    const cfg = configStore.load();
+    cfg.channels = [
+      { id: "old", freq: 100, alphaTag: "Old", mode: "nfm", enabled: true },
+      { id: "priority", freq: 200, alphaTag: "Priority", mode: "nfm", enabled: true, priority: true },
+      { id: "manual", freq: 300, alphaTag: "Manual", mode: "nfm", enabled: true, location: { lat: 1, lon: 2, source: "operator" } },
+    ];
+    configStore.save(cfg);
+    const history = {
+      record: () => {}, release: () => {}, setTranscript: () => {},
+      query: (q: { untilMs?: number }) => q.untilMs ? [{ freq: 100 }] : [],
+      sites: () => [], stats: () => ({}),
+    };
+    const { server } = createServer({
+      configStore, engine: new FakeEngine(), activityLog: new ActivityLog(10),
+      wsHub: new WsHub(), staticDir: dir, history: history as never,
+    });
+    const res = await request(server).get("/api/recommendations/archive").expect(200);
+    expect(res.body.map((c: { id: string }) => c.id)).toEqual(["old"]);
+  });
 });
 
 describe("SAME alerts (Idea 11)", () => {

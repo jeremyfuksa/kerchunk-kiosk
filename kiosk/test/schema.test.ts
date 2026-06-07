@@ -204,13 +204,15 @@ describe("channel/discovery location", () => {
         location: { lat: 38.88, lon: -94.82, city: "Olathe", state: "KS", source: "repeaterbook" },
         lookedUpAt: 1780600000000 }],
       discoveries: [{ id: "d1", freq: 462887500, alphaTag: "CC", ts: 1,
-        location: { city: "Kansas City", state: "MO", source: "repeaterbook" } }],
+        location: { city: "Kansas City", state: "MO", source: "repeaterbook" },
+        hitCount: 8, lastSeenAt: 9, suppressedAt: 10, suppressionReason: "Repeated unidentified carrier" }],
     };
     const parsed = configSchema.safeParse(cfg);
     expect(parsed.success).toBe(true);
     if (parsed.success) {
       expect(parsed.data.channels[0]!.location?.city).toBe("Olathe");
       expect(parsed.data.discoveries![0]!.location?.state).toBe("MO");
+      expect(parsed.data.discoveries![0]!.suppressedAt).toBe(10);
     }
   });
 });

@@ -31,6 +31,14 @@ describe("HistoryStore", () => {
     expect(h.query({})[0]!.durationMs).toBe(3500);
   });
 
+  it("attaches per-transmission RF strength to the active history row", () => {
+    const h = make();
+    h.record({ ts: 1000, kind: "active", channelId: "c1", freq: 1, alphaTag: "x" });
+    h.setRf("c1", -17.4);
+    h.release("c1", 2000);
+    expect(h.query({})[0]!.rfDb).toBe(-17.4);
+  });
+
   it("query filters by since/tag/freq and respects limit + desc order", () => {
     const h = make();
     h.record({ ts: 1, kind: "active", channelId: "a", freq: 100, alphaTag: "A", tags: ["rail"] });
