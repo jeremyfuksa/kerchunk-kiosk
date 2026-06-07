@@ -48,6 +48,27 @@ function pinFor(freqHz: number): string {
   return pinUnknown;
 }
 
+// The pin heads' palette, applied to the TRANSIENT layer too (operator:
+// "match the blip colors to the pins") — a rail hit pulses train-orange,
+// a ham hit pink. Frequencies outside the family pulse the unknown gray.
+const PIN_COLORS: Record<string, string> = {
+  air: "#3478F5", rail: "#F5821F", ham: "#EC4E89", gmrs: "#1FA84C",
+  biz: "#7C4FE0", marine: "#0FAEC0", weather: "#F4B315", unknown: "#747B8A",
+};
+
+function colorFor(freqHz: number | undefined, kind: "active" | "closecall" | "nofix"): string {
+  if (freqHz === undefined) return COLORS[kind];
+  const svc = serviceFor(freqHz);
+  if (svc === "air") return PIN_COLORS.air!;
+  if (svc === "rail") return PIN_COLORS.rail!;
+  if (svc?.startsWith("ham")) return PIN_COLORS.ham!;
+  if (svc === "GMRS/FRS") return PIN_COLORS.gmrs!;
+  if (svc === "marine") return PIN_COLORS.marine!;
+  if (svc === "NOAA wx") return PIN_COLORS.weather!;
+  if (svc && (svc.includes("biz") || svc.includes("PS") || svc.includes("trunked") || svc === "T-band")) return PIN_COLORS.biz!;
+  return PIN_COLORS.unknown!;
+}
+
 function lucideMarker(svg: string, color: string, px: number): any {
   const colored = svg.replace(/currentColor/g, color).replace(/stroke-width="2"/, 'stroke-width="1.8"');
   return {
@@ -76,10 +97,7 @@ export function renderMap(root: HTMLElement): void {
     <div id="gmap"></div>
     <div class="mapLegend">
       <span class="lgAnt"></span> pins = sites by service · gray ? = unclassified
-      <span class="lgBlip active"></span> channel hit
-      <span class="lgBlip cc"></span> close call
-      <span class="lgBlip nofix"></span> no fix (ring)
-      <span class="lgNote">blips mark transmitter sites · glow = 30-day traffic · weather = live NEXRAD</span>
+      <span class="lgNote">blips &amp; pings wear their service's pin color · ring = no fix · glow = 30-day traffic · weather = live NEXRAD</span>
     </div>
     <div id="mapMsg" class="mapMsg"></div>
   </div>`;
@@ -403,7 +421,7 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
       if (replaying || interactive) return;
       const rows = await fetch(`/api/history?since=${Date.now() - REPLAY_SPAN_MS}&limit=1000`)
         .then((r) => (r.ok ? r.json() : []))
-        .then((rs: Array<{ lat: number | null; lon: number | null; alphaTag: string; kind: string; ts: number }>) =>
+        .then((rs: Array<{ lat: number | null; lon: number | null; alphaTag: string; kind: string; ts: number; freq: number }>) =>
           rs.filter((r) => r.lat != null && r.lon != null && r.kind !== "alert").reverse())
         .catch(() => [] as never[]);
       if (rows.length < 3) return;   // nothing worth re-watching
@@ -417,8 +435,8 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
           const at = ((r.ts - t0) / span) * REPLAY_LOOP_MS;
           replayTimers.push(setTimeout(() => {
             if (!replaying) return;
-            field.add({ lat: r.lat!, lon: r.lon!, alphaTag: r.alphaTag, kind: "active", ts: Date.now() });
-            ping(r.lat!, r.lon!, COLORS.active);
+            field.add({ lat: r.lat!, lon: r.lon!, alphaTag: r.alphaTag, kind: "active", ts: Date.now(), freq: r.freq });
+            ping(r.lat!, r.lon!, colorFor(r.freq, "active"));
             punch(r.lat!, r.lon!);
           }, at));
         }
@@ -453,8 +471,8 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
 
     function nofix(freqHz: number, alphaTag: string, ts: number): void {
       const pos = ringPoint(home, RING_M, freqHz);
-      field.add({ lat: pos.lat, lon: pos.lng, alphaTag, kind: "nofix", ts });
-      if (Date.now() - ts < 2000) { ping(pos.lat, pos.lng, COLORS.nofix); punch(pos.lat, pos.lng); }
+      field.add({ lat: pos.lat, lon: pos.lng, alphaTag, kind: "nofix", ts, freq: freqHz });
+      if (Date.now() - ts < 2000) { ping(pos.lat, pos.lng, colorFor(freqHz, "nofix")); punch(pos.lat, pos.lng); }
       if (!ringMarks.has(freqHz)) {
         const marker = new google.maps.Marker({
           map, position: pos, icon: ringIcon,
@@ -464,11 +482,11 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
       }
     }
 
-    function push(lat: number, lon: number, alphaTag: string, kind: "active" | "closecall", ts: number): void {
-      field.add({ lat, lon, alphaTag, kind, ts });
+    function push(lat: number, lon: number, alphaTag: string, kind: "active" | "closecall", ts: number, freq?: number): void {
+      field.add({ lat, lon, alphaTag, kind, ts, freq });
       // live hits ping and plant/refresh the persistent antenna
       if (Date.now() - ts < 2000) {
-        ping(lat, lon, COLORS[kind]);
+        ping(lat, lon, colorFor(freq, kind));
         antenna(lat, lon, [alphaTag], 1, ts, true);
         punch(lat, lon);
       }
@@ -477,13 +495,13 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
     // Backfill: the last hour, pre-decayed.
     void fetch(`/api/history?since=${Date.now() - HISTORY_BACKFILL_MS}&limit=500`)
       .then((r) => (r.ok ? r.json() : []))
-      .then((rows: Array<{ lat: number | null; lon: number | null; alphaTag: string; kind: string; ts: number }>) => {
+      .then((rows: Array<{ lat: number | null; lon: number | null; alphaTag: string; kind: string; ts: number; freq: number }>) => {
         for (const r of rows) {
           if (r.lat == null || r.lon == null) continue;
           // map hour-old rows into the blip lifetime tail: scale 1h -> 60s
           const age = Date.now() - r.ts;
           const scaledTs = Date.now() - (age / HISTORY_BACKFILL_MS) * BLIP_LIFETIME_MS;
-          push(r.lat, r.lon, r.alphaTag, r.kind === "closecall" ? "closecall" : "active", scaledTs);
+          push(r.lat, r.lon, r.alphaTag, r.kind === "closecall" ? "closecall" : "active", scaledTs, r.freq);
         }
       })
       .catch(() => {});
@@ -497,7 +515,7 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
       }
       if (ev.type === "active") {
         if (ev.channel.location?.lat != null && ev.channel.location.lon != null) {
-          push(ev.channel.location.lat, ev.channel.location.lon, ev.channel.alphaTag || fmtFreq(ev.freq), "active", Date.now());
+          push(ev.channel.location.lat, ev.channel.location.lon, ev.channel.alphaTag || fmtFreq(ev.freq), "active", Date.now(), ev.freq);
         } else {
           nofix(ev.freq, ev.channel.alphaTag || fmtFreq(ev.freq), Date.now());
         }
@@ -530,13 +548,14 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
           entry = { circle, info };
           circles.set(key, entry);
         }
+        const col = colorFor(b.freq, b.kind);
         entry.circle.setOptions({
           // Power-rated sites blip at ESTIMATED COVERAGE (true geography, no
           // kiosk scale factor); the rest use the hit-count ramp.
           radius: coverage.get(key) ?? (3750 + 625 * Math.min(b.hits, 6)) * geo,
-          strokeColor: COLORS[b.kind],
+          strokeColor: col,
           strokeOpacity: Math.min(1, b.opacity * 1.4),
-          fillColor: COLORS[b.kind],
+          fillColor: col,
           fillOpacity: 0.3 * b.opacity,
         });
       }
