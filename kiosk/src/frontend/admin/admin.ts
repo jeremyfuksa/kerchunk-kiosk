@@ -2,7 +2,8 @@ import type { Channel } from "../../backend/config/schema.js";
 import { NOAA_CHANNELS } from "../../backend/config/noaa.js";
 import { api } from "../lib/api.js";
 import { fmtFreq, esc } from "../lib/format.js";
-import { bandFor, matchesBank, serviceFor } from "../../backend/config/banks.js";
+import { bandFor, matchesBank, serviceFor, groupChannelsByBank } from "../../backend/config/banks.js";
+import type { BankGroup } from "../../backend/config/banks.js";
 import icoHeadphones from "lucide-static/icons/headphones.svg?raw";
 import icoPencil from "lucide-static/icons/pencil.svg?raw";
 import icoBan from "lucide-static/icons/ban.svg?raw";
@@ -17,6 +18,7 @@ import icoInbox from "lucide-static/icons/inbox.svg?raw";
 import icoList from "lucide-static/icons/list.svg?raw";
 import icoLayers from "lucide-static/icons/layers.svg?raw";
 import icoSliders from "lucide-static/icons/sliders-horizontal.svg?raw";
+import icoGear from "lucide-static/icons/settings-2.svg?raw";
 import type { Bank } from "../../backend/config/schema.js";
 import { ReconnectingWs } from "../lib/wsClient.js";
 import type { EngineEvent } from "../../backend/engine/ScannerEngine.js";
@@ -54,6 +56,7 @@ const ICONS: Record<string, string> = {
   cancel: icoX,
   unlock: icoUnlock,
   bell: icoBell,
+  gear: icoGear,
 };
 
 function iconBtn(cls: string, icon: string, label: string, attrs = ""): string {
@@ -576,6 +579,14 @@ export function renderAdmin(root: HTMLElement): void {
   // display rows act immediately (PUT patch); text/mode edits go through
   // edit -> save / cancel, with Enter/Escape shortcuts.
   let channels: Channel[] = [];
+  let banksCache: Bank[] = [];
+  // Per-group add: the new-channel row renders inside this bank's section
+  // and the saved channel carries the bank's first tag, so a channel added
+  // "into Rail" actually matches Rail.
+  let pendingTags: string[] = [];
+  // Collapsed bank groups (persisted like the collapsible modules).
+  const GROUPS_KEY = "kerchunk.admin.banksCollapsed";
+  const collapsedBanks = new Set<string>(JSON.parse(localStorage.getItem(GROUPS_KEY) ?? "[]"));
   let editingId: string | null = null;
 
   const MODES: Channel["mode"][] = ["nfm", "fm", "am"];
@@ -585,10 +596,55 @@ export function renderAdmin(root: HTMLElement): void {
       `<option value="${m}" ${m === selected ? "selected" : ""}>${m.toUpperCase()}</option>`).join("");
   }
 
+  function profileSummary(b: Bank): string {
+    const bits: string[] = [];
+    if (b.dwellWeight !== undefined) bits.push(`dwell ×${b.dwellWeight}`);
+    if (b.hangMs !== undefined) bits.push(`hang ${b.hangMs / 1000} s`);
+    if (b.openAboveFloorDb !== undefined) bits.push(`open ${b.openAboveFloorDb} dB`);
+    if (b.noiseQuietDb !== undefined) bits.push(`quiet ${b.noiseQuietDb} dB`);
+    return bits.join(" · ");
+  }
+
+  function bankHeaderRow(g: BankGroup): string {
+    if (!g.bank) {
+      return `<tr class="bankRow" data-bank="unbanked">
+        <td colspan="6"><span class="bkCaret">${collapsedBanks.has("unbanked") ? "▸" : "▾"}</span>
+        <span class="bkName">UNBANKED</span> <span class="bankCount">${g.channels.length}</span>
+        <span class="hint">matches no bank — tag these or add a bank that covers them</span></td>
+      </tr>`;
+    }
+    const b = g.bank;
+    const state = !b.enabled ? "off" : b.audible === false ? "see" : "on";
+    const next = state === "on" ? "SEE (scan, stay silent)" : state === "see" ? "OFF" : "HEAR";
+    const summary = profileSummary(b);
+    return `<tr class="bankRow bk-${state}" data-bank="${esc(b.id)}">
+      <td colspan="6">
+        <span class="bkCaret">${collapsedBanks.has(b.id) ? "▸" : "▾"}</span>
+        <span class="bkName">${esc(b.name)}</span>
+        <span class="bankCount">${g.channels.length}</span>
+        <button class="bkCycle" title="${state.toUpperCase()} — click for ${next}"><span class="bankState"></span>${state === "see" ? "SEE" : state === "off" ? "OFF" : "HEAR"}</button>
+        ${iconBtn("bkGear", "gear", "Scan profile (squelch/dwell overrides)")}
+        ${iconBtn("bkAddCh", "add", `Add a channel into ${esc(b.name)}`)}
+        ${iconBtn("bkDel", "del", "Delete bank — its channels keep scanning")}
+        ${summary ? `<span class="bkSummary">${summary}</span>` : ""}
+      </td>
+    </tr>`;
+  }
+
+  // A channel can match several banks (they're predicates); its row lives
+  // under the FIRST match, and these dim chips name the others.
+  function membershipChips(c: Channel): string {
+    const others = banksCache.filter((b) => matchesBank(c, b));
+    if (others.length <= 1) return "";
+    const home = others[0]!;
+    return others.slice(1).map((b) =>
+      `<span class="memChip" title="Also matches ${esc(b.name)} (home: ${esc(home.name)})">${esc(b.name)}</span>`).join("");
+  }
+
   function displayRow(c: Channel): string {
     return `<tr data-id="${esc(c.id)}">
       <td class="rowOpen">${fmtFreq(c.freq)}</td>
-      <td class="rowOpen">${esc(c.alphaTag)}${c.alert ? `<span class="bellChip" title="Alerts on a hit">${ICONS.bell}</span>` : ""}${locChip(c.location)}</td>
+      <td class="rowOpen">${esc(c.alphaTag)}${c.alert ? `<span class="bellChip" title="Alerts on a hit">${ICONS.bell}</span>` : ""}${membershipChips(c)}${locChip(c.location)}</td>
       <td class="rowOpen">${esc(c.mode.toUpperCase())}</td>
       <td><input type="checkbox" class="prio" ${c.priority ? "checked" : ""} /></td>
       <td><select class="hs hs-${!c.enabled ? "off" : c.audible === false ? "see" : "hear"}">
@@ -612,14 +668,28 @@ export function renderAdmin(root: HTMLElement): void {
   }
 
   function renderRows(): void {
-    const sorted = [...channels].sort((a, b) => a.freq - b.freq);
+    const groups = groupChannelsByBank(channels, banksCache);
+    // Where does the new-channel editor render? A per-group add (pendingTags
+    // set) renders inside ITS bank's group; the global + Add renders at the
+    // very top (index 0). Either way the saved channel re-homes by its own
+    // predicate match on the post-save refresh.
+    const editorGroup = pendingTags.length === 0
+      ? 0
+      : Math.max(0, groups.findIndex((g) => g.bank !== null && (g.bank.tags ?? [])[0] === pendingTags[0]));
     chRows.innerHTML =
-      (editingId === "new" ? editRow() : "") +
-      sorted.map((c) => (editingId === c.id ? editRow(c) : displayRow(c))).join("") +
+      groups.map((g, i) => {
+        const key = g.bank?.id ?? "unbanked";
+        const body = collapsedBanks.has(key)
+          ? ""
+          : (editingId === "new" && i === editorGroup ? editRow() : "")
+            + g.channels.map((c) => (editingId === c.id ? editRow(c) : displayRow(c))).join("");
+        return bankHeaderRow(g) + body;
+      }).join("") +
       (channels.length === 0 && editingId !== "new"
         ? `<tr><td colspan="6" class="empty">no channels — hit + Add</td></tr>` : "");
     addBtn.disabled = editingId !== null;
     wireRows();
+    wireBankRows();
   }
 
   function rowPatch(tr: HTMLElement): Omit<Channel, "id"> {
@@ -635,6 +705,7 @@ export function renderAdmin(root: HTMLElement): void {
       ...base,
       priority: tr.querySelector<HTMLInputElement>(".fPrio")!.checked,
       enabled: tr.querySelector<HTMLInputElement>(".fEn")!.checked,
+      ...(tr.dataset.id === "new" && pendingTags.length ? { tags: pendingTags } : {}),
     };
   }
 
@@ -645,6 +716,7 @@ export function renderAdmin(root: HTMLElement): void {
       if (tr.dataset.id === "new") await api.addChannel(payload);
       else await api.updateChannel(tr.dataset.id!, payload);
       editingId = null;
+      pendingTags = [];
       await refresh();
     } catch (e) { chErr.textContent = (e as Error).message; }
   }
@@ -680,14 +752,56 @@ export function renderAdmin(root: HTMLElement): void {
       });
       tr.querySelector<HTMLButtonElement>(".save")?.addEventListener("click", () => saveRow(tr));
       tr.querySelector<HTMLButtonElement>(".cancel")?.addEventListener("click", () => {
-        editingId = null; chErr.textContent = ""; renderRows();
+        editingId = null; pendingTags = []; chErr.textContent = ""; renderRows();
       });
       if (tr.classList.contains("editing")) {
         tr.addEventListener("keydown", (ev) => {
           if (ev.key === "Enter") { ev.preventDefault(); saveRow(tr); }
-          if (ev.key === "Escape") { editingId = null; chErr.textContent = ""; renderRows(); }
+          if (ev.key === "Escape") { editingId = null; pendingTags = []; chErr.textContent = ""; renderRows(); }
         });
       }
+    });
+  }
+
+  function wireBankRows(): void {
+    chRows.querySelectorAll<HTMLElement>("tr.bankRow").forEach((tr) => {
+      const id = tr.dataset.bank!;
+      tr.querySelector<HTMLElement>(".bkCaret")?.addEventListener("click", () => {
+        if (collapsedBanks.has(id)) collapsedBanks.delete(id);
+        else collapsedBanks.add(id);
+        localStorage.setItem(GROUPS_KEY, JSON.stringify([...collapsedBanks]));
+        renderRows();
+      });
+      if (id === "unbanked") return;
+      // Hear -> See -> Off cycle: IDENTICAL semantics to the old chip.
+      tr.querySelector<HTMLButtonElement>(".bkCycle")?.addEventListener("click", async () => {
+        const cfg = await api.getConfig();
+        cfg.banks = (cfg.banks ?? []).map((x) => {
+          if (x.id !== id) return x;
+          if (x.enabled && x.audible !== false) return { ...x, audible: false };
+          if (x.enabled) return { ...x, enabled: false, audible: true };
+          return { ...x, enabled: true, audible: true };
+        });
+        await api.putConfig(cfg);
+        await refresh();
+      });
+      tr.querySelector<HTMLButtonElement>(".bkGear")?.addEventListener("click", () =>
+        openProfileEditor(banksCache.find((x) => x.id === id)));
+      tr.querySelector<HTMLButtonElement>(".bkAddCh")?.addEventListener("click", () => {
+        const b = banksCache.find((x) => x.id === id);
+        pendingTags = b?.tags?.length ? [b.tags[0]!] : [];
+        editingId = "new";
+        collapsedBanks.delete(id);
+        renderRows();
+      });
+      tr.querySelector<HTMLButtonElement>(".bkDel")?.addEventListener("click", async () => {
+        const b = banksCache.find((x) => x.id === id);
+        if (!b || !confirm(`Delete bank ${b.name}? Its channels keep scanning.`)) return;
+        const cfg = await api.getConfig();
+        cfg.banks = (cfg.banks ?? []).filter((x) => x.id !== id);
+        await api.putConfig(cfg);
+        await refresh();
+      });
     });
   }
 
@@ -861,7 +975,9 @@ export function renderAdmin(root: HTMLElement): void {
   });
 
   async function refresh(): Promise<void> {
-    channels = await api.getChannels();
+    const [chs, cfg] = await Promise.all([api.getChannels(), api.getConfig()]);
+    channels = chs;
+    banksCache = cfg.banks ?? [];
     chCount.textContent = String(channels.length);
     renderRows();
     refreshBanks();
@@ -1007,7 +1123,7 @@ export function renderAdmin(root: HTMLElement): void {
   renderLockouts();
 
   addBtn.addEventListener("click", () => {
-    editingId = "new"; chErr.textContent = ""; renderRows(); tr0Focus();
+    pendingTags = []; editingId = "new"; chErr.textContent = ""; renderRows(); tr0Focus();
   });
 
   // ---- Now Playing card ----
