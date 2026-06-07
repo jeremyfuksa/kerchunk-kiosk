@@ -907,32 +907,45 @@ throttling, which a bare CPU% gauge would hide.
 
 ---
 
-## Where things stand (2026-06-05)
+## Where things stand (2026-06-06) — open items, sorted
 
-Ideas 1, 2, 4, 5, 6, 7, 8, 9, 11 are shipped or resolved; the kiosk became
-the map (map-as-stage redesign) with coverage-physics blips (FCC licenses +
-the RF-derived ERP estimator), Close Calls arrive identified/triaged/
-trusted, and SAME decodes on the visiting-slot tier. What remains:
+Ideas 1, 2, 4, 5, 6, 7, 8, 9, 11, 16 are shipped or resolved; the stretch
+sweep landed ambient replay, CC band-sweep, remote listening, and opt-in
+transcription (PRs #66–#68). What's open, in execution order:
 
-- **Idea 10 multi-SDR** — the only hardware item; now ALSO the reliability
-  upgrade for SAME (a parked weather radio) and the realization of per-bank
-  gain. Next major build when a second dongle lands.
-- **Idea 12 digital voice** — REAFFIRMED PARKED (2026-06-06): the local DMR
-  Close Call keeps finding (MotoNet CP+, KC Wireless) is trunked Tier III /
-  Cap+, which conventional-DSD decode can't follow — a source-built
-  integration that would decode almost nothing actually heard here. Revisit
-  when a conventional DMR signal worth hearing shows up.
-- **Idea 3 artistic** — first skin SHIPPED (PR #66): ambient auto-replay on
-  the kiosk map (quiet band → last 3 h replayed compressed, REPLAY badge,
-  snaps to live) — the premise note honored: memory, not decay. Further
-  skins remain open.
-- Stretch: **CC band-sweep SHIPPED** (PR #66, scan.sweepRanges, off by
-  default); **remote audio streaming SHIPPED** (PR #67, /api/stream.wav +
-  admin Listen here); **transcription SHIPPED opt-in** (PR #68, whisper-tiny
-  at nice 15, default OFF for thermals). **Polyphase channelizer DECLINED
-  for now**: a high-risk rewrite of the field-calibrated DSP core with no
-  driving need — parked until band-sweep or bank scale actually wants >12
-  lanes per window.
+### Build next (software-only, in order)
+1. **Idea 15 — Admin IA** (analytics home + config pages). The prerequisite
+   shell: every future panel (mesh, ADS-B, history charts) arrives as a page
+   instead of another collapsed section. Frontend-only restructure.
+2. **Idea 14 — Meshtastic** (companion node feed). Gated on ONE operator
+   answer: how the node connects (USB-serial / BLE / MQTT). Lands as a
+   panel + map layer in the Idea 15 shell.
+3. **Idea 3 — further ambient skins** (constellation, kerchunk wall, data
+   poster). First skin (auto-replay) shipped; more are optional polish, low
+   priority by operator note.
+
+### Hardware-gated (one second dongle unlocks the chain)
+4. **Idea 10 — multi-SDR.** The purchase that pays four times: parallel
+   band coverage (no group-hop misses), per-bank gain for real, SAME's
+   gold tier (a parked weather radio), and the RF substrate for ADS-B.
+5. **Idea 13 — ADS-B aircraft on the map.** Rides Idea 10: a 1090 MHz
+   dongle + dump1090 sidecar; the map/correlation side is ready software.
+
+### Parked, deliberately
+- **Idea 12 — digital voice**: local DMR is trunked Cap+/Tier III;
+  conventional decode would hear ~nothing. Revisit on a worthwhile signal.
+- **Polyphase channelizer**: declined until something actually needs >12
+  lanes per window — rewrite risk vs a field-calibrated DSP.
+
+### Watch items (no build, just time)
+- **RepeaterBook token** (pending since March-2026 policy): when issued,
+  set config.lookup.apiToken AND clear lookedUpAt stamps on unlocated
+  channels so ham geo backfills.
+- **SAME proof-of-life**: KEAX's next weekly test should land in the alert
+  feed (banner only if alerts.sameTests).
+- **ERP estimator anchors**: estimates refine as licensed channels are
+  heard; GMRS clamps at the Part 95 ceiling by design.
+
 
 ## Suggested sequencing (historical)
 
