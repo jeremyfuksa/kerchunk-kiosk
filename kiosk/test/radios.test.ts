@@ -12,18 +12,21 @@ function fakeUsbTree(): string {
     writeFileSync(join(root, port, "busnum"), String(busnum) + "\n");
     writeFileSync(join(root, port, "devnum"), String(devnum) + "\n");
   };
-  mk("1-1.4", "2838", 1, 22);   // listed out of order on purpose
-  mk("1-1.2", "2838", 1, 20);
+  // devnums deliberately CONTRADICT port order (a port power-cycle gives
+  // one dongle a fresh high devnum): topology must win, devnum must lose.
+  mk("1-1.4", "2838", 1, 22);
+  mk("1-1.2", "2838", 1, 23);   // re-cycled: newest devnum, FIRST port
   mk("1-1.3", "2838", 1, 21);
+  mk("1-1.10", "2838", 1, 24);  // natural compare: .10 sorts after .4
   mk("1-2", "011e", 1, 3);      // the wifi dongle: not an RTL
   return root;
 }
 
 describe("RTL device addressing by USB port", () => {
-  it("orders by (busnum, devnum) — librtlsdr's enumeration order — and indexes", () => {
+  it("orders by USB topology (port order), never devnum — librtlsdr's real order", () => {
     const devs = listRtlDevices(fakeUsbTree());
     expect(devs.map((d) => [d.port, d.index])).toEqual([
-      ["1-1.2", 0], ["1-1.3", 1], ["1-1.4", 2],
+      ["1-1.2", 0], ["1-1.3", 1], ["1-1.4", 2], ["1-1.10", 3],
     ]);
   });
   it("ignores non-RTL devices and missing roots", () => {

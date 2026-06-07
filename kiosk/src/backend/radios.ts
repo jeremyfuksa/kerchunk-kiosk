@@ -10,9 +10,10 @@ import { readFileSync, readdirSync } from "node:fs";
 // labeled ports, not on which dongle is which.
 //
 // librtlsdr exposes devices by INDEX in libusb enumeration order, which on
-// Linux follows (busnum, devnum) ascending. devnums change on every
-// replug, so the port -> index mapping is resolved fresh at every helper
-// spawn, never cached.
+// Linux follows USB TOPOLOGY (sysfs port order), NOT devnum — proven
+// 2026-06-06 when a single-port power cycle gave one dongle a higher
+// devnum without moving its index. Sort by (busnum, port path, natural
+// segment compare); resolve fresh at every helper spawn, never cached.
 
 const RTL_PRODUCT = "2838";
 const USB_ROOT = "/sys/bus/usb/devices";
@@ -41,8 +42,20 @@ export function listRtlDevices(root = USB_ROOT, read?: (p: string) => string): R
       });
     } catch { /* not a device dir / no idProduct */ }
   }
-  found.sort((a, b) => a.busnum - b.busnum || a.devnum - b.devnum);
+  found.sort((a, b) => a.busnum - b.busnum || comparePorts(a.port, b.port));
   return found.map((d, i) => ({ ...d, index: i }));
+}
+
+// "1-1.10" must sort after "1-1.2": compare port paths segment-by-segment
+// numerically, the way the bus enumerates them.
+function comparePorts(a: string, b: string): number {
+  const as = a.split(/[-.]/).map(Number);
+  const bs = b.split(/[-.]/).map(Number);
+  for (let i = 0; i < Math.max(as.length, bs.length); i++) {
+    const d = (as[i] ?? -1) - (bs[i] ?? -1);
+    if (d !== 0) return d;
+  }
+  return 0;
 }
 
 /** The librtlsdr index for the dongle in a given port, right now. */
