@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="46" height="56" viewBox="0 0 46 56" fill="none" role="img" aria-label="Ham radio pin">
+  <title>Ham pin</title>
+  <defs>
+    <filter id="sh-ham" x="-40%" y="-30%" width="180%" height="170%">
+      <feDropShadow dx="0" dy="2" stdDeviation="1.6" flood-color="#1f2530" flood-opacity="0.28"></feDropShadow>
+    </filter>
+  </defs>
+  <g transform="translate(2 1)" filter="url(#sh-ham)">
+    <path d="M 21 0 C 32.598 0 42 9.402 42 21 C 42 29.893 36.473 37.494 28.666 40.557 L 22.196 49.401 C 22.061 49.586 21.882 49.737 21.674 49.841 C 21.466 49.946 21.235 50 21 50 C 20.765 50 20.534 49.946 20.326 49.841 C 20.118 49.737 19.939 49.586 19.804 49.401 L 13.334 40.557 C 5.527 37.494 0 29.893 0 21 C 0 9.402 9.402 0 21 0 Z" fill="#F5EBE8"></path>
+    <circle cx="21" cy="21" r="17.5" fill="#EC4E89"></circle>
+    <g transform="translate(10.5 10.5) scale(0.875)" fill="none" stroke="#ffffff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4.9 16.1C1 12.2 1 5.8 4.9 1.9"></path><path d="M7.8 4.7a6.14 6.14 0 0 0-.8 7.5"></path><circle cx="12" cy="9" r="2"></circle><path d="M16.2 4.8c2 2 2.26 5.11.8 7.47"></path><path d="M19.1 1.9a9.96 9.96 0 0 1 0 14.1"></path><path d="M9.5 18h5"></path><path d="m8 22 4-11 4 11"></path></g>
+  </g>
+</svg>

@@ -4,12 +4,50 @@ import { esc, fmtFreq } from "../lib/format.js";
 import { BlipField, ringPoint, coverageRadiusM } from "./blips.js";
 import type { EngineEvent } from "../../backend/engine/ScannerEngine.js";
 import icoTower from "lucide-static/icons/radio-tower.svg?raw";
-import icoHouse from "lucide-static/icons/house.svg?raw";
 import icoRadio from "lucide-static/icons/radio.svg?raw";
+import { serviceFor } from "../../backend/config/banks.js";
+// Operator-designed service pins (claude.ai/design handoff, 2026-06-07):
+// cream teardrops with vivid service heads; Home is deliberately inverted
+// (spark ring, cream head) so the QTH reads as YOURS on the dark map.
+import pinAir from "./pins/pin-air.svg?raw";
+import pinRail from "./pins/pin-rail.svg?raw";
+import pinHam from "./pins/pin-ham.svg?raw";
+import pinGmrs from "./pins/pin-gmrs.svg?raw";
+import pinBiz from "./pins/pin-biz.svg?raw";
+import pinMarine from "./pins/pin-marine.svg?raw";
+import pinWeather from "./pins/pin-weather.svg?raw";
+import pinUnknown from "./pins/pin-unknown.svg?raw";
+import pinHome from "./pins/pin-home.svg?raw";
 import "./map.css";
 
 // Lucide SVGs as Google Maps marker icons: bake the color in (markers can't
 // inherit currentColor) and serve as a data URL.
+// Service pin -> marker icon. 46x56 teardrop; the TIP is the site, so the
+// anchor sits at bottom-center. Width in CSS px; height keeps the ratio.
+function pinMarker(svg: string, w: number): any {
+  const h = Math.round((w * 56) / 46);
+  return {
+    url: "data:image/svg+xml;charset=UTF-8," + encodeURIComponent(svg),
+    scaledSize: new google.maps.Size(w, h),
+    anchor: new google.maps.Point(w / 2, h),
+  };
+}
+
+// Which pin does a frequency's service wear? The full operator-designed
+// family covers every allocation; anything unclassified gets the gray "?"
+// pin, which deliberately recedes next to the vivid services.
+function pinFor(freqHz: number): string {
+  const svc = serviceFor(freqHz);
+  if (svc === "air") return pinAir;
+  if (svc === "rail") return pinRail;
+  if (svc?.startsWith("ham")) return pinHam;
+  if (svc === "GMRS/FRS") return pinGmrs;
+  if (svc === "marine") return pinMarine;
+  if (svc === "NOAA wx") return pinWeather;
+  if (svc && (svc.includes("biz") || svc.includes("PS") || svc.includes("trunked") || svc === "T-band")) return pinBiz;
+  return pinUnknown;
+}
+
 function lucideMarker(svg: string, color: string, px: number): any {
   const colored = svg.replace(/currentColor/g, color).replace(/stroke-width="2"/, 'stroke-width="1.8"');
   return {
@@ -37,7 +75,7 @@ export function renderMap(root: HTMLElement): void {
   root.innerHTML = `<div class="mapWrap">
     <div id="gmap"></div>
     <div class="mapLegend">
-      <span class="lgAnt"></span> known site
+      <span class="lgAnt"></span> pins = sites by service · gray ? = unclassified
       <span class="lgBlip active"></span> channel hit
       <span class="lgBlip cc"></span> close call
       <span class="lgBlip nofix"></span> no fix (ring)
@@ -147,7 +185,7 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
     // Home: the kiosk's own antenna. Small, dim, unmistakable.
     new google.maps.Marker({
       map, position: home, title: "Kerchunk QTH",
-      icon: lucideMarker(icoHouse, "#9299a5", Math.round(18 * mk)),
+      icon: pinMarker(pinHome, Math.round(26 * mk)),
       zIndex: 1,
     });
 
@@ -193,7 +231,6 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
     // visibly brighter. Log scale — site traffic spans 1..hundreds. (Not
     // Google's HeatmapLayer: deprecated May 2025, and per-site glow matches
     // the instrument aesthetic anyway.)
-    const antennaIcon = lucideMarker(icoTower, "#ffc05c", Math.round(18 * mk)); // campfire golden-amber (dark)
     const antennas = new Map<string, any>();
     const siteInfo = new google.maps.InfoWindow({ disableAutoPan: true });
 
@@ -226,9 +263,10 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
         strokeOpacity: 0, clickable: false,
         fillColor: "#ffc05c", fillOpacity: heat.opacity,
       });
+      const pin = sitePin.get(key) ?? pinUnknown;
       const marker = new google.maps.Marker({
         map, position: { lat, lng: lon },
-        icon: antennaIcon,
+        icon: pinMarker(pin, Math.round(22 * mk)),
         title: names.join(", "),
       });
       const entry = { marker, glow, names: [...names], hits, lastTs };
@@ -241,36 +279,41 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
       antennas.set(key, entry);
     }
 
-    // Seed from everything the store has ever located.
-    const sitesReady = fetch("/api/history/sites")
+    // Located channels frame the view even before they're first heard —
+    // and power-rated licenses (FCC) register their estimated coverage so
+    // the site's blips render at physical size instead of the hit ramp.
+    // Each site also learns its SERVICE PIN here (first located channel at
+    // the site decides; ties at multi-service sites go to the first).
+    const coverage = new Map<string, number>(); // site key -> radius m
+    const sitePin = new Map<string, string>();  // site key -> pin svg
+    const channelsReady = fetch("/api/channels")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((chs: Array<{ freq: number; location?: { lat?: number; lon?: number; powerWatts?: number; antennaHaatM?: number } }>) => {
+        for (const c of chs) {
+          if (c.location?.lat != null && c.location.lon != null) {
+            frame(c.location.lat, c.location.lon);
+            const key = `${c.location.lat.toFixed(5)},${c.location.lon.toFixed(5)}`;
+            if (c.location.powerWatts) {
+              coverage.set(key, coverageRadiusM(c.location.powerWatts, c.location.antennaHaatM));
+            }
+            if (!sitePin.has(key)) sitePin.set(key, pinFor(c.freq));
+          }
+        }
+      })
+      .catch(() => {});
+
+    // Seed from everything the store has ever located — AFTER the channel
+    // fetch resolves, so each site already knows its service pin.
+    const sitesReady = channelsReady.then(() => fetch("/api/history/sites")
       .then((r) => (r.ok ? r.json() : []))
       .then((sites: Array<{ lat: number; lon: number; hits: number; lastTs: number; names: string[] }>) => {
         for (const sgt of sites) {
           antenna(sgt.lat, sgt.lon, sgt.names, sgt.hits, sgt.lastTs);
           frame(sgt.lat, sgt.lon);
         }
-      })
+      }))
       .catch(() => {});
 
-    // Located channels frame the view even before they're first heard —
-    // and power-rated licenses (FCC) register their estimated coverage so
-    // the site's blips render at physical size instead of the hit ramp.
-    const coverage = new Map<string, number>(); // site key -> radius m
-    const channelsReady = fetch("/api/channels")
-      .then((r) => (r.ok ? r.json() : []))
-      .then((chs: Array<{ location?: { lat?: number; lon?: number; powerWatts?: number; antennaHaatM?: number } }>) => {
-        for (const c of chs) {
-          if (c.location?.lat != null && c.location.lon != null) {
-            frame(c.location.lat, c.location.lon);
-            if (c.location.powerWatts) {
-              coverage.set(
-                `${c.location.lat.toFixed(5)},${c.location.lon.toFixed(5)}`,
-                coverageRadiusM(c.location.powerWatts, c.location.antennaHaatM));
-            }
-          }
-        }
-      })
-      .catch(() => {});
 
     const COLORS = { active: "#ff6b35", closecall: "#dc3a38", nofix: "#4a7c7e" }; // spark / flamingo / pine
 

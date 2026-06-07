@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="46" height="56" viewBox="0 0 46 56" fill="none" role="img" aria-label="Home pin">
+  <title>Home pin</title>
+  <defs>
+    <filter id="sh-home" x="-40%" y="-30%" width="180%" height="170%">
+      <feDropShadow dx="0" dy="2" stdDeviation="1.6" flood-color="#000000" flood-opacity="0.45"></feDropShadow>
+    </filter>
+  </defs>
+  <g transform="translate(2 1)" filter="url(#sh-home)">
+    <path d="M 21 0 C 32.598 0 42 9.402 42 21 C 42 29.893 36.473 37.494 28.666 40.557 L 22.196 49.401 C 22.061 49.586 21.882 49.737 21.674 49.841 C 21.466 49.946 21.235 50 21 50 C 20.765 50 20.534 49.946 20.326 49.841 C 20.118 49.737 19.939 49.586 19.804 49.401 L 13.334 40.557 C 5.527 37.494 0 29.893 0 21 C 0 9.402 9.402 0 21 0 Z" fill="#ff5a1f"></path>
+    <circle cx="21" cy="21" r="17.5" fill="#F5EBE8"></circle>
+    <g transform="translate(10.5 10.5) scale(0.875)" fill="none" stroke="#ff5a1f" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"></path><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></g>
+  </g>
+</svg>
