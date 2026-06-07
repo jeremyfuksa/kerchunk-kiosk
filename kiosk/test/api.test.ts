@@ -596,18 +596,19 @@ describe("monitor demod mode", () => {
   });
 });
 
-describe("banks gate scanning", () => {
-  it("a disabled bank's channels are excluded from engine.start (off-wins); knownHz keeps them", async () => {
+describe("banks are collections, not hidden overrides", () => {
+  it("a legacy-disabled bank does not exclude individually enabled channels", async () => {
     const { server, engine } = makeApp();
     await request(server).post("/api/channels").send({ freq: 146790000, alphaTag: "VHF ham", mode: "nfm", enabled: true });
     await request(server).post("/api/channels").send({ freq: 464275000, alphaTag: "UHF biz", mode: "nfm", enabled: true });
     const cfg = (await request(server).get("/api/config")).body;
     cfg.banks = [{ id: "b_vhf", name: "VHF", enabled: false, band: "vhf" }];
+    cfg.channels[0].alphaTag = "VHF ham updated";
     let lastStart: any = null;
     const realStart = engine.start.bind(engine);
     engine.start = async (sc) => { lastStart = sc; return realStart(sc); };
     await request(server).put("/api/config").send(cfg);
-    expect(lastStart.channels.map((c: { freq: number }) => c.freq)).toEqual([464275000]);
+    expect(lastStart.channels.map((c: { freq: number }) => c.freq)).toEqual([146790000, 464275000]);
     expect(lastStart.knownHz).toEqual(expect.arrayContaining([146790000, 464275000]));
   });
 });
@@ -732,6 +733,30 @@ describe("kiosk reload", () => {
     await request(srv).post("/api/kiosk/reload").expect(200);
     expect(sent.some((e) => (e as { type: string }).type === "reload")).toBe(true);
     void server;
+  });
+});
+
+describe("backend restart", () => {
+  it("POST /api/backend/restart requests a supervised process restart", async () => {
+    dir = mkdtempSync(join(tmpdir(), "ksrv-"));
+    const configStore = new ConfigStore(join(dir, "config.json"));
+    let requested = false;
+    const { server } = createServer({
+      configStore,
+      engine: new FakeEngine(),
+      activityLog: new ActivityLog(10),
+      wsHub: new WsHub(),
+      staticDir: dir,
+      restartBackend: () => { requested = true; },
+    });
+    await request(server).post("/api/backend/restart").expect(202);
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    expect(requested).toBe(true);
+  });
+
+  it("returns unavailable when no process supervisor hook is configured", async () => {
+    const { server } = makeApp();
+    await request(server).post("/api/backend/restart").expect(503);
   });
 });
 

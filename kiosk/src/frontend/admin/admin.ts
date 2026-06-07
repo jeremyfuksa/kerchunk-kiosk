@@ -66,29 +66,45 @@ export function renderAdmin(root: HTMLElement): void {
   root.innerHTML = `
     <main class="admin">
       <header class="adminHead">
-        <span class="brand">KERCHUNK <span class="brandSub">mission control</span></span>
-        <a class="mapLink" href="/map" target="_blank" title="Live activity map">MAP ↗</a>
+        <a class="brand" href="#/" aria-label="Kerchunk admin overview">KERCHUNK <span class="brandSub">admin</span></a>
+        <div class="headActions">
+          <a href="/" target="_blank" title="Open the kiosk display">Kiosk ↗</a>
+          <a href="/map" target="_blank" title="Open the live activity map">Map ↗</a>
+        </div>
       </header>
       <div class="workspace">
       <nav class="adminNav" id="adminNav" aria-label="Admin sections">
-        <a href="#/" data-route="home"><span class="navIco" data-ico="home"></span>Home</a>
-        <a href="#/triage" data-route="triage"><span class="navIco" data-ico="triage"></span>Triage <span id="navDcCount" class="navBadge"></span></a>
-        <a href="#/channels" data-route="channels"><span class="navIco" data-ico="channels"></span>Channels</a>
-        <a href="#/scan" data-route="scan"><span class="navIco" data-ico="scan"></span>Scan</a>
+        <a href="#/" data-route="home"><span class="navIco" data-ico="home"></span><span class="navCopy"><b>Overview</b><small>Live status and activity</small></span></a>
+        <a href="#/triage" data-route="triage"><span class="navIco" data-ico="triage"></span><span class="navCopy"><b>Triage</b><small>Review new discoveries</small></span><span id="navDcCount" class="navBadge"></span></a>
+        <a href="#/channels" data-route="channels"><span class="navIco" data-ico="channels"></span><span class="navCopy"><b>Channels</b><small>Organize what you scan</small></span></a>
+        <a href="#/scan" data-route="scan"><span class="navIco" data-ico="scan"></span><span class="navCopy"><b>Settings</b><small>Scanning and integrations</small></span></a>
       </nav>
       <div class="pages">
+      <div class="pageIntro" data-page="home">
+        <div><span class="eyebrow">Overview</span><h1>Radio status</h1><p>Monitor what is playing, check system health, and review recent activity.</p></div>
+      </div>
       <section class="nowCard hero" data-page="home">
         <h2>Now playing</h2>
         <div class="npWhat"><span id="npName" class="npName">scanning…</span> <span id="npFreq" class="npFreq"></span></div>
         <div class="npControls">
-          <button id="resumeBtn" class="resume" style="display:none">⏹ Resume scan</button>
-          <label>Volume <input id="vol" type="range" min="0" max="100" /></label>
-          <label><input id="mute" type="checkbox" /> Mute</label>
-          <button id="skipBtn" title="Force-close the current transmission">Skip ▶</button>
-          <button id="tlockBtn" title="Suppress this channel for 30 minutes (clears on restart)" disabled>Temp lockout 30m</button>
-          <button id="lockBtn" title="Remove this channel and never Close-Call its frequency again" disabled>Lockout</button>
-          <button id="kioskReload" title="Reload the kiosk display page (fresh bundle + map style)">⟳ Reload kiosk</button>
-          <button id="streamBtn" title="Listen to the live speaker feed in this browser">▶ Listen here</button>
+          <div class="controlGroup audioControls">
+            <button id="streamBtn" class="primary" title="Listen to the live speaker feed in this browser">▶ Listen here</button>
+            <label>Volume <input id="vol" type="range" min="0" max="100" /></label>
+            <label class="checkLabel"><input id="mute" type="checkbox" /> Mute</label>
+          </div>
+          <div class="controlGroup transmissionControls">
+            <button id="resumeBtn" class="resume" style="display:none">⏹ Resume scan</button>
+            <button id="weatherBtn" class="weatherAction">Listen to weather</button>
+            <button id="skipBtn" title="Force-close the current transmission">Skip transmission</button>
+            <button id="tlockBtn" title="Suppress this channel for 30 minutes (clears on restart)" disabled>Pause 30 min</button>
+            <button id="lockBtn" class="danger" title="Remove this channel and never Close-Call its frequency again" disabled>Lock out channel</button>
+          </div>
+          <div class="systemActions">
+            <span class="systemActionsLabel">System controls</span>
+            <button id="kioskReload" title="Refresh the display page and reload its map and frontend assets">Refresh kiosk screen</button>
+            <button id="backendRestart" class="danger" title="Restart the radio backend and scanner helpers">Restart radio backend</button>
+            <span id="systemActionStatus" class="hint" role="status"></span>
+          </div>
         </div>
       </section>
       <section class="sysHealth collapsible" data-key="system" data-page="home">
@@ -96,10 +112,12 @@ export function renderAdmin(root: HTMLElement): void {
         <div id="sysBody" class="sysBody"></div>
       </section>
       <section class="discoveries" data-page="triage">
-        <h2>Discoveries <span class="count" id="dcCount"></span><span class="hint">found by Close Call — listen, then decide</span></h2>
+        <div class="pageIntro sectionIntro">
+          <div><span class="eyebrow">Triage</span><h1>Review discoveries <span class="count" id="dcCount"></span></h1><p>Close Call found these frequencies. Listen, then add useful signals or dismiss the rest.</p></div>
+        </div>
         <div class="dcToolbar">
           <button id="dcDismissSel" disabled>Dismiss selected</button>
-          <button id="dcLockSel" disabled>Lockout selected</button>
+          <button id="dcLockSel" class="danger" disabled>Lock out selected</button>
           <span id="dcSelCount" class="hint"></span>
         </div>
         <div class="tableWrap">
@@ -110,21 +128,27 @@ export function renderAdmin(root: HTMLElement): void {
         </div>
       </section>
       <section class="channels" data-page="channels">
-        <h2>Channels <span class="count" id="chCount"></span><button id="addBtn">+ Add</button></h2>
-        <div class="bankAdd">
-          <input id="bkName" placeholder="Bank name (Air, Rail, …)" />
-          <select id="bkBand"><option value="">any band</option><option value="hf">HF</option><option value="vhf">VHF</option><option value="uhf">UHF</option><option value="shf">SHF</option></select>
-          <input id="bkLo" type="number" step="0.001" placeholder="lo MHz (opt)" title="Frequency range predicate — e.g. 144 for 2m" />
-          <input id="bkHi" type="number" step="0.001" placeholder="hi MHz (opt)" />
-          <input id="bkTags" placeholder="tags (comma-sep, optional)" />
-          <button id="bkAdd">+ Bank</button>
-          <span id="bkErr" class="err"></span>
+        <div class="pageIntro sectionIntro">
+          <div><span class="eyebrow">Channels</span><h1>Channel library <span class="count" id="chCount"></span></h1><p>Add frequencies, choose what is audible, and organize related channels into banks.</p></div>
+          <button id="addBtn" class="primary">+ Add channel</button>
         </div>
+        <details class="bankBuilder">
+          <summary>Create a channel bank <span>Group channels by band, frequency range, or tag</span></summary>
+          <div class="bankAdd">
+            <label>Bank name <input id="bkName" placeholder="Air, Rail, Local…" /></label>
+            <label>Band <select id="bkBand"><option value="">Any band</option><option value="hf">HF</option><option value="vhf">VHF</option><option value="uhf">UHF</option><option value="shf">SHF</option></select></label>
+            <label>From MHz <input id="bkLo" type="number" step="0.001" placeholder="Optional" title="Frequency range predicate — e.g. 144 for 2m" /></label>
+            <label>To MHz <input id="bkHi" type="number" step="0.001" placeholder="Optional" /></label>
+            <label>Tags <input id="bkTags" placeholder="Comma-separated, optional" /></label>
+            <button id="bkAdd" class="primary">Create bank</button>
+            <span id="bkErr" class="err"></span>
+          </div>
+        </details>
         <div id="bankProfile" class="bankProfile"></div>
         <div class="tableWrap">
           <table class="chTable">
             <thead><tr>
-              <th>Freq (MHz)</th><th>Name</th><th>Mode</th><th>Priority</th><th>Listen</th><th></th>
+              <th>Freq (MHz)</th><th>Name</th><th>Mode</th><th>Priority</th><th>Audible</th><th>Archived</th><th></th>
             </tr></thead>
             <tbody id="chRows"></tbody>
           </table>
@@ -151,26 +175,43 @@ export function renderAdmin(root: HTMLElement): void {
         <ul id="trRows" class="alertList"></ul>
       </section>
       </div>
+      <div class="pageIntro" data-page="scan">
+        <div><span class="eyebrow">Settings</span><h1>Scanner settings</h1><p>Adjust scan behavior and optional services. Changes apply when you save each section.</p></div>
+      </div>
       <div class="moduleRow" data-page="scan">
-      <section class="tuning collapsible" data-key="tuning">
-        <h2>Scan tuning</h2>
-        <label>Group dwell (ms) <input id="tGroupDwell" type="number" min="500" step="100" placeholder="3000" /></label>
-        <label>Hang time (ms) <input id="tHang" type="number" min="100" step="100" placeholder="2000" /></label>
-        <label>Squelch open (dB over floor) <input id="tOpenDb" type="number" min="1" step="0.5" placeholder="9" /></label>
-        <label>Quieting threshold (dB) <input id="tQuietDb" type="number" max="-1" step="0.5" placeholder="-86" /></label>
-        <label>Google Maps key <input id="tMapsKey" type="text" placeholder="AIza…" /></label>
-        <label>Google Maps Map ID <input id="tMapsMapId" type="text" placeholder="vector map + exact fit" /></label>
-        <label>Alert cooldown (min) <input id="tAlertCool" type="number" min="1" step="1" placeholder="15" /></label>
-        <label>Alert hold (s) <input id="tAlertHold" type="number" min="5" step="5" placeholder="30" /></label>
-        <label>Alert push URL <input id="tAlertNtfy" type="text" placeholder="https://ntfy.sh/your-topic" /></label>
-        <label>SAME FIPS codes <input id="tSameFips" type="text" placeholder="029047, 029095 (empty = all)" title="County FIPS codes for SAME/EAS scoping — 5-digit SSCCC or 6-digit PSSCCC" /></label>
-        <label><input id="tSameTests" type="checkbox" /> Banner SAME tests (RWT/RMT)</label>
-        <label title="Speech-to-text on every transmission the speaker plays (whisper tiny, low priority). Costs CPU — the fans may notice. Takes effect at service restart."><input id="tTranscribe" type="checkbox" /> Transcribe audio (CPU)</label>
-        <label><input id="tCloseCall" type="checkbox" /> Close Call</label>
-        <label>Close Call threshold (dB over floor) <input id="tCloseCallDb" type="number" min="5" step="1" placeholder="15" /></label>
-        <label>CC sweep ranges (MHz) <input id="tSweep" type="text" placeholder="450-470, 150-162 (empty = off)" title="Band-sweep: one empty-window stop per rotation hunts for activity inside these ranges" /></label>
-        <button id="tSave">Save tuning</button>
-        <span id="tErr" class="err"></span>
+      <section class="tuning settingsPanel">
+        <h2>Scan behavior</h2>
+        <p class="sectionHelp">These defaults control how quickly the scanner moves and when a signal opens.</p>
+        <div class="settingGroups">
+          <fieldset>
+            <legend>Timing and squelch</legend>
+            <label><span>Group dwell <small>Time spent on each frequency group</small></span><span class="inputUnit"><input id="tGroupDwell" type="number" min="500" step="100" placeholder="3000" /><b>ms</b></span></label>
+            <label><span>Hang time <small>Wait after a transmission ends</small></span><span class="inputUnit"><input id="tHang" type="number" min="100" step="100" placeholder="2000" /><b>ms</b></span></label>
+            <label><span>Squelch open <small>Signal level above the noise floor</small></span><span class="inputUnit"><input id="tOpenDb" type="number" min="1" step="0.5" placeholder="9" /><b>dB</b></span></label>
+            <label><span>Quieting threshold <small>Absolute noise threshold</small></span><span class="inputUnit"><input id="tQuietDb" type="number" max="-1" step="0.5" placeholder="-86" /><b>dB</b></span></label>
+          </fieldset>
+          <fieldset>
+            <legend>Discovery</legend>
+            <label class="switchRow"><span>Close Call <small>Find strong nearby signals outside your channel list</small></span><input id="tCloseCall" type="checkbox" /></label>
+            <label><span>Close Call threshold <small>Higher values reduce false discoveries</small></span><span class="inputUnit"><input id="tCloseCallDb" type="number" min="5" step="1" placeholder="15" /><b>dB</b></span></label>
+            <label><span>Sweep ranges <small>Comma-separated MHz ranges; empty disables sweeping</small></span><input id="tSweep" type="text" placeholder="450-470, 150-162" title="Band-sweep: one empty-window stop per rotation hunts for activity inside these ranges" /></label>
+          </fieldset>
+          <fieldset>
+            <legend>Alerts and transcripts</legend>
+            <label><span>Alert cooldown <small>Minimum time before repeating an alert</small></span><span class="inputUnit"><input id="tAlertCool" type="number" min="1" step="1" placeholder="15" /><b>min</b></span></label>
+            <label><span>Alert hold <small>How long an alert remains visible</small></span><span class="inputUnit"><input id="tAlertHold" type="number" min="5" step="5" placeholder="30" /><b>sec</b></span></label>
+            <label><span>Push notification URL <small>Optional ntfy topic URL</small></span><input id="tAlertNtfy" type="text" placeholder="https://ntfy.sh/your-topic" /></label>
+            <label><span>SAME county codes <small>Comma-separated FIPS codes; empty allows all</small></span><input id="tSameFips" type="text" placeholder="029047, 029095" title="County FIPS codes for SAME/EAS scoping — 5-digit SSCCC or 6-digit PSSCCC" /></label>
+            <label class="switchRow"><span>Show SAME tests <small>Include weekly and monthly test banners</small></span><input id="tSameTests" type="checkbox" /></label>
+            <label class="switchRow" title="Speech-to-text on every transmission the speaker plays. Costs CPU and takes effect at service restart."><span>Transcribe audio <small>Uses additional CPU; takes effect after restart</small></span><input id="tTranscribe" type="checkbox" /></label>
+          </fieldset>
+          <fieldset>
+            <legend>Map integration</legend>
+            <label><span>Google Maps key</span><input id="tMapsKey" type="text" placeholder="AIza…" /></label>
+            <label><span>Google Maps Map ID</span><input id="tMapsMapId" type="text" placeholder="Optional vector map ID" /></label>
+          </fieldset>
+        </div>
+        <div class="formActions"><button id="tSave" class="primary">Save scanner settings</button><span id="tErr" class="err"></span></div>
       </section>
       <section class="lockouts collapsible" data-key="lockouts">
         <h2>Close Call lockouts</h2>
@@ -178,20 +219,53 @@ export function renderAdmin(root: HTMLElement): void {
       </section>
       <section class="weather collapsible" data-key="weather" data-page="scan">
         <h2>Weather</h2>
+        <p class="sectionHelp">Choose the local NOAA channel used by weather-only mode.</p>
         <label>Channel <select id="wxFreq">${NOAA_CHANNELS.map((c) => `<option value="${c.mhz}">${c.label} — ${c.mhz} MHz</option>`).join("")}</select></label>
-        <label>Tag <input id="wxTag" type="text" placeholder="NOAA WX" /></label>
-        <select id="wxMode"><option value="nfm">nfm</option><option value="fm">fm</option><option value="am">am</option></select>
-        <button id="wxSave">Save weather channel</button>
+        <label>Name <input id="wxTag" type="text" placeholder="NOAA WX" /></label>
+        <label>Mode <select id="wxMode"><option value="nfm">NFM</option><option value="fm">FM</option><option value="am">AM</option></select></label>
+        <button id="wxSave" class="primary">Save weather channel</button>
         <span id="wxErr" class="err"></span>
-        <label class="modeToggle"><input id="wxToggle" type="checkbox" /> Weather-only mode</label>
-        <span id="modeLabel"></span>
       </section>
       </div>
     </main>
       </div>
       </div>
     <div id="drawerScrim" class="drawerScrim"></div>
-    <aside id="chDrawer" class="drawer" aria-label="Channel details"></aside>`;
+    <aside id="chDrawer" class="drawer" aria-label="Channel details"></aside>
+    <dialog id="confirmDialog" class="confirmDialog" aria-labelledby="confirmTitle" aria-describedby="confirmMessage">
+      <form method="dialog">
+        <span class="confirmEyebrow">Confirm action</span>
+        <h2 id="confirmTitle"></h2>
+        <p id="confirmMessage"></p>
+        <div class="confirmActions">
+          <button value="cancel">Cancel</button>
+          <button id="confirmAction" value="confirm">Confirm</button>
+        </div>
+      </form>
+    </dialog>`;
+
+  const confirmDialog = root.querySelector<HTMLDialogElement>("#confirmDialog")!;
+  const confirmTitle = root.querySelector<HTMLElement>("#confirmTitle")!;
+  const confirmMessage = root.querySelector<HTMLElement>("#confirmMessage")!;
+  const confirmAction = root.querySelector<HTMLButtonElement>("#confirmAction")!;
+
+  function confirmAdminAction(opts: {
+    title: string;
+    message: string;
+    confirmLabel: string;
+    danger?: boolean;
+  }): Promise<boolean> {
+    confirmTitle.textContent = opts.title;
+    confirmMessage.textContent = opts.message;
+    confirmAction.textContent = opts.confirmLabel;
+    confirmAction.classList.toggle("danger", opts.danger ?? false);
+    confirmAction.classList.toggle("primary", !(opts.danger ?? false));
+    confirmDialog.returnValue = "cancel";
+    confirmDialog.showModal();
+    return new Promise((resolve) => {
+      confirmDialog.addEventListener("close", () => resolve(confirmDialog.returnValue === "confirm"), { once: true });
+    });
+  }
 
   // Progressive disclosure: minor modules collapse behind their legends.
   // State persists per device (an operator who tunes often keeps it open).
@@ -214,6 +288,8 @@ export function renderAdmin(root: HTMLElement): void {
   }
   function applyRoute(): void {
     const route = currentRoute();
+    const titles: Record<string, string> = { home: "Overview", triage: "Triage", channels: "Channels", scan: "Settings" };
+    document.title = `${titles[route]} · Kerchunk Admin`;
     root.querySelectorAll<HTMLElement>("[data-page]").forEach((el) => {
       el.classList.toggle("pageHidden", el.dataset.page !== route);
     });
@@ -230,10 +306,19 @@ export function renderAdmin(root: HTMLElement): void {
   root.querySelectorAll<HTMLElement>("section.collapsible").forEach((sec) => {
     const key = sec.dataset.key!;
     if (collapsed.has(key)) sec.classList.add("collapsed");
-    sec.querySelector("h2")!.addEventListener("click", () => {
+    const heading = sec.querySelector<HTMLElement>("h2")!;
+    heading.tabIndex = 0;
+    heading.setAttribute("role", "button");
+    heading.setAttribute("aria-expanded", String(!sec.classList.contains("collapsed")));
+    const toggle = () => {
       sec.classList.toggle("collapsed");
+      heading.setAttribute("aria-expanded", String(!sec.classList.contains("collapsed")));
       if (sec.classList.contains("collapsed")) collapsed.add(key); else collapsed.delete(key);
       localStorage.setItem(COLLAPSE_KEY, JSON.stringify([...collapsed]));
+    };
+    heading.addEventListener("click", toggle);
+    heading.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); toggle(); }
     });
   });
 
@@ -258,7 +343,13 @@ export function renderAdmin(root: HTMLElement): void {
   // Single lockout path for all three entry points (channel row, discovery
   // row, now-playing card) — they drifted when each had its own copy.
   async function lockoutFreq(freq: number, label: string): Promise<void> {
-    if (!confirm(`Lock out ${label}? It will be removed and never trigger Close Call again.`)) return;
+    const confirmed = await confirmAdminAction({
+      title: `Lock out ${label}?`,
+      message: "This removes the channel and permanently prevents this frequency from triggering Close Call.",
+      confirmLabel: "Lock out permanently",
+      danger: true,
+    });
+    if (!confirmed) return;
     const cfg = await api.getConfig();
     // Locking out a frequency removes it EVERYWHERE: channel(s), pending
     // discoveries, and into the suppression list.
@@ -550,25 +641,27 @@ export function renderAdmin(root: HTMLElement): void {
   function bankHeaderRow(g: BankGroup): string {
     if (!g.bank) {
       return `<tr class="bankRow" data-bank="unbanked">
-        <td colspan="6"><span class="bkCaret">${collapsedBanks.has("unbanked") ? "▸" : "▾"}</span>
+        <td colspan="7"><span class="bkCaret">${collapsedBanks.has("unbanked") ? "▸" : "▾"}</span>
         <span class="bkName">UNBANKED</span> <span class="bankCount">${g.channels.length}</span>
         <span class="hint">matches no bank — tag these or add a bank that covers them</span></td>
       </tr>`;
     }
     const b = g.bank;
-    const state = !b.enabled ? "off" : b.audible === false ? "see" : "on";
-    const next = state === "on" ? "SEE (scan, stay silent)" : state === "see" ? "OFF" : "HEAR";
+    const audibleCount = g.channels.filter((c) => c.enabled && c.audible !== false).length;
+    const archivedCount = g.channels.filter((c) => !c.enabled).length;
     const summary = profileSummary(b);
-    return `<tr class="bankRow bk-${state}" data-bank="${esc(b.id)}">
-      <td colspan="6">
+    return `<tr class="bankRow" data-bank="${esc(b.id)}">
+      <td colspan="7">
         <span class="bkCaret">${collapsedBanks.has(b.id) ? "▸" : "▾"}</span>
         <span class="bkName">${esc(b.name)}</span>
         <span class="bankCount">${g.channels.length}</span>
-        <button class="bkCycle" title="${state.toUpperCase()} — click for ${next}"><span class="bankState"></span>${state === "see" ? "SEE" : state === "off" ? "OFF" : "HEAR"}</button>
+        <button class="bkBulkAudible" title="Make every channel in this collection audible">Make audible</button>
+        <button class="bkBulkSilent" title="Keep tracking every channel but silence them">Make silent</button>
+        <button class="bkBulkArchive" title="Stop tracking every channel in this collection">Archive</button>
+        <span class="bkSummary">${audibleCount} audible · ${archivedCount} archived${summary ? ` · ${summary}` : ""}</span>
         ${iconBtn("bkGear", "gear", "Scan profile (squelch/dwell overrides)")}
         ${iconBtn("bkAddCh", "add", `Add a channel into ${esc(b.name)}`)}
         ${iconBtn("bkDel", "del", "Delete bank — its channels keep scanning")}
-        ${summary ? `<span class="bkSummary">${summary}</span>` : ""}
       </td>
     </tr>`;
   }
@@ -589,12 +682,9 @@ export function renderAdmin(root: HTMLElement): void {
       <td class="rowOpen">${esc(c.alphaTag)}${c.alert ? `<span class="bellChip" title="Alerts on a hit">${ICONS.bell}</span>` : ""}${membershipChips(c)}${locChip(c.location)}</td>
       <td class="rowOpen">${esc(c.mode.toUpperCase())}</td>
       <td><input type="checkbox" class="prio" ${c.priority ? "checked" : ""} /></td>
-      <td><select class="hs hs-${!c.enabled ? "off" : c.audible === false ? "see" : "hear"}">
-        <option value="hear" ${c.enabled && c.audible !== false ? "selected" : ""}>Hear</option>
-        <option value="see" ${c.enabled && c.audible === false ? "selected" : ""}>See</option>
-        <option value="off" ${!c.enabled ? "selected" : ""}>Off</option>
-      </select></td>
-      <td class="actions">${iconBtn("listen", "listen", "Listen — park the radio on this channel (unsquelched)")}${iconBtn("lock", "lockout", "Lockout — remove and never Close-Call this frequency again")}${iconBtn("del", "del", "Delete channel")}</td>
+      <td><input type="checkbox" class="audible" ${c.audible !== false ? "checked" : ""} /></td>
+      <td><input type="checkbox" class="archived" ${!c.enabled ? "checked" : ""} /></td>
+      <td class="actions">${iconBtn("listen", "listen", "Listen — park the radio on this channel (unsquelched)")}${iconBtn("lock", "lockout", "Lockout — remove and never Close-Call this frequency again")}</td>
     </tr>`;
   }
 
@@ -604,7 +694,8 @@ export function renderAdmin(root: HTMLElement): void {
       <td><input class="fTag" value="${c ? esc(c.alphaTag) : ""}" placeholder="KC0KW — Gibbs Rd" /></td>
       <td><select class="fMode">${modeOptions(c?.mode ?? "nfm")}</select></td>
       <td><input type="checkbox" class="fPrio" ${c?.priority ? "checked" : ""} /></td>
-      <td><input type="checkbox" class="fEn" ${c ? (c.enabled ? "checked" : "") : "checked"} /></td>
+      <td><input type="checkbox" class="fAudible" ${c ? (c.audible !== false ? "checked" : "") : ""} /></td>
+      <td><input type="checkbox" class="fArchived" ${c && !c.enabled ? "checked" : ""} /></td>
       <td class="actions">${iconBtn("save", "save", "Save")}${iconBtn("cancel", "cancel", "Cancel")}</td>
     </tr>`;
   }
@@ -628,7 +719,7 @@ export function renderAdmin(root: HTMLElement): void {
         return bankHeaderRow(g) + body;
       }).join("") +
       (channels.length === 0 && editingId !== "new"
-        ? `<tr><td colspan="6" class="empty">no channels — hit + Add</td></tr>` : "");
+        ? `<tr><td colspan="7" class="empty">no channels — hit + Add</td></tr>` : "");
     addBtn.disabled = editingId !== null;
     wireRows();
     wireBankRows();
@@ -646,7 +737,8 @@ export function renderAdmin(root: HTMLElement): void {
     return {
       ...base,
       priority: tr.querySelector<HTMLInputElement>(".fPrio")!.checked,
-      enabled: tr.querySelector<HTMLInputElement>(".fEn")!.checked,
+      audible: tr.querySelector<HTMLInputElement>(".fAudible")!.checked,
+      enabled: !tr.querySelector<HTMLInputElement>(".fArchived")!.checked,
       ...(tr.dataset.id === "new" && pendingTags.length ? { tags: pendingTags } : {}),
     };
   }
@@ -678,19 +770,16 @@ export function renderAdmin(root: HTMLElement): void {
         const c = channels.find((x) => x.id === id);
         if (c) void lockoutFreq(c.freq, c.alphaTag || fmtFreq(c.freq));
       });
-      tr.querySelector<HTMLButtonElement>(".del")?.addEventListener("click", async () => {
-        const c = channels.find((x) => x.id === id);
-        if (!confirm(`Delete ${c ? c.alphaTag || fmtFreq(c.freq) : "channel"}?`)) return;
-        await api.deleteChannel(id);
-        await refresh();
-      });
       tr.querySelector<HTMLInputElement>(".prio")?.addEventListener("change", async (ev) => {
         await api.updateChannel(id, { priority: (ev.target as HTMLInputElement).checked });
         await refresh();
       });
-      tr.querySelector<HTMLSelectElement>(".hs")?.addEventListener("change", async (ev) => {
-        const v = (ev.target as HTMLSelectElement).value;
-        await api.updateChannel(id, { enabled: v !== "off", audible: v !== "see" });
+      tr.querySelector<HTMLInputElement>(".audible")?.addEventListener("change", async (ev) => {
+        await api.updateChannel(id, { audible: (ev.target as HTMLInputElement).checked });
+        await refresh();
+      });
+      tr.querySelector<HTMLInputElement>(".archived")?.addEventListener("change", async (ev) => {
+        await api.updateChannel(id, { enabled: !(ev.target as HTMLInputElement).checked });
         await refresh();
       });
       tr.querySelector<HTMLButtonElement>(".save")?.addEventListener("click", () => saveRow(tr));
@@ -716,17 +805,24 @@ export function renderAdmin(root: HTMLElement): void {
         renderRows();
       });
       if (id === "unbanked") return;
-      // Hear -> See -> Off cycle: IDENTICAL semantics to the old chip.
-      tr.querySelector<HTMLButtonElement>(".bkCycle")?.addEventListener("click", async () => {
+      const bulk = async (patch: Partial<Pick<Channel, "enabled" | "audible">>) => {
         const cfg = await api.getConfig();
-        cfg.banks = (cfg.banks ?? []).map((x) => {
-          if (x.id !== id) return x;
-          if (x.enabled && x.audible !== false) return { ...x, audible: false };
-          if (x.enabled) return { ...x, enabled: false, audible: true };
-          return { ...x, enabled: true, audible: true };
-        });
+        const bank = (cfg.banks ?? []).find((x) => x.id === id);
+        if (!bank) return;
+        cfg.channels = cfg.channels.map((c) => matchesBank(c, bank) ? { ...c, ...patch } : c);
         await api.putConfig(cfg);
         await refresh();
+      };
+      tr.querySelector<HTMLButtonElement>(".bkBulkAudible")?.addEventListener("click", () => bulk({ enabled: true, audible: true }));
+      tr.querySelector<HTMLButtonElement>(".bkBulkSilent")?.addEventListener("click", () => bulk({ enabled: true, audible: false }));
+      tr.querySelector<HTMLButtonElement>(".bkBulkArchive")?.addEventListener("click", async () => {
+        const b = banksCache.find((x) => x.id === id);
+        if (!b || !await confirmAdminAction({
+          title: `Archive every channel in ${b.name}?`,
+          message: "Archived channels stop consuming scanner capacity but keep their identity and location.",
+          confirmLabel: "Archive channels",
+        })) return;
+        await bulk({ enabled: false });
       });
       tr.querySelector<HTMLButtonElement>(".bkGear")?.addEventListener("click", () =>
         openProfileEditor(banksCache.find((x) => x.id === id)));
@@ -740,7 +836,12 @@ export function renderAdmin(root: HTMLElement): void {
       });
       tr.querySelector<HTMLButtonElement>(".bkDel")?.addEventListener("click", async () => {
         const b = banksCache.find((x) => x.id === id);
-        if (!b || !confirm(`Delete bank ${b.name}? Its channels keep scanning.`)) return;
+        if (!b || !await confirmAdminAction({
+          title: `Delete bank ${b.name}?`,
+          message: "Its channels will remain in the library and keep scanning.",
+          confirmLabel: "Delete bank",
+          danger: true,
+        })) return;
         const cfg = await api.getConfig();
         cfg.banks = (cfg.banks ?? []).filter((x) => x.id !== id);
         await api.putConfig(cfg);
@@ -792,12 +893,9 @@ export function renderAdmin(root: HTMLElement): void {
         <label>Tags <input id="dwTags" value="${esc((c.tags ?? []).join(", "))}" placeholder="air, rail, ham" /></label>
         <label>Site lat, lon <input id="dwLoc" value="${c.location?.lat != null ? `${c.location.lat}, ${c.location.lon}` : ""}" placeholder="39.1755, -94.4861" title="Transmitter site — drives the map blip" /></label>
         <label><input id="dwPrio" type="checkbox" ${c.priority ? "checked" : ""} /> Priority</label>
-        <label title="A hit flashes the kiosk, lands in the alert feed, and breaks a see-only channel into the speaker. Needs Listen = Hear or See."><input id="dwAlert" type="checkbox" ${c.alert ? "checked" : ""} /> Alert on hit</label>
-        <label>Listen <select id="dwHs">
-          <option value="hear" ${c.enabled && c.audible !== false ? "selected" : ""}>Hear — scan + speaker</option>
-          <option value="see" ${c.enabled && c.audible === false ? "selected" : ""}>See — log hits, stay silent</option>
-          <option value="off" ${!c.enabled ? "selected" : ""}>Off</option>
-        </select></label>
+        <label title="A hit flashes the kiosk, lands in the alert feed, and temporarily plays a silent tracked channel through the speaker. The channel must not be archived."><input id="dwAlert" type="checkbox" ${c.alert ? "checked" : ""} /> Alert on hit</label>
+        <label><input id="dwAudible" type="checkbox" ${c.audible !== false ? "checked" : ""} /> Audible</label>
+        <label title="Archived channels keep their identity and location but stop consuming scanner capacity."><input id="dwArchived" type="checkbox" ${!c.enabled ? "checked" : ""} /> Archived</label>
         <div><button id="dwSave" class="save">Save</button> <span id="dwErr" class="err"></span></div>
       </div>
       <dl class="dwInfo">
@@ -816,7 +914,6 @@ export function renderAdmin(root: HTMLElement): void {
       <div class="dwActions">
         <button id="dwListen" class="listen">Listen</button>
         <button id="dwLock" class="lock">Lockout</button>
-        <button id="dwDel" class="del">Delete</button>
       </div>`;
     drawer.querySelector<HTMLButtonElement>(".dwClose")!.addEventListener("click", closeDrawer);
     drawer.querySelector<HTMLButtonElement>("#dwSave")!.addEventListener("click", async () => {
@@ -828,7 +925,6 @@ export function renderAdmin(root: HTMLElement): void {
           alphaTag: drawer.querySelector<HTMLInputElement>("#dwTag")!.value,
           mode: drawer.querySelector<HTMLSelectElement>("#dwMode")!.value,
         });
-        const hs = drawer.querySelector<HTMLSelectElement>("#dwHs")!.value;
         const locRaw = drawer.querySelector<HTMLInputElement>("#dwLoc")!.value.trim();
         let location = c.location;
         if (locRaw === "") {
@@ -848,8 +944,8 @@ export function renderAdmin(root: HTMLElement): void {
             .split(",").map((t) => t.trim()).filter(Boolean),
           priority: drawer.querySelector<HTMLInputElement>("#dwPrio")!.checked,
           alert: drawer.querySelector<HTMLInputElement>("#dwAlert")!.checked,
-          enabled: hs !== "off",
-          audible: hs !== "see",
+          enabled: !drawer.querySelector<HTMLInputElement>("#dwArchived")!.checked,
+          audible: drawer.querySelector<HTMLInputElement>("#dwAudible")!.checked,
         });
         await refresh();
         err.textContent = "saved";
@@ -859,12 +955,6 @@ export function renderAdmin(root: HTMLElement): void {
       api.monitor(c.freq, c.alphaTag || fmtFreq(c.freq)));
     drawer.querySelector<HTMLButtonElement>("#dwLock")!.addEventListener("click", async () => {
       await lockoutFreq(c.freq, c.alphaTag || fmtFreq(c.freq));
-      closeDrawer();
-    });
-    drawer.querySelector<HTMLButtonElement>("#dwDel")!.addEventListener("click", async () => {
-      if (!confirm(`Delete ${c.alphaTag || fmtFreq(c.freq)}?`)) return;
-      await api.deleteChannel(c.id);
-      await refresh();
       closeDrawer();
     });
   }
@@ -957,9 +1047,9 @@ export function renderAdmin(root: HTMLElement): void {
     const mode = m === "FM" ? "fm" as const : m === "AM" ? "am" as const : "nfm" as const;
     cfg2.channels.push({
       id: `ch_${d.id.replace(/^cc_/, "")}`, freq: d.freq, alphaTag: d.alphaTag,
-      mode, enabled: true,
-      // Triage verdict: data/paging promotes seen-not-heard.
-      ...(d.audible === false ? { audible: false } : {}),
+      mode, enabled: true, audible: false,
+      // A promoted discovery is tracked and mapped, but audibility is always
+      // an explicit operator choice.
       ...(d.location ? { location: d.location, lookedUpAt: Date.now() } : {}),
     });
   }
@@ -1030,7 +1120,14 @@ export function renderAdmin(root: HTMLElement): void {
     const n = dcSelected.size;
     if (n === 0) return;
     const verb = lockout ? "Lock out" : "Dismiss";
-    if (!confirm(`${verb} ${n} ${n === 1 ? "discovery" : "discoveries"}?`)) return;
+    if (!await confirmAdminAction({
+      title: `${verb} ${n} ${n === 1 ? "discovery" : "discoveries"}?`,
+      message: lockout
+        ? "These frequencies will be permanently prevented from triggering Close Call."
+        : "Dismissed frequencies may be discovered again later.",
+      confirmLabel: lockout ? "Lock out permanently" : "Dismiss",
+      danger: lockout,
+    })) return;
     const cfg = await api.getConfig();
     const doomed = (cfg.discoveries ?? []).filter((d) => dcSelected.has(d.id));
     cfg.discoveries = (cfg.discoveries ?? []).filter((d) => !dcSelected.has(d.id));
@@ -1079,19 +1176,27 @@ export function renderAdmin(root: HTMLElement): void {
   const lockBtn = root.querySelector<HTMLButtonElement>("#lockBtn")!;
   let nowPlaying: { freq: number; alphaTag: string } | null = null;
   let npAudibleDriven = false;
+  let currentMode: "scan" | "weather" | "monitor" = "scan";
+  let weatherChannel: Channel | null = null;
 
   const resumeBtn = root.querySelector<HTMLButtonElement>("#resumeBtn")!;
+  const weatherBtn = root.querySelector<HTMLButtonElement>("#weatherBtn")!;
   let monitoring: { freq: number; alphaTag: string } | null = null;
 
   function paintNow(): void {
     if (monitoring) {
       npName.textContent = `MONITORING ${monitoring.alphaTag || fmtFreq(monitoring.freq)}`;
       npFreq.textContent = fmtFreq(monitoring.freq);
+    } else if (currentMode === "weather") {
+      npName.textContent = `WEATHER ONLY · ${weatherChannel?.alphaTag || "NOAA weather"}`;
+      npFreq.textContent = weatherChannel ? fmtFreq(weatherChannel.freq) : "";
     } else {
       npName.textContent = nowPlaying ? (nowPlaying.alphaTag || fmtFreq(nowPlaying.freq)) : "scanning…";
       npFreq.textContent = nowPlaying ? fmtFreq(nowPlaying.freq) : "";
     }
     resumeBtn.style.display = monitoring ? "" : "none";
+    weatherBtn.textContent = currentMode === "weather" ? "Resume scanning" : "Listen to weather";
+    weatherBtn.disabled = currentMode !== "weather" && weatherChannel === null;
     // Both act on the live audible channel: no target (or monitoring,
     // where lockout-of-what-you-chose makes no sense) disables both.
     tlockBtn.disabled = monitoring !== null || nowPlaying === null;
@@ -1101,12 +1206,17 @@ export function renderAdmin(root: HTMLElement): void {
   async function syncMode(): Promise<void> {
     try {
       const st = await api.getStatus();
+      currentMode = st.mode;
       monitoring = st.mode === "monitor" && st.monitor
         ? { freq: st.monitor.freq, alphaTag: st.monitor.alphaTag } : null;
       paintNow();
     } catch { /* transient */ }
   }
   resumeBtn.addEventListener("click", async () => { await api.monitorStop(); syncMode(); });
+  weatherBtn.addEventListener("click", async () => {
+    await api.setMode(currentMode === "weather" ? "scan" : "weather");
+    await syncMode();
+  });
 
   function onEngineEvent(ev: EngineEvent): void {
     if (ev.type === "alert") {
@@ -1132,6 +1242,7 @@ export function renderAdmin(root: HTMLElement): void {
   }
   const wsProto = location.protocol === "https:" ? "wss" : "ws";
   new ReconnectingWs(`${wsProto}://${location.host}/ws`, onEngineEvent).connect();
+  api.getWeatherChannel().then((r) => { weatherChannel = r.weatherChannel; paintNow(); }).catch(() => {});
   syncMode();
   paintNow();
 
@@ -1149,8 +1260,34 @@ export function renderAdmin(root: HTMLElement): void {
     void streamEl.play().catch(() => { streamEl = null; });
     streamBtn.textContent = "⏹ Stop listening";
   });
-  root.querySelector<HTMLButtonElement>("#kioskReload")!.addEventListener("click", () => {
-    void fetch("/api/kiosk/reload", { method: "POST" }).catch(() => {});
+  const systemActionStatus = root.querySelector<HTMLElement>("#systemActionStatus")!;
+  root.querySelector<HTMLButtonElement>("#kioskReload")!.addEventListener("click", async (event) => {
+    const button = event.currentTarget as HTMLButtonElement;
+    button.disabled = true;
+    systemActionStatus.textContent = "Refreshing kiosk screen…";
+    try {
+      await api.reloadKiosk();
+      systemActionStatus.textContent = "Refresh sent";
+    } catch (e) {
+      systemActionStatus.textContent = (e as Error).message;
+    } finally {
+      button.disabled = false;
+    }
+  });
+  root.querySelector<HTMLButtonElement>("#backendRestart")!.addEventListener("click", async () => {
+    const confirmed = await confirmAdminAction({
+      title: "Restart radio backend?",
+      message: "Audio and scanning will stop briefly while the backend and radio helpers restart.",
+      confirmLabel: "Restart backend",
+      danger: true,
+    });
+    if (!confirmed) return;
+    systemActionStatus.textContent = "Restarting backend…";
+    try {
+      await api.restartBackend();
+    } catch (e) {
+      systemActionStatus.textContent = (e as Error).message;
+    }
   });
   tlockBtn.addEventListener("click", () => api.skip(1800));
   lockBtn.addEventListener("click", () => {
@@ -1263,16 +1400,6 @@ export function renderAdmin(root: HTMLElement): void {
   const wxMode = root.querySelector<HTMLSelectElement>("#wxMode")!;
   const wxSave = root.querySelector<HTMLButtonElement>("#wxSave")!;
   const wxErr = root.querySelector<HTMLElement>("#wxErr")!;
-  const wxToggle = root.querySelector<HTMLInputElement>("#wxToggle")!;
-  const modeLabel = root.querySelector<HTMLElement>("#modeLabel")!;
-
-  function paintMode(mode: "scan" | "weather" | "monitor"): void {
-    wxToggle.checked = mode === "weather";
-    modeLabel.textContent =
-      mode === "weather" ? "WEATHER-ONLY"
-      : mode === "monitor" ? "MONITORING" : "scanning";
-  }
-
   api.getWeatherChannel().then(({ weatherChannel }) => {
     if (weatherChannel) {
       wxFreq.value = (weatherChannel.freq / 1e6).toFixed(3);
@@ -1280,20 +1407,15 @@ export function renderAdmin(root: HTMLElement): void {
       wxMode.value = weatherChannel.mode;
     }
   }).catch(() => {});
-  api.getStatus().then((s) => paintMode(s.mode)).catch(() => {});
 
   wxSave.addEventListener("click", async () => {
     wxErr.textContent = "";
     try {
-      await api.setWeatherChannel(weatherFormToChannel({ mhz: wxFreq.value, alphaTag: wxTag.value, mode: wxMode.value }));
+      const saved = await api.setWeatherChannel(weatherFormToChannel({ mhz: wxFreq.value, alphaTag: wxTag.value, mode: wxMode.value }));
+      weatherChannel = saved.weatherChannel;
+      paintNow();
     } catch (e) {
       wxErr.textContent = (e as Error).message;
     }
-  });
-  wxToggle.addEventListener("change", () => {
-    const intended = wxToggle.checked;
-    api.setMode(intended ? "weather" : "scan")
-      .then((r) => paintMode(r.mode))
-      .catch(() => { wxToggle.checked = !intended; });
   });
 }

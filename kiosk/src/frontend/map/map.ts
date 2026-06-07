@@ -1,10 +1,9 @@
 import { ReconnectingWs } from "../lib/wsClient.js";
 import { api } from "../lib/api.js";
 import { esc, fmtFreq } from "../lib/format.js";
-import { BlipField, ringPoint, coverageRadiusM } from "./blips.js";
+import { BlipField, syntheticPoint, coverageRadiusM } from "./blips.js";
 import type { EngineEvent } from "../../backend/engine/ScannerEngine.js";
 import icoTower from "lucide-static/icons/radio-tower.svg?raw";
-import icoRadio from "lucide-static/icons/radio.svg?raw";
 import { serviceFor } from "../../backend/config/banks.js";
 // Operator-designed service pins (claude.ai/design handoff, 2026-06-07):
 // cream teardrops with vivid service heads; Home is deliberately inverted
@@ -55,9 +54,13 @@ const PIN_COLORS: Record<string, string> = {
   air: "#3478F5", rail: "#F5821F", ham: "#EC4E89", gmrs: "#1FA84C",
   biz: "#7C4FE0", marine: "#0FAEC0", weather: "#F4B315", unknown: "#747B8A",
 };
+const UNKNOWN_POSITION_COLOR = "#4a7c7e";
 
 function colorFor(freqHz: number | undefined, kind: "active" | "closecall" | "nofix"): string {
-  if (freqHz === undefined) return COLORS[kind];
+  // Synthetic unknown positions must read as uncertain geography, even when
+  // the frequency falls inside a recognizable service allocation.
+  if (kind === "nofix") return UNKNOWN_POSITION_COLOR;
+  if (freqHz === undefined) return kind === "closecall" ? "#dc3a38" : "#ff6b35";
   const svc = serviceFor(freqHz);
   if (svc === "air") return PIN_COLORS.air!;
   if (svc === "rail") return PIN_COLORS.rail!;
@@ -67,15 +70,6 @@ function colorFor(freqHz: number | undefined, kind: "active" | "closecall" | "no
   if (svc === "NOAA wx") return PIN_COLORS.weather!;
   if (svc && (svc.includes("biz") || svc.includes("PS") || svc.includes("trunked") || svc === "T-band")) return PIN_COLORS.biz!;
   return PIN_COLORS.unknown!;
-}
-
-function lucideMarker(svg: string, color: string, px: number): any {
-  const colored = svg.replace(/currentColor/g, color).replace(/stroke-width="2"/, 'stroke-width="1.8"');
-  return {
-    url: "data:image/svg+xml;charset=UTF-8," + encodeURIComponent(colored),
-    scaledSize: new google.maps.Size(px, px),
-    anchor: new google.maps.Point(px / 2, px / 2),
-  };
 }
 
 // Live activity map (ROADMAP Idea 2, Google Maps per operator decision):
@@ -97,7 +91,7 @@ export function renderMap(root: HTMLElement): void {
     <div id="gmap"></div>
     <div class="mapLegend">
       <span class="lgAnt"></span> pins = sites by service · gray ? = unclassified
-      <span class="lgNote">blips &amp; pings wear their service's pin color · ring = no fix · glow = 30-day traffic · weather = live NEXRAD</span>
+      <span class="lgNote">pine pulses = stable synthetic position, location unknown · glow = 30-day traffic · weather = live NEXRAD</span>
     </div>
     <div id="mapMsg" class="mapMsg"></div>
   </div>`;
@@ -208,18 +202,27 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
     });
 
     // ── Auto-framing: the pins decide the view. Bounds collect the QTH,
-    // the no-fix ring, every located channel, and every remembered site;
-    // one fitBounds once the data lands. Config mapLat/Lon/Zoom is only
-    // the pre-data first paint. The ring's 7 km radius doubles as a zoom
-    // floor, so two close pins can't zoom the map into a parking lot.
+    // every located channel, and every remembered site; one fitBounds once
+    // the data lands. A hidden local-field boundary keeps sparse data from
+    // zooming the map into a parking lot and contains synthetic unknowns.
     const bounds = new google.maps.LatLngBounds();
     bounds.extend(home);
+    const SYNTHETIC_FIELD_M = 18_000;
+    for (const angle of [0, Math.PI / 2, Math.PI, Math.PI * 1.5]) {
+      framePoint(
+        home.lat + (SYNTHETIC_FIELD_M * Math.cos(angle)) / 111_320,
+        home.lng + (SYNTHETIC_FIELD_M * Math.sin(angle)) / (111_320 * Math.cos(home.lat * Math.PI / 180)),
+      );
+    }
     // Framing is for the neighborhood: a corrupt row at (0,0) or a typo'd
     // site must not yank the view across an ocean. ~3° ≈ 300 km.
     function frame(lat: number, lon: number): void {
       if (Math.abs(lat - home.lat) < 3 && Math.abs(lon - home.lng) < 3) {
         bounds.extend({ lat, lng: lon });
       }
+    }
+    function framePoint(lat: number, lng: number): void {
+      bounds.extend({ lat, lng });
     }
 
     const field = new BlipField(BLIP_LIFETIME_MS);
@@ -304,12 +307,14 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
     // the site decides; ties at multi-service sites go to the first).
     const coverage = new Map<string, number>(); // site key -> radius m
     const sitePin = new Map<string, string>();  // site key -> pin svg
+    const knownPositions: Array<{ lat: number; lng: number }> = [];
     const channelsReady = fetch("/api/channels")
       .then((r) => (r.ok ? r.json() : []))
       .then((chs: Array<{ freq: number; location?: { lat?: number; lon?: number; powerWatts?: number; antennaHaatM?: number } }>) => {
         for (const c of chs) {
           if (c.location?.lat != null && c.location.lon != null) {
             frame(c.location.lat, c.location.lon);
+            knownPositions.push({ lat: c.location.lat, lng: c.location.lon });
             const key = `${c.location.lat.toFixed(5)},${c.location.lon.toFixed(5)}`;
             if (c.location.powerWatts) {
               coverage.set(key, coverageRadiusM(c.location.powerWatts, c.location.antennaHaatM));
@@ -328,27 +333,12 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
         for (const sgt of sites) {
           antenna(sgt.lat, sgt.lon, sgt.names, sgt.hits, sgt.lastTs);
           frame(sgt.lat, sgt.lon);
+          knownPositions.push({ lat: sgt.lat, lng: sgt.lon });
         }
       }))
       .catch(() => {});
 
 
-    const COLORS = { active: "#ff6b35", closecall: "#dc3a38", nofix: "#4a7c7e" }; // spark / flamingo / pine
-
-    // ── The unknown-origin ring (operator's pick): a dashed pine circle
-    // around the QTH; activity we can't place pulses at a DETERMINISTIC
-    // spot on it (hash of frequency), so GMRS 19 is always "its" dot —
-    // identity without fake geography.
-    const RING_M = 12_000;
-    const ringPath: Array<{ lat: number; lng: number }> = [];
-    for (let i = 0; i <= 64; i++) {
-      const a = (i / 64) * 2 * Math.PI;
-      ringPath.push({
-        lat: home.lat + (RING_M * Math.cos(a)) / 111_320,
-        lng: home.lng + (RING_M * Math.sin(a)) / (111_320 * Math.cos((home.lat * Math.PI) / 180)),
-      });
-    }
-    for (const p of ringPath) bounds.extend(p);
     // Wait for the map's first idle as well as the data: fitBounds against
     // a not-yet-laid-out viewport computes minimum zoom (the whole world).
     // Kiosk padding is asymmetric: the map runs UNDER the floating topbar
@@ -450,36 +440,19 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
         if (!replaying && Date.now() - lastLiveTs > REPLAY_QUIET_MS) void startReplay();
       }, 5000);
     }
-    new google.maps.Polyline({
-      map, path: ringPath, clickable: false,
-      strokeOpacity: 0,
-      icons: [{
-        icon: { path: "M 0,-1 0,1", strokeOpacity: 0.45, strokeColor: COLORS.nofix, scale: 2 },
-        offset: "0", repeat: "14px",
-      }],
-    });
-    new google.maps.Marker({
-      map, position: ringPath[0], clickable: false,
-      icon: { path: "M 0 0", scale: 0 } as any,
-      label: { text: "NO FIX", color: "#4a7c7e", fontSize: interactive ? "11px" : "16px", fontFamily: "Barlow Condensed, sans-serif" },
-    });
-
-    // Persistent identity markers for heard-once unlocated channels (the
-    // ring's parallel to the antenna layer — Lucide 'radio', dim pine).
-    const ringIcon = lucideMarker(icoRadio, "#4a7c7e", Math.round(15 * mk));
-    const ringMarks = new Map<number, any>();
+    // Unknown-frequency assignments stay fixed for this map session. Their
+    // initial position is chosen against all known sites loaded so far; once a
+    // later lookup supplies a real location, future events naturally use it.
+    const syntheticPositions = new Map<number, { lat: number; lng: number }>();
 
     function nofix(freqHz: number, alphaTag: string, ts: number): void {
-      const pos = ringPoint(home, RING_M, freqHz);
+      let pos = syntheticPositions.get(freqHz);
+      if (!pos) {
+        pos = syntheticPoint(home, SYNTHETIC_FIELD_M, freqHz, knownPositions);
+        syntheticPositions.set(freqHz, pos);
+      }
       field.add({ lat: pos.lat, lon: pos.lng, alphaTag, kind: "nofix", ts, freq: freqHz });
       if (Date.now() - ts < 2000) { ping(pos.lat, pos.lng, colorFor(freqHz, "nofix")); punch(pos.lat, pos.lng); }
-      if (!ringMarks.has(freqHz)) {
-        const marker = new google.maps.Marker({
-          map, position: pos, icon: ringIcon,
-          title: `${alphaTag} — origin unknown (ring position is symbolic)`,
-        });
-        ringMarks.set(freqHz, marker);
-      }
     }
 
     function push(lat: number, lon: number, alphaTag: string, kind: "active" | "closecall", ts: number, freq?: number): void {
@@ -521,8 +494,8 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
         }
       } else if (ev.type === "closecall") {
         // discoveries are unlocated at the moment they fire (identification
-        // is async) — they pulse on the ring; once enriched, future history
-        // backfills place them properly.
+        // is async) — they pulse at a stable synthetic position; once enriched,
+        // future events and history backfills place them properly.
         nofix(ev.freqHz, `Close Call ${fmtFreq(ev.freqHz)}`, Date.now());
       }
     }).connect();

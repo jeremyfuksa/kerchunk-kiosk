@@ -44,7 +44,7 @@ describe("matchesBank", () => {
   });
 });
 
-describe("isScannable (off-wins)", () => {
+describe("isScannable (individual channel authority)", () => {
   const banks: Bank[] = [
     bank({ id: "vhf", name: "VHF", band: "vhf", enabled: true }),
     bank({ id: "air", name: "Air", tags: ["air"], enabled: false }),
@@ -54,8 +54,8 @@ describe("isScannable (off-wins)", () => {
     expect(isScannable(ch(146_790_000), banks)).toBe(true);
   });
 
-  it("ANY matching disabled bank mutes the channel — off wins", () => {
-    expect(isScannable(ch(123_450_000, { tags: ["air"] }), banks)).toBe(false);
+  it("a matching legacy-disabled bank does not override the channel", () => {
+    expect(isScannable(ch(123_450_000, { tags: ["air"] }), banks)).toBe(true);
   });
 
   it("channel.enabled still gates first", () => {
@@ -67,7 +67,7 @@ describe("isScannable (off-wins)", () => {
   });
 });
 
-describe("isAudible (hear vs see)", () => {
+describe("isAudible (individual channel authority)", () => {
   const banks: Bank[] = [
     bank({ id: "vhf", name: "VHF", band: "vhf", enabled: true }),
     bank({ id: "rail", name: "Rail", tags: ["rail"], enabled: true, audible: false }), // SEE
@@ -81,8 +81,8 @@ describe("isAudible (hear vs see)", () => {
     expect(isAudible(ch(146_790_000, { audible: false }), banks)).toBe(false);
   });
 
-  it("a SEE bank mutes every channel it matches — mute wins", () => {
-    expect(isAudible(ch(160_650_000, { tags: ["rail"] }), banks)).toBe(false);
+  it("a legacy-muted bank does not override an audible channel", () => {
+    expect(isAudible(ch(160_650_000, { tags: ["rail"] }), banks)).toBe(true);
   });
 
   it("a SEE bank's channels still scan (visible in history)", () => {
@@ -100,8 +100,8 @@ describe("profileFor — per-bank scan profiles (Idea 7)", () => {
     // hangMs from Rail (first match wins); dwellWeight falls through to VHF.
     expect(profileFor(ch, banks)).toEqual({ hangMs: 4000, dwellWeight: 2 });
   });
-  it("disabled banks contribute nothing; no match = empty (global defaults)", () => {
-    expect(profileFor(ch, [{ id: "b1", name: "Rail", enabled: false, tags: ["rail"], hangMs: 4000 }])).toEqual({});
+  it("legacy-disabled banks still provide profiles; no match = empty (global defaults)", () => {
+    expect(profileFor(ch, [{ id: "b1", name: "Rail", enabled: false, tags: ["rail"], hangMs: 4000 }])).toEqual({ hangMs: 4000 });
     expect(profileFor(ch, [{ id: "b3", name: "Air", enabled: true, tags: ["air"], openAboveFloorDb: 6 }])).toEqual({});
   });
 });

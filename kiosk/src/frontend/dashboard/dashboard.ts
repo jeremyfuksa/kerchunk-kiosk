@@ -148,7 +148,7 @@ export function renderDashboard(root: HTMLElement): void {
   let scanCount = -1; // unknown until the first status fetch
   let muted = false;
 
-  // ── Bank rail: hardware-scanner bank LEDs. Every enabled bank is a chip;
+  // ── Bank rail: hardware-scanner bank LEDs. Every bank collection is a chip;
   // the chips covering the currently-tuned window light up as the radio
   // hops (~groupDwellMs cadence). Needs the config snapshot for bank
   // predicates; status transitions refetch it (config edits restart the
@@ -158,7 +158,7 @@ export function renderDashboard(root: HTMLElement): void {
   let cfgChannels: Channel[] = [];
   function loadBanks(): void {
     void api.getConfig().then((cfg) => {
-      cfgBanks = (cfg.banks ?? []).filter((b: Bank) => b.enabled);
+      cfgBanks = cfg.banks ?? [];
       cfgChannels = cfg.channels ?? [];
       paintRail();
     }).catch(() => {});
