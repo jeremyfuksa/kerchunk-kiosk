@@ -73,6 +73,10 @@ export function renderAdmin(root: HTMLElement): void {
           <button id="streamBtn" title="Listen to the live speaker feed in this browser">▶ Listen here</button>
         </div>
       </section>
+      <section class="sysHealth collapsible" data-key="system">
+        <h2>System health <span class="hint">the machine under the radio — helper CPU is the usual suspect</span></h2>
+        <div id="sysBody" class="sysBody"></div>
+      </section>
       <section class="discoveries">
         <h2>Discoveries <span class="count" id="dcCount"></span><span class="hint">found by Close Call — listen, then decide</span></h2>
         <div class="dcToolbar">
@@ -125,10 +129,6 @@ export function renderAdmin(root: HTMLElement): void {
       <section class="alertFeed collapsible" data-key="alerts">
         <h2>Alerts <span class="hint">what fired while you were away — flag channels with the bell</span></h2>
         <ul id="alertRows" class="alertList"></ul>
-      </section>
-      <section class="sysHealth collapsible" data-key="system">
-        <h2>System health <span class="hint">the machine under the radio — helper CPU is the usual suspect</span></h2>
-        <div id="sysBody" class="sysBody"></div>
       </section>
       <section class="transcripts collapsible" data-key="transcripts">
         <h2>Transcripts <span class="hint">what was said — whisper-tiny gist, not gospel</span></h2>
