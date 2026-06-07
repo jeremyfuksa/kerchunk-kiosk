@@ -15,7 +15,10 @@ import { readFileSync, readdirSync } from "node:fs";
 // devnum without moving its index. Sort by (busnum, port path, natural
 // segment compare); resolve fresh at every helper spawn, never cached.
 
-const RTL_PRODUCT = "2838";
+// The RTL2832U family ships under multiple PIDs: 2838 (most clones, the
+// RTL-SDR Blog sticks) and bare 2832 (older Nooelec Nano units — one of
+// the operator's Nano 2s reports this).
+const RTL_PRODUCTS = new Set(["2832", "2838"]);
 const USB_ROOT = "/sys/bus/usb/devices";
 
 export interface RtlDevice {
@@ -34,7 +37,7 @@ export function listRtlDevices(root = USB_ROOT, read?: (p: string) => string): R
   } catch { return []; }
   for (const e of entries) {
     try {
-      if (rf(`${root}/${e}/idProduct`).trim() !== RTL_PRODUCT) continue;
+      if (!RTL_PRODUCTS.has(rf(`${root}/${e}/idProduct`).trim())) continue;
       found.push({
         port: e,
         busnum: Number(rf(`${root}/${e}/busnum`).trim()),
