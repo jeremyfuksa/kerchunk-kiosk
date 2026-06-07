@@ -113,6 +113,8 @@ export class WidebandEngine implements ScannerEngine {
   }
 
   get state(): EngineState { return this._state; }
+  /** The DSP helper's pid (system-health diagnostics). */
+  get helperPid(): number | null { return this.child?.pid ?? null; }
 
   on(l: EngineListener): void { this.listeners.add(l); }
   off(l: EngineListener): void { this.listeners.delete(l); }

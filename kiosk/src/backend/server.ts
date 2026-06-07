@@ -15,6 +15,7 @@ import { isScannable, isAudible, profileFor } from "./config/banks.js";
 import { solveK, estimateWatts, distKm, type Anchor } from "./powerEstimator.js";
 import { parseSame, fipsMatch, isTest } from "./same.js";
 import { Transcriber } from "./transcriber.js";
+import { SystemStats } from "./systemStats.js";
 import { dirname, join as pathJoin } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -356,6 +357,22 @@ export function createServer(deps: ServerDeps): { server: Server } {
   const estTimer = setInterval(() => { runPowerEstimate(); }, 12 * 3600 * 1000);
   estTimer.unref?.();
 
+  // ── System health (ROADMAP Idea 16): host + DSP-helper stats, sampled
+  // into a 5-minute ring. openCount rides the engine's own events so a
+  // spike correlates with what the radio was doing at that moment.
+  const openIds = new Set<string>();
+  engine.on((ev) => {
+    if (ev.type === "active") openIds.add(ev.channel.id);
+    else if (ev.type === "release") openIds.delete(ev.channelId);
+    else if (ev.type === "status" || ev.type === "idle") openIds.clear();
+  });
+  const sysStats = new SystemStats({
+    helperPid: () => (engine as { helperPid?: number | null }).helperPid ?? null,
+    openCount: () => openIds.size,
+    dataDir: "/var/lib/kerchunk-kiosk",
+  });
+  sysStats.start();
+
   // ── Transcription (stretch, opt-in): segments ride the remote-listening
   // audio tee, cut on audible transitions; the python worker (faster-
   // whisper tiny.en, nice 15) files text back onto history rows.
@@ -653,6 +670,10 @@ export function createServer(deps: ServerDeps): { server: Server } {
 
     if (method === "POST" && path === "/api/power/estimate") {
       return json(res, 200, runPowerEstimate());
+    }
+
+    if (method === "GET" && path === "/api/system") {
+      return json(res, 200, sysStats.snapshot());
     }
 
     if (method === "GET" && path === "/api/stream.wav") {

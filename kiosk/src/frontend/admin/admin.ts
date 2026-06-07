@@ -126,6 +126,10 @@ export function renderAdmin(root: HTMLElement): void {
         <h2>Alerts <span class="hint">what fired while you were away — flag channels with the bell</span></h2>
         <ul id="alertRows" class="alertList"></ul>
       </section>
+      <section class="sysHealth collapsible" data-key="system">
+        <h2>System health <span class="hint">the machine under the radio — helper CPU is the usual suspect</span></h2>
+        <div id="sysBody" class="sysBody"></div>
+      </section>
       <section class="transcripts collapsible" data-key="transcripts">
         <h2>Transcripts <span class="hint">what was said — whisper-tiny gist, not gospel</span></h2>
         <ul id="trRows" class="alertList"></ul>
@@ -416,6 +420,46 @@ export function renderAdmin(root: HTMLElement): void {
   }
   void renderAlertFeed().catch(() => {});
   setInterval(() => { renderAlertFeed().catch(() => {}); }, 60_000);
+
+  // ── System health (Idea 16): gauges + sparklines off /api/system.
+  const sysBody = root.querySelector<HTMLElement>("#sysBody")!;
+  function spark(values: Array<number | null>, max: number, warn: number): string {
+    const W = 120; const H = 28;
+    const pts = values.map((v, i) => {
+      const x = (i / Math.max(1, values.length - 1)) * W;
+      const y = H - Math.min(1, Math.max(0, (v ?? 0) / max)) * H;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    }).join(" ");
+    const last = values[values.length - 1];
+    const hot = last !== null && last !== undefined && last >= warn;
+    return `<svg class="spark${hot ? " hot" : ""}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"><polyline points="${pts}" fill="none" /></svg>`;
+  }
+  async function renderSystem(): Promise<void> {
+    const { now, ring } = await fetch("/api/system").then((r) => r.json()) as {
+      now: Record<string, number | boolean | null> | null;
+      ring: Array<Record<string, number | boolean | null>>;
+    };
+    if (!now) { sysBody.textContent = "no samples yet"; return; }
+    const num = (k: string) => ring.map((r) => (typeof r[k] === "number" ? r[k] as number : null));
+    const cell = (label: string, value: string, sparkHtml: string, hot = false) =>
+      `<div class="sysCell${hot ? " hot" : ""}"><div class="sysLabel">${label}</div>
+        <div class="sysValue">${value}</div>${sparkHtml}</div>`;
+    const t = now.tempC as number | null;
+    sysBody.innerHTML =
+      cell("CPU", `${now.cpuPct}%`, spark(num("cpuPct"), 100, 85), (now.cpuPct as number) >= 85)
+      + cell("DSP helper", now.helperCpuPct === null ? "—" : `${now.helperCpuPct}% · ${now.helperRssMb} MB`,
+          spark(num("helperCpuPct"), 400, 320), (now.helperCpuPct as number | null ?? 0) >= 320)
+      + cell("Temp", t === null ? "n/a" : `${t}°C${now.throttled ? " · THROTTLED" : ""}`,
+          spark(num("tempC"), 100, 85), (t ?? 0) >= 85 || now.throttled === true)
+      + cell("RAM", `${now.memUsedPct}% · node ${now.backendRssMb} MB`, spark(num("memUsedPct"), 100, 90), (now.memUsedPct as number) >= 90)
+      + cell("Open channels", String(now.openCount), spark(num("openCount"), 12, 11))
+      + cell("Disk free", now.diskFreeMb === null ? "n/a" : `${((now.diskFreeMb as number) / 1024).toFixed(1)} GB`,
+          "", (now.diskFreeMb as number | null ?? 1e9) < 2048)
+      + `<div class="sysCell"><div class="sysLabel">Load</div><div class="sysValue">${(now.load1 as number).toFixed(1)}</div>
+         <div class="hint" style="font-size:0.7rem">GR threads inflate this — trust temp</div></div>`;
+  }
+  void renderSystem().catch(() => {});
+  setInterval(() => { renderSystem().catch(() => {}); }, 3000);
 
   // ── Transcripts (stretch, opt-in): the searchable voice log.
   const trRows = root.querySelector<HTMLElement>("#trRows")!;
