@@ -16,7 +16,6 @@ import icoBell from "lucide-static/icons/bell-ring.svg?raw";
 import icoGauge from "lucide-static/icons/gauge.svg?raw";
 import icoInbox from "lucide-static/icons/inbox.svg?raw";
 import icoList from "lucide-static/icons/list.svg?raw";
-import icoLayers from "lucide-static/icons/layers.svg?raw";
 import icoSliders from "lucide-static/icons/sliders-horizontal.svg?raw";
 import icoGear from "lucide-static/icons/settings-2.svg?raw";
 import type { Bank } from "../../backend/config/schema.js";
@@ -75,7 +74,6 @@ export function renderAdmin(root: HTMLElement): void {
         <a href="#/" data-route="home"><span class="navIco" data-ico="home"></span>Home</a>
         <a href="#/triage" data-route="triage"><span class="navIco" data-ico="triage"></span>Triage <span id="navDcCount" class="navBadge"></span></a>
         <a href="#/channels" data-route="channels"><span class="navIco" data-ico="channels"></span>Channels</a>
-        <a href="#/banks" data-route="banks"><span class="navIco" data-ico="banks"></span>Banks</a>
         <a href="#/scan" data-route="scan"><span class="navIco" data-ico="scan"></span>Scan</a>
       </nav>
       <div class="pages">
@@ -111,10 +109,8 @@ export function renderAdmin(root: HTMLElement): void {
           </table>
         </div>
       </section>
-      <section class="banks" data-page="banks">
-        <h2>Banks <span class="hint">toggle a group to mute/unmute it — off wins</span></h2>
-        <div id="bankChips" class="bankChips"></div>
-        <div id="bankProfile" class="bankProfile"></div>
+      <section class="channels" data-page="channels">
+        <h2>Channels <span class="count" id="chCount"></span><button id="addBtn">+ Add</button></h2>
         <div class="bankAdd">
           <input id="bkName" placeholder="Bank name (Air, Rail, …)" />
           <select id="bkBand"><option value="">any band</option><option value="hf">HF</option><option value="vhf">VHF</option><option value="uhf">UHF</option><option value="shf">SHF</option></select>
@@ -124,9 +120,7 @@ export function renderAdmin(root: HTMLElement): void {
           <button id="bkAdd">+ Bank</button>
           <span id="bkErr" class="err"></span>
         </div>
-      </section>
-      <section class="channels" data-page="channels">
-        <h2>Channels <span class="count" id="chCount"></span><button id="addBtn">+ Add</button></h2>
+        <div id="bankProfile" class="bankProfile"></div>
         <div class="tableWrap">
           <table class="chTable">
             <thead><tr>
@@ -206,15 +200,16 @@ export function renderAdmin(root: HTMLElement): void {
   // ── Admin IA (ROADMAP Idea 15): config is a destination, monitoring is
   // the landing. Pure re-layout — all sections stay wired as before; the
   // route only decides which data-page group is visible. Unknown = home.
-  const ROUTES = new Set(["home", "triage", "channels", "banks", "scan"]);
+  const ROUTES = new Set(["home", "triage", "channels", "scan"]);
   const NAV_ICONS: Record<string, string> = {
-    home: icoGauge, triage: icoInbox, channels: icoList, banks: icoLayers, scan: icoSliders,
+    home: icoGauge, triage: icoInbox, channels: icoList, scan: icoSliders,
   };
   root.querySelectorAll<HTMLElement>(".navIco").forEach((el) => {
     el.innerHTML = NAV_ICONS[el.dataset.ico!] ?? "";
   });
   function currentRoute(): string {
-    const r = location.hash.replace(/^#\/?/, "") || "home";
+    let r = location.hash.replace(/^#\/?/, "") || "home";
+    if (r === "banks") r = "channels";   // pre-unification bookmarks survive
     return ROUTES.has(r) ? r : "home";
   }
   function applyRoute(): void {
@@ -277,56 +272,7 @@ export function renderAdmin(root: HTMLElement): void {
   }
 
   // ── Banks: toggleable predicates over band/tags (ROADMAP Idea 1) ──
-  const bankChips = root.querySelector<HTMLElement>("#bankChips")!;
   const bkErr = root.querySelector<HTMLElement>("#bkErr")!;
-
-  function renderBanks(banks: Bank[]): void {
-    bankChips.innerHTML = banks.length === 0
-      ? `<span class="empty">no banks — add one to bulk-toggle a slice of the channel list</span>`
-      : banks.map((b) => {
-          const n = channels.filter((c) => matchesBank(c, b)).length;
-          const range = b.loHz || b.hiHz
-            ? `${b.loHz ? (b.loHz / 1e6).toFixed(b.loHz % 1e6 ? 3 : 0) : "…"}–${b.hiHz ? (b.hiHz / 1e6).toFixed(b.hiHz % 1e6 ? 3 : 0) : "…"} MHz`
-            : undefined;
-          const what = [b.band?.toUpperCase(), range, ...(b.tags ?? [])].filter(Boolean).join(" · ") || "everything";
-          const state = !b.enabled ? "off" : b.audible === false ? "see" : "on";
-          const next = state === "on" ? "SEE (scan, stay silent)" : state === "see" ? "OFF" : "HEAR";
-          return `<button class="bankChip ${state}" data-id="${esc(b.id)}" title="${esc(what)} — ${state.toUpperCase()}; click for ${next}">
-            <span class="bankState"></span>${esc(b.name)}${state === "see" ? ' <span class="bankSee">SEE</span>' : ""} <span class="bankCount">${n}</span>${hasProfile(b) ? ' <span class="bankProf" title="Has a scan profile">*</span>' : ""}
-            <span class="bankGear" data-id="${esc(b.id)}" title="Scan profile (squelch/dwell overrides)">⚙</span>
-            <span class="bankDel" data-id="${esc(b.id)}" title="Delete bank">×</span>
-          </button>`;
-        }).join("");
-    bankChips.querySelectorAll<HTMLButtonElement>(".bankChip").forEach((chip) =>
-      chip.addEventListener("click", async (ev) => {
-        const cfg = await api.getConfig();
-        const id = chip.dataset.id!;
-        if ((ev.target as HTMLElement).classList.contains("bankGear")) {
-          openProfileEditor((cfg.banks ?? []).find((x) => x.id === id));
-          return;
-        }
-        if ((ev.target as HTMLElement).classList.contains("bankDel")) {
-          const b = (cfg.banks ?? []).find((x) => x.id === id);
-          if (!b || !confirm(`Delete bank ${b.name}? Its channels keep scanning.`)) return;
-          cfg.banks = (cfg.banks ?? []).filter((x) => x.id !== id);
-        } else {
-          // Cycle Hear -> See -> Off -> Hear (see = scanned but silent).
-          cfg.banks = (cfg.banks ?? []).map((x) => {
-            if (x.id !== id) return x;
-            if (x.enabled && x.audible !== false) return { ...x, audible: false };
-            if (x.enabled) return { ...x, enabled: false, audible: true };
-            return { ...x, enabled: true, audible: true };
-          });
-        }
-        await api.putConfig(cfg);
-        refreshBanks();
-      }));
-  }
-
-  function hasProfile(b: Bank): boolean {
-    return b.openAboveFloorDb !== undefined || b.noiseQuietDb !== undefined
-      || b.hangMs !== undefined || b.dwellWeight !== undefined;
-  }
 
   // ── Per-bank scan profile editor (ROADMAP Idea 7): squelch trio applies
   // to the bank's channels; dwell weight scales its windows' park time.
@@ -370,14 +316,9 @@ export function renderAdmin(root: HTMLElement): void {
         await api.putConfig(cfg);
         bankProfBox.classList.remove("open");
         bankProfBox.innerHTML = "";
-        refreshBanks();
+        await refresh();
       } catch (e) { err.textContent = (e as Error).message; }
     });
-  }
-
-  async function refreshBanks(): Promise<void> {
-    const cfg = await api.getConfig();
-    renderBanks(cfg.banks ?? []);
   }
 
   root.querySelector<HTMLButtonElement>("#bkAdd")!.addEventListener("click", async () => {
@@ -401,7 +342,7 @@ export function renderAdmin(root: HTMLElement): void {
     await api.putConfig(cfg);
     root.querySelector<HTMLInputElement>("#bkName")!.value = "";
     root.querySelector<HTMLInputElement>("#bkTags")!.value = "";
-    refreshBanks();
+    await refresh();
   });
 
   // ── Insights (ROADMAP Idea 9): aggregates over the history store ──
@@ -584,6 +525,7 @@ export function renderAdmin(root: HTMLElement): void {
   // and the saved channel carries the bank's first tag, so a channel added
   // "into Rail" actually matches Rail.
   let pendingTags: string[] = [];
+  let pendingGroup: string | null = null;
   // Collapsed bank groups (persisted like the collapsible modules).
   const GROUPS_KEY = "kerchunk.admin.banksCollapsed";
   const collapsedBanks = new Set<string>(JSON.parse(localStorage.getItem(GROUPS_KEY) ?? "[]"));
@@ -669,13 +611,13 @@ export function renderAdmin(root: HTMLElement): void {
 
   function renderRows(): void {
     const groups = groupChannelsByBank(channels, banksCache);
-    // Where does the new-channel editor render? A per-group add (pendingTags
+    // Where does the new-channel editor render? A per-group add (pendingGroup
     // set) renders inside ITS bank's group; the global + Add renders at the
     // very top (index 0). Either way the saved channel re-homes by its own
     // predicate match on the post-save refresh.
-    const editorGroup = pendingTags.length === 0
+    const editorGroup = pendingGroup === null
       ? 0
-      : Math.max(0, groups.findIndex((g) => g.bank !== null && (g.bank.tags ?? [])[0] === pendingTags[0]));
+      : Math.max(0, groups.findIndex((g) => (g.bank?.id ?? "unbanked") === pendingGroup));
     chRows.innerHTML =
       groups.map((g, i) => {
         const key = g.bank?.id ?? "unbanked";
@@ -717,6 +659,7 @@ export function renderAdmin(root: HTMLElement): void {
       else await api.updateChannel(tr.dataset.id!, payload);
       editingId = null;
       pendingTags = [];
+      pendingGroup = null;
       await refresh();
     } catch (e) { chErr.textContent = (e as Error).message; }
   }
@@ -752,12 +695,12 @@ export function renderAdmin(root: HTMLElement): void {
       });
       tr.querySelector<HTMLButtonElement>(".save")?.addEventListener("click", () => saveRow(tr));
       tr.querySelector<HTMLButtonElement>(".cancel")?.addEventListener("click", () => {
-        editingId = null; pendingTags = []; chErr.textContent = ""; renderRows();
+        editingId = null; pendingTags = []; pendingGroup = null; chErr.textContent = ""; renderRows();
       });
       if (tr.classList.contains("editing")) {
         tr.addEventListener("keydown", (ev) => {
           if (ev.key === "Enter") { ev.preventDefault(); saveRow(tr); }
-          if (ev.key === "Escape") { editingId = null; pendingTags = []; chErr.textContent = ""; renderRows(); }
+          if (ev.key === "Escape") { editingId = null; pendingTags = []; pendingGroup = null; chErr.textContent = ""; renderRows(); }
         });
       }
     });
@@ -790,6 +733,7 @@ export function renderAdmin(root: HTMLElement): void {
       tr.querySelector<HTMLButtonElement>(".bkAddCh")?.addEventListener("click", () => {
         const b = banksCache.find((x) => x.id === id);
         pendingTags = b?.tags?.length ? [b.tags[0]!] : [];
+        pendingGroup = id;
         editingId = "new";
         collapsedBanks.delete(id);
         renderRows();
@@ -980,7 +924,6 @@ export function renderAdmin(root: HTMLElement): void {
     banksCache = cfg.banks ?? [];
     chCount.textContent = String(channels.length);
     renderRows();
-    refreshBanks();
     if (drawerId) renderDrawer(); // keep an open dossier fresh after saves
   }
 
@@ -1123,7 +1066,7 @@ export function renderAdmin(root: HTMLElement): void {
   renderLockouts();
 
   addBtn.addEventListener("click", () => {
-    pendingTags = []; editingId = "new"; chErr.textContent = ""; renderRows(); tr0Focus();
+    pendingTags = []; pendingGroup = null; editingId = "new"; chErr.textContent = ""; renderRows(); tr0Focus();
   });
 
   // ---- Now Playing card ----
@@ -1313,7 +1256,7 @@ export function renderAdmin(root: HTMLElement): void {
     } catch (e) { tErr.textContent = (e as Error).message; }
   });
 
-  refresh();
+  refresh().catch((e) => { chErr.textContent = (e as Error).message; });
 
   const wxFreq = root.querySelector<HTMLSelectElement>("#wxFreq")!;
   const wxTag = root.querySelector<HTMLInputElement>("#wxTag")!;
