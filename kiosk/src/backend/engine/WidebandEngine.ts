@@ -24,6 +24,9 @@ export interface WidebandEngineOptions {
   helperCmd?: string[];
   /** Extra env for the helper (tests drive fake scenarios through this). */
   helperEnv?: Record<string, string>;
+  /** Resolve the librtlsdr device index at spawn time (multi-SDR: devnums
+   *  change on every replug, so this runs fresh per spawn). null = first. */
+  rtlIndex?: () => number | null;
   autoRestart?: boolean;
   restartDelayMs?: number;
   /** Per-group dwell override; otherwise config.groupDwellMs, else 3000. */
@@ -101,7 +104,10 @@ export class WidebandEngine implements ScannerEngine {
   private exitFailures = 0;
   private lastSpawnAt = 0;
 
+  private readonly rtlIndexResolver: (() => number | null) | undefined;
+
   constructor(opts: WidebandEngineOptions = {}) {
+    this.rtlIndexResolver = opts.rtlIndex;
     this.helperCmd = opts.helperCmd ?? defaultHelperCmd();
     this.helperEnv = opts.helperEnv ?? {};
     this.autoRestart = opts.autoRestart ?? true;
@@ -170,6 +176,9 @@ export class WidebandEngine implements ScannerEngine {
       "--sink", cfg.audioSink,
       "--hang-ms", String(cfg.dwellMs),
       "--audio-fd", "3",
+      ...(this.rtlIndexResolver
+        ? (() => { const i = this.rtlIndexResolver!(); return i === null ? [] : ["--rtl-index", String(i)]; })()
+        : []),
       "--open-db", String(cfg.openAboveFloorDb ?? 9),
     ];
     if (cfg.gain !== "auto") args.push("--gain", String(cfg.gain));

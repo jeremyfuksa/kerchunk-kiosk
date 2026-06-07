@@ -8,6 +8,7 @@ import { WsHub } from "./ws.js";
 import { RtlFmEngine } from "./engine/RtlFmEngine.js";
 import { FakeEngine } from "./engine/FakeEngine.js";
 import { WidebandEngine } from "./engine/WidebandEngine.js";
+import { rtlIndexForPort } from "./radios.js";
 import { setVolume, setMuted } from "./audio.js";
 import { RepeaterBook } from "./repeaterbook.js";
 import { RadioReference } from "./radioreference.js";
@@ -37,13 +38,26 @@ const activityLog = new ActivityLog(500);
 const wsHub = new WsHub();
 // Map persisted scan tuning onto the engine's PCM-energy squelch: squelchLevel
 // is the RMS open-threshold, dwellMs is the silence hang time before hopping.
+// Multi-SDR (Idea 10): roles bind to USB PORTS (these clones ignore EEPROM
+// serials). The librtlsdr index is resolved fresh at every helper spawn —
+// devnums shuffle on replug, the port never does.
+const scanPort = config.radios?.find((r) => r.role === "scan")?.port;
+const weatherPort = config.radios?.find((r) => r.role === "weather")?.port;
 const engine =
   engineKind === "fake" ? new FakeEngine()
-  : engineKind === "wideband" ? new WidebandEngine()
+  : engineKind === "wideband" ? new WidebandEngine(
+      scanPort ? { rtlIndex: () => rtlIndexForPort(scanPort) } : {})
   : new RtlFmEngine({
       openThreshold: config.scan.squelchLevel,
       hangMs: config.scan.dwellMs,
     });
+
+// Dedicated weather radio: parked on NWR 24/7, decode-only (null audio
+// sink — no speaker claim until the cross-device arbiter exists). SAME
+// jumps from the visiting-slot tier to gold: every burst is heard.
+const weatherEngine = engineKind === "wideband" && weatherPort && config.weatherChannel
+  ? new WidebandEngine({ rtlIndex: () => rtlIndexForPort(weatherPort) })
+  : undefined;
 
 engine.on((ev: EngineEvent) => {
   if (ev.type === "active") {
@@ -117,7 +131,7 @@ history.prune();
 const pruneTimer = setInterval(() => history.prune(), 24 * 3600 * 1000);
 pruneTimer.unref?.();
 
-const { server } = createServer({ configStore, engine, activityLog, wsHub, staticDir: STATIC_DIR, lookup, weather, history });
+const { server } = createServer({ configStore, engine, weatherEngine, activityLog, wsHub, staticDir: STATIC_DIR, lookup, weather, history });
 
 const wss = new WebSocketServer({ server, path: "/ws" });
 wss.on("connection", (ws) => wsHub.attach(ws));
@@ -127,6 +141,22 @@ server.listen(PORT, () => {
   // Boot through the SAME constructor every API path uses — a hand-built
   // payload here once omitted knownHz/lockouts/closeCall and made every
   // reboot re-discover all filed frequencies (review finding).
+  if (weatherEngine && config.weatherChannel) {
+    void weatherEngine.start({
+      channels: [{
+        ...config.weatherChannel,
+        id: "wx_same", alphaTag: "NWR (SAME decode)",
+        enabled: true, audible: false, background: true,
+      }],
+      sampleRate: config.scan.sampleRate,
+      squelchLevel: config.scan.squelchLevel,
+      dwellMs: config.scan.dwellMs,
+      gain: config.scan.gain,
+      audioSink: "none",
+      closeCall: false,
+      knownHz: [config.weatherChannel.freq],
+    }).catch((e) => console.error("[weather-radio]", (e as Error).message));
+  }
   engine.start(toScanConfig(config, "scan"))
     // Re-apply persisted volume/mute to the hardware mixer on boot, so the saved
     // setting actually takes effect instead of inheriting the OS mixer state.
