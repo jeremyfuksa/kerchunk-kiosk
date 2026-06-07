@@ -41,7 +41,7 @@ export function renderMap(root: HTMLElement): void {
       <span class="lgBlip active"></span> channel hit
       <span class="lgBlip cc"></span> close call
       <span class="lgBlip nofix"></span> no fix (ring)
-      <span class="lgNote">blips mark transmitter sites · glow = 30-day traffic</span>
+      <span class="lgNote">blips mark transmitter sites · glow = 30-day traffic · weather = live NEXRAD</span>
     </div>
     <div id="mapMsg" class="mapMsg"></div>
   </div>`;
@@ -118,6 +118,31 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
         ? { mapId, isFractionalZoomEnabled: true, colorScheme: "DARK" }
         : { styles: DARK_STYLE }),
     });
+
+    // ── NEXRAD radar overlay (ROADMAP Idea 2 follow-on, the SAME cross-tie:
+    // a warning banner with live precipitation under it). IEM's keyless
+    // cached composite — free, US-wide, Web Mercator, ~5 min volume scans.
+    // Transparent wherever there's no weather, so a dry day costs nothing;
+    // offline it just 404s to absence. Tile overlays render under every
+    // marker/circle, so blips and coverage stay on top.
+    const RADAR_REFRESH_MS = 5 * 60_000;
+    let radarEpoch = Date.now();
+    function radarLayer(): any {
+      return new google.maps.ImageMapType({
+        getTileUrl: (c: { x: number; y: number }, z: number) =>
+          `https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-900913/${z}/${c.x}/${c.y}.png?_=${radarEpoch}`,
+        tileSize: new google.maps.Size(256, 256),
+        opacity: 0.55,
+        name: "nexrad",
+      });
+    }
+    map.overlayMapTypes.push(radarLayer());
+    setInterval(() => {
+      // Swap in a fresh epoch so tiles re-fetch past the browser cache.
+      radarEpoch = Date.now();
+      map.overlayMapTypes.pop();
+      map.overlayMapTypes.push(radarLayer());
+    }, RADAR_REFRESH_MS);
 
     // Home: the kiosk's own antenna. Small, dim, unmistakable.
     new google.maps.Marker({
