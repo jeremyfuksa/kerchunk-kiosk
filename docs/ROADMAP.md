@@ -915,21 +915,23 @@ transcription (PRs #66–#68). What's open, in execution order:
 
 ### Build next (software-only, in order)
 1. **Idea 15 — Admin IA** (analytics home + config pages). The prerequisite
-   shell: every future panel (mesh, ADS-B, history charts) arrives as a page
-   instead of another collapsed section. Frontend-only restructure.
-2. **Idea 14 — Meshtastic** (companion node feed). Gated on ONE operator
-   answer: how the node connects (USB-serial / BLE / MQTT). Lands as a
-   panel + map layer in the Idea 15 shell.
-3. **Idea 3 — further ambient skins** (constellation, kerchunk wall, data
-   poster). First skin (auto-replay) shipped; more are optional polish, low
-   priority by operator note.
+   shell for every future panel. Frontend-only restructure.
+2. **Idea 3 — further ambient skins** (constellation, kerchunk wall, data
+   poster). First skin (auto-replay) shipped; optional polish, low priority.
 
-### Hardware-gated (one second dongle unlocks the chain)
-4. **Idea 10 — multi-SDR.** The purchase that pays four times: parallel
-   band coverage (no group-hop misses), per-bank gain for real, SAME's
-   gold tier (a parked weather radio), and the RF substrate for ADS-B.
-5. **Idea 13 — ADS-B aircraft on the map.** Rides Idea 10: a 1090 MHz
-   dongle + dump1090 sidecar; the map/correlation side is ready software.
+### Tabled by operator (2026-06-06 — don't re-pitch; he'll return to them)
+- **Idea 13 — ADS-B**: hardware staged (V4 stick identified, port system
+  ready, plan = blog-librtlsdr build → dump1090 sidecar → map layer);
+  antenna pending. Tabled "for now."
+- **Idea 14 — Meshtastic**: tabled before the connection question
+  (USB-serial / BLE / MQTT) was answered.
+
+### Hardware/architecture continuing under Idea 10
+- Multi-SDR day 1 SHIPPED (PRs #74-#76): port-path addressing (topology
+  order, PID family), dedicated-weather-radio architecture (parked until a
+  stick gets an antenna — visiting-slot SAME auto-returns meanwhile),
+  tune-to-weather. Phase 2 = cross-device audio arbiter (gives the weather
+  radio and any future role a speaker claim).
 
 ### Parked, deliberately
 - **Idea 12 — digital voice**: local DMR is trunked Cap+/Tier III;
