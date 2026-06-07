@@ -172,10 +172,11 @@ describe("groupChannelsByBank — the unified Channels page's skeleton", () => {
     expect(g[3]!.channels.map((c) => c.id)).toEqual(["uhf-stray"]);
   });
   it("sorts channels by frequency within a group; empty banks still render; no empty Unbanked", () => {
-    const chans = [mk("hi", 161_100_000, ["rail"]), mk("lo", 160_215_000, ["rail"])];
+    const chans = [mk("hi", 161_100_000, ["rail"]), mk("lo", 160_215_000, ["rail"]), mk("stray9", 950_000_000), mk("stray1", 920_000_000)];
     const g = groupChannelsByBank(chans, banks);
     expect(g[0]!.channels.map((c) => c.id)).toEqual(["lo", "hi"]);
-    expect(g.length).toBe(3);                       // Rail, VHF-ish, GMRS — no Unbanked group
+    expect(g.length).toBe(4);                       // Rail, VHF-ish, GMRS, Unbanked
     expect(g[1]!.channels).toEqual([]);             // empty bank still listed (findable, deletable)
+    expect(g[3]!.channels.map((c) => c.id)).toEqual(["stray1", "stray9"]);
   });
 });

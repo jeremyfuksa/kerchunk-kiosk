@@ -35,7 +35,7 @@ body {
   color: var(--ink);
 }
 
-.admin { max-width: 760px; margin: 0 auto; padding: 1.6rem 1.2rem 4rem; }
+.admin { max-width: 1440px; margin: 0 auto; padding: 0 1.4rem 4rem; }
 
 .admin h1 {
   font-family: var(--cond);
@@ -292,7 +292,7 @@ body {
 
 /* Tablet (≥700px): wider canvas; small modules pair up side-by-side */
 @media (min-width: 700px) {
-  .admin { max-width: 920px; }
+  /* (legacy mid-width bump removed — the IA workspace handles width) */
   .admin .tableWrap { max-height: 52vh; }
   .admin .moduleRow {
     display: grid;
@@ -304,37 +304,11 @@ body {
   .admin .moduleRow section { margin: 0; }
 }
 
-/* Desktop (≥1140px): two-pane workspace — the LISTS get the width, the
-   Now Playing rail sticks alongside so controls follow during triage. */
+/* (pre-IA two-pane grid removed 2026-06-06: the nav-rail workspace owns
+   layout now; its grid-areas targeted sections that moved into .pages and
+   the auto-placement crammed everything into the right column.) */
 @media (min-width: 1140px) {
-  .admin {
-    max-width: 1480px;
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 380px;
-    grid-template-areas:
-      "title  title"
-      "disc   card"
-      "banks  card"
-      "chan   card"
-      "stats  card"
-      "row    card";
-    column-gap: 1.8rem;
-    align-items: start;
-  }
-  .admin h1 { grid-area: title; }
-  .admin .discoveries { grid-area: disc; margin-top: 0.4rem; }
-  .admin .banks { grid-area: banks; }
-  .admin .channels { grid-area: chan; }
-  .admin .insights { grid-area: stats; }
-  .admin .moduleRow { grid-area: row; align-self: start; grid-template-columns: 1fr 1fr 1fr; }
-  /* The control surface rides along while you triage the lists. */
-  .admin .nowCard {
-    grid-area: card;
-    position: sticky; top: 1.2rem;
-    margin-top: 0.4rem;
-    align-self: start;
-  }
-  .admin .tableWrap { max-height: 44vh; }
+  .admin .tableWrap { max-height: 56vh; }
 }
 
 
@@ -636,3 +610,180 @@ body {
 .spark { width: 100%; height: 28px; }
 .spark polyline { stroke: var(--pine, #75acaf); stroke-width: 1.5; }
 .spark.hot polyline { stroke: var(--flamingo, #f08080); }
+
+/* ── Admin IA (Idea 15): nav rail + page visibility. Pure re-layout. */
+.pageHidden { display: none !important; }
+.adminNav {
+  display: flex; gap: 0.4rem;
+  margin: 0 0 1.2rem;
+  border-bottom: 1px solid var(--border-default, #42454e);
+  padding-bottom: 0;
+}
+.adminNav a {
+  font-family: var(--font-sans, sans-serif);
+  font-weight: 600; font-size: 0.85rem;
+  letter-spacing: 0.18em; text-transform: uppercase;
+  text-decoration: none;
+  color: var(--text-tertiary, #747b8a);
+  padding: 0.5rem 1.1rem;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+}
+.adminNav a:hover { color: var(--text-secondary, #9299a5); }
+.adminNav a.active {
+  color: var(--spark, #ff6b35);
+  border-color: var(--border-default, #42454e);
+  background: var(--bg-subtle, #2b303b);
+  position: relative; top: 1px;
+}
+
+/* ── Admin IA, designed (Idea 15): mission-control workspace.
+   The kiosk's instrument language carried into the admin: condensed
+   uppercase labels, mono data, spark as the only loud color. */
+.adminHead {
+  display: flex; align-items: baseline; gap: 1rem;
+  padding: 0.9rem 0 0.7rem;
+  border-bottom: 1px solid var(--border-default, #42454e);
+  margin-bottom: 1.1rem;
+}
+.adminHead .brand {
+  font-family: var(--font-sans, sans-serif);
+  font-weight: 700; font-size: 1.05rem; letter-spacing: 0.3em;
+  color: var(--text-primary, #f7f8f9);
+}
+.adminHead .brandSub {
+  font-weight: 600; font-size: 0.7rem; letter-spacing: 0.26em;
+  color: var(--text-tertiary, #747b8a); text-transform: uppercase;
+  margin-left: 0.6rem;
+}
+.adminHead .mapLink { margin-left: auto; }
+
+.workspace { display: flex; gap: 1.4rem; align-items: flex-start; }
+.pages { flex: 1; min-width: 0; }
+
+/* Rail: vertical on desktop, horizontal strip on narrow screens. */
+.adminNav {
+  display: flex; flex-direction: column; gap: 0.15rem;
+  position: sticky; top: 0.8rem;
+  min-width: 10.5rem;
+  border: none; margin: 0; padding: 0;
+}
+.adminNav a {
+  display: flex; align-items: center; gap: 0.65rem;
+  font-family: var(--font-sans, sans-serif);
+  font-weight: 600; font-size: 0.8rem;
+  letter-spacing: 0.16em; text-transform: uppercase;
+  text-decoration: none;
+  color: var(--text-tertiary, #747b8a);
+  padding: 0.55rem 0.8rem;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  position: static; top: auto; background: none;
+}
+.adminNav a:hover { color: var(--text-secondary, #9299a5); background: var(--bg-subtle, #2b303b); }
+.adminNav a.active {
+  color: var(--spark, #ff6b35);
+  background: var(--bg-subtle, #2b303b);
+  border-color: var(--border-default, #42454e);
+}
+.adminNav .navIco svg { width: 1rem; height: 1rem; display: block; }
+.adminNav .navBadge:not(:empty) {
+  margin-left: auto;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.7rem;
+  color: var(--bg-base, #1c1f26);
+  background: var(--golden-amber, #ffc05c);
+  border-radius: 8px;
+  padding: 0.05rem 0.45rem;
+}
+@media (max-width: 900px) {
+  .workspace { flex-direction: column; }
+  .adminNav { flex-direction: row; flex-wrap: wrap; position: static; min-width: 0; width: 100%; }
+}
+
+/* Stat tiles: the glance numbers. */
+.statRow {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr) 2fr;
+  gap: 0.8rem;
+  margin-bottom: 1.1rem;
+}
+@media (max-width: 1100px) { .statRow { grid-template-columns: repeat(2, 1fr); } .clockTile { grid-column: span 2; } }
+.statTile {
+  display: block; text-decoration: none;
+  padding: 0.8rem 1rem;
+  border: 1px solid var(--border-default, #42454e);
+  border-radius: 8px;
+  background: var(--bg-subtle, #2b303b);
+}
+a.statTile:hover { border-color: var(--golden-amber, #ffc05c); }
+.stLabel {
+  font-family: var(--font-sans, sans-serif);
+  font-weight: 600; font-size: 0.68rem;
+  letter-spacing: 0.2em; text-transform: uppercase;
+  color: var(--text-tertiary, #747b8a);
+}
+.stValue {
+  font-family: var(--font-mono, monospace);
+  font-size: 1.9rem; font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--spark, #ff6b35);
+  line-height: 1.2; margin: 0.15rem 0;
+}
+.stSub { font-size: 0.75rem; color: var(--text-secondary, #9299a5); }
+
+/* Hour clock: 24 bars, current hour in spark. */
+.hourClock { display: flex; align-items: flex-end; gap: 2px; height: 3.1rem; margin-top: 0.4rem; }
+.clkBar { flex: 1; background: var(--pine, #75acaf); opacity: 0.65; border-radius: 1px 1px 0 0; min-height: 3px; }
+.clkBar.now { background: var(--spark, #ff6b35); opacity: 1; }
+
+/* Feeds pair on home. */
+.feedsRow { display: grid; grid-template-columns: 1fr 1fr; gap: 1.1rem; }
+@media (max-width: 1100px) { .feedsRow { grid-template-columns: 1fr; } }
+.feedsRow > section { margin: 0; }
+
+/* ── ui-ux pass: hierarchy, contrast, focus, motion (skill-driven fixes) */
+
+/* Hero: Now Playing is THE thing — everything else is instrumentation. */
+.nowCard.hero {
+  border: 1px solid var(--border-strong, #4d515c);
+  border-left: 3px solid var(--spark, #ff6b35);
+  background:
+    radial-gradient(ellipse 70% 120% at 8% 50%, color-mix(in srgb, var(--spark, #ff6b35) 7%, transparent), transparent 60%),
+    var(--bg-subtle, #2b303b);
+  border-radius: 10px;
+  padding: 1.1rem 1.4rem;
+}
+.nowCard.hero .npName { font-size: 1.5rem; }
+
+/* Contrast: small uppercase labels were neutral-500 on bg-subtle (~3.2:1,
+   fails AA for small text). neutral-400 clears 4.5:1. */
+.stLabel, .sysLabel { color: var(--text-secondary, #9299a5); }
+.admin .hint { color: var(--text-secondary, #9299a5); }
+
+/* Focus: keyboard travel gets the same affordance mouse hover gets. */
+.adminNav a:focus-visible,
+.admin button:focus-visible,
+a.statTile:focus-visible,
+.admin input:focus-visible,
+.admin select:focus-visible {
+  outline: 2px solid var(--golden-amber, #ffc05c);
+  outline-offset: 2px;
+}
+
+/* Touch + pointer: rows/chips read clickable and hit 44px comfortably. */
+.adminNav a { min-height: 2.6rem; }
+.rowOpen, .bankGear, .bankDel { cursor: pointer; }
+.admin button { cursor: pointer; transition: border-color 160ms ease, color 160ms ease, background 160ms ease; }
+
+/* Hour clock empty state */
+.clkEmpty {
+  font-size: 0.78rem; color: var(--text-secondary, #9299a5);
+  align-self: center; width: 100%; text-align: center;
+}
+
+/* Motion respect: every pulse/sweep/ring quiets down on request. */
+@media (prefers-reduced-motion: reduce) {
+  .admin *, .admin *::before, .admin *::after { animation: none !important; transition: none !important; }
+}

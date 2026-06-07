@@ -12,6 +12,11 @@ import icoX from "lucide-static/icons/x.svg?raw";
 import icoCheck from "lucide-static/icons/check.svg?raw";
 import icoUnlock from "lucide-static/icons/lock-open.svg?raw";
 import icoBell from "lucide-static/icons/bell-ring.svg?raw";
+import icoGauge from "lucide-static/icons/gauge.svg?raw";
+import icoInbox from "lucide-static/icons/inbox.svg?raw";
+import icoList from "lucide-static/icons/list.svg?raw";
+import icoLayers from "lucide-static/icons/layers.svg?raw";
+import icoSliders from "lucide-static/icons/sliders-horizontal.svg?raw";
 import type { Bank } from "../../backend/config/schema.js";
 import { ReconnectingWs } from "../lib/wsClient.js";
 import type { EngineEvent } from "../../backend/engine/ScannerEngine.js";
@@ -58,8 +63,20 @@ function iconBtn(cls: string, icon: string, label: string, attrs = ""): string {
 export function renderAdmin(root: HTMLElement): void {
   root.innerHTML = `
     <main class="admin">
-      <h1>Kerchunk Kiosk — Admin <a class="mapLink" href="/map" target="_blank" title="Live activity map">MAP ↗</a></h1>
-      <section class="nowCard">
+      <header class="adminHead">
+        <span class="brand">KERCHUNK <span class="brandSub">mission control</span></span>
+        <a class="mapLink" href="/map" target="_blank" title="Live activity map">MAP ↗</a>
+      </header>
+      <div class="workspace">
+      <nav class="adminNav" id="adminNav" aria-label="Admin sections">
+        <a href="#/" data-route="home"><span class="navIco" data-ico="home"></span>Home</a>
+        <a href="#/triage" data-route="triage"><span class="navIco" data-ico="triage"></span>Triage <span id="navDcCount" class="navBadge"></span></a>
+        <a href="#/channels" data-route="channels"><span class="navIco" data-ico="channels"></span>Channels</a>
+        <a href="#/banks" data-route="banks"><span class="navIco" data-ico="banks"></span>Banks</a>
+        <a href="#/scan" data-route="scan"><span class="navIco" data-ico="scan"></span>Scan</a>
+      </nav>
+      <div class="pages">
+      <section class="nowCard hero" data-page="home">
         <h2>Now playing</h2>
         <div class="npWhat"><span id="npName" class="npName">scanning…</span> <span id="npFreq" class="npFreq"></span></div>
         <div class="npControls">
@@ -73,11 +90,11 @@ export function renderAdmin(root: HTMLElement): void {
           <button id="streamBtn" title="Listen to the live speaker feed in this browser">▶ Listen here</button>
         </div>
       </section>
-      <section class="sysHealth collapsible" data-key="system">
+      <section class="sysHealth collapsible" data-key="system" data-page="home">
         <h2>System health <span class="hint">the machine under the radio — helper CPU is the usual suspect</span></h2>
         <div id="sysBody" class="sysBody"></div>
       </section>
-      <section class="discoveries">
+      <section class="discoveries" data-page="triage">
         <h2>Discoveries <span class="count" id="dcCount"></span><span class="hint">found by Close Call — listen, then decide</span></h2>
         <div class="dcToolbar">
           <button id="dcDismissSel" disabled>Dismiss selected</button>
@@ -91,7 +108,7 @@ export function renderAdmin(root: HTMLElement): void {
           </table>
         </div>
       </section>
-      <section class="banks">
+      <section class="banks" data-page="banks">
         <h2>Banks <span class="hint">toggle a group to mute/unmute it — off wins</span></h2>
         <div id="bankChips" class="bankChips"></div>
         <div id="bankProfile" class="bankProfile"></div>
@@ -105,7 +122,7 @@ export function renderAdmin(root: HTMLElement): void {
           <span id="bkErr" class="err"></span>
         </div>
       </section>
-      <section class="channels">
+      <section class="channels" data-page="channels">
         <h2>Channels <span class="count" id="chCount"></span><button id="addBtn">+ Add</button></h2>
         <div class="tableWrap">
           <table class="chTable">
@@ -117,7 +134,8 @@ export function renderAdmin(root: HTMLElement): void {
         </div>
         <span id="chErr" class="err"></span>
       </section>
-      <section class="insights collapsible" data-key="insights">
+      <div class="statRow" data-page="home" id="statRow"></div>
+      <section class="insights collapsible" data-key="insights" data-page="home">
         <h2>Insights <span class="hint" id="inPeriodHint"></span></h2>
         <div class="inToolbar">
           <button class="inPeriod" data-h="24">24 h</button>
@@ -126,15 +144,17 @@ export function renderAdmin(root: HTMLElement): void {
         </div>
         <div id="inBody" class="inBody"></div>
       </section>
-      <section class="alertFeed collapsible" data-key="alerts">
+      <div class="feedsRow" data-page="home">
+      <section class="alertFeed collapsible" data-key="alerts" data-page="home">
         <h2>Alerts <span class="hint">what fired while you were away — flag channels with the bell</span></h2>
         <ul id="alertRows" class="alertList"></ul>
       </section>
-      <section class="transcripts collapsible" data-key="transcripts">
+      <section class="transcripts collapsible" data-key="transcripts" data-page="home">
         <h2>Transcripts <span class="hint">what was said — whisper-tiny gist, not gospel</span></h2>
         <ul id="trRows" class="alertList"></ul>
       </section>
-      <div class="moduleRow">
+      </div>
+      <div class="moduleRow" data-page="scan">
       <section class="tuning collapsible" data-key="tuning">
         <h2>Scan tuning</h2>
         <label>Group dwell (ms) <input id="tGroupDwell" type="number" min="500" step="100" placeholder="3000" /></label>
@@ -159,7 +179,7 @@ export function renderAdmin(root: HTMLElement): void {
         <h2>Close Call lockouts</h2>
         <ul id="loList"></ul>
       </section>
-      <section class="weather collapsible" data-key="weather">
+      <section class="weather collapsible" data-key="weather" data-page="scan">
         <h2>Weather</h2>
         <label>Channel <select id="wxFreq">${NOAA_CHANNELS.map((c) => `<option value="${c.mhz}">${c.label} — ${c.mhz} MHz</option>`).join("")}</select></label>
         <label>Tag <input id="wxTag" type="text" placeholder="NOAA WX" /></label>
@@ -171,13 +191,44 @@ export function renderAdmin(root: HTMLElement): void {
       </section>
       </div>
     </main>
+      </div>
+      </div>
     <div id="drawerScrim" class="drawerScrim"></div>
     <aside id="chDrawer" class="drawer" aria-label="Channel details"></aside>`;
 
   // Progressive disclosure: minor modules collapse behind their legends.
   // State persists per device (an operator who tunes often keeps it open).
   const COLLAPSE_KEY = "kerchunk.admin.collapsed";
-  const collapsed = new Set<string>(JSON.parse(localStorage.getItem(COLLAPSE_KEY) ?? '["tuning","lockouts","weather"]'));
+  const collapsed = new Set<string>(JSON.parse(localStorage.getItem(COLLAPSE_KEY) ?? '["tuning","lockouts","weather","insights","transcripts"]'));
+  // ── Admin IA (ROADMAP Idea 15): config is a destination, monitoring is
+  // the landing. Pure re-layout — all sections stay wired as before; the
+  // route only decides which data-page group is visible. Unknown = home.
+  const ROUTES = new Set(["home", "triage", "channels", "banks", "scan"]);
+  const NAV_ICONS: Record<string, string> = {
+    home: icoGauge, triage: icoInbox, channels: icoList, banks: icoLayers, scan: icoSliders,
+  };
+  root.querySelectorAll<HTMLElement>(".navIco").forEach((el) => {
+    el.innerHTML = NAV_ICONS[el.dataset.ico!] ?? "";
+  });
+  function currentRoute(): string {
+    const r = location.hash.replace(/^#\/?/, "") || "home";
+    return ROUTES.has(r) ? r : "home";
+  }
+  function applyRoute(): void {
+    const route = currentRoute();
+    root.querySelectorAll<HTMLElement>("[data-page]").forEach((el) => {
+      el.classList.toggle("pageHidden", el.dataset.page !== route);
+    });
+    root.querySelectorAll<HTMLAnchorElement>("#adminNav a").forEach((a) => {
+      const active = a.dataset.route === route;
+      a.classList.toggle("active", active);
+      if (active) a.setAttribute("aria-current", "page");
+      else a.removeAttribute("aria-current");
+    });
+  }
+  window.addEventListener("hashchange", applyRoute);
+  applyRoute();
+
   root.querySelectorAll<HTMLElement>("section.collapsible").forEach((sec) => {
     const key = sec.dataset.key!;
     if (collapsed.has(key)) sec.classList.add("collapsed");
@@ -405,6 +456,51 @@ export function renderAdmin(root: HTMLElement): void {
     b.addEventListener("click", () => { inHours = Number(b.dataset.h); void renderInsights(); }));
   void renderInsights();
   setInterval(() => { renderInsights().catch(() => {}); }, 60_000);
+
+  // ── Home stat tiles (Idea 15): the glance numbers. One /api/stats(24h)
+  // + config fetch feeds all four tiles and the hour clock.
+  const statRow = root.querySelector<HTMLElement>("#statRow")!;
+  function fmtAirShort(ms: number): string {
+    const m = Math.round(ms / 60000);
+    return m >= 60 ? `${(m / 60).toFixed(1)}h` : `${m}m`;
+  }
+  async function renderStatTiles(): Promise<void> {
+    const since = Date.now() - 24 * 3600 * 1000;
+    const [stats, cfg, alerts] = await Promise.all([
+      fetch(`/api/stats?since=${since}`).then((r) => r.json()),
+      api.getConfig(),
+      fetch(`/api/history?kind=alert&since=${since}&limit=200`).then((r) => (r.ok ? r.json() : [])),
+    ]);
+    const pending = (cfg.discoveries ?? []).length;
+    const navBadge = root.querySelector<HTMLElement>("#navDcCount");
+    if (navBadge) navBadge.textContent = pending > 0 ? String(pending) : "";
+    const byHour = stats.byHour as number[];
+    const max = Math.max(1, ...byHour);
+    const nowHour = new Date().getHours();
+    const total = byHour.reduce((a, b) => a + b, 0);
+    const peak = byHour.indexOf(Math.max(...byHour));
+    const clock = total === 0
+      ? `<div class="clkEmpty">no traffic yet today</div>`
+      : byHour.map((n, h) =>
+        `<div class="clkBar${h === nowHour ? " now" : ""}" style="height:${Math.max(4, (n / max) * 100)}%" title="${String(h).padStart(2, "0")}:00 — ${n} hits"></div>`).join("");
+    const tile = (label: string, value: string, sub: string, href?: string) =>
+      `<${href ? `a href="${href}"` : "div"} class="statTile">
+        <div class="stLabel">${label}</div>
+        <div class="stValue">${value}</div>
+        <div class="stSub">${sub}</div>
+      </${href ? "a" : "div"}>`;
+    statRow.innerHTML =
+      tile("Hits · 24h", String(stats.totalHits), `${stats.topChannels[0] ? esc(stats.topChannels[0].alphaTag) + " leads" : "quiet band"}`)
+      + tile("Airtime", fmtAirShort(stats.totalAirtimeMs), `${stats.discoveries} close call${stats.discoveries === 1 ? "" : "s"} heard`)
+      + tile("Triage queue", String(pending), pending > 0 ? "discoveries await review" : "inbox zero", "#/triage")
+      + tile("Alerts · 24h", String((alerts as unknown[]).length), "bell + SAME, feed below")
+      + `<div class="statTile clockTile">
+          <div class="stLabel">Activity by hour</div>
+          <div class="hourClock" role="img" aria-label="${total === 0 ? "No traffic yet today" : `${total} hits today, busiest around ${String(peak).padStart(2, "0")}:00`}">${clock}</div>
+        </div>`;
+  }
+  void renderStatTiles().catch(() => {});
+  setInterval(() => { renderStatTiles().catch(() => {}); }, 60_000);
 
   // ── Alert feed (ROADMAP Idea 6): the durable "what fired while I was
   // away" review, straight off history rows with kind=alert.

@@ -123,6 +123,7 @@ export function spectrumLabelFor(freqHz: number): string {
 // everywhere. Channels matching no bank land in a trailing Unbanked
 // group (bank: null); empty banks still render so they can be found
 // and deleted.
+// Unbanked channels come out frequency-sorted too — same single pass.
 export interface BankGroup {
   bank: Bank | null;
   channels: Channel[];
