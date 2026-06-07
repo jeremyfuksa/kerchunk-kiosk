@@ -16,7 +16,7 @@ function fakeUsbTree(): string {
   // one dongle a fresh high devnum): topology must win, devnum must lose.
   mk("1-1.4", "2838", 1, 22);
   mk("1-1.2", "2838", 1, 23);   // re-cycled: newest devnum, FIRST port
-  mk("1-1.3", "2838", 1, 21);
+  mk("1-1.3", "2832", 1, 21);  // older Nooelec PID — same family, must count
   mk("1-1.10", "2838", 1, 24);  // natural compare: .10 sorts after .4
   mk("1-2", "011e", 1, 3);      // the wifi dongle: not an RTL
   return root;
