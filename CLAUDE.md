@@ -5,6 +5,15 @@ to run it — read [`README.md`](README.md) and [`kiosk/README.md`](kiosk/README
 first. This file is the *how to change it* layer: the conventions and gotchas
 that are easy to get wrong.
 
+## Git workflow
+
+**Every change ships through a pull request — never commit directly to `main`.**
+Branch off `main` (`feat/*`, `fix/*`, `chore/*`, `docs/*`), push the branch, open
+a PR, and merge it on GitHub. Do not push commits straight to `main`, and do not
+fast-forward local work onto `main` to bypass review. If a change has already
+landed on local `main` by mistake, move it onto a branch and reset `main` to
+`origin/main` before opening the PR.
+
 ## Where the code is
 
 All application code, tests, and commands live under **`kiosk/`** — `cd kiosk`
