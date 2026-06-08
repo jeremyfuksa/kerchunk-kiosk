@@ -42,7 +42,7 @@ export function classifySystemAlerts(sample: SystemSample | null): SystemAlert[]
   else if ((sample.tempC !== null && sample.tempC >= 82) || sample.throttled) alerts.push({
     id: "temperature-high", severity: "attention", title: "Machine is running hot",
     message: `${sample.tempC?.toFixed(1) ?? "Unknown"}°C${sample.throttled ? " and CPU throttling detected" : ""}.`,
-    help: "Check vents and fans. Consider disabling transcription and Close Call sweeps until it cools.",
+    help: "Check vents and fans. Consider disabling Close Call sweeps until it cools.",
   });
   if (sample.diskFreeMb !== null && sample.diskFreeMb < 512) alerts.push({
     id: "disk-critical", severity: "severe", title: "Storage almost full",
@@ -57,7 +57,7 @@ export function classifySystemAlerts(sample: SystemSample | null): SystemAlert[]
   if (sample.memUsedPct >= 95) alerts.push({
     id: "memory-critical", severity: "severe", title: "Memory critically high",
     message: `${sample.memUsedPct}% of memory is in use.`,
-    help: "Restart the radio backend. Disable transcription if memory climbs again.",
+    help: "Restart the radio backend if memory keeps climbing.",
   });
   else if (sample.memUsedPct >= 88) alerts.push({
     id: "memory-high", severity: "attention", title: "Memory usage high",
@@ -67,7 +67,7 @@ export function classifySystemAlerts(sample: SystemSample | null): SystemAlert[]
   if (sample.cpuPct >= 95 || (sample.helperCpuPct ?? 0) >= 380) alerts.push({
     id: "cpu-saturated", severity: "attention", title: "Radio processing saturated",
     message: `CPU ${sample.cpuPct}%${sample.helperCpuPct === null ? "" : `; DSP helper ${sample.helperCpuPct}%`}.`,
-    help: "Disable transcription first, then Close Call sweep ranges if scanning becomes unstable.",
+    help: "Disable Close Call sweep ranges if scanning becomes unstable.",
   });
   return alerts;
 }
