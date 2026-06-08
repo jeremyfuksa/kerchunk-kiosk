@@ -42,6 +42,8 @@ export interface ScanConfig {
   // Frequencies Close Call must never fire on (channels + discoveries +
   // lockouts). Computed by the server, which owns all three lists.
   knownHz?: number[];
+  // Power-detection source for the wideband engine ("lane" | "fft"). Others ignore it.
+  detectVia?: "lane" | "fft";
 }
 
 export type EngineState = "stopped" | "starting" | "running" | "error";
