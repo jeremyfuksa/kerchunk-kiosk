@@ -41,6 +41,24 @@ describe("ConfigStore", () => {
     expect(bak.audio.volume).toBe(10);
   });
 
+  it("telemetry saves write config but skip the .bak churn", () => {
+    const store = new ConfigStore(path);
+    const cfg = store.load();
+    store.save({ ...cfg, audio: { ...cfg.audio, volume: 10 } }); // operator save -> creates .bak baseline (default)
+    rmSync(path + ".bak", { force: true });                      // clear it to prove telemetry won't recreate
+    store.save({ ...cfg, audio: { ...cfg.audio, volume: 20 } }, { telemetry: true });
+    expect(new ConfigStore(path).load().audio.volume).toBe(20);  // value persisted
+    expect(existsSync(path + ".bak")).toBe(false);               // but no .bak churn
+  });
+
+  it("telemetry saves skip validation (already-validated in-memory config)", () => {
+    const store = new ConfigStore(path);
+    const cfg = store.load();
+    // A telemetry save does not re-parse; an operator save (default) would throw.
+    expect(() => store.save({ ...cfg, audio: { ...cfg.audio, volume: 999 } }, { telemetry: true })).not.toThrow();
+    expect(() => store.save({ ...cfg, audio: { ...cfg.audio, volume: 999 } })).toThrow();
+  });
+
   it("falls back to .bak when the main file is corrupt", () => {
     const store = new ConfigStore(path);
     const good = store.load();
