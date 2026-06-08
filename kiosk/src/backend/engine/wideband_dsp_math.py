@@ -11,11 +11,15 @@ import numpy as np
 def channel_bins(freq_hz, center_hz, rate, nfft, half_hz):
     """[lo, hi) FFT bin range (clamped to [0, nfft)) covering a channel of
     half-bandwidth half_hz centered at freq_hz, for a window centered at
-    center_hz. Returns (lo, hi) with lo < hi when any part is in-window."""
+    center_hz. Returns (lo, hi) with lo < hi when any part is in-window.
+
+    When the channel is fully outside the window, returns lo >= hi; pass
+    straight to bin_power_db, which returns the floor — callers need not
+    range-check."""
     binw = rate / nfft
     dc = nfft // 2
     center = int(round((freq_hz - center_hz) / binw)) + dc
-    half = max(1, int(round(half_hz / binw)))
+    half = max(1, int(round(half_hz / binw)))  # nearest-bin half-width (intentional; distinct from close_call_check's floor+1 guard)
     lo = max(0, center - half)
     hi = min(nfft, center + half + 1)
     return (lo, hi)
