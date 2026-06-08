@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { configSchema } from "../src/backend/config/schema.js";
+import { configSchema, defaultConfig } from "../src/backend/config/schema.js";
 import { WidebandEngine } from "../src/backend/engine/WidebandEngine.js";
+import { toScanConfig } from "../src/backend/server.js";
 
 describe("scan.detectVia", () => {
   it("defaults to absent (lane behavior) and accepts 'lane' | 'fft'", () => {
@@ -27,5 +28,17 @@ describe("WidebandEngine --detect-via", () => {
     const a = argsFor({ ...base, detectVia: "fft" });
     expect(a).toContain("--detect-via");
     expect(a[a.indexOf("--detect-via") + 1]).toBe("fft");
+  });
+});
+
+describe("toScanConfig detectVia passthrough", () => {
+  it("passes detectVia: 'fft' through to ScanConfig", () => {
+    const cfg = defaultConfig();
+    cfg.scan.detectVia = "fft";
+    expect(toScanConfig(cfg, "scan").detectVia).toBe("fft");
+  });
+  it("leaves detectVia undefined when absent from config", () => {
+    const cfg = defaultConfig();
+    expect(toScanConfig(cfg, "scan").detectVia).toBeUndefined();
   });
 });
