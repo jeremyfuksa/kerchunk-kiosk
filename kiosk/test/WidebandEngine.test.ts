@@ -212,6 +212,27 @@ describe("WidebandEngine", () => {
     expect(err && err.type === "error" && err.code).toBe("NO_DEVICE");
   });
 
+  it("a crash during warm-up cancels the settle timer — no stale warmup:ready", async () => {
+    // The helper says 'ready' (arming the 1.5s warm-up settle timer) then dies
+    // 100ms later. The timer must be cancelled on teardown, or it fires a false
+    // 'ready' while no helper is live — clearing the kiosk overlay early and
+    // marking the box warmed mid-restart.
+    const { engine, events } = makeEngine(
+      { FAKE_WB_MODE: "crash" },
+      { autoRestart: false },
+    );
+    await engine.start(cfg([VHF_A]));
+    await waitFor(() => events.some((e) => e.type === "error"), 2000);
+    // Wait past the 1.5s settle: a leaked timer would have fired by now.
+    await new Promise((r) => setTimeout(r, 1700));
+    await engine.stop();
+    const warmups = events.filter((e) => e.type === "warmup");
+    // The timer was armed (the first tune emitted warmup:tuned)...
+    expect(warmups.some((e) => e.type === "warmup" && e.phase === "tuned")).toBe(true);
+    // ...but the crash cancelled it, so 'ready' must never have fired.
+    expect(warmups.some((e) => e.type === "warmup" && e.phase === "ready")).toBe(false);
+  });
+
   it("stop() leaves no helper process behind", async () => {
     const pids = tmpFile("pids");
     const { engine } = makeEngine({ FAKE_WB_PID_FILE: pids });

@@ -501,6 +501,10 @@ export class WidebandEngine implements ScannerEngine {
 
   private killChild(): void {
     this.clearDwellTimer();
+    // Cancel any pending warm-up settle timer: without this it would survive a
+    // crash and fire a false "ready" (clearing the overlay + marking warmed)
+    // while no helper is live. A successful respawn re-arms a real one.
+    this.clearWarmupReadyTimer();
     if (this.childStdout) {
       try { this.childStdout.close(); } catch { /* ignore */ }
       this.childStdout = null;
@@ -550,6 +554,11 @@ export class WidebandEngine implements ScannerEngine {
     }
 
     if (this.autoRestart) {
+      // Let the respawned helper re-run the warm-up gate: its first real tune
+      // re-arms a genuine settle. (warmReadySeen is left as-is — if we were
+      // already warm, the overlay stays cleared; if we crashed mid-warm it is
+      // still false, so the respawn emits a real "ready" once it settles.)
+      this.firstTunedSeen = false;
       this.clearRestartTimer();
       this.restartTimer = setTimeout(() => {
         this.restartTimer = null;

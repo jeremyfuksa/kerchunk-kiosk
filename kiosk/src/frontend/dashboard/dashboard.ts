@@ -92,7 +92,10 @@ export function reduce(s: DashState, ev: EngineEvent): DashState {
     case "idle":
       return { ...s, error: null, nowPlaying: s.audibleDriven ? s.nowPlaying : null };
     case "error":
-      return { ...s, error: ev.message };
+      // A hard engine error (e.g. NO_DEVICE) during warm-up must not stay
+      // hidden behind the opaque full-screen overlay — force it cleared so the
+      // error shows through. A later booting/ready re-establishes warm-up.
+      return { ...s, error: ev.message, warmed: true };
     case "status":
       // Any engine state transition means playback context reset: a restart
       // (e.g. channel edit) kills the helper without squelch-close events, so
@@ -171,10 +174,12 @@ export function renderDashboard(root: HTMLElement): void {
           : s.mode === "monitor" ? "MONITORING" : "";
         scanCount = s.scanCount ?? -1;
         muted = s.muted ?? false;
-        // Late-load: a page that opened AFTER warm-up never sees the WS warmup
-        // events, so trust the server's flag here. Only flips warmed to false
-        // when the backend says it's genuinely still warming (fresh boot).
-        if (typeof s.warmed === "boolean") state = { ...state, warmed: s.warmed };
+        // Late-load correction ONLY: a page that opened after warm-up never sees
+        // the WS warmup events, so trust the server flag. But once we've observed
+        // the live WS warmup stream, IT is authoritative — otherwise an in-flight
+        // poll (snapshotted warmed=true) could land after a fresh "booting" and
+        // wrongly hide the overlay mid-restart.
+        if (!sawWarmupEvent && typeof s.warmed === "boolean") state = { ...state, warmed: s.warmed };
         paint();
       })
       .catch(() => {});
@@ -185,6 +190,10 @@ export function renderDashboard(root: HTMLElement): void {
   setInterval(paintBadge, 5000);
 
   let scanCount = -1; // unknown until the first status fetch
+  // Once the live WS warmup stream is seen, it owns `warmed` (the /api/status
+  // poll stops correcting it) — prevents a stale in-flight poll from clobbering
+  // a fresh booting/ready during a restart.
+  let sawWarmupEvent = false;
   let muted = false;
 
   // ── Bank rail: hardware-scanner bank LEDs. Every bank collection is a chip;
@@ -367,6 +376,7 @@ export function renderDashboard(root: HTMLElement): void {
   const proto = location.protocol === "https:" ? "wss" : "ws";
   new ReconnectingWs(`${proto}://${location.host}/ws`, (ev) => {
     if (ev.type === "reload") { location.reload(); return; }
+    if (ev.type === "warmup") sawWarmupEvent = true; // WS now owns `warmed`
     state = reduce(state, ev);
     if (ev.type === "status") { paintBadge(); loadBanks(); }
     if (ev.type === "tuned") paintRail();

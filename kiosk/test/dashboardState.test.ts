@@ -209,4 +209,13 @@ describe("warm-up overlay (cold-start progress)", () => {
     s = reduce(s, { type: "warmup", phase: "booting", step: 1, of: 4, ts: 2 });
     expect(s.warmed).toBe(false);
   });
+  it("a hard engine error during warm-up dismisses the overlay so the error shows", () => {
+    // The opaque overlay must not bury a NO_DEVICE error mid-warm-up.
+    let s = reduce(initialState(), { type: "warmup", phase: "booting", step: 1, of: 4, ts: 1 });
+    s = reduce(s, { type: "warmup", phase: "spawning", step: 2, of: 4, ts: 2 });
+    expect(s.warmed).toBe(false);
+    s = reduce(s, { type: "error", code: "NO_DEVICE", message: "no SDR", ts: 3 });
+    expect(s.warmed).toBe(true);
+    expect(s.error).toBe("no SDR");
+  });
 });
