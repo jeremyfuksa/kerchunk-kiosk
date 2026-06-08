@@ -124,9 +124,12 @@ export class HistoryStore {
     this.db.prepare("UPDATE events SET transcript = ? WHERE id = ?").run(text, rowid);
   }
 
-  /** Attach the closed transmission's median RF strength to its history row. */
+  /** Attach received RF strength to the channel's in-progress transmission.
+   *  Unlike transcripts (which arrive after release), rf events fire while the
+   *  channel is open, so the open row wins — falling back to lastClosed only
+   *  for a stray reading that lands just after release. */
   setRf(channelId: string, db: number): void {
-    const rowid = this.lastClosed.get(channelId) ?? this.open.get(channelId);
+    const rowid = this.open.get(channelId) ?? this.lastClosed.get(channelId);
     if (rowid === undefined) return;
     this.db.prepare("UPDATE events SET rfDb = ? WHERE id = ?").run(db, rowid);
   }

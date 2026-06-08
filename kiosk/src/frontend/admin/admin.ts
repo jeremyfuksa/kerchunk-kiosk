@@ -1,4 +1,4 @@
-import type { Channel } from "../../backend/config/schema.js";
+import type { Channel, Config } from "../../backend/config/schema.js";
 import { NOAA_CHANNELS } from "../../backend/config/noaa.js";
 import { api } from "../lib/api.js";
 import { fmtFreq, esc } from "../lib/format.js";
@@ -51,6 +51,15 @@ export function formToChannel(form: { mhz: string; alphaTag: string; mode: strin
   // priority is only included when set, so non-priority channels stay free of
   // the key in saved config (and existing toEqual-style consumers are stable).
   return { freq: mhzToHz(form.mhz), alphaTag: form.alphaTag, mode, enabled: true, ...(form.priority ? { priority: true } : {}) };
+}
+
+type DiscoveryRow = NonNullable<Config["discoveries"]>[number];
+
+/** Bring a suppressed discovery back to triage. Clears ALL suppression
+ *  bookkeeping (schema.ts: "Restoring clears these fields") — leaving a stale
+ *  hitCount would let the server re-suppress it on the very next hit. */
+export function restoreDiscovery<T extends Partial<DiscoveryRow>>(d: T): T {
+  return { ...d, hitCount: undefined, lastSeenAt: undefined, suppressedAt: undefined, suppressionReason: undefined };
 }
 
 export function weatherFormToChannel(form: { mhz: string; alphaTag: string; mode: string }): Omit<Channel, "id"> {
@@ -1244,8 +1253,7 @@ export function renderAdmin(root: HTMLElement): void {
     suppressedRows.querySelectorAll<HTMLButtonElement>("button").forEach((button) => button.addEventListener("click", async () => {
       const id = (button.closest(".suppressedRow") as HTMLElement).dataset.id;
       const cfg2 = await api.getConfig();
-      cfg2.discoveries = (cfg2.discoveries ?? []).map((d) => d.id === id
-        ? { ...d, suppressedAt: undefined, suppressionReason: undefined } : d);
+      cfg2.discoveries = (cfg2.discoveries ?? []).map((d) => d.id === id ? restoreDiscovery(d) : d);
       await api.putConfig(cfg2);
       await renderDiscoveries();
     }));
