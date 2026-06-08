@@ -39,6 +39,24 @@ describe("HistoryStore", () => {
     expect(h.query({})[0]!.rfDb).toBe(-17.4);
   });
 
+  it("attaches RF to the OPEN transmission, not a channel's last-closed one", () => {
+    // rf events fire DURING a transmission, so they must hit the open row.
+    // After a channel's first transmission closes, lastClosed lingers — the
+    // second transmission's RF must not bleed back onto the first row.
+    const h = make();
+    h.record({ ts: 1000, kind: "active", channelId: "c1", freq: 1, alphaTag: "x" });
+    h.setRf("c1", -10);
+    h.release("c1", 2000);
+    h.record({ ts: 3000, kind: "active", channelId: "c1", freq: 1, alphaTag: "x" });
+    h.setRf("c1", -20);
+    h.release("c1", 4000);
+    const rows = h.query({}); // desc by ts: [second, first]
+    expect(rows[0]!.ts).toBe(3000);
+    expect(rows[0]!.rfDb).toBe(-20);
+    expect(rows[1]!.ts).toBe(1000);
+    expect(rows[1]!.rfDb).toBe(-10);
+  });
+
   it("query filters by since/tag/freq and respects limit + desc order", () => {
     const h = make();
     h.record({ ts: 1, kind: "active", channelId: "a", freq: 100, alphaTag: "A", tags: ["rail"] });
