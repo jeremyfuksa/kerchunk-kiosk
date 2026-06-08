@@ -29,6 +29,13 @@ describe("WidebandEngine --detect-via", () => {
     expect(a).toContain("--detect-via");
     expect(a[a.indexOf("--detect-via") + 1]).toBe("fft");
   });
+  it("passes --close-call unless closeCall is explicitly false", () => {
+    // Mirrors the per-tune `closeCall ?? true`: the FFT is built on by default
+    // (absent or true) and skipped only when the operator turns Close Call off.
+    expect(argsFor(base)).toContain("--close-call");                       // absent -> on
+    expect(argsFor({ ...base, closeCall: true })).toContain("--close-call");
+    expect(argsFor({ ...base, closeCall: false })).not.toContain("--close-call");
+  });
 });
 
 describe("toScanConfig detectVia passthrough", () => {

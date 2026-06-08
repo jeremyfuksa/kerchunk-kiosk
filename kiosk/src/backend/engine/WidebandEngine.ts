@@ -182,6 +182,10 @@ export class WidebandEngine implements ScannerEngine {
       "--open-db", String(cfg.openAboveFloorDb ?? 9),
     ];
     if (cfg.detectVia !== undefined) args.push("--detect-via", cfg.detectVia);
+    // Close Call FFT: built on unless explicitly disabled (matches the per-tune
+    // `closeCall ?? true`). Off => the helper skips the 2048-pt FFT entirely.
+    // A closeCall config change respawns the helper, so this stays in sync.
+    if (cfg.closeCall !== false) args.push("--close-call");
     if (cfg.gain !== "auto") args.push("--gain", String(cfg.gain));
     // Quieting squelch threshold: only passed when configured — the helper's
     // default is bench-calibrated for this hardware.

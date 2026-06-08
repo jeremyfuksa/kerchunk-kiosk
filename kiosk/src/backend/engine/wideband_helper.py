@@ -437,12 +437,19 @@ class Helper(gr.top_block):
         # Close Call: FFT over the full window. Median bin power = noise
         # floor; a sustained peak well above it on a non-configured frequency
         # is a nearby transmission (see close_call_check).
-        self.cc_s2v = blocks.stream_to_vector(gr.sizeof_gr_complex, CC_FFT)
-        self.cc_fft = grfft.fft_vcc(
-            CC_FFT, True, grfft.window.blackmanharris(CC_FFT), True, 1)
-        self.cc_mag = blocks.complex_to_mag_squared(CC_FFT)
-        self.cc_probe = blocks.probe_signal_vf(CC_FFT)
-        self.connect(self.src, self.cc_s2v, self.cc_fft, self.cc_mag, self.cc_probe)
+        # Build the window FFT only when something consumes it: Close Call
+        # discovery (--close-call) or fft-detect. With Close Call off (and lane
+        # detection) this 2048-pt FFT would otherwise run 24/7 for nothing.
+        # Toggling closeCall in config respawns the helper, so the build flag
+        # always matches the running mode.
+        self.cc_probe = None
+        if args.close_call or self.detect_via == "fft":
+            self.cc_s2v = blocks.stream_to_vector(gr.sizeof_gr_complex, CC_FFT)
+            self.cc_fft = grfft.fft_vcc(
+                CC_FFT, True, grfft.window.blackmanharris(CC_FFT), True, 1)
+            self.cc_mag = blocks.complex_to_mag_squared(CC_FFT)
+            self.cc_probe = blocks.probe_signal_vf(CC_FFT)
+            self.connect(self.src, self.cc_s2v, self.cc_fft, self.cc_mag, self.cc_probe)
         # FFT-detect: long (floor/open) and short (fast gate) integrations over
         # the same |.|^2 spectrum the Close Call FFT already produces. Built only
         # in fft mode so lane mode pays nothing.
@@ -708,6 +715,8 @@ class Helper(gr.top_block):
 
     def close_call_check(self, now):
         """Find strong RF on non-configured frequencies in the window."""
+        if self.cc_probe is None:
+            return   # FFT not built (Close Call off) — nothing to scan
         levels = self.cc_probe.level()
         if not levels or len(levels) != CC_FFT:
             return
@@ -887,6 +896,9 @@ def main():
     ap.add_argument("--detect-via", choices=["lane", "fft"], default="lane",
                     help="power-detection source: per-lane probes (default) or "
                          "the Close Call FFT")
+    ap.add_argument("--close-call", action="store_true",
+                    help="build the window FFT for Close Call discovery; omit to "
+                         "skip it entirely when Close Call is disabled")
     args = ap.parse_args()
 
     helper = Helper(args)
