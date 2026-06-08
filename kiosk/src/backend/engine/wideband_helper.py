@@ -343,6 +343,7 @@ class Helper(gr.top_block):
     def __init__(self, args):
         gr.top_block.__init__(self, "kerchunk-wideband-helper")
         self.args = args
+        self.detect_via = args.detect_via
 
         # Device selection (multi-SDR): rtl=N picks the librtlsdr index Node
         # resolved from the configured USB PORT just before spawning us.
@@ -809,6 +810,9 @@ def main():
                     help="fd to tee the speaker feed to as s16 PCM (remote listen)")
     ap.add_argument("--hang-ms", type=float, default=2000.0,
                     help="sustained silence before close")
+    ap.add_argument("--detect-via", choices=["lane", "fft"], default="lane",
+                    help="power-detection source: per-lane probes (default) or "
+                         "the Close Call FFT")
     args = ap.parse_args()
 
     helper = Helper(args)
