@@ -67,6 +67,8 @@ import numpy as np
 from gnuradio import analog, audio, blocks, fft as grfft, filter as grfilter, gr, soapy
 from gnuradio.filter import firdes
 
+from wideband_dsp_math import channel_bins, bin_power_db
+
 MAX_CHANS = 12           # channelizer lanes (always running; ~2.5 cores of 8
                          # at 12). Must match MAX_CHANNELS_PER_GROUP in
                          # WidebandEngine.ts — grouping splits clusters bigger
@@ -243,6 +245,8 @@ class Chain:
         self.speech_db = None    # smoothed voiced-audio level (leveler input)
         self.priority = False    # preempts non-priority audible when it opens
         self.channel_id = None   # None = parked (no channel assigned)
+        self.bin_lo = None       # FFT-detect: cached channel bin range (fft mode)
+        self.bin_hi = None
         self.reset_detection()
 
     def fade_to(self, target):
@@ -318,6 +322,8 @@ class Chain:
 
     def park(self):
         self.channel_id = None
+        self.bin_lo = None
+        self.bin_hi = None
         self.priority = False
         self.allow_audio = True
         self.audible_cfg = True
@@ -501,6 +507,8 @@ class Helper(gr.top_block):
                              c.get("openDb"), c.get("quietDb"),
                              c.get("hangMs"),
                              bool(c.get("background", False)))
+                chain.bin_lo, chain.bin_hi = channel_bins(
+                    c["freqHz"], center_hz, self.args.rate, CC_FFT, DETECT_HALF_HZ)
             else:
                 chain.park()
         emit({"ev": "tuned", "centerHz": center_hz})
@@ -537,17 +545,38 @@ class Helper(gr.top_block):
                   if c.channel_id is not None and c.floor_db is not None]
         return min(floors) if floors else None
 
+    def chan_power_db(self, chain, slow_vec):
+        if self.detect_via == "fft":
+            if slow_vec is None or chain.bin_lo is None:
+                return -120.0
+            return bin_power_db(slow_vec, chain.bin_lo, chain.bin_hi)
+        return chain.power_db()
+
+    def chan_fast_power_db(self, chain, fast_vec):
+        if self.detect_via == "fft":
+            if fast_vec is None or chain.bin_lo is None:
+                return -120.0
+            return bin_power_db(fast_vec, chain.bin_lo, chain.bin_hi)
+        return chain.fast_power_db()
+
     def poll(self, now):
         g_open_db = self.args.open_db
         g_quiet_db = self.args.quiet_db
         g_hang_s = self.args.hang_ms / 1000.0
+
+        slow_vec = fast_vec = None
+        if self.detect_via == "fft":
+            sv = self.slow_probe.level() if self.slow_probe else None
+            fv = self.fast_probe.level() if self.fast_probe else None
+            slow_vec = np.asarray(sv) if sv and len(sv) == CC_FFT else None
+            fast_vec = np.asarray(fv) if fv and len(fv) == CC_FFT else None
 
         # Pass 1: update per-chain floors (frozen while a chain is open).
         readings = {}
         for chain in self.chains:
             if chain.channel_id is None:
                 continue
-            db = chain.power_db()
+            db = self.chan_power_db(chain, slow_vec)
 
             if chain.warmup > 0:
                 chain.warmup -= 1
@@ -600,7 +629,7 @@ class Helper(gr.top_block):
             # hysteresis keeps the noisier fast estimate from fluttering the
             # audio on a weak-but-open signal.
             gate_thresh = floor + open_db - CLOSE_HYST_DB
-            fast_db = chain.fast_power_db()
+            fast_db = self.chan_fast_power_db(chain, fast_vec)
             if chain.carrier:
                 chain.carrier = fast_db > gate_thresh - GATE_HYST_DB / 2
             else:
@@ -740,6 +769,8 @@ class Helper(gr.top_block):
         for chain in self.chains:
             if chain.channel_id is None:
                 chain.assign(f"cc_{freq}", freq - self.center_hz, priority=True)
+                chain.bin_lo, chain.bin_hi = channel_bins(
+                    freq, self.center_hz, self.args.rate, CC_FFT, DETECT_HALF_HZ)
                 break
 
     def skip(self, holdoff_s=SKIP_HOLDOFF_S):
@@ -806,6 +837,11 @@ class Helper(gr.top_block):
         return best
 
     def power_levels(self):
+        if self.detect_via == "fft":
+            sv = self.slow_probe.level() if self.slow_probe else None
+            vec = np.asarray(sv) if sv and len(sv) == CC_FFT else None
+            return {c.channel_id: round(self.chan_power_db(c, vec), 1)
+                    for c in self.chains if c.channel_id is not None}
         return {c.channel_id: round(c.power_db(), 1)
                 for c in self.chains if c.channel_id is not None}
 

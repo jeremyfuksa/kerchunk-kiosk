@@ -36,4 +36,16 @@ loO, hiO = channel_bins(462_000_000 + RATE * 2, 462_000_000, RATE, NFFT, 8_000)
 assert hiO <= loO, (loO, hiO)                           # inverted/empty range
 assert bin_power_db(np.ones(NFFT), loO, hiO) == -120.0  # floor even with power everywhere
 
+# Two adjacent channels ~12 bins apart: a strong signal in one must not dominate
+# the other's bin sum (adjacent-bleed sanity for DETECT_HALF_HZ).
+RATE, NFFT = 2_400_000, 2048
+a_lo, a_hi = channel_bins(462_000_000, 462_000_000, RATE, NFFT, 8_000)
+b_lo, b_hi = channel_bins(462_012_500, 462_000_000, RATE, NFFT, 8_000)  # +12.5 kHz
+spectrum = np.zeros(NFFT)
+spectrum[(a_lo + a_hi)//2] = 100.0   # strong carrier in channel A's center bin
+pa = bin_power_db(spectrum, a_lo, a_hi)
+pb = bin_power_db(spectrum, b_lo, b_hi)
+assert pa > pb + 10, (pa, pb)  # A reads far hotter than B despite some range overlap
+print("adjacent-bleed sanity passed")
+
 print("wideband_dsp_math: all asserts passed")
