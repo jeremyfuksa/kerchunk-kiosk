@@ -44,14 +44,44 @@ describe("classifySystemAlerts", () => {
     memUsedPct: 40, backendRssMb: 100, tempC: 50, throttled: false,
     diskFreeMb: 10_000, openCount: 1,
   };
-  it("raises actionable attention alerts and clears after recovery", () => {
-    expect(classifySystemAlerts({ ...base, tempC: 84 })[0]).toMatchObject({
-      id: "temperature-high", severity: "attention",
-    });
-    expect(classifySystemAlerts(base)).toEqual([]);
+  // A sustained window of identical samples (the common case): every sample in
+  // the debounce window breaches, so the alert is allowed to raise.
+  const win = (over: Partial<SystemSample>, n = 4): SystemSample[] =>
+    Array.from({ length: n }, (_, i) => ({ ...base, ts: i + 1, ...over }));
+  const classify = (over: Partial<SystemSample>) => {
+    const w = win(over);
+    return classifySystemAlerts(w[w.length - 1]!, w);
+  };
+
+  it("does NOT alert at the box's normal steady-state temperature (~82-83°C)", () => {
+    // The motivating bug: the old 82°C line sat right on normal and fired 24/7.
+    expect(classify({ tempC: 82 })).toEqual([]);
+    expect(classify({ tempC: 83 })).toEqual([]);
+    expect(classify({ tempC: 86 })).toEqual([]);
   });
-  it("reserves severe warnings for machine-risk conditions", () => {
-    expect(classifySystemAlerts({ ...base, tempC: 92 }).some((a) => a.severity === "severe")).toBe(true);
-    expect(classifySystemAlerts({ ...base, diskFreeMb: 300 }).some((a) => a.id === "disk-critical")).toBe(true);
+  it("raises attention only once sustained at/above 87°C", () => {
+    expect(classify({ tempC: 88 })[0]).toMatchObject({ id: "temperature-high", severity: "attention" });
+  });
+  it("raises severe at/above 90°C (aligned with safetyMode)", () => {
+    expect(classify({ tempC: 91 }).some((a) => a.id === "temperature-critical" && a.severity === "severe")).toBe(true);
+  });
+  it("debounces: a single hot sample in the window does not raise", () => {
+    const w = [{ ...base, tempC: 83 }, { ...base, tempC: 83 }, { ...base, tempC: 91 }];
+    expect(classifySystemAlerts(w[2]!, w).some((a) => a.id.startsWith("temperature-"))).toBe(false);
+  });
+  it("never raises a temperature alert from throttling alone (decoupled)", () => {
+    // An idle Intel core dropping its clock is normal, not heat.
+    expect(classify({ tempC: 50, throttled: true }).some((a) => a.id.startsWith("temperature-"))).toBe(false);
+  });
+  it("treats a hot DSP helper as normal, not a CPU-saturation alarm", () => {
+    // The helper at 250-600% is its expected state; cold-start bursts included.
+    expect(classify({ helperCpuPct: 590, cpuPct: 40, tempC: 50 }).some((a) => a.id === "cpu-saturated")).toBe(false);
+  });
+  it("raises CPU saturation only on sustained whole-machine load", () => {
+    expect(classify({ cpuPct: 96 }).some((a) => a.id === "cpu-saturated")).toBe(true);
+  });
+  it("reserves severe warnings for disk/memory machine-risk conditions", () => {
+    expect(classify({ diskFreeMb: 300 }).some((a) => a.id === "disk-critical")).toBe(true);
+    expect(classify({ memUsedPct: 96 }).some((a) => a.id === "memory-critical")).toBe(true);
   });
 });
