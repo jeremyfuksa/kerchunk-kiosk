@@ -14,6 +14,7 @@
     "build:backend": "tsc -p tsconfig.json && cp src/backend/engine/wideband_helper.py dist/backend/engine/",
     "start": "node dist/backend/index.js",
     "test": "vitest run",
+    "test:py": "/usr/bin/python3 test/wideband_dsp_math_test.py",
     "test:watch": "vitest"
   },
   "dependencies": {

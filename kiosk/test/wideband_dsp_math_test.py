@@ -1,0 +1,32 @@
+"""Dependency-free asserts for the wideband DSP math. Run: python3 this_file.py"""
+import os, sys
+import numpy as np
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src", "backend", "engine"))
+from wideband_dsp_math import channel_bins, bin_power_db
+
+RATE, NFFT = 2_400_000, 2048
+BINW = RATE / NFFT            # ~1171.875 Hz
+DC = NFFT // 2                # fft_vcc(shift=True) puts DC at the center bin
+
+def approx(a, b, eps=2): return abs(a - b) <= eps
+
+# A channel exactly at window center maps around the DC bin.
+lo, hi = channel_bins(462_000_000, 462_000_000, RATE, NFFT, 8_000)
+assert lo < DC < hi, (lo, DC, hi)
+assert approx(hi - lo, 2 * round(8_000 / BINW) + 1), (lo, hi)
+
+# A channel +300 kHz above center shifts right by ~300000/BINW bins.
+lo2, hi2 = channel_bins(462_300_000, 462_000_000, RATE, NFFT, 8_000)
+center2 = (lo2 + hi2 - 1) / 2
+assert approx(center2, DC + 300_000 / BINW), center2
+
+# Clamped at the window edges (no negative / out-of-range bins).
+loE, hiE = channel_bins(462_000_000 - RATE / 2, 462_000_000, RATE, NFFT, 8_000)
+assert loE >= 0 and hiE <= NFFT and loE < hiE, (loE, hiE)
+
+# bin_power_db: sum of |.|^2 bins -> dB; empty/zero -> floor.
+vec = np.zeros(NFFT); vec[DC - 2:DC + 3] = 1.0     # 5 bins of unit power
+assert approx(bin_power_db(vec, DC - 2, DC + 3), 10 * np.log10(5.0), 0.01)
+assert bin_power_db(np.zeros(NFFT), 0, 4) == -120.0
+
+print("wideband_dsp_math: all asserts passed")
