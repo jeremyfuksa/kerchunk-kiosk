@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.command // \"\"' | grep -q \"gh pr merge\" || exit 0; cd \"${CLAUDE_PROJECT_DIR:-.}\" 2>/dev/null || exit 0; git rev-parse --git-dir >/dev/null 2>&1 || exit 0; git fetch --prune --quiet 2>/dev/null; d=\"\"; for b in $(git for-each-ref --format=\"%(refname:short)\" --merged main refs/heads/ 2>/dev/null | grep -vxF main); do git branch -d \"$b\" >/dev/null 2>&1 && d=\"$d $b\"; done; [ -n \"$d\" ] && printf '{\"systemMessage\":\"Auto-cleaned merged branches:%s\"}\\n' \"$d\"; exit 0",
+            "statusMessage": "Cleaning up merged branches"
+          }
+        ]
+      }
+    ]
+  }
+}

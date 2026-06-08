@@ -149,8 +149,11 @@ build/
 *.elf
 *.map
 
-# Claude Code session state
-.claude/
+# Claude Code session state — ignore everything in .claude/ EXCEPT the shared,
+# team-wide settings.json (hooks/permissions). settings.local.json (personal
+# overrides) and all session state stay ignored.
+.claude/*
+!.claude/settings.json
 .superpowers/
 
 # Editor
