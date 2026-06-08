@@ -19,9 +19,16 @@ export class ConfigStore {
     return def;
   }
 
-  save(cfg: Config): void {
-    const valid = configSchema.parse(cfg); // throws on invalid
-    if (existsSync(this.path)) copyFileSync(this.path, this.path + ".bak");
+  // opts.telemetry: a high-frequency rfDb/levelTrim EMA save (~100x/hr). These
+  // skip the full re-validate AND the .bak copy — the in-memory config was
+  // validated at load and these paths only nudge known-numeric fields, so
+  // re-parsing + duplicating a ~60KB file every few seconds is pure SSD churn
+  // (~300MB/day). The .bak then stays the last OPERATOR snapshot, which is more
+  // useful for recovery than the last telemetry tick. Operator PUTs (default,
+  // no opts) keep the full validate + backup.
+  save(cfg: Config, opts: { telemetry?: boolean } = {}): void {
+    const valid = opts.telemetry ? cfg : configSchema.parse(cfg); // PUTs throw on invalid
+    if (!opts.telemetry && existsSync(this.path)) copyFileSync(this.path, this.path + ".bak");
     this.writeAtomic(valid);
   }
 

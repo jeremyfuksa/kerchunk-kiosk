@@ -299,8 +299,8 @@ export function createServer(deps: ServerDeps): { server: Server } {
     if (levelSaveTimer) clearTimeout(levelSaveTimer);
     levelSaveTimer = setTimeout(() => {
       levelSaveTimer = null;
-      configStore.save(config);
-    }, 2000);
+      configStore.save(config, { telemetry: true });
+    }, 10_000);
     levelSaveTimer.unref?.();
   });
 
@@ -320,7 +320,7 @@ export function createServer(deps: ServerDeps): { server: Server } {
         c.id === ev.channelId ? { ...c, rfDb: Math.round(next * 10) / 10 } : c),
     };
     if (rfSaveTimer) clearTimeout(rfSaveTimer);
-    rfSaveTimer = setTimeout(() => { rfSaveTimer = null; configStore.save(config); }, 5000);
+    rfSaveTimer = setTimeout(() => { rfSaveTimer = null; configStore.save(config, { telemetry: true }); }, 30_000);
     rfSaveTimer.unref?.();
   });
 
