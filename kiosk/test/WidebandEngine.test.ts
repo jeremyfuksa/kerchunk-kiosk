@@ -113,14 +113,22 @@ describe("WidebandEngine", () => {
 
   it("hold-through: never tunes away while a channel is open", async () => {
     const tunes = tmpFile("tunes");
-    const { engine } = makeEngine({
+    const { engine, events } = makeEngine({
       FAKE_WB_TUNES_FILE: tunes,
       FAKE_WB_SCRIPT: `{"ev":"open","id":"${VHF_A.id}","db":-10}`, // opens, never closes
     });
     await engine.start(cfg([VHF_A, VHF_B, UHF]));
-    await new Promise((r) => setTimeout(r, 400)); // 4x the dwell
+    // Hold-through engages once the engine PROCESSES the open (which also emits
+    // a "signal" carrying the open's db). Gate on that instead of a fixed sleep,
+    // so the assertion never races the fake helper's open-event latency against
+    // the dwell. ("active" is group-scoped and may not fire if a hop already
+    // happened, so it's unreliable here; "signal" fires on any open.)
+    const sawOpen = await waitFor(() => events.some((e) => e.type === "signal"), 1000);
+    expect(sawOpen).toBe(true);
+    const tunesAtHold = lines(tunes).length;
+    await new Promise((r) => setTimeout(r, 400)); // 4x the dwell — ample chance to (wrongly) hop
     await engine.stop();
-    expect(lines(tunes)).toHaveLength(1);
+    expect(lines(tunes)).toHaveLength(tunesAtHold); // held: no further hop while open
   });
 
   it("resumes hopping after the held channel closes", async () => {
