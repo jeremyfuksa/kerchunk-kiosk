@@ -767,7 +767,19 @@ without the key show as undecodable, same as any other crypto.
 
 ---
 
-## Idea 15 — Admin IA: analytics home, config in pages
+## Idea 15 — Admin IA: analytics home, config in pages — *SHIPPED 2026-06-07 (PR #80)*
+
+> Mission-control workspace: left nav rail (lucide icons, live triage badge),
+> analytics home (Now Playing hero, stat tiles, 24 h activity clock, feeds), a
+> Triage page, and an a11y pass (AA contrast, focus-visible rings,
+> reduced-motion, aria-labeled chart). The operator's structural question —
+> "why treat banks and channels separately when a bank consists of channels?"
+> — collapsed Banks into section-header rows inside ONE unified Channels page
+> (banks are predicates, not folders; `#/banks` redirects). Zero schema/API
+> change. Spec: `docs/superpowers/specs/2026-06-06-unified-channels-design.md`.
+> Followed by the operator-workflow redesign (PR #83) and the completed admin
+> ops surface — health alerts, 24 h channel analytics, Close Call
+> location/suppression/archive (PR #84).
 
 **The pitch.** Make the admin **home an analytics dashboard** — at-a-glance
 insights, alerts, now-playing, recent activity — and move the operational
@@ -907,25 +919,47 @@ throttling, which a bare CPU% gauge would hide.
 
 ---
 
-## Where things stand (2026-06-06) — open items, sorted
+## Where things stand (2026-06-07) — open items, sorted
 
-Ideas 1, 2, 4, 5, 6, 7, 8, 9, 11, 16 are shipped or resolved; the stretch
+Ideas 1, 2, 4, 5, 6, 7, 8, 9, 11, 15, 16 are shipped or resolved; the stretch
 sweep landed ambient replay, CC band-sweep, remote listening, and opt-in
 transcription (PRs #66–#68). What's open, in execution order:
 
-### PHASE: CONSOLIDATION (operator, 2026-06-06)
+### PHASE: CONSOLIDATION (operator, 2026-06-06) — admin pass complete (2026-06-07)
 > "We are going to nail the stuff we have before adding." No new features
 > until the existing surface is field-proven. What nailing looks like:
 > live with everything, fix what use reveals, verify the watch items
 > (SAME proof-of-life, estimator anchors, FCC priming), harden rough
-> edges (e.g. zombie helper on hot-unplug). New builds — including
-> Idea 15 — wait until the operator reopens the gate.
+> edges (e.g. zombie helper on hot-unplug).
+>
+> **Update 2026-06-07:** the gate reopened for the admin track. Idea 15
+> (Admin IA) shipped (PR #80), followed by the operator-workflow redesign
+> (#83) and the completed admin ops surface (#84) — the latter net-new
+> (health alerts + thermal load-shedding, 24 h analytics, Close Call
+> location/suppression/archive). A post-merge review (#85) caught two real
+> bugs in #84's fresh code (RF written to the wrong history row;
+> restore-to-triage instantly re-suppressed) — evidence for the consolidate
+> instinct. Back to field-proving from here.
 
-### Build next when the gate reopens (software-only, in order)
-1. **Idea 15 — Admin IA** (analytics home + config pages). The prerequisite
-   shell for every future panel. Frontend-only restructure.
-2. **Idea 3 — further ambient skins** (constellation, kerchunk wall, data
+### Build next (software-only, in order)
+1. **Idea 3 — further ambient skins** (constellation, kerchunk wall, data
    poster). First skin (auto-replay) shipped; optional polish, low priority.
+
+### Hardening backlog — DSP efficiency (from the 2026-06-06 review)
+`docs/PROCESSOR-EFFICIENCY-REVIEW-2026-06-06.md` found the dominant cost is the
+GNU Radio helper (~2.4–2.5 cores for 12 lanes), not the Node backend — and a
+second weather radio roughly doubles it. The fixed 12-lane flowgraph runs every
+lane continuously (including parked ones) and runs BOTH FM and AM paths per
+lane. Highest-return work, in order:
+1. Build only the number and type of DSP lanes the current engine needs (skip
+   parked lanes; build AM path only for AM channels).
+2. Give the dedicated weather radio a one-lane, decode-only flowgraph.
+3. Don't run the Close Call FFT, SAME decoder, or PCM streaming tee when those
+   features are disabled.
+4. Make dashboard/map rendering event-driven while idle to cut continuous
+   Chromium work.
+Distinct from the parked polyphase-channelizer rewrite below — these are
+in-place wins on the current helper, not a DSP re-architecture.
 
 ### Tabled by operator (2026-06-06 — don't re-pitch; he'll return to them)
 - **Idea 13 — ADS-B**: hardware staged (V4 stick identified, port system
