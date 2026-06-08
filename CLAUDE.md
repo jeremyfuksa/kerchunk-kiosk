@@ -8,9 +8,19 @@ that are easy to get wrong.
 ## Git workflow
 
 **Every change ships through a pull request — never commit directly to `main`.**
-Branch off `main` (`feat/*`, `fix/*`, `chore/*`, `docs/*`), push the branch, open
-a PR, and merge it on GitHub. Do not push commits straight to `main`, and do not
-fast-forward local work onto `main` to bypass review. If a change has already
+Branch off `main` (`feat/*`, `fix/*`, `chore/*`, `docs/*`), then push the branch,
+open a PR, and merge it on GitHub. `main` is never touched directly. Do not push
+commits straight to `main`, and do not fast-forward local work onto `main` to
+bypass review.
+
+**Prove on hardware before the PR (the normal flow).** Work usually happens
+directly on the kiosk machine, where you can build and deploy locally to prove a
+change against real hardware. The order is: branch → build/deploy/prove on the
+kiosk → push → PR → merge. The PR comes *after* the change is proven, not before.
+
+**Off-machine is the exception.** When working from another machine (no kiosk
+hardware to prove against), there's nothing to deploy locally — go straight to
+branch → push → PR → merge and prove it after it lands. If a change has already
 landed on local `main` by mistake, move it onto a branch and reset `main` to
 `origin/main` before opening the PR.
 
