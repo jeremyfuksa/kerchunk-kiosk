@@ -94,6 +94,30 @@ EOF
 # The dashboard must never go away: no suspend/hibernate, ever.
 sudo systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target >/dev/null
 
+echo "[setup] Pinning OS maintenance to an overnight window (off the air during the day)..."
+# apt + snap default to daytime/boot-relative schedules. On this old, thermally
+# saturated box an apt-get dist-upgrade or snap refresh mid-afternoon spikes CPU
+# and competes with the DSP helper for the few cores it has. Pin all of it to
+# ~03:00-05:00 local. OnCalendar is additive in drop-ins, so reset it to empty
+# before setting the new time, or the default schedule stays active alongside.
+for unit in apt-daily:03:30:00 apt-daily-upgrade:03:50:00; do
+  name="${unit%%:*}"; when="${unit#*:}"
+  sudo mkdir -p "/etc/systemd/system/${name}.timer.d"
+  # No Persistent=true on purpose: a missed overnight run must NOT catch up on
+  # next boot — a daytime reboot would otherwise fire apt immediately, the very
+  # daytime spike we're moving away from. Always-on box runs it at the window.
+  sudo tee "/etc/systemd/system/${name}.timer.d/override.conf" >/dev/null <<EOF
+[Timer]
+OnCalendar=
+OnCalendar=*-*-* ${when}
+RandomizedDelaySec=20m
+EOF
+done
+sudo systemctl daemon-reload
+sudo systemctl restart apt-daily.timer apt-daily-upgrade.timer 2>/dev/null || true
+# snap has its own scheduler (not a systemd timer): hold refreshes to the same window.
+sudo snap set system refresh.timer=03:00-05:00 2>/dev/null || true
+
 echo "[setup] Kernel cmdline: disable the internal panel, no console blanking..."
 # video=eDP-1:d turns the built-in panel off at boot so cage only ever sees
 # the HDMI output (remove this file + update-grub to get the panel back).
