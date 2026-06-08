@@ -179,3 +179,34 @@ describe("bank rail (tuned window)", () => {
     expect(s.tunedIds).toEqual(["c"]);
   });
 });
+
+describe("warm-up overlay (cold-start progress)", () => {
+  it("defaults to warmed (no overlay flash on an already-warm page)", () => {
+    expect(initialState().warmed).toBe(true);
+  });
+  it("booting (re)shows the overlay and resets the bar", () => {
+    let s = reduce(initialState(), { type: "warmup", phase: "booting", step: 1, of: 4, ts: 1 });
+    expect(s.warmed).toBe(false);
+    expect(s.warmupStep).toBe(1);
+    expect(s.warmupPhase).toBe("booting");
+  });
+  it("advances through the middle phases without clearing the overlay", () => {
+    let s = reduce(initialState(), { type: "warmup", phase: "booting", step: 1, of: 4, ts: 1 });
+    s = reduce(s, { type: "warmup", phase: "spawning", step: 2, of: 4, ts: 2 });
+    s = reduce(s, { type: "warmup", phase: "tuned", step: 3, of: 4, ts: 3 });
+    expect(s.warmed).toBe(false);
+    expect(s.warmupStep).toBe(3);
+  });
+  it("ready clears the overlay (detection trustworthy)", () => {
+    let s = reduce(initialState(), { type: "warmup", phase: "booting", step: 1, of: 4, ts: 1 });
+    s = reduce(s, { type: "warmup", phase: "ready", step: 4, of: 4, ts: 2 });
+    expect(s.warmed).toBe(true);
+    expect(s.warmupStep).toBe(4);
+  });
+  it("a config-edit restart (fresh booting) re-shows the overlay after warm", () => {
+    let s = reduce(initialState(), { type: "warmup", phase: "ready", step: 4, of: 4, ts: 1 });
+    expect(s.warmed).toBe(true);
+    s = reduce(s, { type: "warmup", phase: "booting", step: 1, of: 4, ts: 2 });
+    expect(s.warmed).toBe(false);
+  });
+});
