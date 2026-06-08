@@ -41,11 +41,12 @@ Measured cost decomposition (12 lanes, throttled 2.4 MS/s), FULL ≈ 2.97 cores:
 - nbfm demod ≈ 0.075 core/lane (kept); AM chain ≈ 0; quieting probe ≈ 0.05.
 
 The window FFT (`cc_fft` + `mag²`) **already runs** for Close Call (sunk cost);
-the only NEW cost is one `moving_average_ff` over its 2048-bin vector ≈
-**0.15–0.25 core**. So the net recovery is ≈ 0.7–0.9 (probes removed) − 0.15–0.25
-(integration added) ≈ **0.5–0.7 cores**, landing at the ~2.0–2.4 target. (A
-standalone FFT-detect chain measured 0.33–0.37 cores and is flat in FFT size and
-channel count — but most of that is already paid here.)
+the only NEW cost is **two** `moving_average_ff` integrations over its 2048-bin
+vector (a long one for floor/open, a short one for the fast gate) ≈ **0.2–0.35
+core**. So the net recovery is ≈ 0.7–0.9 (per-lane power front-end removed) −
+0.2–0.35 (integrations added) ≈ **0.5–0.7 cores**, landing at the ~2.0–2.4
+target. (A standalone FFT-detect chain measured 0.33–0.37 cores and is flat in
+FFT size and channel count — but the FFT itself is already paid here.)
 
 ## Hard constraints (must not regress)
 
@@ -66,15 +67,35 @@ channel count — but most of that is already paid here.)
 Detection's *power input* is swapped behind a flag; everything downstream of the
 power scalar is unchanged.
 
-- **Today (lane power):** per lane `freq_xlating_fir → complex_to_mag_squared →
-  moving_average ×2 → probe_signal`. 24 probe blocks across 12 lanes ≈ the
-  2.1–2.3 cores.
+- **Today (lane power):** per lane the power front-end is
+  `freq_xlating_fir → complex_to_mag_squared → { moving_average(~100 ms) →
+  probe (SLOW: floor + open/hold), moving_average(~10 ms) → probe (FAST: the
+  ~30 ms audio mute gate) }`. Both probes share the `complex_to_mag_squared`.
+  Across 12 lanes ≈ 0.7–0.9 cores.
 - **New (fft power):** reuse the existing window FFT
-  (`cc_s2v → cc_fft(2048, blackmanharris) → cc_mag`), add **one**
-  `moving_average_ff` over the 2048-bin vector (~100–200 ms integration) →
-  `probe_signal_vf`. The poll loop sums each channel's bin range off that
-  integrated vector. When the flag is `fft`, the per-lane power probes are not
-  built/connected — that is where the cores are recovered.
+  (`cc_s2v → cc_fft(2048, blackmanharris) → cc_mag`) and add **two**
+  `moving_average_ff` integrations over the 2048-bin vector, each → its own
+  `probe_signal_vf`:
+  - **long** (~150–200 ms) → SLOW per-channel power for floor learning + the
+    open/hold decision.
+  - **short** (~30 ms) → FAST per-channel power for the audio mute gate.
+
+  In `fft` mode the **entire** per-lane power front-end (`complex_to_mag_squared`
+  + both moving-averages + both probes) is not built/connected on any lane —
+  that is the full ~0.7–0.9 core recovery, minus the ~0.2–0.35 core for the two
+  vector integrations, net ~0.5–0.7. The demod path (`freq_xlating_fir →
+  nbfm_rx → quieting probe`) is untouched.
+
+### The fast audio gate — the load-bearing risk
+
+The fast power drives the ~30 ms speaker mute on carrier drop
+(`wideband_helper.py:555–570`), operator-tuned (PR #18). FFT-bin power at a
+~30 ms integration is noisier than the dedicated 10 ms per-lane probe (~1.2 dB
+vs ~0.02 dB std); the existing ±0.5 dB gate hysteresis (`GATE_HYST_DB`) absorbs
+some of this, but the mute timing and the absence of flutter are NOT assumed —
+they are a **hard pass criterion of the bench A/B** (see Testing). If the short
+FFT integration cannot hold the 30 ms mute without chatter, FFT-detect does not
+become the default.
 
 ### Floor calibration — self-solving for the relative gate
 
@@ -102,14 +123,16 @@ adjacent-channel bleed (channels can be only ~12 bins apart in the dense
 |---|---|
 | `kiosk/src/backend/config/schema.ts` | Add optional `scan.detectVia: "lane" \| "fft"`, default `"lane"`. |
 | `kiosk/src/backend/engine/WidebandEngine.ts` | Pass `--detect-via <mode>` to the helper spawn. No logic change. |
-| `kiosk/src/backend/engine/wideband_helper.py` | Add the FFT integration block + `probe_signal_vf`; add `channel_bins()` mapper recomputed on `tune()`; in `poll()`, branch the power source on `detect_via`; build/connect the per-lane power probes only in `"lane"` mode. Everything downstream of the power scalar unchanged. |
+| `kiosk/src/backend/engine/wideband_helper.py` | Add **two** vector integrations (long + short `moving_average_ff`) over the existing `cc_mag` 2048-bin stream, each with its own `probe_signal_vf`; add `channel_bins()` mapper recomputed on `tune()`; in `poll()`, branch the SLOW power (`power_db`) and FAST power (`fast_power_db`) sources on `detect_via`; build/connect the per-lane power front-end (`complex_to_mag_squared` + both moving-averages + both probes) only in `"lane"` mode. Everything downstream of the two power scalars unchanged. |
 
 Both paths coexist; `"lane"` (fixed-12) remains the fully-intact fallback.
 
 ### Data flow (fft mode)
 
-`src → cc_fft → mag² → moving_average(vec) → probe_signal_vf` → poll loop sums
-per-channel bins → existing floor-learn + open/close state machine → on
+`src → cc_fft → mag² → { moving_average_long → probe_vf (slow), moving_average_short
+→ probe_vf (fast) }` → poll loop sums each channel's bin range from the long
+vector (floor + open/hold) and the short vector (fast audio gate) → existing
+floor-learn + open/close state machine and fast-gate logic, unchanged → on
 candidate-open, the channel's demod-lane **quieting probe** confirms → speaker
 hold / leveler / gate / limiter as today.
 
@@ -130,20 +153,28 @@ Run both paths against the same live RF over a sustained window, lane path as
 ground truth:
 - **False-open rate** (FFT opens where lane stays closed — adjacent-bleed risk).
 - **Missed-open rate** (FFT misses a real open).
-- **Open-latency delta** from the 100–200 ms integration.
+- **Open-latency delta** from the long (~150–200 ms) integration.
+- **Fast-gate timing + chatter** — the ~30 ms mute on carrier drop must hold
+  without flutter using the short (~30 ms) FFT integration; measure mute latency
+  and count gate flaps vs the lane path on the same audio.
 
-PASS = false-open ≤ current AND no missed real transmissions AND latency within
-the existing budget. Only then flip the default to `fft`.
+PASS = false-open ≤ current AND no missed real transmissions AND open-latency
+within the existing budget AND the fast mute stays ≤ ~30 ms with no added
+chatter. Only then flip the default to `fft`.
 
 ## Risks (ranked)
 
-1. **Adjacent-channel bleed** in the dense 12-channel windows — mitigate with
-   central/Hann-weighted bin sum; quantified by the bench A/B. *Highest.*
-2. **Integration latency** vs the ~30 ms gate feel — tune the window; bench
-   measures.
-3. **Background/SAME lane** must stay always-demodulated regardless of detection
+1. **Fast audio-gate noise/timing** — the short FFT integration is ~1.2 dB
+   noisier than the dedicated 10 ms probe; it must hold the operator-tuned 30 ms
+   mute without chatter. The ±0.5 dB `GATE_HYST_DB` helps; the bench A/B gates
+   it. *Highest — it is the operator-tuned crown-jewel behavior.*
+2. **Adjacent-channel bleed** in the dense 12-channel windows — mitigate with
+   central/Hann-weighted bin sum; quantified by the bench A/B.
+3. **Open-latency** vs today — the long integration must not lag the open/hold
+   decision past the existing budget; bench measures.
+4. **Background/SAME lane** must stay always-demodulated regardless of detection
    path — already true; verify the flag does not disturb it.
-4. **Thermal** — implementation + build are off-box; only the bench A/B and
+5. **Thermal** — implementation + build are off-box; only the bench A/B and
    deploy touch the appliance, done deliberately when cool.
 
 ## Out of scope
