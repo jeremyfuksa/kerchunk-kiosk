@@ -134,10 +134,13 @@ FLOOR_ALPHA_UP = 0.02    # floor rises slowly
 FLOOR_ALPHA_DOWN = 0.2   # floor falls fast
 # FFT-detect integrations (detect_via="fft"). cc_mag emits one CC_FFT-vector per
 # CC_FFT input samples -> ~rate/CC_FFT = 1172 vectors/s. Lengths set the
-# averaging window: long for floor/open (~150 ms), short for the fast audio gate
-# (~30 ms, matching the per-lane fast probe it replaces).
-FFT_SLOW_FRAMES = 176    # ~150 ms
-FFT_FAST_FRAMES = 35     # ~30 ms
+# averaging window: long for floor/open (~150 ms), short for the fast audio gate.
+FFT_SLOW_FRAMES = 176    # ~150 ms — floor/open, matches the per-lane slow probe (~100 ms class)
+# NOTE first estimate, tune at the bench A/B (see specs/2026-06-08-fft-detect-power-design.md):
+# the per-lane fast gate averages only ~10 ms, but FFT bins are noisier (~1.2 dB std), so the
+# short integration trades a slightly longer mute for stability against gate chatter. ~30 ms here
+# is a starting point, NOT a match to the 10 ms lane probe window.
+FFT_FAST_FRAMES = 35     # ~30 ms (bench-tunable; see note above)
 DETECT_HALF_HZ = 8_000   # half-bandwidth summed per channel (~16 kHz NFM)
 
 
@@ -184,6 +187,8 @@ class Chain:
             AUDIO_RATE // 10, 10.0 / AUDIO_RATE)
         self.audio_probe = blocks.probe_signal_f()
         tb.connect(src, self.xlate)
+        self.probe = None
+        self.probe_fast = None
         if build_power:
             self.mag2 = blocks.complex_to_mag_squared(1)
             # ~100 ms power average at the 48 kHz quad rate: stable estimate for
@@ -330,13 +335,13 @@ class Chain:
         self.reset_detection()
 
     def power_db(self):
-        if not hasattr(self, "probe"):
+        if self.probe is None:
             return -120.0
         p = self.probe.level()
         return 10 * math.log10(p) if p > 0 else -120.0
 
     def fast_power_db(self):
-        if not hasattr(self, "probe_fast"):
+        if self.probe_fast is None:
             return -120.0
         p = self.probe_fast.level()
         return 10 * math.log10(p) if p > 0 else -120.0
@@ -435,6 +440,7 @@ class Helper(gr.top_block):
         # FFT-detect: long (floor/open) and short (fast gate) integrations over
         # the same |.|^2 spectrum the Close Call FFT already produces. Built only
         # in fft mode so lane mode pays nothing.
+        # Populated only in fft mode; callers (poll/power_levels, Task 5) MUST guard for None.
         self.slow_probe = None
         self.fast_probe = None
         if self.detect_via == "fft":
