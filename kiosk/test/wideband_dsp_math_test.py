@@ -38,7 +38,6 @@ assert bin_power_db(np.ones(NFFT), loO, hiO) == -120.0  # floor even with power 
 
 # Two adjacent channels ~12 bins apart: a strong signal in one must not dominate
 # the other's bin sum (adjacent-bleed sanity for DETECT_HALF_HZ).
-RATE, NFFT = 2_400_000, 2048
 a_lo, a_hi = channel_bins(462_000_000, 462_000_000, RATE, NFFT, 8_000)
 b_lo, b_hi = channel_bins(462_012_500, 462_000_000, RATE, NFFT, 8_000)  # +12.5 kHz
 spectrum = np.zeros(NFFT)

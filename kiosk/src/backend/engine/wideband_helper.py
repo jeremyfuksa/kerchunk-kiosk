@@ -564,6 +564,8 @@ class Helper(gr.top_block):
         g_quiet_db = self.args.quiet_db
         g_hang_s = self.args.hang_ms / 1000.0
 
+        # fft mode: snapshot both FFT power vectors once per poll; the chan_*_db
+        # accessors fall back to the per-lane probes in lane mode.
         slow_vec = fast_vec = None
         if self.detect_via == "fft":
             sv = self.slow_probe.level() if self.slow_probe else None

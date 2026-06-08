@@ -31,4 +31,4 @@ def bin_power_db(mag_sq_vec, lo, hi):
     if hi <= lo:
         return -120.0
     p = float(np.sum(mag_sq_vec[lo:hi]))
-    return 10.0 * np.log10(p) if p > 0 else -120.0
+    return float(10.0 * np.log10(p)) if p > 0 else -120.0
