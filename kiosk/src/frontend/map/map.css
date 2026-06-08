@@ -38,19 +38,3 @@
 .mapLegend .lgAnt svg { width: 14px; height: 14px; color: var(--golden-amber, #ffc05c); display: inline-block; vertical-align: -2px; }
 
 .mapLegend .lgBlip.nofix { background: #4a7c7e; box-shadow: 0 0 8px rgba(74, 124, 126, 0.6); }
-
-/* Ambient replay badge (kiosk): honest label while the map re-runs memory. */
-.replayBadge {
-  display: none;
-  position: fixed; right: 1.6rem; bottom: 1.2rem; z-index: 5;
-  font-family: var(--font-sans, sans-serif);
-  font-weight: 700; font-size: 0.95rem;
-  letter-spacing: 0.22em; text-indent: 0.22em;
-  color: var(--pine, #75acaf);
-  border: 1px solid color-mix(in srgb, var(--pine, #75acaf) 60%, transparent);
-  border-radius: 4px;
-  padding: 0.3rem 0.8rem;
-  background: color-mix(in srgb, #1c1f26 85%, transparent);
-}
-.replayBadge.on { display: block; animation: replayPulse 2.4s ease-in-out infinite; }
-@keyframes replayPulse { 50% { opacity: 0.55; } }

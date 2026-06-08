@@ -449,10 +449,11 @@ home — an output-only surface):**
 - **Click-to-listen: DROPPED.** The kiosk has no pointer, and the browser
   user already has the admin (Listen button, hear/see tri-state) one tab
   over — a parallel control path on the map is duplicate affordance.
-- **Time scrubber: DEFERRED, mutated.** As a slider it's a browser toy; the
-  kiosk-native version is an ambient **auto-replay** — when the band is
-  quiet, replay the last hours' blips on a loop, snap to live on any
-  activity. That folds into **Idea 3** as the map-skin ambient mode.
+- **Time scrubber: DEFERRED.** As a slider it's a browser toy. The ambient
+  **auto-replay** that shipped in its place (PR #66) was **REMOVED 2026-06-08**
+  (operator: the replay's camera punches read as a bug — unexplained zooms on a
+  quiet band — and it was a measurable Chromium CPU/heat sink on the 2014 box).
+  The live camera-follow on audible hits stays; only the quiet-band replay went.
 
 ---
 
@@ -924,7 +925,8 @@ throttling, which a bare CPU% gauge would hide.
 ## Where things stand (2026-06-07) — open items, sorted
 
 Ideas 1, 2, 4, 5, 6, 7, 8, 9, 11, 15, 16 are shipped or resolved; the stretch
-sweep landed ambient replay, CC band-sweep, and remote listening (PRs #66–#68).
+sweep landed CC band-sweep and remote listening (PRs #66–#68); ambient replay
+shipped then was REMOVED 2026-06-08 (camera-punch read as a bug + CPU/heat).
 Transcription shipped then was removed (operator decision, 2026-06-07 — see the
 stretch list above). What's open, in execution order:
 
@@ -945,8 +947,9 @@ stretch list above). What's open, in execution order:
 > instinct. Back to field-proving from here.
 
 ### Build next (software-only, in order)
-1. **Idea 3 — further ambient skins** (constellation, kerchunk wall, data
-   poster). First skin (auto-replay) shipped; optional polish, low priority.
+1. **Idea 3 — ambient skins** (constellation, kerchunk wall, data poster). The
+   first skin (auto-replay) was removed (2026-06-08, see Idea 8); any future
+   skin must NOT punch the camera on a quiet band. Optional, low priority.
 
 ### Hardening backlog — DSP efficiency (from the 2026-06-06 review)
 `docs/PROCESSOR-EFFICIENCY-REVIEW-2026-06-06.md` found the dominant cost is the
