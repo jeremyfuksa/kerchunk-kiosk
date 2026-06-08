@@ -67,6 +67,8 @@ import numpy as np
 from gnuradio import analog, audio, blocks, fft as grfft, filter as grfilter, gr, soapy
 from gnuradio.filter import firdes
 
+from wideband_dsp_math import channel_bins, bin_power_db
+
 MAX_CHANS = 12           # channelizer lanes (always running; ~2.5 cores of 8
                          # at 12). Must match MAX_CHANNELS_PER_GROUP in
                          # WidebandEngine.ts — grouping splits clusters bigger
@@ -132,6 +134,16 @@ AM_GAIN = 0.7            # AM audio gain AFTER carrier normalization (audio
                          # is modulation-depth units, ~±0.8 at full depth)
 FLOOR_ALPHA_UP = 0.02    # floor rises slowly
 FLOOR_ALPHA_DOWN = 0.2   # floor falls fast
+# FFT-detect integrations (detect_via="fft"). cc_mag emits one CC_FFT-vector per
+# CC_FFT input samples -> ~rate/CC_FFT = 1172 vectors/s. Lengths set the
+# averaging window: long for floor/open (~150 ms), short for the fast audio gate.
+FFT_SLOW_FRAMES = 176    # ~150 ms — floor/open, matches the per-lane slow probe (~100 ms class)
+# NOTE first estimate, tune at the bench A/B (see specs/2026-06-08-fft-detect-power-design.md):
+# the per-lane fast gate averages only ~10 ms, but FFT bins are noisier (~1.2 dB std), so the
+# short integration trades a slightly longer mute for stability against gate chatter. ~30 ms here
+# is a starting point, NOT a match to the 10 ms lane probe window.
+FFT_FAST_FRAMES = 35     # ~30 ms (bench-tunable; see note above)
+DETECT_HALF_HZ = 8_000   # half-bandwidth summed per channel (~16 kHz NFM)
 
 
 def emit(obj):
@@ -141,19 +153,10 @@ def emit(obj):
 class Chain:
     """One channelizer lane: xlating filter + power probe + NBFM + gate."""
 
-    def __init__(self, tb, src, taps, samp_rate, adder, port, same_fd=None):
+    def __init__(self, tb, src, taps, samp_rate, adder, port, same_fd=None,
+                 build_power=True):
         self.xlate = grfilter.freq_xlating_fir_filter_ccf(
             samp_rate // QUAD_RATE, taps, 0, samp_rate)
-        self.mag2 = blocks.complex_to_mag_squared(1)
-        # ~100 ms power average at the 48 kHz quad rate: stable estimate for
-        # DETECTION (open/close, floor learning).
-        self.avg = blocks.moving_average_ff(QUAD_RATE // 10, 10.0 / QUAD_RATE)
-        self.probe = blocks.probe_signal_f()
-        # ~10 ms power average: fast estimate for the AUDIO GATE only, so the
-        # speaker mutes within one poll of carrier drop instead of waiting for
-        # the 100 ms average to decay through the threshold.
-        self.avg_fast = blocks.moving_average_ff(QUAD_RATE // 100, 100.0 / QUAD_RATE)
-        self.probe_fast = blocks.probe_signal_f()
         self.demod = analog.nbfm_rx(
             audio_rate=AUDIO_RATE, quad_rate=QUAD_RATE, tau=75e-6, max_dev=5_000)
         # Quieting squelch: HF-noise power in the demod output. A genuine FM
@@ -185,8 +188,22 @@ class Chain:
         self.audio_avg = blocks.moving_average_ff(
             AUDIO_RATE // 10, 10.0 / AUDIO_RATE)
         self.audio_probe = blocks.probe_signal_f()
-        tb.connect(src, self.xlate, self.mag2, self.avg, self.probe)
-        tb.connect(self.mag2, self.avg_fast, self.probe_fast)
+        tb.connect(src, self.xlate)
+        self.probe = None
+        self.probe_fast = None
+        if build_power:
+            self.mag2 = blocks.complex_to_mag_squared(1)
+            # ~100 ms power average at the 48 kHz quad rate: stable estimate for
+            # DETECTION (open/close, floor learning).
+            self.avg = blocks.moving_average_ff(QUAD_RATE // 10, 10.0 / QUAD_RATE)
+            self.probe = blocks.probe_signal_f()
+            # ~10 ms power average: fast estimate for the AUDIO GATE only, so the
+            # speaker mutes within one poll of carrier drop instead of waiting for
+            # the 100 ms average to decay through the threshold.
+            self.avg_fast = blocks.moving_average_ff(QUAD_RATE // 100, 100.0 / QUAD_RATE)
+            self.probe_fast = blocks.probe_signal_f()
+            tb.connect(self.xlate, self.mag2, self.avg, self.probe)
+            tb.connect(self.mag2, self.avg_fast, self.probe_fast)
         tb.connect(self.xlate, self.demod, self.gate)
         tb.connect(self.xlate, self.am_mag)
         tb.connect(self.am_mag, (self.am_div, 0))
@@ -228,6 +245,8 @@ class Chain:
         self.speech_db = None    # smoothed voiced-audio level (leveler input)
         self.priority = False    # preempts non-priority audible when it opens
         self.channel_id = None   # None = parked (no channel assigned)
+        self.bin_lo = None       # FFT-detect: cached channel bin range (fft mode)
+        self.bin_hi = None
         self.reset_detection()
 
     def fade_to(self, target):
@@ -303,6 +322,8 @@ class Chain:
 
     def park(self):
         self.channel_id = None
+        self.bin_lo = None
+        self.bin_hi = None
         self.priority = False
         self.allow_audio = True
         self.audible_cfg = True
@@ -320,10 +341,14 @@ class Chain:
         self.reset_detection()
 
     def power_db(self):
+        if self.probe is None:
+            return -120.0
         p = self.probe.level()
         return 10 * math.log10(p) if p > 0 else -120.0
 
     def fast_power_db(self):
+        if self.probe_fast is None:
+            return -120.0
         p = self.probe_fast.level()
         return 10 * math.log10(p) if p > 0 else -120.0
 
@@ -343,6 +368,7 @@ class Helper(gr.top_block):
     def __init__(self, args):
         gr.top_block.__init__(self, "kerchunk-wideband-helper")
         self.args = args
+        self.detect_via = args.detect_via
 
         # Device selection (multi-SDR): rtl=N picks the librtlsdr index Node
         # resolved from the configured USB PORT just before spawning us.
@@ -402,8 +428,10 @@ class Helper(gr.top_block):
             threading.Thread(target=self._same_reader, daemon=True).start()
         else:
             emit({"ev": "log", "msg": "multimon-ng not found: SAME decoding disabled"})
+        build_power = (self.detect_via == "lane")
         self.chains = [Chain(self, self.src, taps, args.rate, self.adder, i,
-                             same_fd=(same_fd if i == MAX_CHANS - 1 else None))
+                             same_fd=(same_fd if i == MAX_CHANS - 1 else None),
+                             build_power=build_power)
                        for i in range(MAX_CHANS)]
 
         # Close Call: FFT over the full window. Median bin power = noise
@@ -415,6 +443,21 @@ class Helper(gr.top_block):
         self.cc_mag = blocks.complex_to_mag_squared(CC_FFT)
         self.cc_probe = blocks.probe_signal_vf(CC_FFT)
         self.connect(self.src, self.cc_s2v, self.cc_fft, self.cc_mag, self.cc_probe)
+        # FFT-detect: long (floor/open) and short (fast gate) integrations over
+        # the same |.|^2 spectrum the Close Call FFT already produces. Built only
+        # in fft mode so lane mode pays nothing.
+        # Populated only in fft mode; callers (poll/power_levels, Task 5) MUST guard for None.
+        self.slow_probe = None
+        self.fast_probe = None
+        if self.detect_via == "fft":
+            self.cc_slow = blocks.moving_average_ff(
+                FFT_SLOW_FRAMES, 1.0 / FFT_SLOW_FRAMES, 4000, CC_FFT)
+            self.slow_probe = blocks.probe_signal_vf(CC_FFT)
+            self.connect(self.cc_mag, self.cc_slow, self.slow_probe)
+            self.cc_fast = blocks.moving_average_ff(
+                FFT_FAST_FRAMES, 1.0 / FFT_FAST_FRAMES, 4000, CC_FFT)
+            self.fast_probe = blocks.probe_signal_vf(CC_FFT)
+            self.connect(self.cc_mag, self.cc_fast, self.fast_probe)
 
         self.cc_enabled = False
         self.cc_db = 15.0
@@ -464,6 +507,8 @@ class Helper(gr.top_block):
                              c.get("openDb"), c.get("quietDb"),
                              c.get("hangMs"),
                              bool(c.get("background", False)))
+                chain.bin_lo, chain.bin_hi = channel_bins(
+                    c["freqHz"], center_hz, self.args.rate, CC_FFT, DETECT_HALF_HZ)
             else:
                 chain.park()
         emit({"ev": "tuned", "centerHz": center_hz})
@@ -500,17 +545,40 @@ class Helper(gr.top_block):
                   if c.channel_id is not None and c.floor_db is not None]
         return min(floors) if floors else None
 
+    def chan_power_db(self, chain, slow_vec):
+        if self.detect_via == "fft":
+            if slow_vec is None or chain.bin_lo is None:
+                return -120.0
+            return bin_power_db(slow_vec, chain.bin_lo, chain.bin_hi)
+        return chain.power_db()
+
+    def chan_fast_power_db(self, chain, fast_vec):
+        if self.detect_via == "fft":
+            if fast_vec is None or chain.bin_lo is None:
+                return -120.0
+            return bin_power_db(fast_vec, chain.bin_lo, chain.bin_hi)
+        return chain.fast_power_db()
+
     def poll(self, now):
         g_open_db = self.args.open_db
         g_quiet_db = self.args.quiet_db
         g_hang_s = self.args.hang_ms / 1000.0
+
+        # fft mode: snapshot both FFT power vectors once per poll; the chan_*_db
+        # accessors fall back to the per-lane probes in lane mode.
+        slow_vec = fast_vec = None
+        if self.detect_via == "fft":
+            sv = self.slow_probe.level() if self.slow_probe else None
+            fv = self.fast_probe.level() if self.fast_probe else None
+            slow_vec = np.asarray(sv) if sv and len(sv) == CC_FFT else None
+            fast_vec = np.asarray(fv) if fv and len(fv) == CC_FFT else None
 
         # Pass 1: update per-chain floors (frozen while a chain is open).
         readings = {}
         for chain in self.chains:
             if chain.channel_id is None:
                 continue
-            db = chain.power_db()
+            db = self.chan_power_db(chain, slow_vec)
 
             if chain.warmup > 0:
                 chain.warmup -= 1
@@ -563,7 +631,7 @@ class Helper(gr.top_block):
             # hysteresis keeps the noisier fast estimate from fluttering the
             # audio on a weak-but-open signal.
             gate_thresh = floor + open_db - CLOSE_HYST_DB
-            fast_db = chain.fast_power_db()
+            fast_db = self.chan_fast_power_db(chain, fast_vec)
             if chain.carrier:
                 chain.carrier = fast_db > gate_thresh - GATE_HYST_DB / 2
             else:
@@ -703,6 +771,8 @@ class Helper(gr.top_block):
         for chain in self.chains:
             if chain.channel_id is None:
                 chain.assign(f"cc_{freq}", freq - self.center_hz, priority=True)
+                chain.bin_lo, chain.bin_hi = channel_bins(
+                    freq, self.center_hz, self.args.rate, CC_FFT, DETECT_HALF_HZ)
                 break
 
     def skip(self, holdoff_s=SKIP_HOLDOFF_S):
@@ -769,6 +839,11 @@ class Helper(gr.top_block):
         return best
 
     def power_levels(self):
+        if self.detect_via == "fft":
+            sv = self.slow_probe.level() if self.slow_probe else None
+            vec = np.asarray(sv) if sv and len(sv) == CC_FFT else None
+            return {c.channel_id: round(self.chan_power_db(c, vec), 1)
+                    for c in self.chains if c.channel_id is not None}
         return {c.channel_id: round(c.power_db(), 1)
                 for c in self.chains if c.channel_id is not None}
 
@@ -809,6 +884,9 @@ def main():
                     help="fd to tee the speaker feed to as s16 PCM (remote listen)")
     ap.add_argument("--hang-ms", type=float, default=2000.0,
                     help="sustained silence before close")
+    ap.add_argument("--detect-via", choices=["lane", "fft"], default="lane",
+                    help="power-detection source: per-lane probes (default) or "
+                         "the Close Call FFT")
     args = ap.parse_args()
 
     helper = Helper(args)

@@ -109,6 +109,7 @@ export function toScanConfig(
     closeCall: cfg.scan.closeCall,
     closeCallDb: cfg.scan.closeCallDb,
     lockoutHz: cfg.scan.lockoutHz,
+    detectVia: cfg.scan.detectVia,
   };
 }
 

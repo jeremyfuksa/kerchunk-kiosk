@@ -81,6 +81,12 @@ export const configSchema = z.object({
     // Discovery threshold: dB over the window's median noise floor. Eager by
     // default (15) per operator preference.
     closeCallDb: z.number().positive().optional(),
+    // Power-detection source (ROADMAP DSP-efficiency): "lane" (default) reads
+    // power from the 12 per-lane probes; "fft" derives it from the Close Call
+    // FFT, shedding the per-lane power front-end (~0.5-0.7 cores). Quieting and
+    // demod are unchanged in both. Default flips to "fft" only after the bench
+    // A/B (see specs/2026-06-08-fft-detect-power-design.md).
+    detectVia: z.enum(["lane", "fft"]).optional(),
     // Close Call band-sweep ranges (stretch phase 2): one empty-window
     // stop per rotation hunts inside these. Empty/absent = no sweeping.
     sweepRanges: z.array(z.object({
