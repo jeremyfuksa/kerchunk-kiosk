@@ -150,16 +150,3 @@ describe("alert rows (ROADMAP Idea 6)", () => {
     expect(h.sites()[0]?.hits).toBe(1);
   });
 });
-
-describe("transcripts (stretch)", () => {
-  it("attaches text to the most recent closed transmission and filters queries", () => {
-    const h = make();
-    h.record({ ts: 1000, kind: "active", channelId: "c1", freq: CH.freq, alphaTag: CH.alphaTag });
-    h.release("c1", 4000);
-    h.setTranscript("c1", "engine 4512 highball");
-    const rows = h.query({ transcribed: true });
-    expect(rows).toHaveLength(1);
-    expect(rows[0]!.transcript).toBe("engine 4512 highball");
-    expect(h.query({}).length).toBe(1);
-  });
-});

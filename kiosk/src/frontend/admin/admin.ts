@@ -202,10 +202,6 @@ export function renderAdmin(root: HTMLElement): void {
         <h2>Alerts <span class="hint">what fired while you were away — flag channels with the bell</span></h2>
         <ul id="alertRows" class="alertList"></ul>
       </section>
-      <section class="transcripts collapsible" data-key="transcripts" data-page="home">
-        <h2>Transcripts <span class="hint">what was said — whisper-tiny gist, not gospel</span></h2>
-        <ul id="trRows" class="alertList"></ul>
-      </section>
       </div>
       <div class="pageIntro" data-page="scan">
         <div><span class="eyebrow">Settings</span><h1>Scanner settings</h1><p>Adjust scan behavior and optional services. Changes apply when you save each section.</p></div>
@@ -229,13 +225,12 @@ export function renderAdmin(root: HTMLElement): void {
             <label><span>Sweep ranges <small>Comma-separated MHz ranges; empty disables sweeping</small></span><input id="tSweep" type="text" placeholder="450-470, 150-162" title="Band-sweep: one empty-window stop per rotation hunts for activity inside these ranges" /></label>
           </fieldset>
           <fieldset>
-            <legend>Alerts and transcripts</legend>
+            <legend>Alerts</legend>
             <label><span>Alert cooldown <small>Minimum time before repeating an alert</small></span><span class="inputUnit"><input id="tAlertCool" type="number" min="1" step="1" placeholder="15" /><b>min</b></span></label>
             <label><span>Alert hold <small>How long an alert remains visible</small></span><span class="inputUnit"><input id="tAlertHold" type="number" min="5" step="5" placeholder="30" /><b>sec</b></span></label>
             <label><span>Push notification URL <small>Optional ntfy topic URL</small></span><input id="tAlertNtfy" type="text" placeholder="https://ntfy.sh/your-topic" /></label>
             <label><span>SAME county codes <small>Comma-separated FIPS codes; empty allows all</small></span><input id="tSameFips" type="text" placeholder="029047, 029095" title="County FIPS codes for SAME/EAS scoping — 5-digit SSCCC or 6-digit PSSCCC" /></label>
             <label class="switchRow"><span>Show SAME tests <small>Include weekly and monthly test banners</small></span><input id="tSameTests" type="checkbox" /></label>
-            <label class="switchRow" title="Speech-to-text on every transmission the speaker plays. Costs CPU and takes effect at service restart."><span>Transcribe audio <small>Uses additional CPU; takes effect after restart</small></span><input id="tTranscribe" type="checkbox" /></label>
           </fieldset>
           <fieldset>
             <legend>Map integration</legend>
@@ -302,7 +297,7 @@ export function renderAdmin(root: HTMLElement): void {
   // Progressive disclosure: minor modules collapse behind their legends.
   // State persists per device (an operator who tunes often keeps it open).
   const COLLAPSE_KEY = "kerchunk.admin.collapsed";
-  const collapsed = new Set<string>(JSON.parse(localStorage.getItem(COLLAPSE_KEY) ?? '["tuning","lockouts","weather","insights","transcripts"]'));
+  const collapsed = new Set<string>(JSON.parse(localStorage.getItem(COLLAPSE_KEY) ?? '["tuning","lockouts","weather","insights"]'));
   // ── Admin IA (ROADMAP Idea 15): config is a destination, monitoring is
   // the landing. Pure re-layout — all sections stay wired as before; the
   // route only decides which data-page group is visible. Unknown = home.
@@ -640,20 +635,6 @@ export function renderAdmin(root: HTMLElement): void {
   setInterval(() => {
     if (drawerKind === "analytics" && analyticsFreq !== null) void renderAnalyticsDrawer(analyticsFreq);
   }, 5000);
-
-  // ── Transcripts (stretch, opt-in): the searchable voice log.
-  const trRows = root.querySelector<HTMLElement>("#trRows")!;
-  async function renderTranscripts(): Promise<void> {
-    const rows = await fetch("/api/history?transcribed=1&limit=20")
-      .then((r) => (r.ok ? r.json() : [])) as
-      Array<{ ts: number; freq: number; alphaTag: string; transcript: string | null }>;
-    trRows.innerHTML = rows.length
-      ? rows.map((r) => `<li><span class="alertWhen">${new Date(r.ts).toLocaleTimeString()}</span>
-          <span class="alertWhat"><b>${esc(r.alphaTag)}</b> ${esc(r.transcript ?? "")}</span></li>`).join("")
-      : `<li class="hint">nothing transcribed yet — enable “Transcribe audio” in Scan tuning (takes effect at restart)</li>`;
-  }
-  void renderTranscripts().catch(() => {});
-  setInterval(() => { renderTranscripts().catch(() => {}); }, 60_000);
 
   // Inline-editable CRUD table. One row at a time is editable: editingId is a
   // channel id, "new" (blank row pending creation), or null. Checkboxes on
@@ -1512,7 +1493,6 @@ export function renderAdmin(root: HTMLElement): void {
   const tAlertNtfy = root.querySelector<HTMLInputElement>("#tAlertNtfy")!;
   const tSameFips = root.querySelector<HTMLInputElement>("#tSameFips")!;
   const tSameTests = root.querySelector<HTMLInputElement>("#tSameTests")!;
-  const tTranscribe = root.querySelector<HTMLInputElement>("#tTranscribe")!;
   const tCloseCall = root.querySelector<HTMLInputElement>("#tCloseCall")!;
   const tCloseCallDb = root.querySelector<HTMLInputElement>("#tCloseCallDb")!;
   const tSweep = root.querySelector<HTMLInputElement>("#tSweep")!;
@@ -1530,7 +1510,6 @@ export function renderAdmin(root: HTMLElement): void {
     tAlertNtfy.value = cfg.alerts?.ntfyUrl ?? "";
     tSameFips.value = (cfg.alerts?.sameFips ?? []).join(", ");
     tSameTests.checked = cfg.alerts?.sameTests ?? false;
-    tTranscribe.checked = cfg.transcribe ?? false;
     tCloseCall.checked = cfg.scan.closeCall ?? true;   // engine default: ON
     tCloseCallDb.value = cfg.scan.closeCallDb != null ? String(cfg.scan.closeCallDb) : "";
     tSweep.value = (cfg.scan.sweepRanges ?? [])
@@ -1575,8 +1554,6 @@ export function renderAdmin(root: HTMLElement): void {
       };
       if (Object.keys(alerts).length) cfg.alerts = alerts;
       else delete cfg.alerts;
-      if (tTranscribe.checked) cfg.transcribe = true;
-      else delete cfg.transcribe;
       const hang = num(tHang);
       if (hang !== undefined) cfg.scan.dwellMs = hang;
       await api.putConfig(cfg);

@@ -32,13 +32,11 @@ export interface HistoryRow {
   lat: number | null;
   lon: number | null;
   durationMs: number | null;
-  transcript: string | null;
   rfDb: number | null;
 }
 
 export interface HistoryQuery {
   kind?: string;
-  transcribed?: boolean;
   sinceMs?: number;
   untilMs?: number;
   freq?: number;
@@ -57,8 +55,8 @@ export class HistoryStore {
   private readonly retentionDays: number;
   // channelId -> rowid of its currently-open event, for duration pairing.
   private open = new Map<string, number>();
-  // channelId -> rowid of its most recently CLOSED event — transcripts
-  // arrive seconds after release, so they pair against this.
+  // channelId -> rowid of its most recently CLOSED event — a stray post-release
+  // RF reading pairs against this (see setRf).
   private lastClosed = new Map<string, number>();
 
   constructor(opts: HistoryStoreOptions) {
@@ -81,12 +79,10 @@ export class HistoryStore {
       CREATE INDEX IF NOT EXISTS idx_events_ts ON events(ts);
       CREATE INDEX IF NOT EXISTS idx_events_freq ON events(freq);
     `);
-    // Transcription (stretch): lazy column migration for stores created
-    // before the feature existed.
+    // Lazy column migration for stores created before rfDb existed. (A vestigial
+    // `transcript` column may also linger from the removed transcription feature;
+    // it is harmless — never written or read.)
     const cols = this.db.prepare("PRAGMA table_info(events)").all() as Array<{ name: string }>;
-    if (!cols.some((c) => c.name === "transcript")) {
-      this.db.exec("ALTER TABLE events ADD COLUMN transcript TEXT");
-    }
     if (!cols.some((c) => c.name === "rfDb")) {
       this.db.exec("ALTER TABLE events ADD COLUMN rfDb REAL");
     }
@@ -117,17 +113,9 @@ export class HistoryStore {
     ).run(ts, rowid);
   }
 
-  /** Attach what was said to the channel's most recent transmission. */
-  setTranscript(channelId: string, text: string): void {
-    const rowid = this.lastClosed.get(channelId) ?? this.open.get(channelId);
-    if (rowid === undefined) return;
-    this.db.prepare("UPDATE events SET transcript = ? WHERE id = ?").run(text, rowid);
-  }
-
   /** Attach received RF strength to the channel's in-progress transmission.
-   *  Unlike transcripts (which arrive after release), rf events fire while the
-   *  channel is open, so the open row wins — falling back to lastClosed only
-   *  for a stray reading that lands just after release. */
+   *  rf events fire while the channel is open, so the open row wins — falling
+   *  back to lastClosed only for a stray reading that lands just after release. */
   setRf(channelId: string, db: number): void {
     const rowid = this.open.get(channelId) ?? this.lastClosed.get(channelId);
     if (rowid === undefined) return;
@@ -138,7 +126,6 @@ export class HistoryStore {
     const where: string[] = [];
     const args: Array<number | string> = [];
     if (q.kind !== undefined) { where.push("kind = ?"); args.push(q.kind); }
-    if (q.transcribed) where.push("transcript IS NOT NULL");
     if (q.sinceMs !== undefined) { where.push("ts >= ?"); args.push(q.sinceMs); }
     if (q.untilMs !== undefined) { where.push("ts <= ?"); args.push(q.untilMs); }
     if (q.freq !== undefined) { where.push("freq = ?"); args.push(q.freq); }

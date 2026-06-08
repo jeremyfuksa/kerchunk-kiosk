@@ -796,7 +796,7 @@ describe("archive recommendations", () => {
     ];
     configStore.save(cfg);
     const history = {
-      record: () => {}, release: () => {}, setTranscript: () => {},
+      record: () => {}, release: () => {},
       query: (q: { untilMs?: number }) => q.untilMs ? [{ freq: 100 }] : [],
       sites: () => [], stats: () => ({}),
     };

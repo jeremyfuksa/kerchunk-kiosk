@@ -909,10 +909,12 @@ throttling, which a bare CPU% gauge would hide.
   refactor behind the same helper protocol; only matters when a window wants
   dozens of channels — which Banks bulk-toggling and band-sweep could both
   cause.
-- **Transcription.** Speech-to-text over captured audio → a searchable log of
-  *what was said*, not just when. Powerful and modern, but heavier (a model on the
-  appliance or an off-box API) and depends on capturing audio, so it sits well
-  past the obvious tier.
+- **Transcription — shipped (PR #68) then REMOVED 2026-06-07 (operator
+  decision, not wanted).** Was opt-in speech-to-text (faster-whisper tiny.en)
+  filing text onto history rows. Excised entirely — module, worker, schema
+  `transcribe` flag, admin UI, and the appliance venv — because its only real
+  cost was CPU/heat on the 2014 chassis (the very thing the efficiency review
+  flags) for a feature the operator never enabled. Don't re-pitch.
 - **Remote audio streaming.** Stream the live demod to a phone/browser
   (Icecast-style) — the old "home base Wi-Fi mode" from the vision doc. Lets the
   operator listen away from the kiosk.
@@ -922,8 +924,9 @@ throttling, which a bare CPU% gauge would hide.
 ## Where things stand (2026-06-07) — open items, sorted
 
 Ideas 1, 2, 4, 5, 6, 7, 8, 9, 11, 15, 16 are shipped or resolved; the stretch
-sweep landed ambient replay, CC band-sweep, remote listening, and opt-in
-transcription (PRs #66–#68). What's open, in execution order:
+sweep landed ambient replay, CC band-sweep, and remote listening (PRs #66–#68).
+Transcription shipped then was removed (operator decision, 2026-06-07 — see the
+stretch list above). What's open, in execution order:
 
 ### PHASE: CONSOLIDATION (operator, 2026-06-06) — admin pass complete (2026-06-07)
 > "We are going to nail the stuff we have before adding." No new features
