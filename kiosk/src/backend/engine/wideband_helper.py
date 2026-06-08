@@ -132,6 +132,13 @@ AM_GAIN = 0.7            # AM audio gain AFTER carrier normalization (audio
                          # is modulation-depth units, ~±0.8 at full depth)
 FLOOR_ALPHA_UP = 0.02    # floor rises slowly
 FLOOR_ALPHA_DOWN = 0.2   # floor falls fast
+# FFT-detect integrations (detect_via="fft"). cc_mag emits one CC_FFT-vector per
+# CC_FFT input samples -> ~rate/CC_FFT = 1172 vectors/s. Lengths set the
+# averaging window: long for floor/open (~150 ms), short for the fast audio gate
+# (~30 ms, matching the per-lane fast probe it replaces).
+FFT_SLOW_FRAMES = 176    # ~150 ms
+FFT_FAST_FRAMES = 35     # ~30 ms
+DETECT_HALF_HZ = 8_000   # half-bandwidth summed per channel (~16 kHz NFM)
 
 
 def emit(obj):
@@ -141,19 +148,10 @@ def emit(obj):
 class Chain:
     """One channelizer lane: xlating filter + power probe + NBFM + gate."""
 
-    def __init__(self, tb, src, taps, samp_rate, adder, port, same_fd=None):
+    def __init__(self, tb, src, taps, samp_rate, adder, port, same_fd=None,
+                 build_power=True):
         self.xlate = grfilter.freq_xlating_fir_filter_ccf(
             samp_rate // QUAD_RATE, taps, 0, samp_rate)
-        self.mag2 = blocks.complex_to_mag_squared(1)
-        # ~100 ms power average at the 48 kHz quad rate: stable estimate for
-        # DETECTION (open/close, floor learning).
-        self.avg = blocks.moving_average_ff(QUAD_RATE // 10, 10.0 / QUAD_RATE)
-        self.probe = blocks.probe_signal_f()
-        # ~10 ms power average: fast estimate for the AUDIO GATE only, so the
-        # speaker mutes within one poll of carrier drop instead of waiting for
-        # the 100 ms average to decay through the threshold.
-        self.avg_fast = blocks.moving_average_ff(QUAD_RATE // 100, 100.0 / QUAD_RATE)
-        self.probe_fast = blocks.probe_signal_f()
         self.demod = analog.nbfm_rx(
             audio_rate=AUDIO_RATE, quad_rate=QUAD_RATE, tau=75e-6, max_dev=5_000)
         # Quieting squelch: HF-noise power in the demod output. A genuine FM
@@ -185,8 +183,20 @@ class Chain:
         self.audio_avg = blocks.moving_average_ff(
             AUDIO_RATE // 10, 10.0 / AUDIO_RATE)
         self.audio_probe = blocks.probe_signal_f()
-        tb.connect(src, self.xlate, self.mag2, self.avg, self.probe)
-        tb.connect(self.mag2, self.avg_fast, self.probe_fast)
+        tb.connect(src, self.xlate)
+        if build_power:
+            self.mag2 = blocks.complex_to_mag_squared(1)
+            # ~100 ms power average at the 48 kHz quad rate: stable estimate for
+            # DETECTION (open/close, floor learning).
+            self.avg = blocks.moving_average_ff(QUAD_RATE // 10, 10.0 / QUAD_RATE)
+            self.probe = blocks.probe_signal_f()
+            # ~10 ms power average: fast estimate for the AUDIO GATE only, so the
+            # speaker mutes within one poll of carrier drop instead of waiting for
+            # the 100 ms average to decay through the threshold.
+            self.avg_fast = blocks.moving_average_ff(QUAD_RATE // 100, 100.0 / QUAD_RATE)
+            self.probe_fast = blocks.probe_signal_f()
+            tb.connect(self.xlate, self.mag2, self.avg, self.probe)
+            tb.connect(self.mag2, self.avg_fast, self.probe_fast)
         tb.connect(self.xlate, self.demod, self.gate)
         tb.connect(self.xlate, self.am_mag)
         tb.connect(self.am_mag, (self.am_div, 0))
@@ -320,10 +330,14 @@ class Chain:
         self.reset_detection()
 
     def power_db(self):
+        if not hasattr(self, "probe"):
+            return -120.0
         p = self.probe.level()
         return 10 * math.log10(p) if p > 0 else -120.0
 
     def fast_power_db(self):
+        if not hasattr(self, "probe_fast"):
+            return -120.0
         p = self.probe_fast.level()
         return 10 * math.log10(p) if p > 0 else -120.0
 
@@ -403,8 +417,10 @@ class Helper(gr.top_block):
             threading.Thread(target=self._same_reader, daemon=True).start()
         else:
             emit({"ev": "log", "msg": "multimon-ng not found: SAME decoding disabled"})
+        build_power = (self.detect_via == "lane")
         self.chains = [Chain(self, self.src, taps, args.rate, self.adder, i,
-                             same_fd=(same_fd if i == MAX_CHANS - 1 else None))
+                             same_fd=(same_fd if i == MAX_CHANS - 1 else None),
+                             build_power=build_power)
                        for i in range(MAX_CHANS)]
 
         # Close Call: FFT over the full window. Median bin power = noise
@@ -416,6 +432,20 @@ class Helper(gr.top_block):
         self.cc_mag = blocks.complex_to_mag_squared(CC_FFT)
         self.cc_probe = blocks.probe_signal_vf(CC_FFT)
         self.connect(self.src, self.cc_s2v, self.cc_fft, self.cc_mag, self.cc_probe)
+        # FFT-detect: long (floor/open) and short (fast gate) integrations over
+        # the same |.|^2 spectrum the Close Call FFT already produces. Built only
+        # in fft mode so lane mode pays nothing.
+        self.slow_probe = None
+        self.fast_probe = None
+        if self.detect_via == "fft":
+            self.cc_slow = blocks.moving_average_ff(
+                FFT_SLOW_FRAMES, 1.0 / FFT_SLOW_FRAMES, 4000, CC_FFT)
+            self.slow_probe = blocks.probe_signal_vf(CC_FFT)
+            self.connect(self.cc_mag, self.cc_slow, self.slow_probe)
+            self.cc_fast = blocks.moving_average_ff(
+                FFT_FAST_FRAMES, 1.0 / FFT_FAST_FRAMES, 4000, CC_FFT)
+            self.fast_probe = blocks.probe_signal_vf(CC_FFT)
+            self.connect(self.cc_mag, self.cc_fast, self.fast_probe)
 
         self.cc_enabled = False
         self.cc_db = 15.0
