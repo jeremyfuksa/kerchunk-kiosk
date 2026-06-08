@@ -381,65 +381,6 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
       }, 1500);
     }
 
-    // ── Ambient auto-replay (ROADMAP Idea 3, the operator's premise note:
-    // sparse traffic means live-decay visuals show an empty map — make
-    // MEMORY beautiful instead). When the band stays quiet, the kiosk
-    // replays the last hours of located traffic on a compressed loop,
-    // honestly badged REPLAY; any live event snaps it off instantly.
-    // Replay blips ping and steer the camera like live ones but never
-    // touch the antenna/heat layers (those count real traffic only).
-    const REPLAY_QUIET_MS = 120_000;   // band silence before replay starts
-    const REPLAY_SPAN_MS = 3 * 3_600_000;   // how much history to replay
-    const REPLAY_LOOP_MS = 90_000;     // 3 h compressed into 90 s
-    let lastLiveTs = Date.now();
-    let replayTimers: Array<ReturnType<typeof setTimeout>> = [];
-    let replaying = false;
-    const replayBadge = document.createElement("div");
-    replayBadge.className = "replayBadge";
-    replayBadge.textContent = "REPLAY — last 3 h";
-    root.parentElement?.appendChild(replayBadge);
-
-    function stopReplay(): void {
-      if (!replaying) return;
-      replaying = false;
-      for (const t of replayTimers) clearTimeout(t);
-      replayTimers = [];
-      replayBadge.classList.remove("on");
-    }
-
-    async function startReplay(): Promise<void> {
-      if (replaying || interactive) return;
-      const rows = await fetch(`/api/history?since=${Date.now() - REPLAY_SPAN_MS}&limit=1000`)
-        .then((r) => (r.ok ? r.json() : []))
-        .then((rs: Array<{ lat: number | null; lon: number | null; alphaTag: string; kind: string; ts: number; freq: number }>) =>
-          rs.filter((r) => r.lat != null && r.lon != null && r.kind !== "alert").reverse())
-        .catch(() => [] as never[]);
-      if (rows.length < 3) return;   // nothing worth re-watching
-      replaying = true;
-      replayBadge.classList.add("on");
-      const t0 = rows[0]!.ts;
-      const span = Math.max(1, rows[rows.length - 1]!.ts - t0);
-      const schedule = () => {
-        if (!replaying) return;
-        for (const r of rows) {
-          const at = ((r.ts - t0) / span) * REPLAY_LOOP_MS;
-          replayTimers.push(setTimeout(() => {
-            if (!replaying) return;
-            field.add({ lat: r.lat!, lon: r.lon!, alphaTag: r.alphaTag, kind: "active", ts: Date.now(), freq: r.freq });
-            ping(r.lat!, r.lon!, colorFor(r.freq, "active"));
-            punch(r.lat!, r.lon!);
-          }, at));
-        }
-        replayTimers.push(setTimeout(() => { replayTimers = []; schedule(); }, REPLAY_LOOP_MS + 4000));
-      };
-      schedule();
-    }
-
-    if (!interactive) {
-      setInterval(() => {
-        if (!replaying && Date.now() - lastLiveTs > REPLAY_QUIET_MS) void startReplay();
-      }, 5000);
-    }
     // Unknown-frequency assignments stay fixed for this map session. Their
     // initial position is chosen against all known sites loaded so far; once a
     // later lookup supplies a real location, future events naturally use it.
@@ -482,10 +423,6 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
     // Live feed.
     const proto = location.protocol === "https:" ? "wss" : "ws";
     new ReconnectingWs(`${proto}://${location.host}/ws`, (ev: EngineEvent) => {
-      if (ev.type === "active" || ev.type === "closecall") {
-        lastLiveTs = Date.now();
-        stopReplay();
-      }
       if (ev.type === "active") {
         if (ev.channel.location?.lat != null && ev.channel.location.lon != null) {
           push(ev.channel.location.lat, ev.channel.location.lon, ev.channel.alphaTag || fmtFreq(ev.freq), "active", Date.now(), ev.freq);
