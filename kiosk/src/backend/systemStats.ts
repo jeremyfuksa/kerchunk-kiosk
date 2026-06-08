@@ -30,43 +30,79 @@ export interface SystemAlert {
   help: string;
 }
 
-/** Turn raw host telemetry into operator-facing, self-clearing alerts. */
-export function classifySystemAlerts(sample: SystemSample | null): SystemAlert[] {
-  if (!sample) return [];
+// Alert thresholds, calibrated to THIS appliance's reality. The box is
+// thermally saturated by design: steady-state runs ~82-83°C, so the old 82°C
+// "running hot" line sat on top of normal and fired around the clock. The
+// engine's safetyMode (server.ts) trips at 90°C and clears at 78°C — we align
+// the critical alert with that trip and place attention a few degrees below,
+// clear of the normal band.
+const TEMP_HIGH_C = 87;
+const TEMP_CRITICAL_C = 90;
+// Debounce: a load-driven metric must breach across this many consecutive
+// samples (~7.5s at the 2.5s cadence) before it raises, so a single hot
+// reading or a cold-start burst can't flap the banner on and off.
+const SUSTAIN_SAMPLES = 3;
+
+/** True only if `pred` holds across the whole recent debounce window. */
+function sustained(recent: SystemSample[], pred: (s: SystemSample) => boolean): boolean {
+  if (recent.length === 0) return false;
+  return recent.slice(-SUSTAIN_SAMPLES).every(pred);
+}
+
+/**
+ * Turn raw host telemetry into operator-facing, self-clearing alerts.
+ *
+ * `recent` is the trailing telemetry window (oldest→newest, `now` last); the
+ * fast, load-driven signals (temperature, CPU) only fire when the breach is
+ * *sustained* across it. Slow-moving signals (disk, memory) read `now`
+ * directly. Defaulting `recent` to `[now]` keeps single-sample callers working.
+ */
+export function classifySystemAlerts(
+  now: SystemSample | null,
+  recent: SystemSample[] = now ? [now] : [],
+): SystemAlert[] {
+  if (!now) return [];
   const alerts: SystemAlert[] = [];
-  if (sample.tempC !== null && sample.tempC >= 90) alerts.push({
+
+  // Temperature is driven purely by the reading. Throttling is NOT a trigger —
+  // an idle Intel core dropping its clock is normal power management, not heat —
+  // it only annotates the message when the temperature is independently high.
+  if (sustained(recent, (s) => s.tempC !== null && s.tempC >= TEMP_CRITICAL_C)) alerts.push({
     id: "temperature-critical", severity: "severe", title: "Machine temperature critical",
-    message: `${sample.tempC.toFixed(1)}°C; hardware is at risk.`,
+    message: `${now.tempC?.toFixed(1) ?? "Unknown"}°C; hardware is at risk.`,
     help: "Check airflow immediately. Stop Close Call or shut down the machine if temperature keeps rising.",
   });
-  else if ((sample.tempC !== null && sample.tempC >= 82) || sample.throttled) alerts.push({
+  else if (sustained(recent, (s) => s.tempC !== null && s.tempC >= TEMP_HIGH_C)) alerts.push({
     id: "temperature-high", severity: "attention", title: "Machine is running hot",
-    message: `${sample.tempC?.toFixed(1) ?? "Unknown"}°C${sample.throttled ? " and CPU throttling detected" : ""}.`,
+    message: `${now.tempC?.toFixed(1) ?? "Unknown"}°C${now.throttled ? " and CPU throttling detected" : ""}.`,
     help: "Check vents and fans. Consider disabling Close Call sweeps until it cools.",
   });
-  if (sample.diskFreeMb !== null && sample.diskFreeMb < 512) alerts.push({
+  if (now.diskFreeMb !== null && now.diskFreeMb < 512) alerts.push({
     id: "disk-critical", severity: "severe", title: "Storage almost full",
-    message: `${sample.diskFreeMb} MB remains; history writes may fail.`,
+    message: `${now.diskFreeMb} MB remains; history writes may fail.`,
     help: "Remove old files or expand storage immediately.",
   });
-  else if (sample.diskFreeMb !== null && sample.diskFreeMb < 2048) alerts.push({
+  else if (now.diskFreeMb !== null && now.diskFreeMb < 2048) alerts.push({
     id: "disk-low", severity: "attention", title: "Storage running low",
-    message: `${(sample.diskFreeMb / 1024).toFixed(1)} GB remains.`,
+    message: `${(now.diskFreeMb / 1024).toFixed(1)} GB remains.`,
     help: "Review retained history and free space before recording stops.",
   });
-  if (sample.memUsedPct >= 95) alerts.push({
+  if (now.memUsedPct >= 95) alerts.push({
     id: "memory-critical", severity: "severe", title: "Memory critically high",
-    message: `${sample.memUsedPct}% of memory is in use.`,
+    message: `${now.memUsedPct}% of memory is in use.`,
     help: "Restart the radio backend if memory keeps climbing.",
   });
-  else if (sample.memUsedPct >= 88) alerts.push({
+  else if (now.memUsedPct >= 88) alerts.push({
     id: "memory-high", severity: "attention", title: "Memory usage high",
-    message: `${sample.memUsedPct}% of memory is in use.`,
+    message: `${now.memUsedPct}% of memory is in use.`,
     help: "Watch for continued growth; restart the backend if it does not recover.",
   });
-  if (sample.cpuPct >= 95 || (sample.helperCpuPct ?? 0) >= 380) alerts.push({
+  // Whole-machine saturation only. The DSP helper sitting at 250-600% is its
+  // expected state (12 lanes across 8 threads, bursts on cold start), so
+  // helper% is reported for context but is not itself an alarm.
+  if (sustained(recent, (s) => s.cpuPct >= 95)) alerts.push({
     id: "cpu-saturated", severity: "attention", title: "Radio processing saturated",
-    message: `CPU ${sample.cpuPct}%${sample.helperCpuPct === null ? "" : `; DSP helper ${sample.helperCpuPct}%`}.`,
+    message: `CPU ${now.cpuPct}%${now.helperCpuPct === null ? "" : `; DSP helper ${now.helperCpuPct}%`}.`,
     help: "Disable Close Call sweep ranges if scanning becomes unstable.",
   });
   return alerts;
@@ -94,7 +130,7 @@ export class SystemStats {
   private timer: NodeJS.Timeout | null = null;
   private lastCpu: { idle: number; total: number } | null = null;
   private lastHelper: { ticks: number; at: number; pid: number } | null = null;
-  private maxFreqKhz: number | null = null;
+  private lastThrottleCount: number | null = null;
 
   constructor(opts: SystemStatsOptions) {
     this.opts = {
@@ -104,10 +140,6 @@ export class SystemStats {
       onSample: () => {},
       ...opts,
     };
-    try {
-      this.maxFreqKhz = Number(this.opts.readFile(
-        "/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq").trim()) || null;
-    } catch { this.maxFreqKhz = null; }
   }
 
   start(): void {
@@ -123,7 +155,7 @@ export class SystemStats {
 
   snapshot(): { now: SystemSample | null; ring: SystemSample[]; alerts: SystemAlert[] } {
     const now = this.ring[this.ring.length - 1] ?? null;
-    return { now, ring: this.ring, alerts: classifySystemAlerts(now) };
+    return { now, ring: this.ring, alerts: classifySystemAlerts(now, this.ring) };
   }
 
   private sample(): void {
@@ -194,12 +226,19 @@ export class SystemStats {
   }
 
   private throttled(): boolean | null {
-    if (!this.maxFreqKhz) return null;
+    // Real thermal-throttle EVENTS, not idle clock-scaling. The kernel bumps
+    // core_throttle_count only when a core is actually held back by heat; we
+    // report true when it ticked up since the last sample. The previous
+    // heuristic (current clock < 70% of max) flagged normal Intel SpeedStep
+    // idling as throttling and flapped every sample. Absent on hardware
+    // without the counter (degrades to null).
     try {
-      const cur = Number(this.opts.readFile(
-        "/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq").trim());
-      // Well under max clock while we're sampling = the SoC is pulling back.
-      return cur > 0 ? cur < this.maxFreqKhz * 0.7 : null;
+      const count = Number(this.opts.readFile(
+        "/sys/devices/system/cpu/cpu0/thermal_throttle/core_throttle_count").trim());
+      if (!Number.isFinite(count)) return null;
+      const prev = this.lastThrottleCount;
+      this.lastThrottleCount = count;
+      return prev === null ? false : count > prev;
     } catch { return null; }
   }
 

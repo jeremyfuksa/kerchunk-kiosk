@@ -622,7 +622,9 @@ export function renderAdmin(root: HTMLElement): void {
       + cell("DSP helper", now.helperCpuPct === null ? "—" : `${now.helperCpuPct}% · ${now.helperRssMb} MB`,
           spark(num("helperCpuPct"), 400, 320), (now.helperCpuPct as number | null ?? 0) >= 320)
       + cell("Temp", t === null ? "n/a" : `${t}°C${now.throttled ? " · THROTTLED" : ""}`,
-          spark(num("tempC"), 100, 85), (t ?? 0) >= 85 || now.throttled === true)
+          // 87°C matches the backend "running hot" line; this box idles ~82-83°C.
+          // Throttling annotates the value but no longer reddens the cell on its own.
+          spark(num("tempC"), 100, 87), (t ?? 0) >= 87)
       + cell("RAM", `${now.memUsedPct}% · node ${now.backendRssMb} MB`, spark(num("memUsedPct"), 100, 90), (now.memUsedPct as number) >= 90)
       + cell("Open channels", String(now.openCount), spark(num("openCount"), 12, 11))
       + cell("Disk free", now.diskFreeMb === null ? "n/a" : `${((now.diskFreeMb as number) / 1024).toFixed(1)} GB`,
