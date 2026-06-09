@@ -370,9 +370,17 @@ class Helper(gr.top_block):
         self.args = args
         self.detect_via = args.detect_via
 
-        # Device selection (multi-SDR): rtl=N picks the librtlsdr index Node
-        # resolved from the configured USB PORT just before spawning us.
-        dev_args = "driver=rtlsdr" if args.rtl_index < 0 else f"driver=rtlsdr,rtl={args.rtl_index}"
+        # Device selection (multi-SDR). Prefer SERIAL: SoapySDR resolves
+        # serial=KIOSK01 to the exact dongle regardless of enumeration order —
+        # robust where the librtlsdr INDEX shifts between dongles at runtime
+        # (the port->index map proved unreliable with two dongles on a hub).
+        # Falls back to rtl=N (index) then first-found.
+        if args.rtl_serial:
+            dev_args = f"driver=rtlsdr,serial={args.rtl_serial}"
+        elif args.rtl_index >= 0:
+            dev_args = f"driver=rtlsdr,rtl={args.rtl_index}"
+        else:
+            dev_args = "driver=rtlsdr"
         self.src = soapy.source(dev_args, "fc32", 1, "", "", [""], [""])
         self.src.set_sample_rate(0, args.rate)
         if args.gain == "auto":
@@ -889,6 +897,9 @@ def main():
                          "(2026-06-04, see PR)")
     ap.add_argument("--rtl-index", type=int, default=-1,
                     help="librtlsdr device index (multi-SDR); -1 = first found")
+    ap.add_argument("--rtl-serial", type=str, default="",
+                    help="RTL-SDR EEPROM serial (multi-SDR); takes precedence "
+                         "over --rtl-index — robust against index reordering")
     ap.add_argument("--audio-fd", type=int, default=-1,
                     help="fd to tee the speaker feed to as s16 PCM (remote listen)")
     ap.add_argument("--hang-ms", type=float, default=2000.0,

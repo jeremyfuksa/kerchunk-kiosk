@@ -1,19 +1,21 @@
 import { readFileSync, readdirSync } from "node:fs";
 
-// Multi-SDR device addressing (ROADMAP Idea 10, day 1).
+// Multi-SDR device addressing (ROADMAP Idea 10).
 //
-// These RTL clones ignore EEPROM serial strings (writes persist, firmware
-// serves the default 00000001 — verified 2026-06-06), so serial addressing
-// is dead on this hardware. The USB PORT PATH is the identity instead:
-// "1-1.2" is a physical jack on the hub, and whatever dongle sits in it
-// owns that role. More honest for an appliance anyway — roles live on
-// labeled ports, not on which dongle is which.
+// SERIAL is the preferred identity now (see config schema `radios[].serial`):
+// the dongles in service carry flashed EEPROM serials (KIOSK01/KIOSK03) and
+// SoapySDR resolves `serial=KIOSK03` to the exact device. This PORT->index
+// resolver is the FALLBACK for dongles with no usable serial.
 //
-// librtlsdr exposes devices by INDEX in libusb enumeration order, which on
-// Linux follows USB TOPOLOGY (sysfs port order), NOT devnum — proven
-// 2026-06-06 when a single-port power cycle gave one dongle a higher
-// devnum without moving its index. Sort by (busnum, port path, natural
-// segment compare); resolve fresh at every helper spawn, never cached.
+// Why serial won: the port->index assumption below (sysfs port order ==
+// libusb enumeration order) proved WRONG with two dongles on a hub — librtlsdr
+// enumerated them in the opposite order, so a port-resolved index pointed at
+// the OTHER dongle and the second helper crash-looped on usb_claim. Serial
+// addressing is immune to that reordering.
+//
+// librtlsdr exposes devices by INDEX in libusb enumeration order. We sort by
+// (busnum, port path, natural segment compare) and resolve fresh at every
+// helper spawn, never cached — best-effort only; prefer serial.
 
 // The RTL2832U family ships under multiple PIDs: 2838 (most clones, the
 // RTL-SDR Blog sticks) and bare 2832 (older Nooelec Nano units — one of
