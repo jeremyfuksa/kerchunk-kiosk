@@ -13,7 +13,7 @@ import "./art.css";
 
 const BREATH_MS = 6000;       // live bloom lifetime
 const SPAN_M = 40_000;        // metro radius mapped to the nearer canvas edge
-const MAX_STRATUM_R = 90;     // px radius of the busiest stratum's glow
+const MAX_STRATUM_R = 90;     // DEVICE-px radius of the busiest stratum's glow (canvas is DPR-scaled; no ctx.scale). Tune on the real panel.
 
 export function renderArt(root: HTMLElement): void {
   root.innerHTML = `<canvas id="art-canvas"></canvas>`;
@@ -44,6 +44,7 @@ async function boot(canvas: HTMLCanvasElement): Promise<void> {
 
   // Live breath: each opening with a location adds a deposit.
   const proto = location.protocol === "https:" ? "wss" : "ws";
+  // Live wiring starts after the seed/config awaits — a hit or two arriving in that startup window isn't buffered; the next reload's history seed recovers it.
   const ws = new ReconnectingWs(`${proto}://${location.host}/ws`, (ev: EngineEvent) => onEvent(ev), {});
   ws.connect();
 
