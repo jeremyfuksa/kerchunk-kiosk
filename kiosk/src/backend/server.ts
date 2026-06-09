@@ -634,7 +634,7 @@ export function createServer(deps: ServerDeps): { server: Server } {
       if (!parsed.success) return json(res, 400, { error: "invalid channel", issues: parsed.error.issues });
       const conflict = config.channels.find((c) => collides(c, { ...parsed.data, id: "" }));
       if (conflict) return json(res, 409, {
-        error: `frequency already used by ${conflict.alphaTag || conflict.freq}`,
+        error: `frequency already used by ${conflict.alphaTag || `${(conflict.freq / 1e6).toFixed(4)} MHz`}`,
         conflictsWith: { id: conflict.id, alphaTag: conflict.alphaTag },
       });
       const channel: Channel = { id: `ch_${randomUUID().slice(0, 8)}`, ...parsed.data };
@@ -671,7 +671,7 @@ export function createServer(deps: ServerDeps): { server: Server } {
         const candidate = { ...existing, ...parsed.data } as Channel;
         const conflict = config.channels.find((c) => c.id !== id && collides(c, candidate));
         if (conflict) return json(res, 409, {
-          error: `frequency already used by ${conflict.alphaTag || conflict.freq}`,
+          error: `frequency already used by ${conflict.alphaTag || `${(conflict.freq / 1e6).toFixed(4)} MHz`}`,
           conflictsWith: { id: conflict.id, alphaTag: conflict.alphaTag },
         });
         config = { ...config, channels: config.channels.map((c) => c.id === id ? { ...c, ...parsed.data, id } : c) };
