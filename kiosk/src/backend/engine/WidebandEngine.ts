@@ -27,6 +27,14 @@ export interface WidebandEngineOptions {
   /** RTL-SDR EEPROM serial (multi-SDR). Preferred over rtlIndex: SoapySDR
    *  resolves it to the exact dongle regardless of enumeration order. */
   rtlSerial?: string;
+  /** Front-end sample rate (Hz). Omitted = the helper's wideband default. A
+   *  narrow rate (e.g. 240 kHz) makes a single-channel radio cheap — the
+   *  2.4 MHz front-end is the dominant cost. Must be a multiple of 48 kHz. */
+  sampleRateHz?: number;
+  /** Shift the window center this many Hz off the group center so a lone
+   *  channel doesn't sit on the RTL DC spike (the channel filter then scrubs
+   *  the spike). Needed for a dedicated single-channel radio at a narrow rate. */
+  centerOffsetHz?: number;
   /** Resolve the librtlsdr device index at spawn time (multi-SDR fallback when
    *  no serial: devnums change on every replug, so this runs fresh per spawn).
    *  null = first. Ignored when rtlSerial is set. */
@@ -118,10 +126,14 @@ export class WidebandEngine implements ScannerEngine {
 
   private readonly rtlIndexResolver: (() => number | null) | undefined;
   private readonly rtlSerial: string | undefined;
+  private readonly sampleRateHz: number | undefined;
+  private readonly centerOffsetHz: number;
 
   constructor(opts: WidebandEngineOptions = {}) {
     this.rtlIndexResolver = opts.rtlIndex;
     this.rtlSerial = opts.rtlSerial;
+    this.sampleRateHz = opts.sampleRateHz;
+    this.centerOffsetHz = opts.centerOffsetHz ?? 0;
     this.helperCmd = opts.helperCmd ?? defaultHelperCmd();
     this.helperEnv = opts.helperEnv ?? {};
     this.autoRestart = opts.autoRestart ?? true;
@@ -241,6 +253,9 @@ export class WidebandEngine implements ScannerEngine {
           : []),
       "--open-db", String(cfg.openAboveFloorDb ?? 9),
     ];
+    // Narrow front-end for a single-channel radio (weather): 10x cheaper than
+    // the 2.4 MHz wideband default — the front-end dominates the helper's cost.
+    if (this.sampleRateHz !== undefined) args.push("--rate", String(this.sampleRateHz));
     if (cfg.detectVia !== undefined) args.push("--detect-via", cfg.detectVia);
     // Close Call FFT: built on unless explicitly disabled (matches the per-tune
     // `closeCall ?? true`). Off => the helper skips the 2048-pt FFT entirely.
@@ -420,7 +435,10 @@ export class WidebandEngine implements ScannerEngine {
     this.groupStartedAt = this.now();
     const cmd = {
       cmd: "tune",
-      centerHz: group.centerHz,
+      // Offset the RTL tune off the cluster center so a lone channel isn't on
+      // the DC spike (the helper derives each lane's baseband offset from this).
+      // The "tuned" event below still reports the logical center for the UI.
+      centerHz: group.centerHz + this.centerOffsetHz,
       channels: group.channels.map((c) => ({
         id: c.id, freqHz: c.freq, priority: c.priority ?? false,
         levelDb: c.levelTrimDb ?? 0,

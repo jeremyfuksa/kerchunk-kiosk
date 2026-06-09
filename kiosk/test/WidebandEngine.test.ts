@@ -84,6 +84,20 @@ describe("WidebandEngine", () => {
     expect(first.channels.map((c: { freqHz: number }) => c.freqHz)).toEqual([VHF_A.freq, VHF_B.freq]);
   });
 
+  it("offsets the tune center off the channel (single-channel weather radio)", async () => {
+    const tunes = tmpFile("tunes");
+    const wx = ch(162_550_000);
+    const { engine } = makeEngine({ FAKE_WB_TUNES_FILE: tunes }, { centerOffsetHz: 60_000 });
+    await engine.start(cfg([wx]));
+    await waitFor(() => lines(tunes).length >= 1, 1000);
+    await engine.stop();
+    const first = JSON.parse(lines(tunes)[0]!);
+    // RTL tunes 60 kHz above the channel so 162.55 sits off the DC spike...
+    expect(first.centerHz).toBe(162_550_000 + 60_000);
+    // ...while the channel freq is unchanged (the helper derives a -60 kHz lane offset).
+    expect(first.channels[0].freqHz).toBe(162_550_000);
+  });
+
   it("helper open => active (full Channel) + signal", async () => {
     const { engine, events } = makeEngine({
       FAKE_WB_SCRIPT: `{"ev":"open","id":"${VHF_A.id}","db":-12}`,

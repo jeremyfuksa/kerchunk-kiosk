@@ -52,6 +52,16 @@ describe("WidebandEngine --detect-via", () => {
     expect(none).not.toContain("--rtl-serial");
     expect(none).not.toContain("--rtl-index");
   });
+  it("passes --rate only when a sample rate override is set", () => {
+    const argsForOpts = (opts: object): string[] => {
+      const e = new WidebandEngine(opts);
+      (e as unknown as { config: unknown }).config = base;
+      return (e as unknown as { helperArgs(): string[] }).helperArgs();
+    };
+    expect(argsForOpts({})).not.toContain("--rate");
+    const a = argsForOpts({ sampleRateHz: 240_000 });
+    expect(a[a.indexOf("--rate") + 1]).toBe("240000");
+  });
   it("passes --close-call unless closeCall is explicitly false", () => {
     // Mirrors the per-tune `closeCall ?? true`: the FFT is built on by default
     // (absent or true) and skipped only when the operator turns Close Call off.
