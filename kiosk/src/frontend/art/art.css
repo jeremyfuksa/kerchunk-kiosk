@@ -1,0 +1,8 @@
+html, body { margin: 0; height: 100%; background: #04060a; overflow: hidden; }
+#art-canvas {
+  display: block;
+  width: 100vw;
+  height: 100vh;
+  /* The calm dark ground; the canvas paints luminance on top via screen blend. */
+  background: radial-gradient(ellipse at 50% 55%, #0b0f16 0%, #070a10 68%, #04060a 100%);
+}
