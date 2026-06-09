@@ -331,14 +331,32 @@ body {
   display: block;
   position: absolute; inset: 0; z-index: 0;
 }
+/* Over the full-screen map the topbar becomes a floating card at TOP-RIGHT,
+   mirroring the now-playing card at top-left: same card chrome, clock as the
+   hero, weather + mode stacked under it, right-aligned. (The classic no-map
+   layout keeps the top band.) No backdrop-filter: blur over the live WebGL map
+   recomposites every frame on the 2014 iGPU — higher opacity reads the same. */
 .dash.mapStage .topbar {
-  position: relative; z-index: 2;
-  /* No backdrop-filter here or below: blur over an animating WebGL map
-     recomposites the whole screen every frame (fans, 2014 iGPU). Higher
-     opacity instead — indistinguishable at kiosk distance. */
+  position: absolute; top: 1.3rem; right: 1.6rem; z-index: 2;
+  width: fit-content;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.5rem;
+  padding: 1.2rem 1.6rem 1.4rem;
+  text-align: right;
+  pointer-events: none;
   background: color-mix(in srgb, var(--bg) 90%, transparent);
-  border-bottom: 1px solid color-mix(in srgb, var(--panel-edge) 70%, transparent);
+  border: 1px solid var(--panel-edge);
+  border-radius: 10px;
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.45);
 }
+.dash.mapStage .topbarSpacer,
+.dash.mapStage .topbarDivider { display: none; }
+/* Clock is the hero (mirrors the now-card tag); weather, then mode, beneath. */
+.dash.mapStage .topbar .clockBlock { order: 1; }
+.dash.mapStage .topbar .clock { font-size: 3.4rem; }
+.dash.mapStage .topbar .wx { order: 2; justify-content: flex-end; max-width: 22rem; }
+.dash.mapStage .topbar #modeBadge { order: 3; }
 /* The CRT scanline overlay is a full-screen layer — fine over a static
    panel, a per-frame compositing tax over the live map. */
 .dash.mapStage::before { display: none; }

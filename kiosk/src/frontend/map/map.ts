@@ -201,28 +201,40 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
       zIndex: 1,
     });
 
-    // ── Auto-framing: the pins decide the view. Bounds collect the QTH,
-    // every located channel, and every remembered site; one fitBounds once
-    // the data lands. A hidden local-field boundary keeps sparse data from
-    // zooming the map into a parking lot and contains synthetic unknowns.
-    const bounds = new google.maps.LatLngBounds();
-    bounds.extend(home);
-    const SYNTHETIC_FIELD_M = 18_000;
-    for (const angle of [0, Math.PI / 2, Math.PI, Math.PI * 1.5]) {
-      framePoint(
-        home.lat + (SYNTHETIC_FIELD_M * Math.cos(angle)) / 111_320,
-        home.lng + (SYNTHETIC_FIELD_M * Math.sin(angle)) / (111_320 * Math.cos(home.lat * Math.PI / 180)),
-      );
-    }
-    // Framing is for the neighborhood: a corrupt row at (0,0) or a typo'd
-    // site must not yank the view across an ocean. ~3° ≈ 300 km.
-    function frame(lat: number, lon: number): void {
-      if (Math.abs(lat - home.lat) < 3 && Math.abs(lon - home.lng) < 3) {
-        bounds.extend({ lat, lng: lon });
+    // ── Auto-framing: the QTH is the NORTHERN border of the resting view. We
+    // fit the home, a minimum local field, and the nearest ~90% of known sites
+    // — but every framed point is clamped to home's latitude or below, so the
+    // lone northern outlier (the Cameron site) stays off the top edge. Cameron
+    // still pops a live blip + camera punch when it actually transmits; it just
+    // isn't part of the steady view. Computed fresh at each fit.
+    const SYNTHETIC_FIELD_M = 18_000; // min view radius — never a parking lot
+    const NEIGHBORHOOD_DEG = 3;       // ~300 km: a corrupt (0,0) row can't yank the view
+    const FRAME_COVER = 0.9;          // fraction of the (nearest) dots the view holds
+    function framedBounds(): google.maps.LatLngBounds {
+      const b = new google.maps.LatLngBounds();
+      const cosLat = Math.cos(home.lat * Math.PI / 180);
+      // Clamp latitude to home's: home is the north border of the view.
+      const ext = (lat: number, lng: number) => b.extend({ lat: Math.min(lat, home.lat), lng });
+      ext(home.lat, home.lng);
+      // Minimum local field — east/south/west only; home itself caps the north.
+      for (const angle of [Math.PI / 2, Math.PI, Math.PI * 1.5]) {
+        ext(
+          home.lat + (SYNTHETIC_FIELD_M * Math.cos(angle)) / 111_320,
+          home.lng + (SYNTHETIC_FIELD_M * Math.sin(angle)) / (111_320 * cosLat),
+        );
       }
-    }
-    function framePoint(lat: number, lng: number): void {
-      bounds.extend({ lat, lng });
+      // Nearest FRAME_COVER of the in-neighborhood dots, by distance² from home.
+      const near = knownPositions
+        .filter((p) => Math.abs(p.lat - home.lat) < NEIGHBORHOOD_DEG
+                    && Math.abs(p.lng - home.lng) < NEIGHBORHOOD_DEG)
+        .map((p) => {
+          const dlat = p.lat - home.lat, dlng = (p.lng - home.lng) * cosLat;
+          return { p, d2: dlat * dlat + dlng * dlng };
+        })
+        .sort((a, z) => a.d2 - z.d2);
+      const keep = Math.ceil(near.length * FRAME_COVER);
+      for (let i = 0; i < keep; i++) ext(near[i]!.p.lat, near[i]!.p.lng);
+      return b;
     }
 
     const field = new BlipField(BLIP_LIFETIME_MS);
@@ -318,7 +330,6 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
       .then((chs: Array<{ freq: number; location?: { lat?: number; lon?: number; powerWatts?: number; antennaHaatM?: number } }>) => {
         for (const c of chs) {
           if (c.location?.lat != null && c.location.lon != null) {
-            frame(c.location.lat, c.location.lon);
             knownPositions.push({ lat: c.location.lat, lng: c.location.lon });
             const key = `${c.location.lat.toFixed(5)},${c.location.lon.toFixed(5)}`;
             if (c.location.powerWatts) {
@@ -337,7 +348,6 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
       .then((sites: Array<{ lat: number; lon: number; hits: number; lastTs: number; names: string[] }>) => {
         for (const sgt of sites) {
           antenna(sgt.lat, sgt.lon, sgt.names, sgt.hits, sgt.lastTs);
-          frame(sgt.lat, sgt.lon);
           knownPositions.push({ lat: sgt.lat, lng: sgt.lon });
         }
       }))
@@ -356,7 +366,7 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
       google.maps.event.addListenerOnce(map, "idle", resolve));
     void Promise.allSettled([sitesReady, channelsReady, mapReady])
       .then(() => {
-        map.fitBounds(bounds, fitPad);
+        map.fitBounds(framedBounds(), fitPad);
         // Remember the home zoom once the fit settles — the punch zoom and
         // the pull-back both reference it.
         google.maps.event.addListenerOnce(map, "idle", () => { homeZoom = map.getZoom(); });
@@ -381,7 +391,7 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
       setInterval(() => {
         if (punchedUntil && Date.now() >= punchedUntil) {
           punchedUntil = 0;
-          map.fitBounds(bounds, fitPad);
+          map.fitBounds(framedBounds(), fitPad);
         }
       }, 1500);
     }
