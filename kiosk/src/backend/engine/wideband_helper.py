@@ -23,7 +23,9 @@ static), while open/close hold semantics ride hang_ms for scan behavior. Group-h
 sends another "tune"; the device is NEVER re-opened (spike-proven:
 set_frequency on the running soapy source retunes VHF<->UHF cleanly).
 
-DSP per chain (MAX_CHANS chains built once, offsets retuned per group):
+DSP per chain (lane_count <= MAX_CHANS chains built once, offsets retuned per
+group; lane-fit sizes lane_count to the busiest group and builds the AM path
+only where a group carries an AM channel):
   soapy source @ samp_rate -> freq_xlating_fir (decim -> 48k) ->
     [power: mag^2 -> moving_average -> probe]
     [audio FM: nbfm_rx(48k/48k, 5k dev) -> fm gate]  -> add ->
@@ -69,10 +71,12 @@ from gnuradio.filter import firdes
 
 from wideband_dsp_math import channel_bins, bin_power_db
 
-MAX_CHANS = 12           # channelizer lanes (always running; ~2.5 cores of 8
-                         # at 12). Must match MAX_CHANNELS_PER_GROUP in
-                         # WidebandEngine.ts — grouping splits clusters bigger
-                         # than this so tune never truncates.
+MAX_CHANS = 12           # CAP on channelizer lanes (~2.5 cores of 8 at the
+                         # full 12). Lane-fit (--lanes) builds only as many as
+                         # the busiest group needs; this stays the ceiling. Must
+                         # match MAX_CHANNELS_PER_GROUP in WidebandEngine.ts —
+                         # grouping splits clusters bigger than this so tune
+                         # never truncates.
 QUAD_RATE = 48_000
 AUDIO_RATE = 48_000
 POLL_S = 0.02            # detection/gate poll — 20 ms so the audio gate can
@@ -154,7 +158,7 @@ class Chain:
     """One channelizer lane: xlating filter + power probe + NBFM + gate."""
 
     def __init__(self, tb, src, taps, samp_rate, adder, port, same_fd=None,
-                 build_power=True):
+                 build_power=True, am_port=None):
         self.xlate = grfilter.freq_xlating_fir_filter_ccf(
             samp_rate // QUAD_RATE, taps, 0, samp_rate)
         self.demod = analog.nbfm_rx(
@@ -205,11 +209,20 @@ class Chain:
             tb.connect(self.xlate, self.mag2, self.avg, self.probe)
             tb.connect(self.mag2, self.avg_fast, self.probe_fast)
         tb.connect(self.xlate, self.demod, self.gate)
-        tb.connect(self.xlate, self.am_mag)
-        tb.connect(self.am_mag, (self.am_div, 0))
-        tb.connect(self.am_mag, self.am_carrier, (self.am_div, 1))
-        tb.connect(self.am_div, self.am_dc, self.am_amp, self.am_gate)
-        tb.connect(self.am_gate, (adder, port + MAX_CHANS))
+        # AM path (lane-fit, spec 2026-06-09): built only when this slot ever
+        # carries an AM channel (positional union across groups). On FM-only
+        # lanes the am_* blocks stay constructed-but-UNCONNECTED — the GR
+        # scheduler skips them so they cost no CPU, while assign()/park()/
+        # fade_to() can still call am_gate.set_k() as harmless no-ops (an
+        # AM channel never lands on an FM-only lane by construction). The adder
+        # port is handed in by the builder so connected inputs stay contiguous
+        # (GR rejects gaps) regardless of which lanes prune the AM path.
+        if am_port is not None:
+            tb.connect(self.xlate, self.am_mag)
+            tb.connect(self.am_mag, (self.am_div, 0))
+            tb.connect(self.am_mag, self.am_carrier, (self.am_div, 1))
+            tb.connect(self.am_div, self.am_dc, self.am_amp, self.am_gate)
+            tb.connect(self.am_gate, (adder, am_port))
         tb.connect(self.demod, (self.audio_sq, 0))
         tb.connect(self.demod, (self.audio_sq, 1))
         tb.connect(self.audio_sq, self.audio_avg, self.audio_probe)
@@ -437,10 +450,29 @@ class Helper(gr.top_block):
         else:
             emit({"ev": "log", "msg": "multimon-ng not found: SAME decoding disabled"})
         build_power = (self.detect_via == "lane")
-        self.chains = [Chain(self, self.src, taps, args.rate, self.adder, i,
-                             same_fd=(same_fd if i == MAX_CHANS - 1 else None),
-                             build_power=build_power)
-                       for i in range(MAX_CHANS)]
+        # Lane-fit (spec 2026-06-09): build only the lanes this config needs
+        # (lane_count = busiest group, <= MAX_CHANS) and, on each, only its
+        # required demod path. FM is ALWAYS built (operator decision: the
+        # leveler, quieting squelch and SAME tap hang off self.demod, so keeping
+        # FM avoids any rehang risk); the AM path is built only where the mask
+        # says some group places an AM channel ('a'/'b'). AM gate ports are
+        # handed out sequentially AFTER the lane_count FM ports so the adder's
+        # connected inputs are contiguous (GR rejects gaps). Default mask = all
+        # 'b' (both paths on every lane) == the historical fixed-12 behavior.
+        lane_count = max(1, min(MAX_CHANS, args.lanes))
+        modes = args.lane_modes or ("b" * lane_count)
+        am_next = lane_count
+        chains = []
+        for i in range(lane_count):
+            want_am = (modes[i] if i < len(modes) else "b") in ("a", "b")
+            am_port = None
+            if want_am:
+                am_port = am_next
+                am_next += 1
+            chains.append(Chain(self, self.src, taps, args.rate, self.adder, i,
+                                same_fd=(same_fd if i == lane_count - 1 else None),
+                                build_power=build_power, am_port=am_port))
+        self.chains = chains
 
         # Close Call: FFT over the full window. Median bin power = noise
         # floor; a sustained peak well above it on a non-configured frequency
@@ -488,10 +520,14 @@ class Helper(gr.top_block):
 
     def tune(self, center_hz, channels, monitor=False,
              close_call=False, close_call_db=15.0, known_hz=None):
-        if len(channels) > MAX_CHANS:
+        # Lane-fit: the helper may have built fewer than MAX_CHANS lanes, so the
+        # SAME/weather lane is the LAST BUILT lane and truncation is to the built
+        # count (lane-fit guarantees no group exceeds it, but stay defensive).
+        n = len(self.chains)
+        if len(channels) > n:
             emit({"ev": "log",
-                  "msg": f"group truncated to {MAX_CHANS} channels"})
-            channels = channels[:MAX_CHANS]
+                  "msg": f"group truncated to {n} channels"})
+            channels = channels[:n]
         self.monitor = monitor
         self.cc_enabled = close_call and not monitor
         self.cc_db = float(close_call_db)
@@ -503,9 +539,9 @@ class Helper(gr.top_block):
         bgs = [c for c in channels if c.get("background")]
         regs = [c for c in channels if not c.get("background")]
         if bgs:
-            regs = regs[:MAX_CHANS - 1]   # the SAME lane is spoken for
+            regs = regs[:n - 1]   # the SAME lane (last built) is spoken for
         for i, chain in enumerate(self.chains):
-            is_same_lane = (i == MAX_CHANS - 1)
+            is_same_lane = (i == n - 1)
             c = None
             if is_same_lane and bgs:
                 c = bgs[0]
@@ -910,6 +946,14 @@ def main():
     ap.add_argument("--close-call", action="store_true",
                     help="build the window FFT for Close Call discovery; omit to "
                          "skip it entirely when Close Call is disabled")
+    ap.add_argument("--lanes", type=int, default=MAX_CHANS,
+                    help="channelizer lanes to build (<= MAX_CHANS); lane-fit "
+                         "sizes this to the busiest group. Default = MAX_CHANS "
+                         "(historical fixed-12 behavior)")
+    ap.add_argument("--lane-modes", type=str, default="",
+                    help="per-lane demod path mask, one char per lane: "
+                         "f=FM-only, a=AM(+FM), b=both. Empty = all 'b'. FM is "
+                         "always built, so 'a' lanes carry FM+AM")
     args = ap.parse_args()
 
     helper = Helper(args)
