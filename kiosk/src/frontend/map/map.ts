@@ -512,10 +512,19 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
       // Quiet map: stop scheduling entirely so the WebGL compositor can deep-
       // idle (it shares the CPU/iGPU envelope with the DSP). wake() resumes.
       if (alive.length === 0 && pings.length === 0) { ticking = false; return; }
-      // Only the expanding ping needs ~30Hz (rAF); blip decay alone is fine on a
-      // bare 150ms timer — rAF there would just force a needless compositor frame.
-      if (pings.length) requestAnimationFrame(() => setTimeout(tick, 40));
-      else setTimeout(tick, 150);
+      if (pings.length) {
+        // rAF gives the ping its smooth ~30Hz expansion — but it must NEVER be
+        // the SOLE re-arm: if the compositor defers/drops the rAF (deep idle),
+        // a wall-clock fallback still continues the loop, so `ticking` can't get
+        // stranded true and freeze the map. `ran` guards against double-firing.
+        let ran = false;
+        const go = (): void => { if (ran) return; ran = true; tick(); };
+        requestAnimationFrame(() => setTimeout(go, 40));
+        setTimeout(go, 250);
+      } else {
+        // Blip decay alone is fine on a bare timer — rAF would just force a frame.
+        setTimeout(tick, 150);
+      }
     }
     wake();
   }
