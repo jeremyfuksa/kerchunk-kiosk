@@ -647,6 +647,18 @@ export function createServer(deps: ServerDeps): { server: Server } {
       return json(res, 200, findDuplicateSets(config.channels));
     }
 
+    if (method === "POST" && path === "/api/channels/duplicates/resolve") {
+      const sets = findDuplicateSets(config.channels);
+      // Losers = every row in each set except the richest (index 0).
+      const remove = new Set<string>();
+      for (const set of sets) for (const entry of set.channels.slice(1)) remove.add(entry.channel.id);
+      if (remove.size > 0) {
+        config = { ...config, channels: config.channels.filter((c) => !remove.has(c.id)) };
+        await persistAndReload();
+      }
+      return json(res, 200, { removed: remove.size, kept: sets.length });
+    }
+
     const chMatch = /^\/api\/channels\/([^/]+)$/.exec(path);
     if (chMatch) {
       const id = chMatch[1]!;

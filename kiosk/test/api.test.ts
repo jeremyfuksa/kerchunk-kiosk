@@ -228,6 +228,37 @@ describe("HTTP API", () => {
     expect(res.body[0].freq).toBe(146520000);
     expect(res.body[0].channels[0].channel.id).toBe("b"); // richest first
   });
+
+  it("POST /api/channels/duplicates/resolve keeps the richest, deletes losers, spares GMRS", async () => {
+    // Seed pre-existing dupes in the store, THEN build the server — createServer
+    // snapshots config at construction (server.ts: `let config = configStore.load()`).
+    const { configStore } = makeApp();
+    const cfg = configStore.load();
+    configStore.save({ ...cfg, channels: [
+      { id: "a", freq: 146520000, alphaTag: "BARE", mode: "nfm", enabled: true },
+      { id: "b", freq: 146520000, alphaTag: "RICH", mode: "nfm", enabled: true, location: { lat: 39, lon: -94, source: "test" } },
+      { id: "g1", freq: 462550000, alphaTag: "G1", mode: "nfm", enabled: true },
+      { id: "g2", freq: 462550000, alphaTag: "G2", mode: "nfm", enabled: true },
+    ] });
+    const { server } = createServer({
+      configStore, engine: new FakeEngine(), activityLog: new ActivityLog(100),
+      wsHub: new WsHub(), staticDir: dir,
+    });
+    const res = await request(server).post("/api/channels/duplicates/resolve");
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ removed: 1, kept: 1 });
+    const after = (await request(server).get("/api/channels")).body as Array<{ id: string }>;
+    const ids = after.map((c) => c.id).sort();
+    expect(ids).toEqual(["b", "g1", "g2"]); // bare "a" deleted; GMRS pair untouched
+  });
+
+  it("resolve is a no-op when there are no duplicates", async () => {
+    const { server } = makeApp();
+    await request(server).post("/api/channels")
+      .send({ freq: 146520000, alphaTag: "ONLY", mode: "nfm", enabled: true });
+    const res = await request(server).post("/api/channels/duplicates/resolve");
+    expect(res.body).toEqual({ removed: 0, kept: 0 });
+  });
 });
 
 describe("wideband config passthrough", () => {
