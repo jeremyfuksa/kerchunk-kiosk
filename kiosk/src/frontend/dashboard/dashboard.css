@@ -313,7 +313,23 @@ body {
   font-family: var(--cond);
   font-size: 1.3rem;
   color: var(--ink);
+  min-width: 0;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* Affected counties: the "where", pushed to the right and boxed so it reads as
+   a distinct field from the alert type at kiosk distance. */
+.alertBar .alertCounties {
+  margin-left: auto;
+  flex: 0 0 auto;
+  font-family: var(--cond);
+  font-size: 1.3rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--red);
+  padding: 0.05rem 0.7rem;
+  border: 1px solid var(--red);
+  border-radius: 0.4rem;
+  white-space: nowrap;
 }
 @keyframes alertPulse {
   0%, 100% { background: color-mix(in srgb, var(--red) 18%, transparent); }

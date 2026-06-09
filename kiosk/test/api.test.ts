@@ -17,7 +17,7 @@ function makeApp() {
   const activityLog = new ActivityLog(100);
   const wsHub = new WsHub();
   const { server } = createServer({ configStore, engine, activityLog, wsHub, staticDir: dir });
-  return { server, engine, configStore };
+  return { server, engine, configStore, wsHub };
 }
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
@@ -234,6 +234,63 @@ describe("weather mode under wideband (monitor flag)", () => {
     expect(lastStart.monitor).toBe(true);
     await request(server).post("/api/mode").send({ mode: "scan" });
     expect(lastStart.monitor).toBe(false);
+  });
+});
+
+describe("SAME weather break-in", () => {
+  const COVERED = "EAS: ZCZC-WXR-SVR-029047-029165-029095+0030-1561800-KEAX/NWS-";
+
+  it("retunes (no restart) and rides the banner with the covered counties", async () => {
+    const { server, engine, wsHub } = makeApp();
+    await request(server).put("/api/weather-channel")
+      .send({ freq: 162550000, alphaTag: "NOAA", mode: "nfm", enabled: true });
+    // Scope to Clay + Platte: Jackson (also in the alert) must be dropped.
+    await request(server).put("/api/config").send({
+      ...(await request(server).get("/api/config")).body,
+      alerts: { sameFips: ["029047", "029165"] },
+    });
+    // Engine must be live for a retune to re-point in place (a stopped engine
+    // has no graph and would fall back to start) — matches the booted appliance.
+    await request(server).post("/api/scan/start");
+
+    let starts = 0;
+    const realStart = engine.start.bind(engine);
+    engine.start = async (sc) => { starts++; return realStart(sc); };
+    const alerts: any[] = [];
+    const realBroadcast = wsHub.broadcast.bind(wsHub);
+    wsHub.broadcast = (m: any) => { if (m.type === "alert") alerts.push(m); return realBroadcast(m); };
+
+    engine.emitSame(COVERED);
+    await new Promise((r) => setTimeout(r, 10));
+
+    // The break-in was applied via retune, NOT a stop()+start() (no warm-up
+    // overlay, no cold-start chop).
+    expect(engine.retunes.length).toBe(1);
+    expect(engine.retunes[0]!.monitor).toBe(true);
+    expect(starts).toBe(0);
+    // The banner carries the alert type + the COVERED counties only.
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0].channel.alphaTag).toBe("SEVERE THUNDERSTORM WARNING");
+    expect(alerts[0].counties).toBe("Clay, Platte");
+  });
+
+  it("an out-of-area alert neither retunes nor banners", async () => {
+    const { server, engine, wsHub } = makeApp();
+    await request(server).put("/api/weather-channel")
+      .send({ freq: 162550000, alphaTag: "NOAA", mode: "nfm", enabled: true });
+    await request(server).put("/api/config").send({
+      ...(await request(server).get("/api/config")).body,
+      alerts: { sameFips: ["020091"] }, // Johnson KS only — alert is all MO
+    });
+    const alerts: any[] = [];
+    const realBroadcast = wsHub.broadcast.bind(wsHub);
+    wsHub.broadcast = (m: any) => { if (m.type === "alert") alerts.push(m); return realBroadcast(m); };
+
+    engine.emitSame(COVERED);
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(engine.retunes.length).toBe(0);
+    expect(alerts).toHaveLength(0);
   });
 });
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseSame, fipsMatch, isTest, isEom } from "../src/backend/same.js";
+import { parseSame, fipsMatch, fipsNames, isTest, isEom } from "../src/backend/same.js";
 
 describe("SAME header parsing", () => {
   const TOR = "EAS: ZCZC-WXR-TOR-029047-029095+0030-1561800-KEAX/NWS-";
@@ -32,5 +32,23 @@ describe("FIPS scoping", () => {
   it("flags routine tests", () => {
     expect(isTest("RWT")).toBe(true);
     expect(isTest("TOR")).toBe(false);
+  });
+});
+
+describe("FIPS county names (banner display)", () => {
+  it("names only the COVERED counties when a filter is set", () => {
+    // A 3-county warning, operator scoped to Clay+Platte: Jackson is dropped.
+    expect(fipsNames(["029047", "029165", "029095"], ["029047", "029165"]))
+      .toBe("Clay, Platte");
+  });
+  it("names all counties when unscoped", () => {
+    expect(fipsNames(["029047", "020091"], undefined)).toBe("Clay, Johnson KS");
+  });
+  it("resolves part-of-county subdivisions and de-dupes", () => {
+    // 1/2-prefixed subdivisions of Jackson collapse to one "Jackson".
+    expect(fipsNames(["129095", "229095"], undefined)).toBe("Jackson");
+  });
+  it("falls back to the raw code for an unknown county (never blank)", () => {
+    expect(fipsNames(["099999"], undefined)).toBe("099999");
   });
 });

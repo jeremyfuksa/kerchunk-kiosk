@@ -13,7 +13,7 @@ import type { EngineEvent, ScannerEngine, ScanConfig } from "./engine/ScannerEng
 import { setVolume as amixerVolume, setMuted as amixerMuted, type AmixerOpts } from "./audio.js";
 import { isScannable, isAudible, profileFor } from "./config/banks.js";
 import { solveK, estimateWatts, distKm, type Anchor } from "./powerEstimator.js";
-import { parseSame, fipsMatch, isTest } from "./same.js";
+import { parseSame, fipsMatch, fipsNames, isTest } from "./same.js";
 import { SystemStats } from "./systemStats.js";
 
 export interface ServerDeps {
@@ -427,6 +427,7 @@ export function createServer(deps: ServerDeps): { server: Server } {
     if (lastSame && lastSame.raw === hdr.raw && ev.ts - lastSame.ts < 90_000) return;
     lastSame = { raw: hdr.raw, ts: ev.ts };
     const covered = fipsMatch(hdr.fips, config.alerts?.sameFips);
+    const counties = fipsNames(hdr.fips, config.alerts?.sameFips);
     const test = isTest(hdr.event);
     // Everything decoded lands in history (the proof the lossy tier works);
     // the banner fires for covered real alerts (tests only when asked).
@@ -438,19 +439,26 @@ export function createServer(deps: ServerDeps): { server: Server } {
     });
     if (!covered || (test && !config.alerts?.sameTests)) return;
     const holdSeconds = Math.min(300, Math.max(60, hdr.purgeMinutes * 60));
-    // Tune to weather (the Idea 11 pitch's second behavior): preempt the
-    // scan so the NWR voice message PLAYS, then revert — consumer
-    // weather-radio break-in. Never preempts an operator's monitor mode.
+    // Break-in (the Idea 11 pitch's second behavior): preempt the scan so the
+    // NWR voice message PLAYS, then revert — consumer weather-radio break-in.
+    // Applied via retune (re-point the live graph) not stop()+start(): a
+    // restart replayed the WARMING UP overlay and cold-start audio chop every
+    // time. retune hops in place — no overlay, no chop. The helperless RtlFm
+    // fallback path keeps the old stop()+start(). Never preempts a monitor.
+    const switchMode = (cfg: ScanConfig): void => {
+      if (engine.retune) void engine.retune(cfg);
+      else void engine.stop().then(() => engine.start(cfg));
+    };
     if (!test && mode === "scan" && config.weatherChannel) {
       mode = "weather";
       monitorChannel = null;
-      void engine.stop().then(() => engine.start(toScanConfig(config, "weather")));
+      switchMode(toScanConfig(config, "weather"));
       if (sameRevertTimer) clearTimeout(sameRevertTimer);
       sameRevertTimer = setTimeout(() => {
         sameRevertTimer = null;
         if (mode !== "weather") return;   // operator changed it; leave alone
         mode = "scan";
-        void engine.stop().then(() => engine.start(toScanConfig(config, "scan")));
+        switchMode(toScanConfig(config, "scan"));
       }, Math.min(10 * 60_000, Math.max(120_000, hdr.purgeMinutes * 60_000)));
       sameRevertTimer.unref?.();
     }
@@ -458,10 +466,13 @@ export function createServer(deps: ServerDeps): { server: Server } {
       type: "alert",
       channel: {
         id: "same", freq: config.weatherChannel?.freq ?? 162_550_000,
-        alphaTag: `${hdr.eventName} — ${hdr.sender}`, mode: "nfm", enabled: true,
+        alphaTag: hdr.eventName, mode: "nfm", enabled: true,
       },
       freq: config.weatherChannel?.freq ?? 162_550_000,
       holdSeconds, ts: ev.ts,
+      // Affected counties (the matched ones) ride the banner so the operator
+      // sees WHERE at a glance, not just the alert type.
+      ...(counties ? { counties } : {}),
     });
     const ntfyUrl = config.alerts?.ntfyUrl;
     if (ntfyUrl) {
