@@ -280,14 +280,14 @@ export function renderDashboard(root: HTMLElement): void {
       state = { ...state, alert: null };
     }
     if (state.alert) {
-      alertEl.innerHTML = `<span class="alertGlyph">${ICO_BELL}</span>
-        <span class="alertLabel">ALERT</span>
-        <span class="alertFreq">${fmtFreq(state.alert.freq)}</span>
-        <span class="alertTag">${esc(state.alert.alphaTag)}</span>${
-          state.alert.counties
-            ? `<span class="alertCounties">${esc(state.alert.counties)}</span>`
-            : ""
-        }`;
+      // Lower-right overlay card: a header strip, then the alert TYPE big, then
+      // the affected counties as a prominent second line (no frequency — the
+      // NWR channel number means nothing to someone glancing across the room).
+      alertEl.innerHTML = `<div class="alertHead">`
+        + `<span class="alertGlyph">${ICO_BELL}</span>`
+        + `<span class="alertLabel">WEATHER ALERT</span></div>`
+        + `<div class="alertTag">${esc(state.alert.alphaTag)}</div>`
+        + (state.alert.counties ? `<div class="alertCounties">${esc(state.alert.counties)}</div>` : "");
       alertEl.classList.add("on");
       // One repaint exactly at expiry — no polling.
       if (alertTimer) clearTimeout(alertTimer);
