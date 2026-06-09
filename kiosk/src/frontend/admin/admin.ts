@@ -600,11 +600,13 @@ export function renderAdmin(root: HTMLElement): void {
     return `<svg class="spark${hot ? " hot" : ""}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"><polyline points="${pts}" fill="none" /></svg>`;
   }
   async function renderSystem(): Promise<void> {
-    const { now, ring, alerts, safetyMode } = await fetch("/api/system").then((r) => r.json()) as {
+    const { now, ring, alerts, safetyMode, health, coreCount } = await fetch("/api/system").then((r) => r.json()) as {
       now: Record<string, number | boolean | null> | null;
       ring: Array<Record<string, number | boolean | null>>;
       alerts: Array<{ id: string; severity: "attention" | "severe"; title: string; message: string; help: string }>;
       safetyMode: boolean;
+      health: { verdict: "healthy" | "stressed" | "trouble"; reason: string };
+      coreCount: number;
     };
     if (!now) { sysBody.textContent = "no samples yet"; return; }
     healthBanner.classList.toggle("healthClear", alerts.length === 0);
@@ -618,10 +620,13 @@ export function renderAdmin(root: HTMLElement): void {
       `<div class="sysCell${hot ? " hot" : ""}"><div class="sysLabel">${label}</div>
         <div class="sysValue">${value}</div>${sparkHtml}</div>`;
     const t = now.tempC as number | null;
-    sysBody.innerHTML =
+    const helperCores = now.helperCpuPct === null
+      ? "—"
+      : `${((now.helperCpuPct as number) / 100).toFixed(1)} / ${coreCount} cores · ${now.helperRssMb} MB`;
+    const cells =
       cell("CPU", `${now.cpuPct}%`, spark(num("cpuPct"), 100, 85), (now.cpuPct as number) >= 85)
-      + cell("DSP helper", now.helperCpuPct === null ? "—" : `${now.helperCpuPct}% · ${now.helperRssMb} MB`,
-          spark(num("helperCpuPct"), 400, 320), (now.helperCpuPct as number | null ?? 0) >= 320)
+      + cell("DSP helper", helperCores,
+          spark(num("helperCpuPct"), 100 * coreCount, 80 * coreCount), (now.helperCpuPct as number | null ?? 0) >= 80 * coreCount)
       + cell("Temp", t === null ? "n/a" : `${t}°C${now.throttled ? " · THROTTLED" : ""}`,
           // 87°C matches the backend "running hot" line; this box idles ~82-83°C.
           // Throttling annotates the value but no longer reddens the cell on its own.
@@ -629,9 +634,19 @@ export function renderAdmin(root: HTMLElement): void {
       + cell("RAM", `${now.memUsedPct}% · node ${now.backendRssMb} MB`, spark(num("memUsedPct"), 100, 90), (now.memUsedPct as number) >= 90)
       + cell("Open channels", String(now.openCount), spark(num("openCount"), 12, 11))
       + cell("Disk free", now.diskFreeMb === null ? "n/a" : `${((now.diskFreeMb as number) / 1024).toFixed(1)} GB`,
-          "", (now.diskFreeMb as number | null ?? 1e9) < 2048)
-      + `<div class="sysCell"><div class="sysLabel">Load</div><div class="sysValue">${(now.load1 as number).toFixed(1)}</div>
-         <div class="hint" style="font-size:0.7rem">GR threads inflate this — trust temp</div></div>`;
+          "", (now.diskFreeMb as number | null ?? 1e9) < 2048);
+    const verdictClass = health.verdict;
+    const verdictLabel = health.verdict.toUpperCase();
+    sysBody.innerHTML =
+      `<div class="healthVerdict ${verdictClass}">
+         <span class="verdictDot"></span>
+         <span class="verdictLabel">${verdictLabel}</span>
+         <span class="verdictReason">${esc(health.reason)}</span>
+       </div>
+       <details class="sysDetails"${health.verdict === "healthy" ? "" : " open"}>
+         <summary>Details</summary>
+         <div class="sysGrid">${cells}</div>
+       </details>`;
   }
   void renderSystem().catch(() => {});
   setInterval(() => { renderSystem().catch(() => {}); }, 3000);
