@@ -64,8 +64,20 @@ const engine =
 // Dedicated weather radio: parked on NWR 24/7, decode-only (null audio
 // sink — no speaker claim until the cross-device arbiter exists). SAME
 // jumps from the visiting-slot tier to gold: every burst is heard.
+//
+// It watches ONE channel, so it runs a NARROW front-end (240 kHz = 5x the
+// 48 kHz quad rate, a valid RTL rate) instead of the scanner's 2.4 MHz — ~10x
+// cheaper, which keeps a second helper inside this box's tight thermal budget.
+// The window is parked 60 kHz off the channel so 162.55 doesn't sit on the RTL
+// DC spike (the channel filter then removes the spike at +60 kHz baseband).
+const WEATHER_RATE_HZ = 240_000;
+const WEATHER_CENTER_OFFSET_HZ = 60_000;
 const weatherEngine = engineKind === "wideband" && weatherRadio && config.weatherChannel
-  ? new WidebandEngine(deviceOpts(weatherRadio))
+  ? new WidebandEngine({
+      ...deviceOpts(weatherRadio),
+      sampleRateHz: WEATHER_RATE_HZ,
+      centerOffsetHz: WEATHER_CENTER_OFFSET_HZ,
+    })
   : undefined;
 
 // Weather-stagger: the NWR/SAME lane is a SECOND GNU Radio flowgraph. Starting
@@ -89,6 +101,8 @@ function startWeatherLane(): void {
     dwellMs: config.scan.dwellMs,
     gain: config.scan.gain,
     audioSink: "none",
+    // Window matches the narrow front-end so the lone channel forms one group.
+    windowBandwidthHz: WEATHER_RATE_HZ,
     closeCall: false,
     knownHz: [config.weatherChannel.freq],
   }).catch((e) => console.error("[weather-radio]", (e as Error).message));
