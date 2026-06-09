@@ -1,7 +1,16 @@
 import type { Config, Channel } from "../../backend/config/schema.js";
 
 async function j<T>(res: Response): Promise<T> {
-  if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
+  if (!res.ok) {
+    const text = await res.text();
+    try {
+      const parsed = JSON.parse(text) as { error?: string };
+      throw new Error(parsed.error ?? text);
+    } catch (e) {
+      if (e instanceof SyntaxError) throw new Error(`${res.status} ${text}`);
+      throw e;
+    }
+  }
   return res.json() as Promise<T>;
 }
 

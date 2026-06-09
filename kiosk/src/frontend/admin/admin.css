@@ -1148,3 +1148,12 @@ body { font-family: var(--font-sans, sans-serif); }
 .confirmDialog button.danger { color: var(--red); border-color: color-mix(in srgb, var(--flamingo) 45%, transparent); }
 .confirmDialog button.primary { color: #17191f; background: var(--amber); border-color: var(--amber); }
 .confirmDialog button:focus-visible { outline: 2px solid var(--golden-amber); outline-offset: 2px; }
+
+/* Channel duplicates audit panel (spec 2026-06-09). */
+.dupPanel { border: 1px solid var(--golden-amber); border-radius: 8px; padding: 12px 14px; margin: 0 0 14px; background: color-mix(in srgb, var(--golden-amber) 9%, var(--bg-subtle)); }
+.dupPanel h3 { margin: 0 0 8px; font-size: 14px; }
+.dupSet { margin: 0 0 8px; font-size: 13px; }
+.dupSet ul { margin: 4px 0 0; padding-left: 18px; }
+.dupKeep { color: var(--green); font-size: 11px; text-transform: uppercase; }
+.dupDrop { color: var(--caution); font-size: 11px; text-transform: uppercase; }
+.dupPanel button.danger { margin-top: 6px; }

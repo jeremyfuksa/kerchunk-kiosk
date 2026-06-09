@@ -176,6 +176,7 @@ export function renderAdmin(root: HTMLElement): void {
           </div>
         </details>
         <div id="bankProfile" class="bankProfile"></div>
+        <div id="dupPanel" class="dupPanel" hidden></div>
         <div class="tableWrap">
           <table class="chTable">
             <thead><tr>
@@ -1160,7 +1161,32 @@ export function renderAdmin(root: HTMLElement): void {
     chCount.textContent = String(channels.length);
     renderRows();
     void renderArchiveRecommendations();
+    void renderDuplicates();
     if (drawerId) renderDrawer(); // keep an open dossier fresh after saves
+  }
+
+  // Duplicates audit (spec 2026-06-09): shown only when non-GMRS dupes exist.
+  async function renderDuplicates(): Promise<void> {
+    const panel = root.querySelector<HTMLElement>("#dupPanel");
+    if (!panel) return;
+    const sets = await fetch("/api/channels/duplicates").then((r) => (r.ok ? r.json() : [])) as Array<{
+      freq: number; channels: Array<{ channel: { id: string; alphaTag: string }; completeness: number }>;
+    }>;
+    if (sets.length === 0) { panel.hidden = true; panel.innerHTML = ""; return; }
+    const total = sets.reduce((n, s) => n + s.channels.length - 1, 0);
+    panel.hidden = false;
+    panel.innerHTML =
+      `<h3>${sets.length} frequenc${sets.length === 1 ? "y has" : "ies have"} duplicate rows</h3>` +
+      sets.map((s) => `<div class="dupSet"><strong>${fmtFreq(s.freq)}</strong><ul>` +
+        s.channels.map((c, i) =>
+          `<li>${esc(c.channel.alphaTag || "(unnamed)")}${i === 0 ? ' <span class="dupKeep">keeps</span>' : ' <span class="dupDrop">removed</span>'}</li>`,
+        ).join("") + `</ul></div>`).join("") +
+      `<button id="dupResolve" class="danger">Delete ${total} duplicate row${total === 1 ? "" : "s"}</button>`;
+    panel.querySelector<HTMLButtonElement>("#dupResolve")?.addEventListener("click", async () => {
+      if (!confirm(`Delete ${total} duplicate row${total === 1 ? "" : "s"}? GMRS frequencies are never affected. This cannot be undone.`)) return;
+      await fetch("/api/channels/duplicates/resolve", { method: "POST" });
+      await refresh();
+    });
   }
 
   async function renderArchiveRecommendations(): Promise<void> {

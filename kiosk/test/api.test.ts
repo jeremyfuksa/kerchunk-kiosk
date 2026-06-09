@@ -164,6 +164,136 @@ describe("HTTP API", () => {
     const res = await request(server).post("/api/mode").send({ mode: "banana" });
     expect(res.status).toBe(400);
   });
+
+  it("POST /api/channels rejects a duplicate non-GMRS frequency with 409", async () => {
+    const { server } = makeApp();
+    await request(server).post("/api/channels")
+      .send({ freq: 146520000, alphaTag: "FIRST", mode: "nfm", enabled: true });
+    const dup = await request(server).post("/api/channels")
+      .send({ freq: 146520000, alphaTag: "SECOND", mode: "nfm", enabled: true });
+    expect(dup.status).toBe(409);
+    expect(dup.body.conflictsWith.alphaTag).toBe("FIRST");
+  });
+
+  it("POST /api/channels ALLOWS a duplicate GMRS frequency", async () => {
+    const { server } = makeApp();
+    await request(server).post("/api/channels")
+      .send({ freq: 462550000, alphaTag: "GMRS-A", mode: "nfm", enabled: true });
+    const dup = await request(server).post("/api/channels")
+      .send({ freq: 462550000, alphaTag: "GMRS-B", mode: "nfm", enabled: true });
+    expect(dup.status).toBe(201);
+  });
+
+  it("PUT /api/channels/:id rejects moving onto an occupied non-GMRS freq", async () => {
+    const { server } = makeApp();
+    await request(server).post("/api/channels")
+      .send({ freq: 146520000, alphaTag: "A", mode: "nfm", enabled: true });
+    const b = await request(server).post("/api/channels")
+      .send({ freq: 147000000, alphaTag: "B", mode: "nfm", enabled: true });
+    const moved = await request(server).put(`/api/channels/${b.body.id}`)
+      .send({ freq: 146520000 });
+    expect(moved.status).toBe(409);
+  });
+
+  it("PUT /api/channels/:id can edit a channel without colliding with itself", async () => {
+    const { server } = makeApp();
+    const a = await request(server).post("/api/channels")
+      .send({ freq: 146520000, alphaTag: "A", mode: "nfm", enabled: true });
+    const edit = await request(server).put(`/api/channels/${a.body.id}`)
+      .send({ alphaTag: "A2" });
+    expect(edit.status).toBe(200);
+    expect(edit.body.alphaTag).toBe("A2");
+  });
+
+  it("GET /api/channels/duplicates lists non-GMRS duplicate sets, richest first", async () => {
+    // The block rule (Task 2) stops NEW dupes via the API, so duplicates only
+    // pre-exist in configs that predate the rule. Seed that state by writing
+    // the config store directly, then read it back through a fresh server.
+    const { configStore } = makeApp();
+    const cfg = configStore.load();
+    configStore.save({ ...cfg, channels: [
+      { id: "a", freq: 146520000, alphaTag: "BARE", mode: "nfm", enabled: true },
+      { id: "b", freq: 146520000, alphaTag: "RICH", mode: "nfm", enabled: true, location: { lat: 39, lon: -94, source: "test" } },
+      { id: "g1", freq: 462550000, alphaTag: "G1", mode: "nfm", enabled: true },
+      { id: "g2", freq: 462550000, alphaTag: "G2", mode: "nfm", enabled: true },
+    ] });
+    // createServer reads the store at construction; build the server AFTER the seed.
+    const { server } = createServer({
+      configStore, engine: new FakeEngine(), activityLog: new ActivityLog(100),
+      wsHub: new WsHub(), staticDir: dir,
+    });
+    const res = await request(server).get("/api/channels/duplicates");
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(1); // GMRS pair excluded
+    expect(res.body[0].freq).toBe(146520000);
+    expect(res.body[0].channels[0].channel.id).toBe("b"); // richest first
+  });
+
+  it("POST /api/channels/duplicates/resolve keeps the richest, deletes losers, spares GMRS", async () => {
+    // Seed pre-existing dupes in the store, THEN build the server — createServer
+    // snapshots config at construction (server.ts: `let config = configStore.load()`).
+    const { configStore } = makeApp();
+    const cfg = configStore.load();
+    configStore.save({ ...cfg, channels: [
+      { id: "a", freq: 146520000, alphaTag: "BARE", mode: "nfm", enabled: true },
+      { id: "b", freq: 146520000, alphaTag: "RICH", mode: "nfm", enabled: true, location: { lat: 39, lon: -94, source: "test" } },
+      { id: "g1", freq: 462550000, alphaTag: "G1", mode: "nfm", enabled: true },
+      { id: "g2", freq: 462550000, alphaTag: "G2", mode: "nfm", enabled: true },
+    ] });
+    const { server } = createServer({
+      configStore, engine: new FakeEngine(), activityLog: new ActivityLog(100),
+      wsHub: new WsHub(), staticDir: dir,
+    });
+    const res = await request(server).post("/api/channels/duplicates/resolve");
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ removed: 1, setsResolved: 1 });
+    const after = (await request(server).get("/api/channels")).body as Array<{ id: string }>;
+    const ids = after.map((c) => c.id).sort();
+    expect(ids).toEqual(["b", "g1", "g2"]); // bare "a" deleted; GMRS pair untouched
+  });
+
+  it("resolve is a no-op when there are no duplicates", async () => {
+    const { server } = makeApp();
+    await request(server).post("/api/channels")
+      .send({ freq: 146520000, alphaTag: "ONLY", mode: "nfm", enabled: true });
+    const res = await request(server).post("/api/channels/duplicates/resolve");
+    expect(res.body).toEqual({ removed: 0, setsResolved: 0 });
+  });
+
+  it("resolve on a 3-row duplicate set removes both losers, keeps the richest", async () => {
+    const { configStore } = makeApp();
+    const cfg = configStore.load();
+    configStore.save({ ...cfg, channels: [
+      { id: "x1", freq: 151000000, alphaTag: "BARE1", mode: "nfm", enabled: true },
+      { id: "x2", freq: 151000000, alphaTag: "BARE2", mode: "nfm", enabled: true },
+      { id: "x3", freq: 151000000, alphaTag: "RICH", mode: "nfm", enabled: true, location: { lat: 39, lon: -94, source: "test" } },
+    ] });
+    const { server } = createServer({
+      configStore, engine: new FakeEngine(), activityLog: new ActivityLog(100),
+      wsHub: new WsHub(), staticDir: dir,
+    });
+    const res = await request(server).post("/api/channels/duplicates/resolve");
+    expect(res.body).toEqual({ removed: 2, setsResolved: 1 });
+    const after = (await request(server).get("/api/channels")).body as Array<{ id: string }>;
+    expect(after.map((c) => c.id)).toEqual(["x3"]); // only the richest survives
+  });
+
+  it("resolve is idempotent — a second call removes nothing", async () => {
+    const { configStore } = makeApp();
+    const cfg = configStore.load();
+    configStore.save({ ...cfg, channels: [
+      { id: "a", freq: 152000000, alphaTag: "A", mode: "nfm", enabled: true },
+      { id: "b", freq: 152000000, alphaTag: "B", mode: "nfm", enabled: true },
+    ] });
+    const { server } = createServer({
+      configStore, engine: new FakeEngine(), activityLog: new ActivityLog(100),
+      wsHub: new WsHub(), staticDir: dir,
+    });
+    const first = await request(server).post("/api/channels/duplicates/resolve");
+    expect(first.body.removed).toBe(1);
+    const second = await request(server).post("/api/channels/duplicates/resolve");
+    expect(second.body).toEqual({ removed: 0, setsResolved: 0 });
+  });
 });
 
 describe("wideband config passthrough", () => {
