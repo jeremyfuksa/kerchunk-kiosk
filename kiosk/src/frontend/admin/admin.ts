@@ -1186,7 +1186,6 @@ export function renderAdmin(root: HTMLElement): void {
       if (!confirm(`Delete ${total} duplicate row${total === 1 ? "" : "s"}? GMRS frequencies are never affected. This cannot be undone.`)) return;
       await fetch("/api/channels/duplicates/resolve", { method: "POST" });
       await refresh();
-      await renderDuplicates();
     });
   }
 
