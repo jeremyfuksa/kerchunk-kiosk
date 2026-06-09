@@ -825,7 +825,14 @@ arrive as pages instead of more sections to collapse.
 
 ---
 
-## Idea 16 — System/host stats in admin (machine stress)
+## Idea 16 — System/host stats in admin (machine stress) — *SHIPPED 2026-06 (PRs #70-#72, #100)*
+
+> Shipped: `SystemStats` (`kiosk/src/backend/systemStats.ts`) collects host CPU/
+> load/RAM, backend RSS, the DSP **helper** process CPU/RSS via `/proc/<pid>/
+> stat`, sysfs temperature + throttle counts, and a rolling ring; `/api/system`
+> serves it and the admin **System health** panel renders gauges + sparklines
+> with calibrated alerts (PR #100). Engine `safetyMode` trips at 90°C. Built
+> essentially as the shape below.
 
 **The pitch.** Show host health in the admin — CPU, load, RAM, temperature, disk,
 and (most diagnostically) the DSP helper's own load — so the operator can *see*
