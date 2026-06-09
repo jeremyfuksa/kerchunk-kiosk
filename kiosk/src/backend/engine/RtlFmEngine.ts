@@ -144,15 +144,20 @@ export class RtlFmEngine implements ScannerEngine {
     this.hopping = false;
 
     this.setState("starting");
+    this.emit({ type: "warmup", phase: "booting", step: 1, of: 4, ts: this.now() });
 
     if (this.enabled.length === 0) {
       // Nothing to scan; still consider ourselves running so the rest of the
       // system behaves normally — there's just no pipeline.
       this.setState("running");
+      this.emit({ type: "warmup", phase: "ready", step: 4, of: 4, ts: this.now() });
       return;
     }
 
     this.setState("running");
+    // rtl_fm has no multi-group floor warm-up to wait on — the pipeline is the
+    // readiness; declare ready as it comes up so the kiosk overlay clears.
+    this.emit({ type: "warmup", phase: "ready", step: 4, of: 4, ts: this.now() });
     this.spawnForChannel(this.enabled[this.index]!);
   }
 

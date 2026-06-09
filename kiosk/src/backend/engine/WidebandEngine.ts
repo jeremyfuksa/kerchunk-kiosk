@@ -96,6 +96,14 @@ export class WidebandEngine implements ScannerEngine {
   private dwellTimer: NodeJS.Timeout | null = null;
   private restartTimer: NodeJS.Timeout | null = null;
 
+  // Warm-up milestones (drive the kiosk "WARMING UP" overlay). One-shot per
+  // start(): "ready" fires once the first tuned window has settled, since the
+  // scanner only ever detects on the window it is currently parked on (a full
+  // 13-group sweep would take ~20-30s — that's coverage, not warm-up).
+  private firstTunedSeen = false;
+  private warmReadySeen = false;
+  private warmupReadyTimer: NodeJS.Timeout | null = null;
+
   private stopping = false;
   // Exit-failure escalation: ONE failed spawn is expected during rapid
   // reconfiguration (bank toggles = overlapping stop/start; the dying helper
@@ -132,6 +140,41 @@ export class WidebandEngine implements ScannerEngine {
     this.emit({ type: "status", state, ts: this.now() });
   }
 
+  private emitWarmup(phase: "booting" | "spawning" | "tuned" | "ready", step: number): void {
+    this.emit({ type: "warmup", phase, step, of: 4, ts: this.now() });
+  }
+
+  /** First real tune after a fresh start: graph is up and the helper is acked. */
+  private markFirstTune(): void {
+    if (this.firstTunedSeen) return;
+    this.firstTunedSeen = true;
+    this.emitWarmup("tuned", 3);
+    // Detection is trustworthy for the live window once its lanes settle (~the
+    // floor EMA time constant). The scanner only detects on the CURRENT window,
+    // so the settled window — not a full multi-group sweep (~20-30s on a
+    // many-group config) — is the right "ready" gate.
+    this.clearWarmupReadyTimer();
+    this.warmupReadyTimer = setTimeout(() => {
+      this.warmupReadyTimer = null;
+      this.markWarmReady();
+    }, 1500);
+    this.warmupReadyTimer.unref?.();
+  }
+
+  /** The first tuned window has settled — detection on the live window is trusted. */
+  private markWarmReady(): void {
+    if (this.warmReadySeen) return;
+    this.warmReadySeen = true;
+    this.emitWarmup("ready", 4);
+  }
+
+  private clearWarmupReadyTimer(): void {
+    if (this.warmupReadyTimer) {
+      clearTimeout(this.warmupReadyTimer);
+      this.warmupReadyTimer = null;
+    }
+  }
+
   private groupDwellMs(): number {
     return this.groupDwellOverride ?? this.config?.groupDwellMs ?? DEFAULT_GROUP_DWELL_MS;
   }
@@ -157,16 +200,24 @@ export class WidebandEngine implements ScannerEngine {
     this.sweepIndex = 0;
     this.sweeping = false;
     this.stopping = false;
+    // Reset warm-up per fresh start so a config-edit restart re-runs the
+    // overlay sequence: booting → spawning → tuned → ready.
+    this.firstTunedSeen = false;
+    this.warmReadySeen = false;
+    this.clearWarmupReadyTimer();
 
     this.setState("starting");
+    this.emitWarmup("booting", 1);
 
     if (this.groups.length === 0) {
       // Nothing to scan; running with no helper (parity with RtlFmEngine).
       this.setState("running");
+      this.markWarmReady(); // no DSP to warm — ready at once
       return;
     }
 
     this.setState("running");
+    this.emitWarmup("spawning", 2);
     this.spawnHelper();
   }
 
@@ -390,6 +441,7 @@ export class WidebandEngine implements ScannerEngine {
       type: "tuned", freqHz: group.centerHz,
       channelIds: group.channels.map((c) => c.id), ts: this.now(),
     });
+    this.markFirstTune();
   }
 
   private startDwellTimer(): void {
@@ -449,6 +501,10 @@ export class WidebandEngine implements ScannerEngine {
 
   private killChild(): void {
     this.clearDwellTimer();
+    // Cancel any pending warm-up settle timer: without this it would survive a
+    // crash and fire a false "ready" (clearing the overlay + marking warmed)
+    // while no helper is live. A successful respawn re-arms a real one.
+    this.clearWarmupReadyTimer();
     if (this.childStdout) {
       try { this.childStdout.close(); } catch { /* ignore */ }
       this.childStdout = null;
@@ -498,6 +554,11 @@ export class WidebandEngine implements ScannerEngine {
     }
 
     if (this.autoRestart) {
+      // Let the respawned helper re-run the warm-up gate: its first real tune
+      // re-arms a genuine settle. (warmReadySeen is left as-is — if we were
+      // already warm, the overlay stays cleared; if we crashed mid-warm it is
+      // still false, so the respawn emits a real "ready" once it settles.)
+      this.firstTunedSeen = false;
       this.clearRestartTimer();
       this.restartTimer = setTimeout(() => {
         this.restartTimer = null;
@@ -552,6 +613,7 @@ export class WidebandEngine implements ScannerEngine {
   async stop(): Promise<void> {
     this.stopping = true;
     this.clearRestartTimer();
+    this.clearWarmupReadyTimer();
     this.killChild();
     this.openIds.clear();
     this.audibleId = null;

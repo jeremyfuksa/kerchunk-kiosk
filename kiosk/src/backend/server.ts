@@ -215,6 +215,18 @@ export function createServer(deps: ServerDeps): { server: Server } {
     passTimer.unref?.();
   }
 
+  // Cold-start readiness for the kiosk "WARMING UP" overlay. Tracked from the
+  // engine's warm-up milestones, NOT engine.state (which flips to "running"
+  // before the helper is up). A page that loads AFTER warm-up never receives
+  // the WS warmup events, so it reads this flag once on mount to skip the
+  // overlay; an actively-observed fresh boot drives the overlay over WS.
+  let warmed = false;
+  engine.on((ev) => {
+    if (ev.type !== "warmup") return;
+    if (ev.phase === "booting") warmed = false;
+    else if (ev.phase === "ready") warmed = true;
+  });
+
   // Durable history tee: every opening/discovery/release, enriched with the
   // channel's tags/location at the moment it happened.
   if (deps.history) {
@@ -798,6 +810,9 @@ export function createServer(deps: ServerDeps): { server: Server } {
         // The kiosk shows a MUTED badge — mute doesn't restart the engine,
         // so the dashboard polls this instead of waiting for a WS event.
         muted: config.audio.muted,
+        // Cold-start readiness: false until the engine completes its first warm
+        // sweep. Lets a late-loading kiosk page skip the WARMING UP overlay.
+        warmed,
       });
     }
     if (method === "GET" && path === "/api/logs") return json(res, 200, activityLog.entries());

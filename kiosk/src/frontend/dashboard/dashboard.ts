@@ -33,10 +33,18 @@ export interface DashState {
   // many channels can be active while exactly one is audible. RtlFm never
   // emits audible, so there active keeps driving (its active IS audible).
   audibleDriven: boolean;
+  // Cold-start warm-up: the "WARMING UP" overlay shows while !warmed. Driven by
+  // engine "warmup" events (live boot) and corrected by the /api/status `warmed`
+  // poll (late-load). Default warmed=true so an already-warm page never flashes
+  // the overlay — a fresh boot's "booting" event (or a warmed:false poll) shows it.
+  warmed: boolean;
+  warmupPhase: string | null;
+  warmupStep: number;
+  warmupOf: number;
 }
 
 export function initialState(): DashState {
-  return { nowPlaying: null, tunedIds: [], tunedHz: null, alert: null, log: [], error: null, signalDb: null, engineState: "running", audibleDriven: false };
+  return { nowPlaying: null, tunedIds: [], tunedHz: null, alert: null, log: [], error: null, signalDb: null, engineState: "running", audibleDriven: false, warmed: true, warmupPhase: null, warmupStep: 0, warmupOf: 4 };
 }
 
 export function reduce(s: DashState, ev: EngineEvent): DashState {
@@ -72,10 +80,22 @@ export function reduce(s: DashState, ev: EngineEvent): DashState {
         freq: ev.freq, alphaTag: ev.channel.alphaTag,
         until: ev.ts + ev.holdSeconds * 1000,
       } };
+    case "warmup":
+      // booting (re)shows the overlay; ready clears it; the middle phases just
+      // advance the bar. warmed is left unchanged for spawning/tuned so a late
+      // page that already learned warmed=true (status poll) isn't re-hidden.
+      return {
+        ...s,
+        warmupPhase: ev.phase, warmupStep: ev.step, warmupOf: ev.of,
+        warmed: ev.phase === "ready" ? true : ev.phase === "booting" ? false : s.warmed,
+      };
     case "idle":
       return { ...s, error: null, nowPlaying: s.audibleDriven ? s.nowPlaying : null };
     case "error":
-      return { ...s, error: ev.message };
+      // A hard engine error (e.g. NO_DEVICE) during warm-up must not stay
+      // hidden behind the opaque full-screen overlay — force it cleared so the
+      // error shows through. A later booting/ready re-establishes warm-up.
+      return { ...s, error: ev.message, warmed: true };
     case "status":
       // Any engine state transition means playback context reset: a restart
       // (e.g. channel edit) kills the helper without squelch-close events, so
@@ -117,6 +137,11 @@ export function renderDashboard(root: HTMLElement): void {
         <aside class="log"><h2>Recent</h2><ul id="logList"></ul></aside>
       </div>
       <div id="bankRail" class="bankRail"></div>
+      <div id="bootMsg" class="bootMsg hidden">
+        <div class="bootText">WARMING UP</div>
+        <div class="bootBar"><div class="bootBarFill"></div></div>
+        <div class="bootPhase"></div>
+      </div>
     </div>`;
   const dashEl = root.querySelector<HTMLElement>(".dash")!;
   const systemRisk = root.querySelector<HTMLElement>("#systemRisk")!;
@@ -149,6 +174,12 @@ export function renderDashboard(root: HTMLElement): void {
           : s.mode === "monitor" ? "MONITORING" : "";
         scanCount = s.scanCount ?? -1;
         muted = s.muted ?? false;
+        // Late-load correction ONLY: a page that opened after warm-up never sees
+        // the WS warmup events, so trust the server flag. But once we've observed
+        // the live WS warmup stream, IT is authoritative — otherwise an in-flight
+        // poll (snapshotted warmed=true) could land after a fresh "booting" and
+        // wrongly hide the overlay mid-restart.
+        if (!sawWarmupEvent && typeof s.warmed === "boolean") state = { ...state, warmed: s.warmed };
         paint();
       })
       .catch(() => {});
@@ -159,6 +190,10 @@ export function renderDashboard(root: HTMLElement): void {
   setInterval(paintBadge, 5000);
 
   let scanCount = -1; // unknown until the first status fetch
+  // Once the live WS warmup stream is seen, it owns `warmed` (the /api/status
+  // poll stops correcting it) — prevents a stale in-flight poll from clobbering
+  // a fresh booting/ready during a restart.
+  let sawWarmupEvent = false;
   let muted = false;
 
   // ── Bank rail: hardware-scanner bank LEDs. Every bank collection is a chip;
@@ -192,6 +227,26 @@ export function renderDashboard(root: HTMLElement): void {
     railEl.innerHTML = spectrum + chips;
   }
 
+  // ── Warm-up overlay: full-screen "WARMING UP" + stepped bar shown until the
+  // engine reports a warm first sweep. Holds over the animating map (opaque, no
+  // blur) so the kiosk doesn't present a live-looking but uncalibrated screen.
+  const bootEl = root.querySelector<HTMLElement>("#bootMsg")!;
+  const bootFill = bootEl.querySelector<HTMLElement>(".bootBarFill")!;
+  const bootPhaseEl = bootEl.querySelector<HTMLElement>(".bootPhase")!;
+  const BOOT_LABELS: Record<string, string> = {
+    booting: "starting radio",
+    spawning: "building signal processing",
+    tuned: "acquiring channels",
+    ready: "ready",
+  };
+  function paintBoot(): void {
+    bootEl.classList.toggle("hidden", state.warmed);
+    if (state.warmed) return;
+    const pct = state.warmupOf > 0 ? Math.round((state.warmupStep / state.warmupOf) * 100) : 0;
+    bootFill.style.width = `${pct}%`;
+    bootPhaseEl.textContent = state.warmupPhase ? (BOOT_LABELS[state.warmupPhase] ?? state.warmupPhase) : BOOT_LABELS.booting!;
+  }
+
   const alertEl = root.querySelector<HTMLElement>("#alertBar")!;
   let alertTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -216,6 +271,7 @@ export function renderDashboard(root: HTMLElement): void {
   }
 
   function paint(): void {
+    paintBoot();
     paintAlert();
     nowEl.classList.toggle("isMuted", muted);
     if (state.engineState === "starting" && !state.nowPlaying && !state.error) {
@@ -320,6 +376,7 @@ export function renderDashboard(root: HTMLElement): void {
   const proto = location.protocol === "https:" ? "wss" : "ws";
   new ReconnectingWs(`${proto}://${location.host}/ws`, (ev) => {
     if (ev.type === "reload") { location.reload(); return; }
+    if (ev.type === "warmup") sawWarmupEvent = true; // WS now owns `warmed`
     state = reduce(state, ev);
     if (ev.type === "status") { paintBadge(); loadBanks(); }
     if (ev.type === "tuned") paintRail();

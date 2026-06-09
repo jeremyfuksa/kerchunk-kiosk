@@ -19,8 +19,12 @@ export class FakeEngine implements ScannerEngine {
   private emit(ev: EngineEvent): void { for (const l of this.listeners) l(ev); }
 
   async start(_config: ScanConfig): Promise<void> {
+    this.emit({ type: "warmup", phase: "booting", step: 1, of: 4, ts: nextTs() });
     this._state = "running";
     this.emit({ type: "status", state: "running", ts: nextTs() });
+    // No real DSP to warm — declare ready immediately so the kiosk overlay
+    // clears (and tests can assert the warm-up contract on the fake path).
+    this.emit({ type: "warmup", phase: "ready", step: 4, of: 4, ts: nextTs() });
   }
 
   async stop(): Promise<void> {

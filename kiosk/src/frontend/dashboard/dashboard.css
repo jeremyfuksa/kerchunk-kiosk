@@ -446,3 +446,46 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .dash *, .dash *::before, .dash *::after { animation: none !important; }
 }
+
+/* ── Warm-up overlay: full-screen "WARMING UP" until the engine completes its
+   first warm sweep. z-index above the CRT scanlines (z9) and systemRisk (z8)
+   so it covers the whole kiosk. Opaque background, NO backdrop-filter — blur
+   over the animating WebGL map is the documented thermal no-go. The bar is a
+   DETERMINATE stepped fill (not an animated sweep), so it stays sensible under
+   prefers-reduced-motion, which kills .dash animations. */
+.bootMsg {
+  position: fixed; inset: 0; z-index: 20;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 1.4rem;
+  background: var(--bg);
+  font-family: var(--mono);
+}
+.bootMsg.hidden { display: none; }
+.bootMsg .bootText {
+  font-family: var(--cond);
+  font-weight: 600; font-size: 2.2rem;
+  letter-spacing: 0.6em; text-indent: 0.6em;
+  color: var(--amber);
+}
+.bootMsg .bootBar {
+  width: 62%; max-width: 460px; height: 16px;
+  background: var(--etch);
+  border: 1px solid var(--panel-edge);
+  border-radius: 3px;
+  overflow: hidden;
+  padding: 2px;
+}
+.bootMsg .bootBarFill {
+  height: 100%; width: 0;
+  background: linear-gradient(90deg, var(--green) 0 55%, var(--amber) 55%);
+  transition: width 0.4s ease-out;
+  /* LED segmentation, matching the signal meter. */
+  -webkit-mask-image: repeating-linear-gradient(90deg, #000 0 8px, transparent 8px 11px);
+          mask-image: repeating-linear-gradient(90deg, #000 0 8px, transparent 8px 11px);
+}
+.bootMsg .bootPhase {
+  font-size: 0.95rem;
+  letter-spacing: 0.25em; text-transform: uppercase;
+  color: var(--dim);
+}

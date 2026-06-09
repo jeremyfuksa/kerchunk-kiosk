@@ -59,9 +59,40 @@ const weatherEngine = engineKind === "wideband" && weatherPort && config.weather
   ? new WidebandEngine({ rtlIndex: () => rtlIndexForPort(weatherPort) })
   : undefined;
 
+// Weather-stagger: the NWR/SAME lane is a SECOND GNU Radio flowgraph. Starting
+// it at the same instant as the main engine made both graphs construct at once,
+// stacking the cold-start CPU spike. We defer it until the main engine's first
+// `tuned` (graph built + scheduler running), with a fallback timer below in
+// case the main engine never tunes (empty config). Boots through the SAME
+// payload shape as before — a hand-built payload once omitted knownHz and made
+// every reboot re-discover all filed frequencies (review finding).
+let weatherStarted = false;
+function startWeatherLane(): void {
+  if (!weatherEngine || !config.weatherChannel) return;
+  void weatherEngine.start({
+    channels: [{
+      ...config.weatherChannel,
+      id: "wx_same", alphaTag: "NWR (SAME decode)",
+      enabled: true, audible: false, background: true,
+    }],
+    sampleRate: config.scan.sampleRate,
+    squelchLevel: config.scan.squelchLevel,
+    dwellMs: config.scan.dwellMs,
+    gain: config.scan.gain,
+    audioSink: "none",
+    closeCall: false,
+    knownHz: [config.weatherChannel.freq],
+  }).catch((e) => console.error("[weather-radio]", (e as Error).message));
+}
+
 engine.on((ev: EngineEvent) => {
   if (ev.type === "active") {
     activityLog.add({ freq: ev.freq, alphaTag: ev.channel.alphaTag, ts: ev.ts });
+  }
+  // Bring weather up only after the main 12-lane graph is up and tuning.
+  if (!weatherStarted && ev.type === "tuned") {
+    weatherStarted = true;
+    startWeatherLane();
   }
   wsHub.broadcast(ev);
 });
@@ -148,24 +179,14 @@ wss.on("connection", (ws) => wsHub.attach(ws));
 
 server.listen(PORT, () => {
   console.log(`kerchunk-kiosk listening on :${PORT} (engine: ${engineKind})`);
-  // Boot through the SAME constructor every API path uses — a hand-built
-  // payload here once omitted knownHz/lockouts/closeCall and made every
-  // reboot re-discover all filed frequencies (review finding).
+  // Fallback: if the main engine never emits "tuned" (all banks muted → empty
+  // groups → no helper, never tunes), still bring the weather lane up so SAME
+  // monitoring isn't lost. The first `tuned` (above) wins the race normally.
   if (weatherEngine && config.weatherChannel) {
-    void weatherEngine.start({
-      channels: [{
-        ...config.weatherChannel,
-        id: "wx_same", alphaTag: "NWR (SAME decode)",
-        enabled: true, audible: false, background: true,
-      }],
-      sampleRate: config.scan.sampleRate,
-      squelchLevel: config.scan.squelchLevel,
-      dwellMs: config.scan.dwellMs,
-      gain: config.scan.gain,
-      audioSink: "none",
-      closeCall: false,
-      knownHz: [config.weatherChannel.freq],
-    }).catch((e) => console.error("[weather-radio]", (e as Error).message));
+    const weatherFallback = setTimeout(() => {
+      if (!weatherStarted) { weatherStarted = true; startWeatherLane(); }
+    }, 9000);
+    weatherFallback.unref?.();
   }
   engine.start(toScanConfig(config, "scan"))
     // Re-apply persisted volume/mute to the hardware mixer on boot, so the saved

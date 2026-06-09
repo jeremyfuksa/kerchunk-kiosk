@@ -83,6 +83,13 @@ export type EngineEvent =
   // it like any other event.
   | { type: "alert"; channel: Channel; freq: number; holdSeconds: number; ts: number }
   | { type: "status"; state: EngineState; ts: number }
+  // Cold-start warm-up progress (drives the kiosk "WARMING UP" overlay). A
+  // distinct type — NOT a status substate — so it never trips the WS replay
+  // reset or the dashboard's nowPlaying/alert resets. Ordered milestones:
+  // booting (start kicked) → spawning (graph constructing) → tuned (helper up,
+  // first tune acked) → ready (first full sweep warmed = detection trustworthy).
+  // `step`/`of` drive the stepped progress bar.
+  | { type: "warmup"; phase: "booting" | "spawning" | "tuned" | "ready"; step: number; of: number; ts: number }
   // Operator pressed "Reload kiosk" in the admin: dashboard pages reload
   // themselves (fresh JS/CSS/map style without touching the display
   // service). Synthesized by the server, like "alert".
