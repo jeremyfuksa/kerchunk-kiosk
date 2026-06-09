@@ -35,6 +35,12 @@ export interface WidebandEngineOptions {
    *  channel doesn't sit on the RTL DC spike (the channel filter then scrubs
    *  the spike). Needed for a dedicated single-channel radio at a narrow rate. */
   centerOffsetHz?: number;
+  /** Spawn the helper at this `nice` value (CPU scheduling priority). The
+   *  weather radio (decode-only, latency-tolerant) runs LOW priority so its
+   *  ~300 GR threads can't steal scheduling from the scanner's real-time audio
+   *  thread — equal priority caused choppy scanner audio. New threads inherit
+   *  the process nice at creation, so this covers the whole flowgraph. */
+  niceness?: number;
   /** Resolve the librtlsdr device index at spawn time (multi-SDR fallback when
    *  no serial: devnums change on every replug, so this runs fresh per spawn).
    *  null = first. Ignored when rtlSerial is set. */
@@ -128,12 +134,14 @@ export class WidebandEngine implements ScannerEngine {
   private readonly rtlSerial: string | undefined;
   private readonly sampleRateHz: number | undefined;
   private readonly centerOffsetHz: number;
+  private readonly niceness: number | undefined;
 
   constructor(opts: WidebandEngineOptions = {}) {
     this.rtlIndexResolver = opts.rtlIndex;
     this.rtlSerial = opts.rtlSerial;
     this.sampleRateHz = opts.sampleRateHz;
     this.centerOffsetHz = opts.centerOffsetHz ?? 0;
+    this.niceness = opts.niceness;
     this.helperCmd = opts.helperCmd ?? defaultHelperCmd();
     this.helperEnv = opts.helperEnv ?? {};
     this.autoRestart = opts.autoRestart ?? true;
@@ -272,7 +280,13 @@ export class WidebandEngine implements ScannerEngine {
     if (!this.config) return;
 
     this.lastSpawnAt = this.now();
-    const argv = [...this.helperCmd, ...this.helperArgs()];
+    const base = [...this.helperCmd, ...this.helperArgs()];
+    // Low-priority spawn (weather radio): `nice` execs the helper so all of its
+    // GR threads inherit the nice value from birth. Lowering own priority needs
+    // no privilege.
+    const argv = this.niceness !== undefined
+      ? ["nice", "-n", String(this.niceness), ...base]
+      : base;
     const child = spawn(argv[0]!, argv.slice(1), {
       // fd 3: the helper tees the speaker feed (s16 PCM) for remote
       // listening. The engine ALWAYS drains it — an unread pipe would

@@ -77,6 +77,10 @@ const weatherEngine = engineKind === "wideband" && weatherRadio && config.weathe
       ...deviceOpts(weatherRadio),
       sampleRateHz: WEATHER_RATE_HZ,
       centerOffsetHz: WEATHER_CENTER_OFFSET_HZ,
+      // Decode-only and latency-tolerant: run it at the lowest priority so its
+      // ~300 GR threads never steal scheduling from the scanner's real-time
+      // audio thread (equal priority made the active repeater sound choppy).
+      niceness: 19,
     })
   : undefined;
 
