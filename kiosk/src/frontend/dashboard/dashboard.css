@@ -442,9 +442,13 @@ body {
 .now.isMuted .meter, .now.isMuted .meterDb { opacity: 0.45; }
 .dash.mapStage .now .mutedBadge { top: 0.7rem; right: 0.8rem; font-size: 0.85rem; }
 
-/* Motion respect on the kiosk too (alert pulse, sweep, breathe, replay). */
+/* Motion respect on the kiosk too (alert pulse, sweep, breathe, replay). Also
+   kill transitions — the now-playing meter glide and the warm-up bar use them. */
 @media (prefers-reduced-motion: reduce) {
-  .dash *, .dash *::before, .dash *::after { animation: none !important; }
+  .dash *, .dash *::before, .dash *::after {
+    animation: none !important;
+    transition: none !important;
+  }
 }
 
 /* ── Warm-up overlay: full-screen "WARMING UP" until the engine completes its

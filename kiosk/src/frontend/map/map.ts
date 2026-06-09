@@ -226,12 +226,16 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
     }
 
     const field = new BlipField(BLIP_LIFETIME_MS);
-    // site key -> rendered circle + label marker
-    const circles = new Map<string, { circle: any; info: any }>();
+    // site key -> rendered circle + label marker (+ last-written style for the
+    // tick() dirty-check, so unchanged blips skip the WebGL re-upload).
+    const circles = new Map<string, { circle: any; info: any; last: any }>();
     // Radar pings: short-lived expanding rings fired at each hit, so a key-up
     // is an EVENT on the map, not just a circle that exists.
     const PING_MS = 1600;
     const pings: Array<{ ring: any; born: number }> = [];
+    // The render loop self-suspends on a quiet map; wake() (defined with tick)
+    // restarts it. `ticking` guards against double-starting.
+    let ticking = false;
 
     function ping(lat: number, lon: number, color: string): void {
       pings.push({
@@ -242,6 +246,7 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
           strokeOpacity: 0.9, fillOpacity: 0, clickable: false,
         }),
       });
+      wake();
     }
 
     // ── Persistent antenna layer: any site heard at least once gets a small
@@ -393,11 +398,13 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
         syntheticPositions.set(freqHz, pos);
       }
       field.add({ lat: pos.lat, lon: pos.lng, alphaTag, kind: "nofix", ts, freq: freqHz });
+      wake(); // a blip was planted (live or backfilled) — ensure the loop runs
       if (Date.now() - ts < 2000) { ping(pos.lat, pos.lng, colorFor(freqHz, "nofix")); punch(pos.lat, pos.lng); }
     }
 
     function push(lat: number, lon: number, alphaTag: string, kind: "active" | "closecall", ts: number, freq?: number): void {
       field.add({ lat, lon, alphaTag, kind, ts, freq });
+      wake(); // a blip was planted (live or backfilled) — ensure the loop runs
       // live hits ping and plant/refresh the persistent antenna
       if (Date.now() - ts < 2000) {
         ping(lat, lon, colorFor(freq, kind));
@@ -437,8 +444,13 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
       }
     }).connect();
 
+    // Restart the render loop after a quiet period. tick() self-suspends (sets
+    // ticking=false) when there's nothing alive and no pings; every activity
+    // entry point (push/nofix/ping) calls wake() so a hit after silence repaints.
+    function wake(): void { if (!ticking) { ticking = true; tick(); } }
     function tick(): void {
-      const alive = field.alive(Date.now());
+      const now = Date.now();
+      const alive = field.alive(now);
       const seen = new Set<string>();
       for (const b of alive) {
         const key = `${b.lat.toFixed(5)},${b.lon.toFixed(5)}`;
@@ -455,19 +467,30 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
             info.setPosition({ lat: b.lat, lng: b.lon });
             info.open({ map });
           });
-          entry = { circle, info };
+          entry = { circle, info, last: null };
           circles.set(key, entry);
         }
         const col = colorFor(b.freq, b.kind);
-        entry.circle.setOptions({
+        // Quantize the 60s opacity fade to ~16 steps so steady-state decay
+        // rarely changes a written value — the dirty-check then skips the
+        // (geometry+style) WebGL re-upload. Imperceptible at a 60s fade.
+        const op = Math.round(b.opacity * 16) / 16;
+        const opts = {
           // Power-rated sites blip at ESTIMATED COVERAGE (true geography, no
           // kiosk scale factor); the rest use the hit-count ramp.
           radius: coverage.get(key) ?? (3750 + 625 * Math.min(b.hits, 6)) * geo,
           strokeColor: col,
-          strokeOpacity: Math.min(1, b.opacity * 1.4),
+          strokeOpacity: Math.min(1, op * 1.4),
           fillColor: col,
-          fillOpacity: 0.3 * b.opacity,
-        });
+          fillOpacity: 0.3 * op,
+        };
+        const last = entry.last;
+        if (!last || last.radius !== opts.radius || last.strokeColor !== opts.strokeColor
+            || last.strokeOpacity !== opts.strokeOpacity || last.fillColor !== opts.fillColor
+            || last.fillOpacity !== opts.fillOpacity) {
+          entry.circle.setOptions(opts);
+          entry.last = opts;
+        }
       }
       for (const [key, entry] of circles) {
         if (!seen.has(key)) {
@@ -476,7 +499,6 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
         }
       }
       // animate radar pings (fast: every frame they expand + fade)
-      const now = Date.now();
       for (let i = pings.length - 1; i >= 0; i--) {
         const p = pings[i]!;
         const t = (now - p.born) / PING_MS;
@@ -487,9 +509,24 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
         }
         p.ring.setOptions({ radius: (400 + 5200 * t) * geo, strokeOpacity: 0.9 * (1 - t) });
       }
-      requestAnimationFrame(() => setTimeout(tick, pings.length ? 40 : 200));
+      // Quiet map: stop scheduling entirely so the WebGL compositor can deep-
+      // idle (it shares the CPU/iGPU envelope with the DSP). wake() resumes.
+      if (alive.length === 0 && pings.length === 0) { ticking = false; return; }
+      if (pings.length) {
+        // rAF gives the ping its smooth ~30Hz expansion — but it must NEVER be
+        // the SOLE re-arm: if the compositor defers/drops the rAF (deep idle),
+        // a wall-clock fallback still continues the loop, so `ticking` can't get
+        // stranded true and freeze the map. `ran` guards against double-firing.
+        let ran = false;
+        const go = (): void => { if (ran) return; ran = true; tick(); };
+        requestAnimationFrame(() => setTimeout(go, 40));
+        setTimeout(go, 250);
+      } else {
+        // Blip decay alone is fine on a bare timer — rAF would just force a frame.
+        setTimeout(tick, 150);
+      }
     }
-    tick();
+    wake();
   }
 }
 
