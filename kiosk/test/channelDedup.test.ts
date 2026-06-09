@@ -57,4 +57,14 @@ describe("findDuplicateSets", () => {
     const sets = findDuplicateSets([z, a]);
     expect(sets[0]!.channels.map((x) => x.channel.id)).toEqual(["a", "z"]);
   });
+
+  it("returns multiple duplicate sets sorted by frequency ascending", () => {
+    // Two duplicate freqs filed OUT of order; result must come back freq-asc.
+    const hi1 = ch({ id: "h1", freq: 154_000_000 });
+    const hi2 = ch({ id: "h2", freq: 154_000_000 });
+    const lo1 = ch({ id: "l1", freq: 147_000_000 });
+    const lo2 = ch({ id: "l2", freq: 147_000_000 });
+    const sets = findDuplicateSets([hi1, hi2, lo1, lo2]);
+    expect(sets.map((s) => s.freq)).toEqual([147_000_000, 154_000_000]);
+  });
 });

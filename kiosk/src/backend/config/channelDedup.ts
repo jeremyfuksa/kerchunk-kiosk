@@ -20,7 +20,8 @@ export function collides(a: Channel, b: Channel): boolean {
   return a.freq === b.freq && !isGmrs(a.freq) && !isGmrs(b.freq);
 }
 
-/** "Richest row" score — which row survives a cleanup. */
+/** "Richest row" score — which row survives a cleanup. Location is weighted
+ *  double: it's the most expensive field to re-derive (geocoding/lookup). */
 export function completeness(c: Channel): number {
   let s = 0;
   if (c.location?.lat !== undefined && c.location?.lon !== undefined) s += 2;
