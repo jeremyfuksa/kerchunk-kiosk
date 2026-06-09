@@ -1,10 +1,11 @@
 # The Day's Map — artistic kiosk (design)
 
-> Status: design, approved 2026-06-09. Concept only. Mark vocabulary (the
-> visual form of a mark) is deliberately deferred to a later visual-brainstorm
-> stage — this spec fixes *behavior*, not *style*. Realizes ROADMAP Idea 3
-> ("artistic treatment"), rethought per the operator's 2026-06-05 note that
-> sparse KC traffic kills decay-based visuals.
+> Status: design, approved 2026-06-09; visual language added 2026-06-09 after
+> the visual brainstorm. Realizes ROADMAP Idea 3 ("artistic treatment"),
+> rethought per the operator's 2026-06-05 note that sparse KC traffic kills
+> decay-based visuals. This spec now fixes both *behavior* and *visual
+> language*; only final tuning values (exact radii, blur, decay curves, reset
+> hour) are left to implementation.
 
 ## Intent
 
@@ -69,18 +70,76 @@ the shape of the day. Because the sediment is derived from a timestamp query
 accumulation state to lose on refresh or reboot, and the portrait reconstructs
 itself.
 
-## Mark vocabulary — deferred
+## Mark behavior
 
-What a single mark *looks like* (light/heat vs. organic growth vs.
-sediment/strata) is a visual decision, made in a later visual-brainstorm stage.
-This spec fixes only the **behavior** every candidate form must satisfy:
+The behavior every mark obeys (form-independent):
 
 1. A mark is placed at the transmitting channel's transmitter `lat/lon`.
 2. Repeated hits at the same site intensify that site's accumulated mark.
 3. Marks persist for the rest of the day (no real-time decay).
 4. A live hit produces a soft, momentary "breath" on top, then settles.
 5. The whole canvas clears at the daily reset.
-6. The overall register stays calm/meditative regardless of form.
+6. The overall register stays calm/meditative.
+
+## Visual language (locked 2026-06-09)
+
+Chosen in the visual brainstorm. Final tuning values (radii, blur, opacity
+curves) are implementation details; the language below is fixed.
+
+**Form — sediment / strata.** A mark is a soft radial *deposit* at a site;
+repeated hits stack concentric strata so the deposit grows and intensifies. The
+day's portrait is material accumulating where the traffic is. Rejected
+alternatives and *why* (these are constraints, not just preferences):
+
+- **No light-trails between sites; no organic tendrils joining sites.** Each
+  transmission is an *independent* site key-up — there is no link, flow, or
+  conversation between two sites that happen to fire near each other in time.
+  Any visual that draws connection/flow/causality between distinct sites is
+  **semantically false and forbidden.** The dominant-site triangle must
+  *emerge* from where deposits are dense, never be drawn as edges.
+
+**Color — band-coded by service, reusing the existing map palette.** A deposit
+is colored by its channel's service, using the **same** classifier and palette
+the live map already uses — `PIN_COLORS` and `colorFor()` in
+[`kiosk/src/frontend/map/map.ts`](../../../kiosk/src/frontend/map/map.ts) (air
+`#3478F5`, rail `#F5821F`, ham `#EC4E89`, gmrs `#1FA84C`, biz/PS `#7C4FE0`,
+marine `#0FAEC0`, weather `#F4B315`, unknown `#747B8A`). One color language
+across the whole appliance. **Implementation note:** factor that classifier +
+palette out of `map.ts` into a small shared frontend module so the art view and
+the live map *import the same source*, rather than duplicating it. Hue here
+encodes a property of an independent site — it never encodes a relationship, so
+it does not violate the no-false-connection rule.
+
+**Multi-service sites — layered strata with blended overlap.** A single channel
+is exactly one service; a channel never "fires as" a second service. A site
+shows more than one service *only* when two physically distinct transmitters are
+co-located closely enough that their `lat/lon` round to the same site (the
+`history.sites()` grouping rounds to ~5 decimal places — roughly antennas on the
+same tower). That genuine tower-sharing case is rendered as **layered strata**:
+each service's deposit is its own colored sub-layer within the one site's
+footprint — the site's own internal composition, still no link to any *other*
+site.
+
+**Compositing — `mix-blend-mode: screen` globally, on a calm dark ground.**
+Screen-blending is the global compositing model for the entire piece, not just
+the rare overlap: every deposit, every outlier grain, and the live breath
+composite additively over a deep near-black ground. Consequences this buys for
+free:
+
+- Accumulated density reads as **added luminance** — a busy day literally glows
+  brighter because more light has been deposited; a quiet day stays dim and
+  sparse. Brightness *is* the volume of the day's traffic.
+- Where two service strata overlap at a co-located site, their hues screen into
+  a luminous third tone — the tower-sharing case becomes a small jewel of
+  color-mixing rather than a muddy smear. The blend is contained within one
+  site's footprint, so it still implies nothing between sites.
+- The whole surface reads as one continuous luminous field rather than stacked
+  opaque marks — appropriate to the calm, wall-art register.
+
+**Intensity / always-on safety.** Tuned for a panel that is on 24/7: the ground
+is dark, no large bright statics, deposits are soft-edged and never fully
+saturate. The calm register governs all tuning — if a value reads as "hot" or
+"busy," it is wrong.
 
 ## Data — all of it already exists
 
@@ -105,11 +164,21 @@ view consuming existing APIs.
 
 ## Out of scope
 
-- Mark visual form / color / motion style (next stage: visual brainstorm).
+- Final tuning values only: exact deposit radii, blur, opacity/decay curves,
+  the reset hour, breath duration. The visual *language* is fixed above.
 - Any change to the audio path, engine, or history schema.
 - Sonification, data-poster, and the other ROADMAP Idea 3 candidates — this
   design selects the remembering-map reading and sets the rest aside.
 - Multi-day / rolling-window / all-time portraits — daily reset only.
+- **Channel-list de-duplication / uniqueness rules.** Surfaced during this
+  brainstorm but it is a separate config/admin project, not part of the art
+  (the art is a read-only consumer of whatever the config holds; genuine
+  duplicates would merely co-deposit at one site — visually harmless). Captured
+  as a follow-up: audit the live config for same-frequency duplicates and add a
+  uniqueness rule that holds *within* most services but **exempts GMRS/FRS**
+  (shared channelized spectrum legitimately has many users per frequency).
+  Needs the real `/var/lib/kerchunk-kiosk/config.json`, so it waits until back
+  on the kiosk.
 
 ## Success criteria
 
