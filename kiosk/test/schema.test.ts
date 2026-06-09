@@ -38,6 +38,18 @@ describe("configSchema", () => {
     expect(() => configSchema.parse(defaultConfig())).not.toThrow();
   });
 
+  it("accepts radios addressed by serial, by port, or both", () => {
+    const withRadios = (radios: unknown[]) => ({ ...defaultConfig(), radios });
+    expect(() => configSchema.parse(withRadios([{ serial: "KIOSK01", role: "scan" }]))).not.toThrow();
+    expect(() => configSchema.parse(withRadios([{ port: "1-1.2", role: "adsb" }]))).not.toThrow();
+    expect(() => configSchema.parse(withRadios([{ serial: "K", port: "1-1.2", role: "weather" }]))).not.toThrow();
+  });
+
+  it("rejects a radio with neither serial nor port", () => {
+    const bad = { ...defaultConfig(), radios: [{ role: "scan" }] };
+    expect(() => configSchema.parse(bad)).toThrow();
+  });
+
   it("defaults squelchLevel above the measured noise floor", () => {
     // Bench measurement: RMS noise floor ~150, noise spikes ~1436, real signal
     // ~2900. A default of 150 sits on the noise floor and causes constant false

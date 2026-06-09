@@ -29,6 +29,29 @@ describe("WidebandEngine --detect-via", () => {
     expect(a).toContain("--detect-via");
     expect(a[a.indexOf("--detect-via") + 1]).toBe("fft");
   });
+  it("addresses the dongle by serial when set, taking precedence over index", () => {
+    const argsForOpts = (opts: object): string[] => {
+      const e = new WidebandEngine(opts);
+      (e as unknown as { config: unknown }).config = base;
+      return (e as unknown as { helperArgs(): string[] }).helperArgs();
+    };
+    // serial -> --rtl-serial, no --rtl-index
+    const ser = argsForOpts({ rtlSerial: "KIOSK03" });
+    expect(ser[ser.indexOf("--rtl-serial") + 1]).toBe("KIOSK03");
+    expect(ser).not.toContain("--rtl-index");
+    // serial wins even when an index resolver is also given
+    const both = argsForOpts({ rtlSerial: "KIOSK03", rtlIndex: () => 1 });
+    expect(both).toContain("--rtl-serial");
+    expect(both).not.toContain("--rtl-index");
+    // index-only fallback still works
+    const idx = argsForOpts({ rtlIndex: () => 1 });
+    expect(idx[idx.indexOf("--rtl-index") + 1]).toBe("1");
+    expect(idx).not.toContain("--rtl-serial");
+    // neither -> first-found (no addressing args)
+    const none = argsForOpts({});
+    expect(none).not.toContain("--rtl-serial");
+    expect(none).not.toContain("--rtl-index");
+  });
   it("passes --close-call unless closeCall is explicitly false", () => {
     // Mirrors the per-tune `closeCall ?? true`: the FFT is built on by default
     // (absent or true) and skipped only when the operator turns Close Call off.

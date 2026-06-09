@@ -24,8 +24,12 @@ export interface WidebandEngineOptions {
   helperCmd?: string[];
   /** Extra env for the helper (tests drive fake scenarios through this). */
   helperEnv?: Record<string, string>;
-  /** Resolve the librtlsdr device index at spawn time (multi-SDR: devnums
-   *  change on every replug, so this runs fresh per spawn). null = first. */
+  /** RTL-SDR EEPROM serial (multi-SDR). Preferred over rtlIndex: SoapySDR
+   *  resolves it to the exact dongle regardless of enumeration order. */
+  rtlSerial?: string;
+  /** Resolve the librtlsdr device index at spawn time (multi-SDR fallback when
+   *  no serial: devnums change on every replug, so this runs fresh per spawn).
+   *  null = first. Ignored when rtlSerial is set. */
   rtlIndex?: () => number | null;
   autoRestart?: boolean;
   restartDelayMs?: number;
@@ -113,9 +117,11 @@ export class WidebandEngine implements ScannerEngine {
   private lastSpawnAt = 0;
 
   private readonly rtlIndexResolver: (() => number | null) | undefined;
+  private readonly rtlSerial: string | undefined;
 
   constructor(opts: WidebandEngineOptions = {}) {
     this.rtlIndexResolver = opts.rtlIndex;
+    this.rtlSerial = opts.rtlSerial;
     this.helperCmd = opts.helperCmd ?? defaultHelperCmd();
     this.helperEnv = opts.helperEnv ?? {};
     this.autoRestart = opts.autoRestart ?? true;
@@ -227,9 +233,12 @@ export class WidebandEngine implements ScannerEngine {
       "--sink", cfg.audioSink,
       "--hang-ms", String(cfg.dwellMs),
       "--audio-fd", "3",
-      ...(this.rtlIndexResolver
-        ? (() => { const i = this.rtlIndexResolver!(); return i === null ? [] : ["--rtl-index", String(i)]; })()
-        : []),
+      // Prefer serial (deterministic); fall back to index resolved at spawn.
+      ...(this.rtlSerial
+        ? ["--rtl-serial", this.rtlSerial]
+        : this.rtlIndexResolver
+          ? (() => { const i = this.rtlIndexResolver!(); return i === null ? [] : ["--rtl-index", String(i)]; })()
+          : []),
       "--open-db", String(cfg.openAboveFloorDb ?? 9),
     ];
     if (cfg.detectVia !== undefined) args.push("--detect-via", cfg.detectVia);

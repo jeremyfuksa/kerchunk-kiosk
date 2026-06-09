@@ -157,15 +157,21 @@ export const configSchema = z.object({
     mapLon: z.number().optional(),
     mapZoom: z.number().int().optional(),
   }).optional(),
-  // Multi-SDR (ROADMAP Idea 10): role assignments by USB PORT PATH — the
-  // physical jack is the identity (these RTL clones ignore EEPROM serials).
-  // scan = the group-hopping voice radio; weather = parked on NWR 24/7
-  // (SAME gold tier, decode-only, no speaker); adsb = reserved for the
-  // dump1090 sidecar. Absent = single-radio behavior, first device found.
+  // Multi-SDR (ROADMAP Idea 10): role assignments by device identity.
+  // Prefer SERIAL (e.g. "KIOSK01") — SoapySDR resolves it to the exact dongle
+  // regardless of librtlsdr enumeration order, which the USB PORT->index map
+  // got wrong with two dongles on a hub. PORT ("1-1.2") remains as a fallback
+  // for dongles with no usable serial. At least one of serial/port is required.
+  // scan = the group-hopping voice radio; weather = parked on NWR 24/7 (SAME
+  // gold tier, decode-only, no speaker); adsb = reserved for the dump1090
+  // sidecar. Absent = single-radio behavior, first device found.
   radios: z.array(z.object({
-    port: z.string().min(1),                       // e.g. "1-1.2"
+    serial: z.string().min(1).optional(),          // e.g. "KIOSK01" (preferred)
+    port: z.string().min(1).optional(),            // e.g. "1-1.2" (fallback)
     role: z.enum(["scan", "weather", "adsb"]),
     label: z.string().optional(),
+  }).refine((r) => r.serial !== undefined || r.port !== undefined, {
+    message: "radio needs a serial or a port",
   })).optional(),
   // Alert behavior (ROADMAP Idea 6) — deliberately a couple of knobs, not a
   // rules engine. cooldownMinutes: a channel re-alerts only after this quiet

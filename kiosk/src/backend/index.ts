@@ -41,12 +41,21 @@ const wsHub = new WsHub();
 // Multi-SDR (Idea 10): roles bind to USB PORTS (these clones ignore EEPROM
 // serials). The librtlsdr index is resolved fresh at every helper spawn —
 // devnums shuffle on replug, the port never does.
-const scanPort = config.radios?.find((r) => r.role === "scan")?.port;
-const weatherPort = config.radios?.find((r) => r.role === "weather")?.port;
+// Per-role device selection: prefer the dongle's SERIAL (SoapySDR resolves it
+// to the exact device regardless of enumeration order), fall back to the USB
+// PORT->index map for dongles without a usable serial. {} = first device found.
+const scanRadio = config.radios?.find((r) => r.role === "scan");
+const weatherRadio = config.radios?.find((r) => r.role === "weather");
+function deviceOpts(radio: { serial?: string; port?: string } | undefined): {
+  rtlSerial?: string; rtlIndex?: () => number | null;
+} {
+  if (radio?.serial) return { rtlSerial: radio.serial };
+  if (radio?.port) { const port = radio.port; return { rtlIndex: () => rtlIndexForPort(port) }; }
+  return {};
+}
 const engine =
   engineKind === "fake" ? new FakeEngine()
-  : engineKind === "wideband" ? new WidebandEngine(
-      scanPort ? { rtlIndex: () => rtlIndexForPort(scanPort) } : {})
+  : engineKind === "wideband" ? new WidebandEngine(deviceOpts(scanRadio))
   : new RtlFmEngine({
       openThreshold: config.scan.squelchLevel,
       hangMs: config.scan.dwellMs,
@@ -55,8 +64,8 @@ const engine =
 // Dedicated weather radio: parked on NWR 24/7, decode-only (null audio
 // sink — no speaker claim until the cross-device arbiter exists). SAME
 // jumps from the visiting-slot tier to gold: every burst is heard.
-const weatherEngine = engineKind === "wideband" && weatherPort && config.weatherChannel
-  ? new WidebandEngine({ rtlIndex: () => rtlIndexForPort(weatherPort) })
+const weatherEngine = engineKind === "wideband" && weatherRadio && config.weatherChannel
+  ? new WidebandEngine(deviceOpts(weatherRadio))
   : undefined;
 
 // Weather-stagger: the NWR/SAME lane is a SECOND GNU Radio flowgraph. Starting
