@@ -145,12 +145,19 @@ export function renderDashboard(root: HTMLElement): void {
     </div>`;
   const dashEl = root.querySelector<HTMLElement>(".dash")!;
   const systemRisk = root.querySelector<HTMLElement>("#systemRisk")!;
+  // True once the WebGL map mounts (the .mapStage layout). Under it, the Recent
+  // log is display:none, so paint() skips rebuilding it.
+  let mapMounted = false;
   void mountActivityMap(root.querySelector<HTMLElement>("#mapBase")!, { interactive: false })
-    .then((mounted) => { if (mounted) dashEl.classList.add("mapStage"); })
+    .then((mounted) => { if (mounted) { mapMounted = true; dashEl.classList.add("mapStage"); } })
     .catch(() => { /* no map = classic dashboard, nothing lost */ });
+  let lastRiskSig = "";
   function paintSystemRisk(): void {
     void fetch("/api/system").then((r) => r.ok ? r.json() : null).then((s) => {
       const severe = s?.alerts?.filter((a: { severity: string }) => a.severity === "severe") ?? [];
+      const sig = severe.map((a: { title: string }) => a.title).join("|");
+      if (sig === lastRiskSig) return; // unchanged — skip the innerHTML write (usually "")
+      lastRiskSig = sig;
       systemRisk.innerHTML = severe.length
         ? `<strong>MACHINE WARNING</strong> ${severe.map((a: { title: string }) => esc(a.title)).join(" · ")}`
         : "";
@@ -166,21 +173,35 @@ export function renderDashboard(root: HTMLElement): void {
   // Badge follows the runtime mode — refreshed on engine status transitions
   // (mode flips always restart the engine), so MONITORING/WEATHER are never
   // stale on the kiosk screen (review finding: monitor mode was invisible).
+  // Coalesce repaints to one per animation frame: a burst of WS events in a
+  // single frame collapses to ONE paint() instead of N full renders.
+  let rafPending = false;
+  function schedule(): void {
+    if (rafPending) return;
+    rafPending = true;
+    requestAnimationFrame(() => { rafPending = false; paint(); });
+  }
+  let lastMode: string | undefined;
   function paintBadge(): void {
     api.getStatus()
       .then((s) => {
         modeBadge.textContent =
           s.mode === "weather" ? "WEATHER"
           : s.mode === "monitor" ? "MONITORING" : "";
-        scanCount = s.scanCount ?? -1;
-        muted = s.muted ?? false;
+        const sc = s.scanCount ?? -1;
+        const mu = s.muted ?? false;
         // Late-load correction ONLY: a page that opened after warm-up never sees
         // the WS warmup events, so trust the server flag. But once we've observed
         // the live WS warmup stream, IT is authoritative — otherwise an in-flight
         // poll (snapshotted warmed=true) could land after a fresh "booting" and
         // wrongly hide the overlay mid-restart.
-        if (!sawWarmupEvent && typeof s.warmed === "boolean") state = { ...state, warmed: s.warmed };
-        paint();
+        const wm = (!sawWarmupEvent && typeof s.warmed === "boolean") ? s.warmed : state.warmed;
+        // The 5s poll usually reads identical values — only repaint on a change
+        // (was 12 full now-card renders/min of byte-identical content).
+        const changed = s.mode !== lastMode || sc !== scanCount || mu !== muted || wm !== state.warmed;
+        lastMode = s.mode; scanCount = sc; muted = mu;
+        if (wm !== state.warmed) state = { ...state, warmed: wm };
+        if (changed) schedule();
       })
       .catch(() => {});
   }
@@ -270,53 +291,90 @@ export function renderDashboard(root: HTMLElement): void {
     }
   }
 
+  // Now-card render. The chrome (ACTIVE/SCANNING/etc.) is rebuilt only when the
+  // VIEW changes (channel hop, scanning<->active<->error). On repeat signal
+  // ticks for the SAME channel we only nudge the meter width + dB on the
+  // persistent nodes — far less DOM churn AND it lets the meter's CSS width
+  // transition finally glide instead of snap (the node used to be recreated
+  // every tick, killing the transition).
+  let lastView: string | null = null;
+  let meterFillEl: HTMLElement | null = null;
+  let meterDbEl: HTMLElement | null = null;
+  // Signal meter: -35 dB = floor-ish, +5 dB = hot; clamp outside.
+  const meterPct = (db: number | null): string =>
+    (db === null ? 0 : Math.max(0, Math.min(100, ((db + 35) / 40) * 100))).toFixed(0);
+
   function paint(): void {
     paintBoot();
     paintAlert();
     nowEl.classList.toggle("isMuted", muted);
-    if (state.engineState === "starting" && !state.nowPlaying && !state.error) {
-      nowEl.innerHTML = `<div class="scanning">
-        <div class="scanText">RETUNING</div>
-        <div class="sweep"><div class="sweepBar"></div></div>
-      </div>`;
-      return;
-    }
-    if (state.error) {
-      nowEl.innerHTML = `<div class="err">${esc(state.error)}</div>`;
-    } else if (state.nowPlaying) {
-      // Signal meter: map the audible channel's level (helper power telemetry)
-      // onto a bar. -35 dB = floor-ish, +5 dB = hot; clamp outside.
+
+    const view =
+      (state.engineState === "starting" && !state.nowPlaying && !state.error) ? "retuning"
+      : state.error ? `error:${state.error}`
+      : state.nowPlaying ? `active:${state.nowPlaying.freq}:${state.nowPlaying.alphaTag}`
+      : scanCount === 0 ? "standby" : "scanning";
+
+    if (view === lastView && state.nowPlaying && meterFillEl && meterDbEl) {
+      // Same active channel — surgical update, let the meter glide.
       const db = state.signalDb;
-      const pct = db === null ? 0 : Math.max(0, Math.min(100, ((db + 35) / 40) * 100));
-      // Tag-first hierarchy (operator direction): the NAME is what you read
-      // from across the room; the frequency is the supporting detail.
-      const hero = state.nowPlaying.alphaTag || fmtFreq(state.nowPlaying.freq);
-      const freqLine = state.nowPlaying.alphaTag
-        ? `<div class="freq">${fmtFreq(state.nowPlaying.freq)}<span class="unit">MHz</span></div>`
-        : "";
-      nowEl.innerHTML = `<div class="active"><span class="dot"></span>ACTIVE</div>
-        <div class="tag">${esc(hero)}</div>
-        ${freqLine}
-        <div class="meter"><div class="meterFill" style="width:${pct.toFixed(0)}%"></div></div>
-        <div class="meterDb">${db === null ? "" : db.toFixed(1) + " dB"}</div>`;
+      meterFillEl.style.width = `${meterPct(db)}%`;
+      meterDbEl.textContent = db === null ? "" : db.toFixed(1) + " dB";
     } else {
-      nowEl.innerHTML = scanCount === 0
-        ? `<div class="scanning"><div class="scanText standby">STANDBY</div>
-           <div class="standbyHint">no channels enabled — check banks</div></div>`
-        : `<div class="scanning">
-        <div class="scanText">SCANNING</div>
-        <div class="sweep"><div class="sweepBar"></div></div>
-      </div>`;
+      lastView = view;
+      meterFillEl = null; meterDbEl = null;
+      if (view === "retuning") {
+        nowEl.innerHTML = `<div class="scanning"><div class="scanText">RETUNING</div>
+          <div class="sweep"><div class="sweepBar"></div></div></div>`;
+      } else if (state.error) {
+        nowEl.innerHTML = `<div class="err">${esc(state.error)}</div>`;
+      } else if (state.nowPlaying) {
+        const db = state.signalDb;
+        // Tag-first hierarchy: the NAME reads across the room; freq supports it.
+        const hero = state.nowPlaying.alphaTag || fmtFreq(state.nowPlaying.freq);
+        const freqLine = state.nowPlaying.alphaTag
+          ? `<div class="freq">${fmtFreq(state.nowPlaying.freq)}<span class="unit">MHz</span></div>`
+          : "";
+        nowEl.innerHTML = `<div class="active"><span class="dot"></span>ACTIVE</div>
+          <div class="tag">${esc(hero)}</div>
+          ${freqLine}
+          <div class="meter"><div class="meterFill" style="width:${meterPct(db)}%"></div></div>
+          <div class="meterDb">${db === null ? "" : db.toFixed(1) + " dB"}</div>`;
+        meterFillEl = nowEl.querySelector<HTMLElement>(".meterFill");
+        meterDbEl = nowEl.querySelector<HTMLElement>(".meterDb");
+      } else {
+        nowEl.innerHTML = scanCount === 0
+          ? `<div class="scanning"><div class="scanText standby">STANDBY</div>
+             <div class="standbyHint">no channels enabled — check banks</div></div>`
+          : `<div class="scanning"><div class="scanText">SCANNING</div>
+             <div class="sweep"><div class="sweepBar"></div></div></div>`;
+      }
     }
-    logEl.innerHTML = state.log
-      .map((r) => `<li><span class="t">${fmtTime(r.ts)}</span> ${fmtFreq(r.freq)} ${esc(r.alphaTag)}</li>`)
-      .join("");
-    if (muted) {
+    syncMutedBadge();
+    paintLog();
+  }
+
+  // MUTED badge: reconcile on every paint (works on both the rebuild and the
+  // surgical path) instead of re-appending on each render.
+  function syncMutedBadge(): void {
+    const existing = nowEl.querySelector(".mutedBadge");
+    if (muted && !existing) {
       const b = document.createElement("div");
       b.className = "mutedBadge";
       b.innerHTML = `${icoVolumeX} MUTED`;
       nowEl.appendChild(b);
+    } else if (!muted && existing) {
+      existing.remove();
     }
+  }
+
+  // Under the full-screen map layout the Recent log is display:none — skip the
+  // 100-row innerHTML rebuild entirely (it was burning CPU to draw nothing).
+  function paintLog(): void {
+    if (mapMounted) return;
+    logEl.innerHTML = state.log
+      .map((r) => `<li><span class="t">${fmtTime(r.ts)}</span> ${fmtFreq(r.freq)} ${esc(r.alphaTag)}</li>`)
+      .join("");
   }
 
   // Clock: tick on the minute boundary (kiosk readout, no seconds noise).
@@ -326,9 +384,11 @@ export function renderDashboard(root: HTMLElement): void {
     const now = new Date();
     clockEl.textContent = now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
     dateEl.textContent = now.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
+    // Re-tick at the next minute boundary, not every 5s — the readout has no
+    // seconds, so 12 wakeups/min were 11 wasted (+1s guard past the rollover).
+    setTimeout(paintClock, 60_000 - (Date.now() % 60_000) + 1000);
   }
   paintClock();
-  setInterval(paintClock, 5000);
 
   // Weather: NWS via the backend cache; absent/failed = the block just hides.
   const wxEl = root.querySelector<HTMLElement>("#wx")!;
@@ -380,7 +440,7 @@ export function renderDashboard(root: HTMLElement): void {
     state = reduce(state, ev);
     if (ev.type === "status") { paintBadge(); loadBanks(); }
     if (ev.type === "tuned") paintRail();
-    paint();
+    schedule(); // coalesce: a burst of events in one frame => one paint()
   }).connect();
   paint();
 }
