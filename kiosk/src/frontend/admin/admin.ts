@@ -136,7 +136,7 @@ export function renderAdmin(root: HTMLElement): void {
       </section>
       <section class="sysHealth collapsible" data-key="system" data-page="home">
         <h2>System health <span class="hint">the machine under the radio — helper CPU is the usual suspect</span></h2>
-        <div id="sysBody" class="sysBody"></div>
+        <div id="sysBody"></div>
       </section>
       <section class="discoveries" data-page="triage">
         <div class="pageIntro sectionIntro">
