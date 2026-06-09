@@ -14,6 +14,7 @@ import { RepeaterBook } from "./repeaterbook.js";
 import { RadioReference } from "./radioreference.js";
 import { MyGmrs } from "./mygmrs.js";
 import { FccProx } from "./fccprox.js";
+import { BusinessGuess } from "./businessGuess.js";
 import { composeLookups, type LookupProvider } from "./lookup.js";
 import { NwsWeather } from "./weather.js";
 import { HistoryStore } from "./history.js";
@@ -169,6 +170,20 @@ if (config.lookup) {
       }).catch(() => { /* next boot resumes where it left off */ });
     }, 120_000);
     primeTimer.unref?.();
+  }
+}
+// Business-frequency best-guess (LAST in the chain — only guesses when the
+// authoritative providers came up empty). Independent of the RepeaterBook
+// credentials: it needs only the QTH and a Google Places key (the map key
+// unless a separate server key is configured).
+if (config.display) {
+  const placesKey = config.display.placesApiKey ?? config.display.googleMapsApiKey;
+  if (placesKey) {
+    providers.push(new BusinessGuess({
+      apiKey: placesKey,
+      home: { lat: config.display.weatherLat, lon: config.display.weatherLon },
+      cacheDir: dirname(CONFIG_PATH),
+    }));
   }
 }
 const lookup = providers.length > 0 ? composeLookups(providers) : undefined;
