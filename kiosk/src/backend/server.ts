@@ -12,6 +12,7 @@ import { WsHub } from "./ws.js";
 import type { EngineEvent, ScannerEngine, ScanConfig } from "./engine/ScannerEngine.js";
 import { setVolume as amixerVolume, setMuted as amixerMuted, type AmixerOpts } from "./audio.js";
 import { isScannable, isAudible, profileFor } from "./config/banks.js";
+import { collides } from "./config/channelDedup.js";
 import { solveK, estimateWatts, distKm, type Anchor } from "./powerEstimator.js";
 import { parseSame, fipsMatch, fipsNames, isTest } from "./same.js";
 import { SystemStats } from "./systemStats.js";
@@ -631,6 +632,11 @@ export function createServer(deps: ServerDeps): { server: Server } {
       const body = await readBody(req);
       const parsed = channelSchema.omit({ id: true }).safeParse(body);
       if (!parsed.success) return json(res, 400, { error: "invalid channel", issues: parsed.error.issues });
+      const conflict = config.channels.find((c) => collides(c, { ...parsed.data, id: "" }));
+      if (conflict) return json(res, 409, {
+        error: `frequency already used by ${conflict.alphaTag || conflict.freq}`,
+        conflictsWith: { id: conflict.id, alphaTag: conflict.alphaTag },
+      });
       const channel: Channel = { id: `ch_${randomUUID().slice(0, 8)}`, ...parsed.data };
       config = { ...config, channels: [...config.channels, channel] };
       await persistAndReload();
@@ -645,6 +651,13 @@ export function createServer(deps: ServerDeps): { server: Server } {
         const body = await readBody(req);
         const parsed = channelSchema.partial().safeParse(body);
         if (!parsed.success) return json(res, 400, { error: "invalid channel" });
+        const existing = config.channels.find((c) => c.id === id)!;
+        const candidate = { ...existing, ...parsed.data } as Channel;
+        const conflict = config.channels.find((c) => c.id !== id && collides(c, candidate));
+        if (conflict) return json(res, 409, {
+          error: `frequency already used by ${conflict.alphaTag || conflict.freq}`,
+          conflictsWith: { id: conflict.id, alphaTag: conflict.alphaTag },
+        });
         config = { ...config, channels: config.channels.map((c) => c.id === id ? { ...c, ...parsed.data, id } : c) };
         await persistAndReload();
         return json(res, 200, config.channels.find((c) => c.id === id));

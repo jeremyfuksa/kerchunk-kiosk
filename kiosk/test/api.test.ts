@@ -164,6 +164,46 @@ describe("HTTP API", () => {
     const res = await request(server).post("/api/mode").send({ mode: "banana" });
     expect(res.status).toBe(400);
   });
+
+  it("POST /api/channels rejects a duplicate non-GMRS frequency with 409", async () => {
+    const { server } = makeApp();
+    await request(server).post("/api/channels")
+      .send({ freq: 146520000, alphaTag: "FIRST", mode: "nfm", enabled: true });
+    const dup = await request(server).post("/api/channels")
+      .send({ freq: 146520000, alphaTag: "SECOND", mode: "nfm", enabled: true });
+    expect(dup.status).toBe(409);
+    expect(dup.body.conflictsWith.alphaTag).toBe("FIRST");
+  });
+
+  it("POST /api/channels ALLOWS a duplicate GMRS frequency", async () => {
+    const { server } = makeApp();
+    await request(server).post("/api/channels")
+      .send({ freq: 462550000, alphaTag: "GMRS-A", mode: "nfm", enabled: true });
+    const dup = await request(server).post("/api/channels")
+      .send({ freq: 462550000, alphaTag: "GMRS-B", mode: "nfm", enabled: true });
+    expect(dup.status).toBe(201);
+  });
+
+  it("PUT /api/channels/:id rejects moving onto an occupied non-GMRS freq", async () => {
+    const { server } = makeApp();
+    await request(server).post("/api/channels")
+      .send({ freq: 146520000, alphaTag: "A", mode: "nfm", enabled: true });
+    const b = await request(server).post("/api/channels")
+      .send({ freq: 147000000, alphaTag: "B", mode: "nfm", enabled: true });
+    const moved = await request(server).put(`/api/channels/${b.body.id}`)
+      .send({ freq: 146520000 });
+    expect(moved.status).toBe(409);
+  });
+
+  it("PUT /api/channels/:id can edit a channel without colliding with itself", async () => {
+    const { server } = makeApp();
+    const a = await request(server).post("/api/channels")
+      .send({ freq: 146520000, alphaTag: "A", mode: "nfm", enabled: true });
+    const edit = await request(server).put(`/api/channels/${a.body.id}`)
+      .send({ alphaTag: "A2" });
+    expect(edit.status).toBe(200);
+    expect(edit.body.alphaTag).toBe("A2");
+  });
 });
 
 describe("wideband config passthrough", () => {
