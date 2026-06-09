@@ -247,6 +247,43 @@ export class WidebandEngine implements ScannerEngine {
     this.spawnHelper();
   }
 
+  /**
+   * Re-point the LIVE flowgraph at a new config — a hop, not a restart. Used
+   * for mode switches (weather break-in ⇄ scan) so the operator never sees the
+   * warm-up overlay or hears the 300-thread cold-start chop. The helper's
+   * `tune` command re-centers the SDR and re-assigns the existing lanes; no
+   * respawn, no `booting`/`warmup` events (markFirstTune/markWarmReady already
+   * latched). If the helper isn't live (stopped, or never spawned), there is no
+   * graph to re-point — fall back to a full start.
+   */
+  async retune(config: ScanConfig): Promise<void> {
+    if (this._state !== "running" || !this.child?.stdin?.writable) {
+      return this.start(config);
+    }
+    this.config = config;
+    this.groups = groupChannels(
+      config.channels,
+      config.windowBandwidthHz ?? DEFAULT_WINDOW_HZ,
+      MAX_CHANNELS_PER_GROUP,
+    );
+    this.groupIndex = 0;
+    this.sweeps = sweepCenters(
+      config.sweepRanges ?? [],
+      config.windowBandwidthHz ?? DEFAULT_WINDOW_HZ,
+      this.groups,
+    );
+    this.sweepIndex = 0;
+    this.sweeping = false;
+    if (this.groups.length === 0) {
+      // Nothing to tune (config with no channels): hold the graph quiet rather
+      // than hop a phantom group.
+      this.clearDwellTimer();
+      return;
+    }
+    this.sendTune();         // re-point now (emits "tuned", not "booting")
+    this.startDwellTimer();  // re-arm the hop cadence (single group ⇒ parks)
+  }
+
   private helperArgs(): string[] {
     const cfg = this.config!;
     const args = [

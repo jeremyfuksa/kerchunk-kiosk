@@ -77,3 +77,48 @@ export function fipsMatch(alertFips: string[], configured: string[] | undefined)
 export function isTest(event: string): boolean {
   return ["RWT", "RMT", "DMO", "NPT"].includes(event);
 }
+
+// SAME PSSCCC county codes → short names for the operator's region (the KEAX
+// County Warning Area + KC metro). Keyed on the 5-digit SSCCC (state+county);
+// the leading part-of-county digit is dropped so subdivision codes (1/2/3…)
+// resolve to the whole-county name. Kansas metro names that collide with a
+// Missouri county are suffixed " KS" — the operator's home counties are all
+// Missouri, so the common case stays bare.
+const COUNTY_NAMES: Record<string, string> = {
+  // Missouri (29)
+  "29047": "Clay", "29165": "Platte", "29095": "Jackson",
+  "29037": "Cass", "29107": "Lafayette", "29177": "Ray",
+  "29049": "Clinton", "29025": "Caldwell", "29021": "Buchanan",
+  "29003": "Andrew", "29063": "DeKalb", "29033": "Carroll",
+  "29101": "Johnson", "29195": "Saline", "29159": "Pettis",
+  "29083": "Henry", "29013": "Bates", "29015": "Benton",
+  "29185": "St. Clair", "29117": "Livingston", "29061": "Daviess",
+  "29087": "Holt", "29005": "Atchison", "29147": "Nodaway",
+  "29075": "Gentry", "29079": "Grundy", "29129": "Mercer",
+  "29227": "Worth", "29115": "Linn", "29211": "Sullivan",
+  // Kansas (20)
+  "20091": "Johnson KS", "20209": "Wyandotte", "20103": "Leavenworth",
+  "20045": "Douglas KS", "20121": "Miami", "20059": "Franklin KS",
+  "20087": "Jefferson KS", "20107": "Linn KS", "20139": "Osage KS",
+  "20005": "Atchison KS", "20013": "Brown", "20043": "Doniphan",
+  "20131": "Nemaha",
+};
+
+/**
+ * County names for an alert banner. Shows the COVERED counties (those matching
+ * the operator's configured filter) so a 15-county warning reads as the two or
+ * three that matter; with no filter set, shows all of them. Codes outside the
+ * table fall back to the raw 6-digit code so the banner is never blank, and
+ * names are de-duplicated (split subdivisions of one county collapse to one).
+ */
+export function fipsNames(alertFips: string[], configured?: string[] | null): string {
+  const want = configured && configured.length
+    ? new Set(configured.map((c) => c.trim()).filter(Boolean))
+    : null;
+  const covered = want
+    ? alertFips.filter((f) => want.has(f) || want.has(f.slice(1)))
+    : alertFips;
+  const codes = covered.length ? covered : alertFips;
+  const names = codes.map((f) => COUNTY_NAMES[f.slice(1)] ?? f);
+  return [...new Set(names)].join(", ");
+}

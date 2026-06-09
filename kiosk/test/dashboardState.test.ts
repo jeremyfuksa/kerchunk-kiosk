@@ -159,10 +159,21 @@ describe("alert banner (ROADMAP Idea 6)", () => {
     s = reduce(s, { type: "alert", channel: { ...ch, alphaTag: "Tac 2" }, freq: 460000000, holdSeconds: 30, ts: 2000 });
     expect(s.alert?.alphaTag).toBe("Tac 2");
   });
-  it("status transitions clear the banner (engine restarted under it)", () => {
+  it("the banner rides through a status transition (it's an attention window, not playback)", () => {
+    // A weather break-in retunes the live graph; even a real restart shouldn't
+    // wipe a warning that's still inside its hold. The `until` timer clears it.
     let s = reduce(initialState(), { type: "alert", channel: ch, freq: ch.freq, holdSeconds: 30, ts: 1000 });
     s = reduce(s, { type: "status", state: "starting", ts: 2000 });
-    expect(s.alert).toBeNull();
+    expect(s.alert?.alphaTag).toBe("Skywarn");
+    s = reduce(s, { type: "status", state: "running", ts: 3000 });
+    expect(s.alert?.alphaTag).toBe("Skywarn");
+  });
+  it("carries affected counties when present", () => {
+    const s = reduce(initialState(), {
+      type: "alert", channel: ch, freq: ch.freq, holdSeconds: 30, ts: 1000,
+      counties: "Clay, Platte",
+    });
+    expect(s.alert?.counties).toBe("Clay, Platte");
   });
   it("alert does not disturb now-playing", () => {
     let s = reduce(initialState(), { type: "audible", channel: ch, ts: 1 });

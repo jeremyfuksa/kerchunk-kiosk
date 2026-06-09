@@ -18,7 +18,13 @@ export class FakeEngine implements ScannerEngine {
 
   private emit(ev: EngineEvent): void { for (const l of this.listeners) l(ev); }
 
-  async start(_config: ScanConfig): Promise<void> {
+  // Test hooks: tests assert HOW a mode switch was applied (light retune vs
+  // full restart) by counting these.
+  starts: ScanConfig[] = [];
+  retunes: ScanConfig[] = [];
+
+  async start(config: ScanConfig): Promise<void> {
+    this.starts.push(config);
     this.emit({ type: "warmup", phase: "booting", step: 1, of: 4, ts: nextTs() });
     this._state = "running";
     this.emit({ type: "status", state: "running", ts: nextTs() });
@@ -31,6 +37,17 @@ export class FakeEngine implements ScannerEngine {
     this._state = "stopped";
     this.emit({ type: "status", state: "stopped", ts: nextTs() });
   }
+
+  // Mirrors WidebandEngine: re-point the live graph with NO warm-up/status
+  // churn. A stopped fake falls back to a fresh start, same as the real one.
+  async retune(config: ScanConfig): Promise<void> {
+    if (this._state !== "running") { await this.start(config); return; }
+    this.retunes.push(config);
+    this.config = config;
+    this.emit({ type: "tuned", freqHz: config.channels[0]?.freq ?? 0,
+      channelIds: config.channels.map((c) => c.id), ts: nextTs() });
+  }
+  config: ScanConfig | null = null;
 
   async setVolume(_percent: number): Promise<void> {}
   async setMuted(_muted: boolean): Promise<void> {}

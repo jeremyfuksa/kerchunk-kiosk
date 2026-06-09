@@ -13,7 +13,7 @@ const ICO_BELL = icoBellRing;
 
 export interface NowPlaying { freq: number; alphaTag: string; }
 export interface LogRow { freq: number; alphaTag: string; ts: number; }
-export interface AlertBanner { freq: number; alphaTag: string; until: number; }
+export interface AlertBanner { freq: number; alphaTag: string; until: number; counties?: string; }
 export interface DashState {
   nowPlaying: NowPlaying | null;
   /** Channel ids in the currently-tuned window (drives the bank rail). */
@@ -79,6 +79,7 @@ export function reduce(s: DashState, ev: EngineEvent): DashState {
       return { ...s, alert: {
         freq: ev.freq, alphaTag: ev.channel.alphaTag,
         until: ev.ts + ev.holdSeconds * 1000,
+        ...(ev.counties ? { counties: ev.counties } : {}),
       } };
     case "warmup":
       // booting (re)shows the overlay; ready clears it; the middle phases just
@@ -101,9 +102,12 @@ export function reduce(s: DashState, ev: EngineEvent): DashState {
       // (e.g. channel edit) kills the helper without squelch-close events, so
       // now-playing must not survive it — a fresh active/audible
       // re-establishes it (audibleDriven resets too: the engine kind may change).
+      // The alert banner is NOT playback context: it's an operator-attention
+      // window with its own `until` timer (and a weather break-in's retune
+      // would otherwise wipe the warning it just raised), so it rides through.
       return ev.state === "running"
-        ? { ...s, error: null, nowPlaying: null, alert: null, signalDb: null, engineState: ev.state, audibleDriven: false }
-        : { ...s, nowPlaying: null, alert: null, signalDb: null, engineState: ev.state, audibleDriven: false };
+        ? { ...s, error: null, nowPlaying: null, signalDb: null, engineState: ev.state, audibleDriven: false }
+        : { ...s, nowPlaying: null, signalDb: null, engineState: ev.state, audibleDriven: false };
     default:
       return s;
   }
@@ -279,7 +283,11 @@ export function renderDashboard(root: HTMLElement): void {
       alertEl.innerHTML = `<span class="alertGlyph">${ICO_BELL}</span>
         <span class="alertLabel">ALERT</span>
         <span class="alertFreq">${fmtFreq(state.alert.freq)}</span>
-        <span class="alertTag">${esc(state.alert.alphaTag)}</span>`;
+        <span class="alertTag">${esc(state.alert.alphaTag)}</span>${
+          state.alert.counties
+            ? `<span class="alertCounties">${esc(state.alert.counties)}</span>`
+            : ""
+        }`;
       alertEl.classList.add("on");
       // One repaint exactly at expiry — no polling.
       if (alertTimer) clearTimeout(alertTimer);

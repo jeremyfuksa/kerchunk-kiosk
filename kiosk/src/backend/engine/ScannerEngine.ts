@@ -81,7 +81,7 @@ export type EngineEvent =
   // its cooldown. Synthesized by the SERVER (which owns alert config), not
   // the engine — it rides the same union so the WS hub and dashboards treat
   // it like any other event.
-  | { type: "alert"; channel: Channel; freq: number; holdSeconds: number; ts: number }
+  | { type: "alert"; channel: Channel; freq: number; holdSeconds: number; ts: number; counties?: string }
   | { type: "status"; state: EngineState; ts: number }
   // Cold-start warm-up progress (drives the kiosk "WARMING UP" overlay). A
   // distinct type — NOT a status substate — so it never trips the WS replay
@@ -107,6 +107,14 @@ export interface ScannerEngine {
   updateKnownHz?(knownHz: number[]): void;
   /** Alert pull-in: open a see-only channel's audio for holdSeconds (its lane is already demodulating — this just routes it to the speaker). Optional. */
   alertUnmute?(channelId: string, holdSeconds: number): void;
+  /**
+   * Apply a new scan config to the LIVE flowgraph without a restart: re-center
+   * the SDR and re-point the existing lanes (a hop, not a cold start), so a
+   * mode switch (e.g. a weather break-in) doesn't replay the warm-up overlay or
+   * the cold-start audio chop. Optional — engines without a live flowgraph
+   * (RtlFm) omit it and callers fall back to stop()+start().
+   */
+  retune?(config: ScanConfig): Promise<void>;
   setVolume(percent: number): Promise<void>;
   setMuted(muted: boolean): Promise<void>;
   readonly state: EngineState;
