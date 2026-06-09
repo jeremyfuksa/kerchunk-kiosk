@@ -91,7 +91,7 @@ export function renderMap(root: HTMLElement): void {
     <div id="gmap"></div>
     <div class="mapLegend">
       <span class="lgAnt"></span> pins = sites by service · gray ? = unclassified
-      <span class="lgNote">pine pulses = stable synthetic position, location unknown · glow = 30-day traffic · weather = live NEXRAD</span>
+      <span class="lgNote">pine pulses = stable synthetic position, location unknown · weather = live NEXRAD</span>
     </div>
     <div id="mapMsg" class="mapMsg"></div>
   </div>`;
@@ -241,73 +241,60 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
     // site key -> rendered circle + label marker (+ last-written style for the
     // tick() dirty-check, so unchanged blips skip the WebGL re-upload).
     const circles = new Map<string, { circle: any; info: any; last: any }>();
-    // Radar pings: short-lived expanding rings fired at each hit, so a key-up
-    // is an EVENT on the map, not just a circle that exists.
-    const PING_MS = 1600;
-    const pings: Array<{ ring: any; born: number }> = [];
+    // Live transmission rings: while a transmission is OPEN, a ring pulses at
+    // its site, expanding out to the site's tx (coverage) radius and looping —
+    // so it lasts as long as the transmission and stays visible even when the
+    // camera is pulled out wide (the old fixed ~5 km one-shot vanished there).
+    // Tied to the open->close lifecycle: active/closecall start it, release/idle
+    // end it; TX_TTL_MS is a safety cap if a release is ever missed.
+    const PULSE_MS = 1800;       // one expand-and-fade cycle of the ring
+    const TX_TTL_MS = 30_000;
+    const liveTx = new Map<string, { lat: number; lng: number; key: string; color: string; born: number; until: number }>();
+    const txRings = new Map<string, any>();
     // The render loop self-suspends on a quiet map; wake() (defined with tick)
     // restarts it. `ticking` guards against double-starting.
     let ticking = false;
 
-    function ping(lat: number, lon: number, color: string): void {
-      pings.push({
-        born: Date.now(),
-        ring: new google.maps.Circle({
-          map, center: { lat, lng: lon },
-          radius: 400 * geo, strokeColor: color, strokeWeight: 2,
-          strokeOpacity: 0.9, fillOpacity: 0, clickable: false,
-        }),
+    function startTx(id: string, lat: number, lng: number, freq: number | undefined, kind: "active" | "closecall", ttlMs = TX_TTL_MS): void {
+      const now = Date.now();
+      const existing = liveTx.get(id);
+      liveTx.set(id, {
+        lat, lng, key: `${lat.toFixed(5)},${lng.toFixed(5)}`,
+        color: colorFor(freq, kind), born: existing?.born ?? now, until: now + ttlMs,
       });
       wake();
+    }
+    function endTx(id: string): void {
+      liveTx.delete(id);
+      const ring = txRings.get(id);
+      if (ring) { ring.setMap(null); txRings.delete(id); }
     }
 
     // ── Persistent antenna layer: any site heard at least once gets a small
     // mast icon that STAYS — the map remembers the RF neighborhood; live
-    // pulses play on top of it.
-    // Heat (ROADMAP Idea 8): each antenna carries a golden-amber glow disc
-    // scaled by its 30-day hit count, so the busy corners of the band burn
-    // visibly brighter. Log scale — site traffic spans 1..hundreds. (Not
-    // Google's HeatmapLayer: deprecated May 2025, and per-site glow matches
-    // the instrument aesthetic anyway.)
+    // pulses play on top of it. (The per-site "heat" glow disc was removed —
+    // it wasn't reading as meaningful; revisit if a better heat idea lands.)
     const antennas = new Map<string, any>();
     const siteInfo = new google.maps.InfoWindow({ disableAutoPan: true });
-
-    function heatFor(hits: number): { radius: number; opacity: number } {
-      const h = Math.log2(1 + Math.max(0, hits));
-      return {
-        radius: Math.min(3000, 280 * (1 + h)),
-        opacity: Math.min(0.18, 0.03 + 0.022 * h),
-      };
-    }
 
     function antenna(lat: number, lon: number, names: string[], hits: number, lastTs: number, increment = false): void {
       const key = `${lat.toFixed(5)},${lon.toFixed(5)}`;
       const existing = antennas.get(key);
       if (existing) {
         existing.names = Array.from(new Set([...existing.names, ...names]));
-        // Seeds carry cumulative store counts (merge = max); a live hit is
-        // one MORE transmission (merge = increment) so glow grows tonight,
-        // not just after the next reload.
+        // Seeds carry cumulative store counts (merge = max); a live hit is one
+        // MORE transmission (merge = increment) — kept for the info-window count.
         existing.hits = increment ? existing.hits + hits : Math.max(existing.hits, hits);
         existing.lastTs = Math.max(existing.lastTs, lastTs);
-        const heat = heatFor(existing.hits);
-        existing.glow.setOptions({ radius: heat.radius, fillOpacity: heat.opacity });
         return;
       }
-      const heat = heatFor(hits);
-      const glow = new google.maps.Circle({
-        map, center: { lat, lng: lon },
-        radius: heat.radius,
-        strokeOpacity: 0, clickable: false,
-        fillColor: "#ffc05c", fillOpacity: heat.opacity,
-      });
       const pin = sitePin.get(key) ?? pinUnknown;
       const marker = new google.maps.Marker({
         map, position: { lat, lng: lon },
         icon: pinMarker(pin, Math.round(22 * mk)),
         title: names.join(", "),
       });
-      const entry = { marker, glow, names: [...names], hits, lastTs };
+      const entry = { marker, names: [...names], hits, lastTs };
       marker.addListener("click", () => {
         siteInfo.setContent(`<div class="blipInfo">${entry.names.map((n: string) => esc(n)).join("<br/>")}
           <div class="blipMeta">${entry.hits} hit${entry.hits === 1 ? "" : "s"} · last ${new Date(entry.lastTs).toLocaleTimeString()}</div></div>`);
@@ -410,21 +397,16 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
       }
       field.add({ lat: pos.lat, lon: pos.lng, alphaTag, kind: "nofix", ts, freq: freqHz });
       wake(); // a blip was planted (live or backfilled) — ensure the loop runs
-      // Detection blips/pings regardless; the camera punch follows AUDIO (the
-      // audible event), so it doesn't chase silent carriers (airband clicks).
-      if (Date.now() - ts < 2000) ping(pos.lat, pos.lng, colorFor(freqHz, "nofix"));
+      // The pulse ring (startTx) and the camera punch (audible) are driven from
+      // the WS handler; detection itself just plants the blip.
     }
 
     function push(lat: number, lon: number, alphaTag: string, kind: "active" | "closecall", ts: number, freq?: number): void {
       field.add({ lat, lon, alphaTag, kind, ts, freq });
       wake(); // a blip was planted (live or backfilled) — ensure the loop runs
-      // live hits ping and plant/refresh the persistent antenna. The camera
-      // punch is NOT here — it follows AUDIO (the audible event), so the view
-      // only chases what you can actually hear, not every silent detection.
-      if (Date.now() - ts < 2000) {
-        ping(lat, lon, colorFor(freq, kind));
-        antenna(lat, lon, [alphaTag], 1, ts, true);
-      }
+      // Live hits plant/refresh the persistent antenna. The pulse ring (startTx)
+      // and the camera punch (audible) are driven from the WS handler, not here.
+      if (Date.now() - ts < 2000) antenna(lat, lon, [alphaTag], 1, ts, true);
     }
 
     // Backfill: the last hour, pre-decayed.
@@ -445,16 +427,27 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
     const proto = location.protocol === "https:" ? "wss" : "ws";
     new ReconnectingWs(`${proto}://${location.host}/ws`, (ev: EngineEvent) => {
       if (ev.type === "active") {
-        if (ev.channel.location?.lat != null && ev.channel.location.lon != null) {
-          push(ev.channel.location.lat, ev.channel.location.lon, ev.channel.alphaTag || fmtFreq(ev.freq), "active", Date.now(), ev.freq);
+        const ch = ev.channel;
+        if (ch.location?.lat != null && ch.location.lon != null) {
+          push(ch.location.lat, ch.location.lon, ch.alphaTag || fmtFreq(ev.freq), "active", Date.now(), ev.freq);
+          startTx(ch.id, ch.location.lat, ch.location.lon, ev.freq, "active");
         } else {
-          nofix(ev.freq, ev.channel.alphaTag || fmtFreq(ev.freq), Date.now());
+          nofix(ev.freq, ch.alphaTag || fmtFreq(ev.freq), Date.now());
+          const pos = syntheticPositions.get(ev.freq);
+          if (pos) startTx(ch.id, pos.lat, pos.lng, ev.freq, "active");
         }
+      } else if (ev.type === "release") {
+        endTx(ev.channelId); // transmission closed — stop its ring
+      } else if (ev.type === "idle") {
+        for (const id of [...liveTx.keys()]) endTx(id); // all closed
       } else if (ev.type === "closecall") {
         // discoveries are unlocated at the moment they fire (identification
         // is async) — they pulse at a stable synthetic position; once enriched,
-        // future events and history backfills place them properly.
+        // future events and history backfills place them properly. No release
+        // ever arrives for a discovery, so the ring self-expires on its ttl.
         nofix(ev.freqHz, `Close Call ${fmtFreq(ev.freqHz)}`, Date.now());
+        const pos = syntheticPositions.get(ev.freqHz);
+        if (pos) startTx(`cc_${ev.freqHz}`, pos.lat, pos.lng, ev.freqHz, "closecall", 5000);
       } else if (ev.type === "audible") {
         // Camera follows AUDIO: punch to whatever owns the speaker right now,
         // at its real location or its stable synthetic spot. null = silence —
@@ -472,8 +465,9 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
     }).connect();
 
     // Restart the render loop after a quiet period. tick() self-suspends (sets
-    // ticking=false) when there's nothing alive and no pings; every activity
-    // entry point (push/nofix/ping) calls wake() so a hit after silence repaints.
+    // ticking=false) when nothing is alive and no transmission ring is live;
+    // every activity entry point (push/nofix/startTx) calls wake() so a hit
+    // after silence repaints.
     function wake(): void { if (!ticking) { ticking = true; tick(); } }
     function tick(): void {
       const now = Date.now();
@@ -525,25 +519,32 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
           circles.delete(key);
         }
       }
-      // animate radar pings (fast: every frame they expand + fade)
-      for (let i = pings.length - 1; i >= 0; i--) {
-        const p = pings[i]!;
-        const t = (now - p.born) / PING_MS;
-        if (t >= 1) {
-          p.ring.setMap(null);
-          pings.splice(i, 1);
-          continue;
+      // Live transmission rings: pulse out to the site's tx (coverage) radius,
+      // looping while the transmission is open. ttl expiry is the safety net.
+      const expired: string[] = [];
+      for (const [id, tx] of liveTx) {
+        if (now >= tx.until) { expired.push(id); continue; }
+        const txRadius = coverage.get(tx.key) ?? circles.get(tx.key)?.last?.radius ?? 7500 * geo;
+        const t = ((now - tx.born) % PULSE_MS) / PULSE_MS;
+        let ring = txRings.get(id);
+        if (!ring) {
+          ring = new google.maps.Circle({
+            map, center: { lat: tx.lat, lng: tx.lng },
+            strokeColor: tx.color, strokeWeight: 2, fillOpacity: 0, clickable: false, radius: 1,
+          });
+          txRings.set(id, ring);
         }
-        p.ring.setOptions({ radius: (400 + 5200 * t) * geo, strokeOpacity: 0.9 * (1 - t) });
+        ring.setOptions({ radius: Math.max(1, txRadius * t), strokeOpacity: 0.8 * (1 - t) });
       }
+      for (const id of expired) endTx(id);
       // Quiet map: stop scheduling entirely so the WebGL compositor can deep-
       // idle (it shares the CPU/iGPU envelope with the DSP). wake() resumes.
-      if (alive.length === 0 && pings.length === 0) { ticking = false; return; }
-      if (pings.length) {
-        // rAF gives the ping its smooth ~30Hz expansion — but it must NEVER be
-        // the SOLE re-arm: if the compositor defers/drops the rAF (deep idle),
-        // a wall-clock fallback still continues the loop, so `ticking` can't get
-        // stranded true and freeze the map. `ran` guards against double-firing.
+      if (alive.length === 0 && liveTx.size === 0) { ticking = false; return; }
+      if (liveTx.size) {
+        // rAF gives the rings their smooth pulse — but it must NEVER be the SOLE
+        // re-arm: if the compositor defers/drops the rAF (deep idle), a wall-clock
+        // fallback still continues the loop, so `ticking` can't get stranded true
+        // and freeze the map. `ran` guards against double-firing.
         let ran = false;
         const go = (): void => { if (ran) return; ran = true; tick(); };
         requestAnimationFrame(() => setTimeout(go, 40));
