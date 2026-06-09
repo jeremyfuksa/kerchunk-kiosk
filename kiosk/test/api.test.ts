@@ -204,6 +204,30 @@ describe("HTTP API", () => {
     expect(edit.status).toBe(200);
     expect(edit.body.alphaTag).toBe("A2");
   });
+
+  it("GET /api/channels/duplicates lists non-GMRS duplicate sets, richest first", async () => {
+    // The block rule (Task 2) stops NEW dupes via the API, so duplicates only
+    // pre-exist in configs that predate the rule. Seed that state by writing
+    // the config store directly, then read it back through a fresh server.
+    const { configStore } = makeApp();
+    const cfg = configStore.load();
+    configStore.save({ ...cfg, channels: [
+      { id: "a", freq: 146520000, alphaTag: "BARE", mode: "nfm", enabled: true },
+      { id: "b", freq: 146520000, alphaTag: "RICH", mode: "nfm", enabled: true, location: { lat: 39, lon: -94, source: "test" } },
+      { id: "g1", freq: 462550000, alphaTag: "G1", mode: "nfm", enabled: true },
+      { id: "g2", freq: 462550000, alphaTag: "G2", mode: "nfm", enabled: true },
+    ] });
+    // createServer reads the store at construction; build the server AFTER the seed.
+    const { server } = createServer({
+      configStore, engine: new FakeEngine(), activityLog: new ActivityLog(100),
+      wsHub: new WsHub(), staticDir: dir,
+    });
+    const res = await request(server).get("/api/channels/duplicates");
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(1); // GMRS pair excluded
+    expect(res.body[0].freq).toBe(146520000);
+    expect(res.body[0].channels[0].channel.id).toBe("b"); // richest first
+  });
 });
 
 describe("wideband config passthrough", () => {

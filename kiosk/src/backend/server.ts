@@ -12,7 +12,7 @@ import { WsHub } from "./ws.js";
 import type { EngineEvent, ScannerEngine, ScanConfig } from "./engine/ScannerEngine.js";
 import { setVolume as amixerVolume, setMuted as amixerMuted, type AmixerOpts } from "./audio.js";
 import { isScannable, isAudible, profileFor } from "./config/banks.js";
-import { collides } from "./config/channelDedup.js";
+import { collides, findDuplicateSets } from "./config/channelDedup.js";
 import { solveK, estimateWatts, distKm, type Anchor } from "./powerEstimator.js";
 import { parseSame, fipsMatch, fipsNames, isTest } from "./same.js";
 import { SystemStats } from "./systemStats.js";
@@ -641,6 +641,10 @@ export function createServer(deps: ServerDeps): { server: Server } {
       config = { ...config, channels: [...config.channels, channel] };
       await persistAndReload();
       return json(res, 201, channel);
+    }
+
+    if (method === "GET" && path === "/api/channels/duplicates") {
+      return json(res, 200, findDuplicateSets(config.channels));
     }
 
     const chMatch = /^\/api\/channels\/([^/]+)$/.exec(path);
