@@ -881,7 +881,7 @@ export function createServer(deps: ServerDeps): { server: Server } {
 
   function serveStatic(path: string, res: ServerResponse): void {
     const safe = normalize(path).replace(/^(\.\.[/\\])+/, "");
-    let filePath = join(staticDir, safe === "/" || safe === "/map" ? "index.html" : safe);
+    let filePath = join(staticDir, safe === "/" || safe === "/map" || safe === "/art" ? "index.html" : safe);
     if (!existsSync(filePath) || !extname(filePath)) filePath = join(staticDir, "index.html");
     if (!existsSync(filePath)) { res.writeHead(404); res.end("not found"); return; }
     const mime = MIME[extname(filePath)] ?? "application/octet-stream";
