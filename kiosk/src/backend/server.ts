@@ -395,8 +395,15 @@ export function createServer(deps: ServerDeps): { server: Server } {
       const shouldProtect = sample.tempC !== null && sample.tempC >= 90;
       const recovered = sample.tempC !== null && sample.tempC <= 78;
       if (safetyTransition || (shouldProtect === safetyMode) || (!safetyMode && !shouldProtect) || (safetyMode && !recovered)) return;
+      safetyMode = shouldProtect; // track the flag for /api/system regardless
+      // Only bounce the engine when shedding would actually change the running
+      // config. With Close Call already off and no sweeps there is NOTHING to
+      // shed, so a restart would just re-show the kiosk "WARMING UP" overlay and
+      // add heat on every thermal blip — exactly the wrong move near the limit.
+      const nothingToShed = config.scan.closeCall === false
+        && (config.scan.sweepRanges?.length ?? 0) === 0;
+      if (nothingToShed) return;
       safetyTransition = true;
-      safetyMode = shouldProtect;
       const effective = safetyMode
         ? { ...config, scan: { ...config.scan, closeCall: false, sweepRanges: [] } }
         : config;
