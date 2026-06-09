@@ -234,9 +234,15 @@ export function createServer(deps: ServerDeps): { server: Server } {
   // while a single recovered restart is only STRESSED. engineStartedAt feeds the
   // warm-up grace so a cold boot reads "warming up", not "broken".
   let engineStartedAt = Date.now();
+  // recentErrors is pruned lazily (on each helperRestartsRecent read), so its
+  // size stays bounded only because /api/system is polled every ~3s; entries
+  // older than ERROR_WINDOW_MS are dropped then.
   const recentErrors: number[] = [];
   const ERROR_WINDOW_MS = 120_000;
   engine.on((ev) => {
+    // Resets on a fresh start() (emits warmup/booting), NOT on a crash-recovery
+    // respawn (which re-spawns the helper without re-emitting booting). So
+    // msSinceStart measures time since the last full engine start, not last respawn.
     if (ev.type === "warmup" && ev.phase === "booting") engineStartedAt = Date.now();
     if (ev.type === "error") recentErrors.push(ev.ts);
   });
@@ -805,7 +811,10 @@ export function createServer(deps: ServerDeps): { server: Server } {
             helperRestartsRecent: helperRestartsRecent(nowMs),
             msSinceStart: nowMs - engineStartedAt,
           })
-        : { verdict: "trouble" as const, reason: "No telemetry yet." };
+        : // Near-unreachable: SystemStats.start() takes a synchronous first sample
+          // at boot, so snap.now is almost always set. TROUBLE is the honest read
+          // for a genuine no-telemetry case — we can't confirm the radio is working.
+          { verdict: "trouble" as const, reason: "No telemetry yet." };
       return json(res, 200, { ...snap, safetyMode, health, coreCount: os.cpus().length });
     }
 
