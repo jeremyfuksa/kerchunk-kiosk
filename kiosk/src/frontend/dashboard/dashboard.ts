@@ -419,12 +419,29 @@ export function renderDashboard(root: HTMLElement): void {
     return `<svg class="wxIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${WX_ICONS[name]}</svg>`;
   }
 
+  // Wind → a direction ARROW (icon) + speed NUMBER, no words. NWS gives the
+  // direction the wind comes FROM ("SW 3 mph"); the arrow points where it BLOWS.
+  const COMPASS: Record<string, number> = {
+    N: 0, NNE: 22, NE: 45, ENE: 67, E: 90, ESE: 112, SE: 135, SSE: 157,
+    S: 180, SSW: 202, SW: 225, WSW: 247, W: 270, WNW: 292, NW: 315, NNW: 337,
+  };
+  function windBlock(wind: string): string {
+    const speed = /(\d+)/.exec(wind)?.[1];
+    if (!speed) return "";
+    const fromDeg = COMPASS[(/\b([NSEW]{1,3})\b/.exec(wind) ?? [])[1] ?? ""];
+    const arrow = fromDeg === undefined ? ""
+      : `<svg class="wxWindArrow" viewBox="0 0 24 24" fill="currentColor" style="transform:rotate(${(fromDeg + 180) % 360}deg)"><path d="M12 3l6 17-6-4-6 4z"/></svg>`;
+    return `<span class="wxWind">${arrow}<span class="wxWindSpd">${speed}</span></span>`;
+  }
+
   function paintWeather(): void {
     fetch("/api/weather")
       .then((r) => (r.ok ? r.json() : null))
       .then((wx: { tempF: number; condition: string; wind: string; isDaytime: boolean } | null) => {
+        // Glanceable: condition ICON + temp NUMBER + wind arrow + speed. The
+        // condition WORDS are dropped — the icon already says it from across the room.
         wxEl.innerHTML = wx
-          ? `${wxIcon(wx.condition, wx.isDaytime)}<span class="wxTemp">${Math.round(wx.tempF)}°</span><span class="wxCond">${esc(wx.condition)}</span>${wx.wind ? `<span class="wxWind">${esc(wx.wind)}</span>` : ""}`
+          ? `${wxIcon(wx.condition, wx.isDaytime)}<span class="wxTemp">${Math.round(wx.tempF)}°</span>${wx.wind ? windBlock(wx.wind) : ""}`
           : "";
       })
       .catch(() => {});
