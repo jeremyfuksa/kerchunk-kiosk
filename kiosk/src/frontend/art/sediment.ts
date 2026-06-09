@@ -75,3 +75,10 @@ export class SedimentField {
     this.sites.clear();
   }
 }
+
+/** Local midnight (ms) for the day containing `ts`. The portrait's lower bound. */
+export function startOfLocalDay(ts: number): number {
+  const d = new Date(ts);
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { SedimentField } from "../src/frontend/art/sediment.js";
+import { SedimentField, startOfLocalDay } from "../src/frontend/art/sediment.js";
 
 describe("SedimentField", () => {
   it("accumulates hits at a site and counts them per service color", () => {
@@ -45,5 +45,37 @@ describe("SedimentField", () => {
     f.deposit({ lat: 39.30, lon: -94.50, color: "#EC4E89", ts: 0 });
     f.clear();
     expect(f.deposits(0)).toHaveLength(0);
+  });
+});
+
+describe("startOfLocalDay", () => {
+  it("returns local midnight for a timestamp", () => {
+    const noon = new Date(2026, 5, 9, 12, 0, 0, 0).getTime();
+    const midnight = new Date(2026, 5, 9, 0, 0, 0, 0).getTime();
+    expect(startOfLocalDay(noon)).toBe(midnight);
+  });
+  it("is idempotent on a midnight input", () => {
+    const midnight = new Date(2026, 5, 9, 0, 0, 0, 0).getTime();
+    expect(startOfLocalDay(midnight)).toBe(midnight);
+  });
+  it("two timestamps on the same local day share a start", () => {
+    const a = new Date(2026, 5, 9, 6, 30).getTime();
+    const b = new Date(2026, 5, 9, 23, 59).getTime();
+    expect(startOfLocalDay(a)).toBe(startOfLocalDay(b));
+  });
+});
+
+describe("SedimentField strata tie-ordering", () => {
+  it("orders equal-hit services by first-deposited (stable, deterministic)", () => {
+    const f = new SedimentField({ breathMs: 4000 });
+    // Two services, each one hit, deposited in a known order.
+    f.deposit({ lat: 39.30, lon: -94.50, color: "#FIRST0", ts: 0 });
+    f.deposit({ lat: 39.30, lon: -94.50, color: "#SECND0", ts: 10 });
+    const strata = f.deposits(10)[0]!.strata;
+    // Equal hits (1 each) → first-deposited color leads, by stable sort + Map insertion order.
+    expect(strata).toEqual([
+      { color: "#FIRST0", hits: 1 },
+      { color: "#SECND0", hits: 1 },
+    ]);
   });
 });
