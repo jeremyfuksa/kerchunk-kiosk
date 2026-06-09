@@ -386,6 +386,13 @@ export function createServer(deps: ServerDeps): { server: Server } {
   });
   let safetyMode = false;
   let safetyTransition = false;
+  // True for the duration of a SAME weather break-in. While set, safetyMode
+  // tracks the temperature but must NOT bounce the engine: a break-in is brief
+  // (minutes), the operator needs the warning audio uninterrupted, and the
+  // hardware thermal-throttle is the real backstop. (A live alert decoded at a
+  // 89°C resting peak pushed the sustained-monitor break-in past 90°C and the
+  // restart-to-shed cut the audio with a cold-start chop.)
+  let breakIn = false;
   const sysStats = new SystemStats({
     helperPid: () => (engine as { helperPid?: number | null }).helperPid ?? null,
     openCount: () => openIds.size,
@@ -396,6 +403,9 @@ export function createServer(deps: ServerDeps): { server: Server } {
       const recovered = sample.tempC !== null && sample.tempC <= 78;
       if (safetyTransition || (shouldProtect === safetyMode) || (!safetyMode && !shouldProtect) || (safetyMode && !recovered)) return;
       safetyMode = shouldProtect; // track the flag for /api/system regardless
+      console.error(`[safety] tempC=${sample.tempC} safetyMode=${safetyMode}${breakIn ? " (break-in active: not bouncing)" : ""}`);
+      // Never tear the engine down mid weather break-in (see `breakIn` above).
+      if (breakIn) return;
       // Only bounce the engine when shedding would actually change the running
       // config. With Close Call already off and no sweeps there is NOTHING to
       // shed, so a restart would just re-show the kiosk "WARMING UP" overlay and
@@ -452,10 +462,12 @@ export function createServer(deps: ServerDeps): { server: Server } {
     if (!test && mode === "scan" && config.weatherChannel) {
       mode = "weather";
       monitorChannel = null;
+      breakIn = true;   // freeze safetyMode bounces until we revert
       switchMode(toScanConfig(config, "weather"));
       if (sameRevertTimer) clearTimeout(sameRevertTimer);
       sameRevertTimer = setTimeout(() => {
         sameRevertTimer = null;
+        breakIn = false;                  // break-in over; thermal management resumes
         if (mode !== "weather") return;   // operator changed it; leave alone
         mode = "scan";
         switchMode(toScanConfig(config, "scan"));

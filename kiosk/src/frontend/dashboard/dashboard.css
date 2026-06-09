@@ -389,7 +389,45 @@ body {
 /* The CRT scanline overlay is a full-screen layer — fine over a static
    panel, a per-frame compositing tax over the live map. */
 .dash.mapStage::before { display: none; }
-.dash.mapStage .alertBar { position: relative; z-index: 2; }
+/* EAS alert as a lower-right overlay CARD (mirrors the top-left now-card and
+   the top-right clock/weather card). Glanceable from across the room: red
+   edge, the alert TYPE big, the affected counties a prominent second line. */
+.dash.mapStage .alertBar {
+  position: absolute; right: 1.6rem; bottom: 1.3rem; z-index: 3;
+  display: none;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.45rem;
+  width: fit-content;
+  max-width: min(40rem, 46vw);
+  padding: 1.1rem 1.5rem 1.3rem;
+  border: none;            /* drop the banner's top/bottom hairlines */
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg) 94%, transparent);
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+}
+.dash.mapStage .alertBar.on {
+  display: inline-flex;
+  animation: alertCardPulse 1.6s ease-in-out infinite;
+}
+.dash.mapStage .alertBar .alertHead { display: flex; align-items: center; gap: 0.55rem; }
+.dash.mapStage .alertBar .alertGlyph svg { width: 1.7rem; height: 1.7rem; }
+.dash.mapStage .alertBar .alertLabel { font-size: 1.15rem; letter-spacing: 0.28em; }
+.dash.mapStage .alertBar .alertTag {
+  font-size: 2.5rem; line-height: 1.04; font-weight: 700; color: var(--ink);
+  white-space: normal; overflow: visible; text-overflow: clip; min-width: 0;
+}
+.dash.mapStage .alertBar .alertCounties {
+  margin: 0; padding: 0; border: none; flex: none;
+  font-size: 1.9rem; font-weight: 700; letter-spacing: 0.02em; color: var(--red);
+  white-space: normal;
+}
+@keyframes alertCardPulse {
+  0%, 100% { box-shadow: 0 10px 34px rgba(0, 0, 0, 0.55), 0 0 0 1.5px var(--red); }
+  50%      { box-shadow: 0 10px 34px rgba(0, 0, 0, 0.55), 0 0 0 1.5px var(--red),
+                         0 0 18px 2px color-mix(in srgb, var(--red) 55%, transparent); }
+}
 .dash.mapStage .dashBody {
   position: relative; z-index: 1;
   display: block;
