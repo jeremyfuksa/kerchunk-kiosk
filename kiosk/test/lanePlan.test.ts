@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeLanePlan } from "../src/backend/engine/lanePlan.js";
+import { computeLanePlan, lanePlanArgs } from "../src/backend/engine/lanePlan.js";
 import type { ChannelGroup } from "../src/backend/engine/grouping.js";
 import type { Channel } from "../src/backend/config/schema.js";
 
@@ -52,5 +52,25 @@ describe("computeLanePlan", () => {
     const plan = computeLanePlan([], 12);
     expect(plan.laneCount).toBe(1);
     expect(plan.perLane[0]).toEqual({ fm: true, am: true });
+  });
+
+  it("a slot whose only mode is unrecognized defaults to FM (not dead air)", () => {
+    // Force an out-of-enum mode via cast to exercise the defensive fallback.
+    const weird = { id: "cx", freq: 200e6, alphaTag: "X", mode: "usb" as Channel["mode"], enabled: true };
+    // 2-lane plan so slot 0 is NOT the SAME lane (slot 1 is). Slot 0 = the weird channel,
+    // slot 1 = a normal nfm so the group has 2 channels and laneCount is 2.
+    const plan = computeLanePlan([group(weird, ch(146e6, "nfm"))], 12);
+    expect(plan.laneCount).toBe(2);
+    expect(plan.perLane[0]).toEqual({ fm: true, am: false }); // unrecognized → FM fallback
+    expect(plan.perLane[1]).toEqual({ fm: true, am: true });  // slot 1 = SAME lane
+  });
+});
+
+describe("lanePlanArgs", () => {
+  it("emits --lanes and a per-lane mode mask (f/a/b)", () => {
+    const plan = { laneCount: 3, perLane: [
+      { fm: true, am: false }, { fm: false, am: true }, { fm: true, am: true },
+    ]};
+    expect(lanePlanArgs(plan)).toEqual(["--lanes", "3", "--lane-modes", "fab"]);
   });
 });

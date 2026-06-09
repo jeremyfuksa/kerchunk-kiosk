@@ -39,3 +39,12 @@ export function computeLanePlan(groups: ChannelGroup[], maxChans: number): LaneP
   }
   return { laneCount, perLane };
 }
+
+/** Serialize a plan to helper CLI args: --lanes N --lane-modes <mask>.
+ *  Mask is one char/lane: f=FM-only, a=AM-only, b=both. */
+export function lanePlanArgs(plan: LanePlan): string[] {
+  const mask = plan.perLane
+    .map((m) => (m.fm && m.am ? "b" : m.am ? "a" : "f"))
+    .join("");
+  return ["--lanes", String(plan.laneCount), "--lane-modes", mask];
+}
