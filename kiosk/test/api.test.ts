@@ -70,6 +70,16 @@ describe("HTTP API", () => {
     expect(cfg.body.audio.volume).toBe(55);
   });
 
+  it("GET /api/system includes a health verdict and core count", async () => {
+    const { server } = makeApp();
+    const res = await request(server).get("/api/system");
+    expect(res.status).toBe(200);
+    expect(res.body.health).toBeDefined();
+    expect(["healthy", "stressed", "trouble"]).toContain(res.body.health.verdict);
+    expect(typeof res.body.health.reason).toBe("string");
+    expect(typeof res.body.coreCount).toBe("number");
+  });
+
   it("GET /api/status returns engine state", async () => {
     const { server } = makeApp();
     const res = await request(server).get("/api/status");

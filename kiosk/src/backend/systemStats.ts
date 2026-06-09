@@ -1,5 +1,6 @@
 import { readFileSync, readdirSync, statfsSync } from "node:fs";
 import os from "node:os";
+import type { EngineState } from "./engine/ScannerEngine.js";
 
 // Host health (ROADMAP Idea 16): the machine under stress, made visible.
 // The motivating symptom was "it sometimes spikes and nothing says why" —
@@ -106,6 +107,50 @@ export function classifySystemAlerts(
     help: "Disable Close Call sweep ranges if scanning becomes unstable.",
   });
   return alerts;
+}
+
+// Grace period after engine start before "not warmed" counts as broken rather
+// than merely starting up — a normal cold boot reads STRESSED, not TROUBLE.
+const WARMUP_GRACE_MS = 60_000;
+
+export interface HealthInput {
+  now: SystemSample;
+  engineState: EngineState;
+  warmed: boolean;
+  safetyMode: boolean;
+  /** Engine `error` events in the recent trailing window (server-tallied). */
+  helperRestartsRecent: number;
+  /** Wall-clock ms since the engine last (re)started. */
+  msSinceStart: number;
+}
+
+export interface HealthVerdict {
+  verdict: "healthy" | "stressed" | "trouble";
+  reason: string;
+}
+
+/**
+ * Mission-capability verdict: "is the radio working?" — not "how much CPU is
+ * free." Worst-first; first match wins. Pure. See the 2026-06-09 spec.
+ */
+export function classifyHealth(i: HealthInput): HealthVerdict {
+  // TROUBLE — the radio is not doing its job.
+  if (i.engineState === "error") return { verdict: "trouble", reason: "Scanner engine error." };
+  if (i.engineState === "stopped") return { verdict: "trouble", reason: "Scanner engine stopped." };
+  if (i.helperRestartsRecent >= 2) return { verdict: "trouble", reason: "DSP helper keeps crashing." }; // >=2 = crash-loop; a single recovered restart is only STRESSED (below)
+  if (!i.warmed && i.msSinceStart >= WARMUP_GRACE_MS) {
+    return { verdict: "trouble", reason: "Scanner never finished warming up." };
+  }
+
+  // STRESSED — working, but under duress. (engineState "running"/"starting"
+  // fall through to here; a "starting" engine reads "Warming up…" via !warmed.)
+  if (!i.warmed) return { verdict: "stressed", reason: "Warming up…" };
+  if (i.safetyMode) return { verdict: "stressed", reason: "Running hot — Close Call paused to cool down." };
+  if (i.now.throttled === true) return { verdict: "stressed", reason: "CPU thermal-throttling." };
+  if (i.helperRestartsRecent >= 1) return { verdict: "stressed", reason: "DSP helper restarted recently." };
+
+  // HEALTHY — running, warmed, coping. Hot-by-design lands here.
+  return { verdict: "healthy", reason: "Scanning normally." };
 }
 
 export interface SystemStatsOptions {

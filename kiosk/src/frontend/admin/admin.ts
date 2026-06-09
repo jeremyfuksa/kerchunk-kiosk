@@ -136,7 +136,7 @@ export function renderAdmin(root: HTMLElement): void {
       </section>
       <section class="sysHealth collapsible" data-key="system" data-page="home">
         <h2>System health <span class="hint">the machine under the radio — helper CPU is the usual suspect</span></h2>
-        <div id="sysBody" class="sysBody"></div>
+        <div id="sysBody"></div>
       </section>
       <section class="discoveries" data-page="triage">
         <div class="pageIntro sectionIntro">
@@ -588,6 +588,7 @@ export function renderAdmin(root: HTMLElement): void {
   // ── System health (Idea 16): gauges + sparklines off /api/system.
   const sysBody = root.querySelector<HTMLElement>("#sysBody")!;
   const healthBanner = root.querySelector<HTMLElement>("#healthBanner")!;
+  let lastVerdict: string | null = null;
   function spark(values: Array<number | null>, max: number, warn: number): string {
     const W = 120; const H = 28;
     const pts = values.map((v, i) => {
@@ -600,11 +601,13 @@ export function renderAdmin(root: HTMLElement): void {
     return `<svg class="spark${hot ? " hot" : ""}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"><polyline points="${pts}" fill="none" /></svg>`;
   }
   async function renderSystem(): Promise<void> {
-    const { now, ring, alerts, safetyMode } = await fetch("/api/system").then((r) => r.json()) as {
+    const { now, ring, alerts, safetyMode, health, coreCount } = await fetch("/api/system").then((r) => r.json()) as {
       now: Record<string, number | boolean | null> | null;
       ring: Array<Record<string, number | boolean | null>>;
       alerts: Array<{ id: string; severity: "attention" | "severe"; title: string; message: string; help: string }>;
       safetyMode: boolean;
+      health: { verdict: "healthy" | "stressed" | "trouble"; reason: string };
+      coreCount: number;
     };
     if (!now) { sysBody.textContent = "no samples yet"; return; }
     healthBanner.classList.toggle("healthClear", alerts.length === 0);
@@ -618,10 +621,13 @@ export function renderAdmin(root: HTMLElement): void {
       `<div class="sysCell${hot ? " hot" : ""}"><div class="sysLabel">${label}</div>
         <div class="sysValue">${value}</div>${sparkHtml}</div>`;
     const t = now.tempC as number | null;
-    sysBody.innerHTML =
+    const helperCores = now.helperCpuPct === null
+      ? "—"
+      : `${((now.helperCpuPct as number) / 100).toFixed(1)} / ${coreCount} cores${now.helperRssMb === null ? "" : ` · ${now.helperRssMb} MB`}`;
+    const cells =
       cell("CPU", `${now.cpuPct}%`, spark(num("cpuPct"), 100, 85), (now.cpuPct as number) >= 85)
-      + cell("DSP helper", now.helperCpuPct === null ? "—" : `${now.helperCpuPct}% · ${now.helperRssMb} MB`,
-          spark(num("helperCpuPct"), 400, 320), (now.helperCpuPct as number | null ?? 0) >= 320)
+      + cell("DSP helper", helperCores,
+          spark(num("helperCpuPct"), 100 * coreCount, 80 * coreCount), (now.helperCpuPct as number | null ?? 0) >= 80 * coreCount)
       + cell("Temp", t === null ? "n/a" : `${t}°C${now.throttled ? " · THROTTLED" : ""}`,
           // 87°C matches the backend "running hot" line; this box idles ~82-83°C.
           // Throttling annotates the value but no longer reddens the cell on its own.
@@ -629,9 +635,29 @@ export function renderAdmin(root: HTMLElement): void {
       + cell("RAM", `${now.memUsedPct}% · node ${now.backendRssMb} MB`, spark(num("memUsedPct"), 100, 90), (now.memUsedPct as number) >= 90)
       + cell("Open channels", String(now.openCount), spark(num("openCount"), 12, 11))
       + cell("Disk free", now.diskFreeMb === null ? "n/a" : `${((now.diskFreeMb as number) / 1024).toFixed(1)} GB`,
-          "", (now.diskFreeMb as number | null ?? 1e9) < 2048)
-      + `<div class="sysCell"><div class="sysLabel">Load</div><div class="sysValue">${(now.load1 as number).toFixed(1)}</div>
-         <div class="hint" style="font-size:0.7rem">GR threads inflate this — trust temp</div></div>`;
+          "", (now.diskFreeMb as number | null ?? 1e9) < 2048);
+    const verdictClass = health.verdict;
+    const verdictLabel = health.verdict.toUpperCase();
+    // Preserve the user's manual open/collapse across the 3s polls. The verdict-
+    // derived default (open unless healthy) is only re-asserted on first render
+    // or when the verdict actually changes.
+    const prevDetails = sysBody.querySelector<HTMLDetailsElement>(".sysDetails");
+    const userOpen = prevDetails ? prevDetails.open : null; // null = no panel yet
+    const verdictDefaultOpen = health.verdict !== "healthy";
+    const shouldOpen = health.verdict !== lastVerdict
+      ? verdictDefaultOpen
+      : (userOpen ?? verdictDefaultOpen);
+    lastVerdict = health.verdict;
+    sysBody.innerHTML =
+      `<div class="healthVerdict ${verdictClass}">
+         <span class="verdictDot"></span>
+         <span class="verdictLabel">${verdictLabel}</span>
+         <span class="verdictReason">${esc(health.reason)}</span>
+       </div>
+       <details class="sysDetails"${shouldOpen ? " open" : ""}>
+         <summary>Details</summary>
+         <div class="sysGrid">${cells}</div>
+       </details>`;
   }
   void renderSystem().catch(() => {});
   setInterval(() => { renderSystem().catch(() => {}); }, 3000);

@@ -15,7 +15,8 @@ import { isScannable, isAudible, profileFor } from "./config/banks.js";
 import { collides, findDuplicateSets } from "./config/channelDedup.js";
 import { solveK, estimateWatts, distKm, type Anchor } from "./powerEstimator.js";
 import { parseSame, fipsMatch, fipsNames, isTest } from "./same.js";
-import { SystemStats } from "./systemStats.js";
+import os from "node:os";
+import { SystemStats, classifyHealth } from "./systemStats.js";
 
 export interface ServerDeps {
   /** Optional identification chain — enriches Close Call channel names. */
@@ -227,6 +228,28 @@ export function createServer(deps: ServerDeps): { server: Server } {
     if (ev.phase === "booting") warmed = false;
     else if (ev.phase === "ready") warmed = true;
   });
+
+  // Mission-health inputs (spec 2026-06-09). The engine emits `error` on helper-
+  // spawn escalation; tally a trailing window so a crash-loop reads as TROUBLE
+  // while a single recovered restart is only STRESSED. engineStartedAt feeds the
+  // warm-up grace so a cold boot reads "warming up", not "broken".
+  let engineStartedAt = Date.now();
+  // recentErrors is pruned lazily (on each helperRestartsRecent read), so its
+  // size stays bounded only because /api/system is polled every ~3s; entries
+  // older than ERROR_WINDOW_MS are dropped then.
+  const recentErrors: number[] = [];
+  const ERROR_WINDOW_MS = 120_000;
+  engine.on((ev) => {
+    // Resets on a fresh start() (emits warmup/booting), NOT on a crash-recovery
+    // respawn (which re-spawns the helper without re-emitting booting). So
+    // msSinceStart measures time since the last full engine start, not last respawn.
+    if (ev.type === "warmup" && ev.phase === "booting") engineStartedAt = Date.now();
+    if (ev.type === "error") recentErrors.push(ev.ts);
+  });
+  function helperRestartsRecent(nowMs: number): number {
+    while (recentErrors.length > 0 && nowMs - recentErrors[0]! > ERROR_WINDOW_MS) recentErrors.shift();
+    return recentErrors.length;
+  }
 
   // Durable history tee: every opening/discovery/release, enriched with the
   // channel's tags/location at the moment it happened.
@@ -777,7 +800,22 @@ export function createServer(deps: ServerDeps): { server: Server } {
     }
 
     if (method === "GET" && path === "/api/system") {
-      return json(res, 200, { ...sysStats.snapshot(), safetyMode });
+      const snap = sysStats.snapshot();
+      const nowMs = Date.now();
+      const health = snap.now
+        ? classifyHealth({
+            now: snap.now,
+            engineState: engine.state,
+            warmed,
+            safetyMode,
+            helperRestartsRecent: helperRestartsRecent(nowMs),
+            msSinceStart: nowMs - engineStartedAt,
+          })
+        : // Near-unreachable: SystemStats.start() takes a synchronous first sample
+          // at boot, so snap.now is almost always set. TROUBLE is the honest read
+          // for a genuine no-telemetry case — we can't confirm the radio is working.
+          { verdict: "trouble" as const, reason: "No telemetry yet." };
+      return json(res, 200, { ...snap, safetyMode, health, coreCount: os.cpus().length });
     }
 
     if (method === "GET" && path === "/api/recommendations/archive") {

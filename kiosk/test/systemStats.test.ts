@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { SystemStats, classifySystemAlerts, procStatTicks, type SystemSample } from "../src/backend/systemStats.js";
+import { SystemStats, classifySystemAlerts, procStatTicks, classifyHealth, type SystemSample, type HealthInput } from "../src/backend/systemStats.js";
 
 const STAT = "1234 (python3 (gr)) S 1 1 1 0 -1 4194304 0 0 0 0 5000 2500 0 0 20 0 12 0 100 0 0 18446744073709551615";
 
@@ -83,5 +83,63 @@ describe("classifySystemAlerts", () => {
   it("reserves severe warnings for disk/memory machine-risk conditions", () => {
     expect(classify({ diskFreeMb: 300 }).some((a) => a.id === "disk-critical")).toBe(true);
     expect(classify({ memUsedPct: 96 }).some((a) => a.id === "memory-critical")).toBe(true);
+  });
+});
+
+describe("classifyHealth", () => {
+  const sample = (over: Partial<SystemSample> = {}): SystemSample => ({
+    ts: 1, cpuPct: 40, helperCpuPct: 250, helperRssMb: 200, load1: 8,
+    memUsedPct: 50, backendRssMb: 120, tempC: 83, throttled: false,
+    diskFreeMb: 10_000, openCount: 3, ...over,
+  });
+  const input = (over: Partial<HealthInput> = {}): HealthInput => ({
+    now: sample(), engineState: "running", warmed: true, safetyMode: false,
+    helperRestartsRecent: 0, msSinceStart: 120_000, ...over,
+  });
+
+  it("a hot, busy, scanning box is HEALTHY (hot by design)", () => {
+    const h = classifyHealth(input({ now: sample({ tempC: 83, helperCpuPct: 300 }) }));
+    expect(h.verdict).toBe("healthy");
+  });
+  it("engine error is TROUBLE", () => {
+    expect(classifyHealth(input({ engineState: "error" })).verdict).toBe("trouble");
+  });
+  it("engine stopped is TROUBLE", () => {
+    expect(classifyHealth(input({ engineState: "stopped" })).verdict).toBe("trouble");
+  });
+  it("helper crash-loop (>=2 recent restarts) is TROUBLE", () => {
+    expect(classifyHealth(input({ helperRestartsRecent: 2 })).verdict).toBe("trouble");
+  });
+  it("not warmed past the grace window is TROUBLE", () => {
+    expect(classifyHealth(input({ warmed: false, msSinceStart: 120_000 })).verdict).toBe("trouble");
+  });
+  it("not warmed but still within the grace window is STRESSED (warming up)", () => {
+    const h = classifyHealth(input({ warmed: false, msSinceStart: 5_000 }));
+    expect(h.verdict).toBe("stressed");
+    expect(h.reason.toLowerCase()).toContain("warm");
+  });
+  it("safetyMode active is STRESSED", () => {
+    expect(classifyHealth(input({ safetyMode: true })).verdict).toBe("stressed");
+  });
+  it("a single recent (recovered) helper restart is STRESSED", () => {
+    expect(classifyHealth(input({ helperRestartsRecent: 1 })).verdict).toBe("stressed");
+  });
+  it("sustained throttling is STRESSED", () => {
+    expect(classifyHealth(input({ now: sample({ throttled: true }) })).verdict).toBe("stressed");
+  });
+  it("worst-first precedence: error wins over a stressed signal", () => {
+    expect(classifyHealth(input({ engineState: "error", safetyMode: true })).verdict).toBe("trouble");
+  });
+  it("every verdict carries a non-empty plain reason", () => {
+    for (const h of [
+      classifyHealth(input()),
+      classifyHealth(input({ safetyMode: true })),
+      classifyHealth(input({ engineState: "stopped" })),
+    ]) expect(h.reason.length).toBeGreaterThan(0);
+  });
+  it("a starting engine that isn't warmed yet reads STRESSED (warming up)", () => {
+    const h = classifyHealth(input({ engineState: "starting", warmed: false, msSinceStart: 3_000 }));
+    expect(h.verdict).toBe("stressed");
+    expect(h.reason.toLowerCase()).toContain("warm");
   });
 });
