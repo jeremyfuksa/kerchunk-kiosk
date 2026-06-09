@@ -656,7 +656,7 @@ export function createServer(deps: ServerDeps): { server: Server } {
         config = { ...config, channels: config.channels.filter((c) => !remove.has(c.id)) };
         await persistAndReload();
       }
-      return json(res, 200, { removed: remove.size, kept: sets.length });
+      return json(res, 200, { removed: remove.size, setsResolved: sets.length });
     }
 
     const chMatch = /^\/api\/channels\/([^/]+)$/.exec(path);

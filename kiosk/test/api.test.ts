@@ -246,7 +246,7 @@ describe("HTTP API", () => {
     });
     const res = await request(server).post("/api/channels/duplicates/resolve");
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ removed: 1, kept: 1 });
+    expect(res.body).toEqual({ removed: 1, setsResolved: 1 });
     const after = (await request(server).get("/api/channels")).body as Array<{ id: string }>;
     const ids = after.map((c) => c.id).sort();
     expect(ids).toEqual(["b", "g1", "g2"]); // bare "a" deleted; GMRS pair untouched
@@ -257,7 +257,42 @@ describe("HTTP API", () => {
     await request(server).post("/api/channels")
       .send({ freq: 146520000, alphaTag: "ONLY", mode: "nfm", enabled: true });
     const res = await request(server).post("/api/channels/duplicates/resolve");
-    expect(res.body).toEqual({ removed: 0, kept: 0 });
+    expect(res.body).toEqual({ removed: 0, setsResolved: 0 });
+  });
+
+  it("resolve on a 3-row duplicate set removes both losers, keeps the richest", async () => {
+    const { configStore } = makeApp();
+    const cfg = configStore.load();
+    configStore.save({ ...cfg, channels: [
+      { id: "x1", freq: 151000000, alphaTag: "BARE1", mode: "nfm", enabled: true },
+      { id: "x2", freq: 151000000, alphaTag: "BARE2", mode: "nfm", enabled: true },
+      { id: "x3", freq: 151000000, alphaTag: "RICH", mode: "nfm", enabled: true, location: { lat: 39, lon: -94, source: "test" } },
+    ] });
+    const { server } = createServer({
+      configStore, engine: new FakeEngine(), activityLog: new ActivityLog(100),
+      wsHub: new WsHub(), staticDir: dir,
+    });
+    const res = await request(server).post("/api/channels/duplicates/resolve");
+    expect(res.body).toEqual({ removed: 2, setsResolved: 1 });
+    const after = (await request(server).get("/api/channels")).body as Array<{ id: string }>;
+    expect(after.map((c) => c.id)).toEqual(["x3"]); // only the richest survives
+  });
+
+  it("resolve is idempotent — a second call removes nothing", async () => {
+    const { configStore } = makeApp();
+    const cfg = configStore.load();
+    configStore.save({ ...cfg, channels: [
+      { id: "a", freq: 152000000, alphaTag: "A", mode: "nfm", enabled: true },
+      { id: "b", freq: 152000000, alphaTag: "B", mode: "nfm", enabled: true },
+    ] });
+    const { server } = createServer({
+      configStore, engine: new FakeEngine(), activityLog: new ActivityLog(100),
+      wsHub: new WsHub(), staticDir: dir,
+    });
+    const first = await request(server).post("/api/channels/duplicates/resolve");
+    expect(first.body.removed).toBe(1);
+    const second = await request(server).post("/api/channels/duplicates/resolve");
+    expect(second.body).toEqual({ removed: 0, setsResolved: 0 });
   });
 });
 
