@@ -372,8 +372,9 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
         google.maps.event.addListenerOnce(map, "idle", () => { homeZoom = map.getZoom(); });
       });
 
-    // ── Activity camera (kiosk only): when a transmission opens, ease in
-    // toward its site; when the band goes quiet, pull back out to the full
+    // ── Activity camera (kiosk only): when a channel becomes AUDIBLE, ease in
+    // toward it (it follows the speaker, not bare detections — see the audible
+    // handler); when the band goes quiet, pull back out to the full
     // pin field. Vector maps animate panTo/setZoom natively, so this reads
     // as camera work, not jumps. The interactive /map page never moves on
     // its own — a self-steering camera fights the user's mouse.
@@ -409,17 +410,20 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
       }
       field.add({ lat: pos.lat, lon: pos.lng, alphaTag, kind: "nofix", ts, freq: freqHz });
       wake(); // a blip was planted (live or backfilled) — ensure the loop runs
-      if (Date.now() - ts < 2000) { ping(pos.lat, pos.lng, colorFor(freqHz, "nofix")); punch(pos.lat, pos.lng); }
+      // Detection blips/pings regardless; the camera punch follows AUDIO (the
+      // audible event), so it doesn't chase silent carriers (airband clicks).
+      if (Date.now() - ts < 2000) ping(pos.lat, pos.lng, colorFor(freqHz, "nofix"));
     }
 
     function push(lat: number, lon: number, alphaTag: string, kind: "active" | "closecall", ts: number, freq?: number): void {
       field.add({ lat, lon, alphaTag, kind, ts, freq });
       wake(); // a blip was planted (live or backfilled) — ensure the loop runs
-      // live hits ping and plant/refresh the persistent antenna
+      // live hits ping and plant/refresh the persistent antenna. The camera
+      // punch is NOT here — it follows AUDIO (the audible event), so the view
+      // only chases what you can actually hear, not every silent detection.
       if (Date.now() - ts < 2000) {
         ping(lat, lon, colorFor(freq, kind));
         antenna(lat, lon, [alphaTag], 1, ts, true);
-        punch(lat, lon);
       }
     }
 
@@ -451,6 +455,19 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
         // is async) — they pulse at a stable synthetic position; once enriched,
         // future events and history backfills place them properly.
         nofix(ev.freqHz, `Close Call ${fmtFreq(ev.freqHz)}`, Date.now());
+      } else if (ev.type === "audible") {
+        // Camera follows AUDIO: punch to whatever owns the speaker right now,
+        // at its real location or its stable synthetic spot. null = silence —
+        // hold the last view; the pull-back timer recenters after PUNCH_HOLD_MS.
+        const ch = ev.channel;
+        if (ch) {
+          if (ch.location?.lat != null && ch.location.lon != null) {
+            punch(ch.location.lat, ch.location.lon);
+          } else {
+            const pos = syntheticPositions.get(ch.freq);
+            if (pos) punch(pos.lat, pos.lng);
+          }
+        }
       }
     }).connect();
 
