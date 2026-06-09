@@ -6,6 +6,7 @@ import type {
 } from "./ScannerEngine.js";
 import type { Channel } from "../config/schema.js";
 import { groupChannels, sweepCenters, type ChannelGroup } from "./grouping.js";
+import { computeLanePlan, lanePlanArgs } from "./lanePlan.js";
 import { setVolume as amixerVolume, setMuted as amixerMuted } from "../audio.js";
 
 // Wideband group-hop scanner.
@@ -310,6 +311,13 @@ export class WidebandEngine implements ScannerEngine {
     // Quieting squelch threshold: only passed when configured — the helper's
     // default is bench-calibrated for this hardware.
     if (cfg.noiseQuietDb !== undefined) args.push("--quiet-db", String(cfg.noiseQuietDb));
+    // Lane-fit (spec 2026-06-09): size the helper's channelizer to this config
+    // — N = busiest group's channel count (<= MAX), each lane built with only
+    // the demod path it needs. `this.groups` is set before every spawn (start/
+    // reconfigure); an empty config yields a safe 1-lane plan. The weather
+    // engine rides the same path: its lone NWR channel collapses to one lane.
+    const plan = computeLanePlan(this.groups, MAX_CHANNELS_PER_GROUP);
+    args.push(...lanePlanArgs(plan));
     return args;
   }
 
