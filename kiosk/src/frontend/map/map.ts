@@ -248,9 +248,12 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
     // Tied to the open->close lifecycle: active/closecall start it, release/idle
     // end it; TX_TTL_MS is a safety cap if a release is ever missed.
     const PULSE_MS = 1800;       // one expand-and-fade cycle of the ring
-    const TX_TTL_MS = 30_000;
+    // Safety cap if a `release` is ever missed; the audible channel re-arms it
+    // on every `signal`, so a continuous carrier doesn't expire mid-transmission.
+    const TX_TTL_MS = 60_000;
     const liveTx = new Map<string, { lat: number; lng: number; key: string; color: string; born: number; until: number }>();
     const txRings = new Map<string, any>();
+    let audibleId: string | null = null; // current speaker owner (drives ring re-arm)
     // The render loop self-suspends on a quiet map; wake() (defined with tick)
     // restarts it. `ticking` guards against double-starting.
     let ticking = false;
@@ -388,6 +391,17 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
     // initial position is chosen against all known sites loaded so far; once a
     // later lookup supplies a real location, future events naturally use it.
     const syntheticPositions = new Map<number, { lat: number; lng: number }>();
+    // Stable synthetic spot for an unlocated freq — seed once, reuse. Shared by
+    // nofix and the audible camera (a fresh tab can get `audible` for a freq it
+    // never saw `active`/`closecall` for, so the spot must be seedable here too).
+    function synthPos(freq: number): { lat: number; lng: number } {
+      let pos = syntheticPositions.get(freq);
+      if (!pos) {
+        pos = syntheticPoint(home, SYNTHETIC_FIELD_M, freq, knownPositions);
+        syntheticPositions.set(freq, pos);
+      }
+      return pos;
+    }
 
     function nofix(freqHz: number, alphaTag: string, ts: number): void {
       let pos = syntheticPositions.get(freqHz);
@@ -433,32 +447,39 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
           startTx(ch.id, ch.location.lat, ch.location.lon, ev.freq, "active");
         } else {
           nofix(ev.freq, ch.alphaTag || fmtFreq(ev.freq), Date.now());
-          const pos = syntheticPositions.get(ev.freq);
-          if (pos) startTx(ch.id, pos.lat, pos.lng, ev.freq, "active");
+          const pos = synthPos(ev.freq);
+          startTx(ch.id, pos.lat, pos.lng, ev.freq, "active");
         }
       } else if (ev.type === "release") {
         endTx(ev.channelId); // transmission closed — stop its ring
       } else if (ev.type === "idle") {
+        audibleId = null;
         for (const id of [...liveTx.keys()]) endTx(id); // all closed
+      } else if (ev.type === "signal") {
+        // The audible channel emits power telemetry while it's open. Re-arm its
+        // ring's ttl so a continuously-keyed carrier (e.g. NOAA never keys down)
+        // keeps pulsing instead of dying on the safety ttl mid-transmission.
+        if (audibleId) { const tx = liveTx.get(audibleId); if (tx) tx.until = Date.now() + TX_TTL_MS; }
       } else if (ev.type === "closecall") {
         // discoveries are unlocated at the moment they fire (identification
         // is async) — they pulse at a stable synthetic position; once enriched,
         // future events and history backfills place them properly. No release
         // ever arrives for a discovery, so the ring self-expires on its ttl.
         nofix(ev.freqHz, `Close Call ${fmtFreq(ev.freqHz)}`, Date.now());
-        const pos = syntheticPositions.get(ev.freqHz);
-        if (pos) startTx(`cc_${ev.freqHz}`, pos.lat, pos.lng, ev.freqHz, "closecall", 5000);
+        const pos = synthPos(ev.freqHz);
+        startTx(`cc_${ev.freqHz}`, pos.lat, pos.lng, ev.freqHz, "closecall", 5000);
       } else if (ev.type === "audible") {
         // Camera follows AUDIO: punch to whatever owns the speaker right now,
-        // at its real location or its stable synthetic spot. null = silence —
+        // at its real location or its (seeded) synthetic spot. null = silence —
         // hold the last view; the pull-back timer recenters after PUNCH_HOLD_MS.
         const ch = ev.channel;
+        audibleId = ch?.id ?? null; // drives the signal-driven ring re-arm above
         if (ch) {
           if (ch.location?.lat != null && ch.location.lon != null) {
             punch(ch.location.lat, ch.location.lon);
           } else {
-            const pos = syntheticPositions.get(ch.freq);
-            if (pos) punch(pos.lat, pos.lng);
+            const pos = synthPos(ch.freq);
+            punch(pos.lat, pos.lng);
           }
         }
       }
