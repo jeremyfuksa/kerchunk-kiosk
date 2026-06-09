@@ -146,6 +146,12 @@ export const configSchema = z.object({
     weatherLon: z.number(),
     // Maps JavaScript API key for the /map view (operator-chosen provider).
     googleMapsApiKey: z.string().optional(),
+    // Server-side Google Places key for business-frequency guessing (the
+    // BusinessGuess lookup provider searches "is this chain near the QTH?").
+    // Absent = reuse googleMapsApiKey. Split it out only if the map key is
+    // HTTP-referrer-restricted (server calls send no Referer): supply an
+    // unrestricted/IP-restricted key here with Places API (New) enabled.
+    placesApiKey: z.string().optional(),
     // Cloud-console Map ID: switches /map to a VECTOR map with fractional
     // zoom so auto-fit lands exactly on the pin field (raster maps floor to
     // integer zoom — z9.7 becomes z9, double the area). Dark cartography
