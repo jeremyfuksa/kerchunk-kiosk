@@ -137,12 +137,13 @@ export function classifyHealth(i: HealthInput): HealthVerdict {
   // TROUBLE — the radio is not doing its job.
   if (i.engineState === "error") return { verdict: "trouble", reason: "Scanner engine error." };
   if (i.engineState === "stopped") return { verdict: "trouble", reason: "Scanner engine stopped." };
-  if (i.helperRestartsRecent >= 2) return { verdict: "trouble", reason: "DSP helper keeps crashing." };
+  if (i.helperRestartsRecent >= 2) return { verdict: "trouble", reason: "DSP helper keeps crashing." }; // >=2 = crash-loop; a single recovered restart is only STRESSED (below)
   if (!i.warmed && i.msSinceStart >= WARMUP_GRACE_MS) {
     return { verdict: "trouble", reason: "Scanner never finished warming up." };
   }
 
-  // STRESSED — working, but under duress.
+  // STRESSED — working, but under duress. (engineState "running"/"starting"
+  // fall through to here; a "starting" engine reads "Warming up…" via !warmed.)
   if (!i.warmed) return { verdict: "stressed", reason: "Warming up…" };
   if (i.safetyMode) return { verdict: "stressed", reason: "Running hot — Close Call paused to cool down." };
   if (i.now.throttled === true) return { verdict: "stressed", reason: "CPU thermal-throttling." };

@@ -137,4 +137,9 @@ describe("classifyHealth", () => {
       classifyHealth(input({ engineState: "stopped" })),
     ]) expect(h.reason.length).toBeGreaterThan(0);
   });
+  it("a starting engine that isn't warmed yet reads STRESSED (warming up)", () => {
+    const h = classifyHealth(input({ engineState: "starting", warmed: false, msSinceStart: 3_000 }));
+    expect(h.verdict).toBe("stressed");
+    expect(h.reason.toLowerCase()).toContain("warm");
+  });
 });
