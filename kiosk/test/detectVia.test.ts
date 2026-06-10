@@ -3,6 +3,7 @@ import { configSchema, defaultConfig } from "../src/backend/config/schema.js";
 import { WidebandEngine } from "../src/backend/engine/WidebandEngine.js";
 import { toScanConfig } from "../src/backend/server.js";
 
+
 describe("scan.detectVia", () => {
   it("defaults to absent (lane behavior) and accepts 'lane' | 'fft'", () => {
     const base = { sampleRate: 2_400_000, squelchLevel: 1800, gain: "auto" as const, dwellMs: 2000 };
@@ -68,6 +69,61 @@ describe("WidebandEngine --detect-via", () => {
     expect(argsFor(base)).toContain("--close-call");                       // absent -> on
     expect(argsFor({ ...base, closeCall: true })).toContain("--close-call");
     expect(argsFor({ ...base, closeCall: false })).not.toContain("--close-call");
+  });
+  it("includes --audio-fd only when remoteListening is true", () => {
+    expect(argsFor(base)).not.toContain("--audio-fd");                       // absent -> off
+    expect(argsFor({ ...base, remoteListening: false })).not.toContain("--audio-fd");
+    const on = argsFor({ ...base, remoteListening: true });
+    expect(on).toContain("--audio-fd");
+    expect(on[on.indexOf("--audio-fd") + 1]).toBe("3");
+  });
+});
+
+describe("audio.remoteListening", () => {
+  it("defaults to false and is parseable as a boolean", () => {
+    const base = { sink: "default", volume: 70, muted: false };
+    expect(configSchema.shape.audio.parse({ ...base }).remoteListening).toBe(false);
+    expect(configSchema.shape.audio.parse({ ...base, remoteListening: true }).remoteListening).toBe(true);
+  });
+  it("is present and false in defaultConfig()", () => {
+    expect(defaultConfig().audio.remoteListening).toBe(false);
+  });
+});
+
+describe("toScanConfig feature-tap gates", () => {
+  it("passes audio.remoteListening through to ScanConfig.remoteListening", () => {
+    const cfg = defaultConfig();
+    expect(toScanConfig(cfg, "scan").remoteListening).toBe(false);
+    cfg.audio.remoteListening = true;
+    expect(toScanConfig(cfg, "scan").remoteListening).toBe(true);
+  });
+
+  it("sameEnable is false with no weather channel", () => {
+    expect(toScanConfig(defaultConfig(), "scan").sameEnable).toBe(false);
+  });
+
+  it("sameEnable is true when the main scan carries NWR (no dedicated radio)", () => {
+    const cfg = defaultConfig();
+    cfg.weatherChannel = { id: "wx", freq: 162_550_000, alphaTag: "NWR", mode: "nfm", enabled: true };
+    // No radios[] => NWR is injected into the main scan (visiting-slot tier).
+    expect(toScanConfig(cfg, "scan").sameEnable).toBe(true);
+  });
+
+  it("sameEnable is false on the main scan when a dedicated weather radio exists", () => {
+    const cfg = defaultConfig();
+    cfg.weatherChannel = { id: "wx", freq: 162_550_000, alphaTag: "NWR", mode: "nfm", enabled: true };
+    cfg.radios = [
+      { serial: "KIOSK01", role: "scan" },
+      { serial: "KIOSK03", role: "weather" },
+    ];
+    // Dedicated radio owns SAME => NWR is NOT injected into the main scan.
+    expect(toScanConfig(cfg, "scan").sameEnable).toBe(false);
+  });
+
+  it("sameEnable is true in weather mode (listening to NWR)", () => {
+    const cfg = defaultConfig();
+    cfg.weatherChannel = { id: "wx", freq: 162_550_000, alphaTag: "NWR", mode: "nfm", enabled: true };
+    expect(toScanConfig(cfg, "weather").sameEnable).toBe(true);
   });
 });
 

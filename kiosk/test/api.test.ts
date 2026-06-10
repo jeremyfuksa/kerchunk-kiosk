@@ -304,6 +304,24 @@ describe("HTTP API", () => {
     const second = await request(server).post("/api/channels/duplicates/resolve");
     expect(second.body).toEqual({ removed: 0, setsResolved: 0 });
   });
+
+  it("GET /api/stream.wav 404s 'remote listening disabled' by default", async () => {
+    const { server } = makeApp();
+    const res = await request(server).get("/api/stream.wav");
+    expect(res.status).toBe(404);
+    expect(res.body.error).toBe("remote listening disabled");
+  });
+
+  it("GET /api/stream.wav passes the flag gate once enabled", async () => {
+    const { server } = makeApp();
+    const cfg = (await request(server).get("/api/config")).body;
+    await request(server).put("/api/config").send({ ...cfg, audio: { ...cfg.audio, remoteListening: true } });
+    const res = await request(server).get("/api/stream.wav");
+    // FakeEngine has no onAudio tee, so the route now falls through to the
+    // engine-capability 404 — proving the remote-listening gate was passed.
+    expect(res.status).toBe(404);
+    expect(res.body.error).toBe("engine has no audio tee");
+  });
 });
 
 describe("wideband config passthrough", () => {

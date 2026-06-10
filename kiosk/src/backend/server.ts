@@ -112,6 +112,16 @@ export function toScanConfig(
     closeCallDb: cfg.scan.closeCallDb,
     lockoutHz: cfg.scan.lockoutHz,
     detectVia: cfg.scan.detectVia,
+    // PCM tee gate: the helper builds --audio-fd only when remote listening is on.
+    remoteListening: cfg.audio.remoteListening,
+    // SAME gate: decode only on a helper that actually carries NWR. toScanConfig
+    // injects the wx_same background channel into the main scan only when there
+    // is no dedicated weather radio (above); weather mode sets channels to the
+    // weather channel directly (monitor mode only matches if the operator tuned
+    // NWR itself). So "this helper's channels include the weather frequency" is
+    // exactly "this helper demodulates NWR".
+    sameEnable: !!cfg.weatherChannel
+      && channels.some((c) => c.freq === cfg.weatherChannel!.freq),
   };
 }
 
@@ -832,6 +842,9 @@ export function createServer(deps: ServerDeps): { server: Server } {
     if (method === "GET" && path === "/api/stream.wav") {
       // Remote listening (ROADMAP stretch): the live speaker feed as an
       // endless WAV. 48 kHz mono s16 = ~94 KB/s — trivial on the LAN.
+      if (!config.audio.remoteListening) {
+        return json(res, 404, { error: "remote listening disabled" });
+      }
       const onAudio = (engine as { onAudio?: (l: (c: Buffer) => void) => () => void }).onAudio?.bind(engine);
       if (!onAudio) return json(res, 404, { error: "engine has no audio tee" });
       const hdr = Buffer.alloc(44);
