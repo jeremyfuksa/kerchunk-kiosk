@@ -118,6 +118,7 @@ export function renderAdmin(root: HTMLElement): void {
             <button id="streamBtn" class="primary" title="Listen to the live speaker feed in this browser">▶ Listen here</button>
             <label>Volume <input id="vol" type="range" min="0" max="100" /></label>
             <label class="checkLabel"><input id="mute" type="checkbox" /> Mute</label>
+            <label class="checkLabel"><input id="remoteListen" type="checkbox" /> Remote listening</label>
           </div>
           <div class="controlGroup transmissionControls">
             <button id="resumeBtn" class="resume" style="display:none">⏹ Resume scan</button>
@@ -1524,9 +1525,28 @@ export function renderAdmin(root: HTMLElement): void {
   // Volume/mute stay in sync with the server (another admin tab, a stale
   // page across service restarts): poll lightly and update the controls —
   // but never while the operator is actively holding the slider.
-  function syncAudioControls(cfg: { audio: { volume: number; muted: boolean } }): void {
+  const remoteListen = root.querySelector<HTMLInputElement>("#remoteListen")!;
+
+  function syncRemoteListening(on: boolean): void {
+    if (document.activeElement !== remoteListen) remoteListen.checked = on;
+    // The in-browser "Listen here" button streams /api/stream.wav, which 404s
+    // when remote listening is off — disable it so it never silently fails.
+    streamBtn.disabled = !on;
+    streamBtn.title = on
+      ? "Listen to the live speaker feed in this browser"
+      : "Enable remote listening to stream the feed";
+  }
+
+  remoteListen.addEventListener("change", async () => {
+    const cfg = await api.getConfig();
+    await api.putConfig({ ...cfg, audio: { ...cfg.audio, remoteListening: remoteListen.checked } });
+    syncRemoteListening(remoteListen.checked);
+  });
+
+  function syncAudioControls(cfg: { audio: { volume: number; muted: boolean; remoteListening?: boolean } }): void {
     if (document.activeElement !== vol) vol.value = String(cfg.audio.volume);
     if (document.activeElement !== mute) mute.checked = cfg.audio.muted;
+    syncRemoteListening(cfg.audio.remoteListening ?? false);
   }
   api.getConfig().then(syncAudioControls);
   vol.addEventListener("change", () => { api.setVolume(Number(vol.value)); vol.blur(); });
