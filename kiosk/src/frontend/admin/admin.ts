@@ -115,7 +115,7 @@ export function renderAdmin(root: HTMLElement): void {
         <div class="npWhat"><span id="npName" class="npName">scanning…</span> <span id="npFreq" class="npFreq"></span></div>
         <div class="npControls">
           <div class="controlGroup audioControls">
-            <button id="streamBtn" class="primary" title="Listen to the live speaker feed in this browser">▶ Listen here</button>
+            <button id="streamBtn" class="primary" disabled title="Enable remote listening to stream the feed">▶ Listen here</button>
             <label>Volume <input id="vol" type="range" min="0" max="100" /></label>
             <label class="checkLabel"><input id="mute" type="checkbox" /> Mute</label>
             <label class="checkLabel"><input id="remoteListen" type="checkbox" /> Remote listening</label>
