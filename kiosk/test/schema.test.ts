@@ -7,7 +7,7 @@ describe("configSchema", () => {
     const cfg = {
       version: 1,
       scan: { sampleRate: 12000, squelchLevel: 150, gain: "auto", dwellMs: 2000 },
-      audio: { sink: "hdmi:CARD=vc4hdmi0", volume: 70, muted: false },
+      audio: { sink: "hdmi:CARD=vc4hdmi0", volume: 70, muted: false, remoteListening: false },
       channels: [
         { id: "ch_001", freq: 145130000, alphaTag: "KC0KW", mode: "nfm", enabled: true },
       ],
