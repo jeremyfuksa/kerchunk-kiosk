@@ -841,6 +841,9 @@ export function createServer(deps: ServerDeps): { server: Server } {
     if (method === "GET" && path === "/api/stream.wav") {
       // Remote listening (ROADMAP stretch): the live speaker feed as an
       // endless WAV. 48 kHz mono s16 = ~94 KB/s — trivial on the LAN.
+      if (!config.audio.remoteListening) {
+        return json(res, 404, { error: "remote listening disabled" });
+      }
       const onAudio = (engine as { onAudio?: (l: (c: Buffer) => void) => () => void }).onAudio?.bind(engine);
       if (!onAudio) return json(res, 404, { error: "engine has no audio tee" });
       const hdr = Buffer.alloc(44);
