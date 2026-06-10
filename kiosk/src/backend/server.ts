@@ -14,7 +14,7 @@ import { setVolume as amixerVolume, setMuted as amixerMuted, type AmixerOpts } f
 import { isScannable, isAudible, profileFor } from "./config/banks.js";
 import { collides, findDuplicateSets } from "./config/channelDedup.js";
 import { solveK, estimateWatts, distKm, type Anchor } from "./powerEstimator.js";
-import { parseSame, fipsMatch, fipsNames, isTest } from "./same.js";
+import { parseSame, fipsMatch, fipsNames, isTest, isEom } from "./same.js";
 import os from "node:os";
 import { SystemStats, classifyHealth } from "./systemStats.js";
 
@@ -464,8 +464,39 @@ export function createServer(deps: ServerDeps): { server: Server } {
   // the existing alert plumbing (banner + feed + ntfy).
   let lastSame: { raw: string; ts: number } | null = null;
   let sameRevertTimer: NodeJS.Timeout | null = null;
+  // EOM (NNNN) ends a transmission; resume scanning after a short grace window
+  // so clustered alerts (a new header inside the window) hold straight through.
+  const EOM_GRACE_MS = 8_000;
+  let sameEomTimer: NodeJS.Timeout | null = null;
+  // Re-point the live graph (retune) rather than stop()+start(): a restart
+  // replays the WARMING UP overlay and cold-start audio chop. The helperless
+  // RtlFm fallback keeps stop()+start().
+  const switchMode = (cfg: ScanConfig): void => {
+    if (engine.retune) void engine.retune(cfg);
+    else void engine.stop().then(() => engine.start(cfg));
+  };
+  // Shared revert: clears both timers, lifts the break-in freeze, and (unless
+  // the operator changed mode in the meantime) hops back to the scan set.
+  const revertToScan = (): void => {
+    if (sameRevertTimer) { clearTimeout(sameRevertTimer); sameRevertTimer = null; }
+    if (sameEomTimer) { clearTimeout(sameEomTimer); sameEomTimer = null; }
+    breakIn = false;                  // break-in over; thermal management resumes
+    if (mode !== "weather") return;   // operator changed it; leave alone
+    mode = "scan";
+    switchMode(toScanConfig(config, "scan"));
+  };
   const onSameEvent = (ev: EngineEvent): void => {
     if (ev.type !== "same") return;
+    // End of message: resume scanning after the grace window, but only while a
+    // break-in is actually in progress. A stray NNNN otherwise is ignored.
+    if (isEom(ev.raw)) {
+      if (mode === "weather" && breakIn) {
+        if (sameEomTimer) clearTimeout(sameEomTimer);
+        sameEomTimer = setTimeout(revertToScan, EOM_GRACE_MS);
+        sameEomTimer.unref?.();
+      }
+      return;
+    }
     const hdr = parseSame(ev.raw);
     if (!hdr) return;
     if (lastSame && lastSame.raw === hdr.raw && ev.ts - lastSame.ts < 90_000) return;
@@ -482,30 +513,26 @@ export function createServer(deps: ServerDeps): { server: Server } {
       mode: "SAME", tags: ["same"],
     });
     if (!covered || (test && !config.alerts?.sameTests)) return;
+    // A fresh covered header means an active message is playing — cancel any
+    // pending EOM resume so a clustered follow-on alert holds straight through.
+    if (sameEomTimer) { clearTimeout(sameEomTimer); sameEomTimer = null; }
     const holdSeconds = Math.min(300, Math.max(60, hdr.purgeMinutes * 60));
     // Break-in (the Idea 11 pitch's second behavior): preempt the scan so the
     // NWR voice message PLAYS, then revert — consumer weather-radio break-in.
-    // Applied via retune (re-point the live graph) not stop()+start(): a
-    // restart replayed the WARMING UP overlay and cold-start audio chop every
-    // time. retune hops in place — no overlay, no chop. The helperless RtlFm
-    // fallback path keeps the old stop()+start(). Never preempts a monitor.
-    const switchMode = (cfg: ScanConfig): void => {
-      if (engine.retune) void engine.retune(cfg);
-      else void engine.stop().then(() => engine.start(cfg));
-    };
+    // The EOM resume (above) ends it early when the broadcast actually stops;
+    // this timer is the safety net if no NNNN is decoded. Never preempts a
+    // monitor. The helperless RtlFm path falls back to stop()+start() in
+    // switchMode.
     if (!test && mode === "scan" && config.weatherChannel) {
       mode = "weather";
       monitorChannel = null;
       breakIn = true;   // freeze safetyMode bounces until we revert
       switchMode(toScanConfig(config, "weather"));
       if (sameRevertTimer) clearTimeout(sameRevertTimer);
-      sameRevertTimer = setTimeout(() => {
-        sameRevertTimer = null;
-        breakIn = false;                  // break-in over; thermal management resumes
-        if (mode !== "weather") return;   // operator changed it; leave alone
-        mode = "scan";
-        switchMode(toScanConfig(config, "scan"));
-      }, Math.min(10 * 60_000, Math.max(120_000, hdr.purgeMinutes * 60_000)));
+      sameRevertTimer = setTimeout(
+        revertToScan,
+        Math.min(10 * 60_000, Math.max(120_000, hdr.purgeMinutes * 60_000)),
+      );
       sameRevertTimer.unref?.();
     }
     deps.wsHub.broadcast({
