@@ -311,6 +311,10 @@ export class WidebandEngine implements ScannerEngine {
     // skipping the continuous float->s16 + fd-write. A change respawns the
     // helper (toScanConfig diff), so the tee appears/disappears in lockstep.
     if (cfg.remoteListening) args.push("--audio-fd", "3");
+    // SAME decoder: spawn it only on a helper that carries NWR (derived in
+    // toScanConfig; set true on the dedicated weather engine). Off => no
+    // multimon-ng process and no last-lane tap.
+    if (cfg.sameEnable) args.push("--same-enable");
     if (cfg.gain !== "auto") args.push("--gain", String(cfg.gain));
     // Quieting squelch threshold: only passed when configured — the helper's
     // default is bench-calibrated for this hardware.

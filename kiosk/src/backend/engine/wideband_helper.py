@@ -437,7 +437,7 @@ class Helper(gr.top_block):
         # nothing. Absent multimon-ng the tap is simply not built.
         self.same_proc = None
         same_fd = None
-        if shutil.which("multimon-ng"):
+        if args.same_enable and shutil.which("multimon-ng"):
             rfd, wfd = os.pipe()
             os.set_inheritable(rfd, True)
             self.same_proc = subprocess.Popen(
@@ -447,7 +447,7 @@ class Helper(gr.top_block):
             os.close(rfd)
             same_fd = wfd
             threading.Thread(target=self._same_reader, daemon=True).start()
-        else:
+        elif args.same_enable:
             emit({"ev": "log", "msg": "multimon-ng not found: SAME decoding disabled"})
         build_power = (self.detect_via == "lane")
         # Lane-fit (spec 2026-06-09): build only the lanes this config needs
@@ -938,6 +938,9 @@ def main():
                          "over --rtl-index — robust against index reordering")
     ap.add_argument("--audio-fd", type=int, default=-1,
                     help="fd to tee the speaker feed to as s16 PCM (remote listen)")
+    ap.add_argument("--same-enable", action="store_true",
+                    help="spawn the SAME/multimon-ng decoder and tap it onto the "
+                         "last lane; off => no decoder process and no tap")
     ap.add_argument("--hang-ms", type=float, default=2000.0,
                     help="sustained silence before close")
     ap.add_argument("--detect-via", choices=["lane", "fft"], default="lane",
