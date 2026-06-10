@@ -3,6 +3,8 @@
 // strata (sub-layers within its own footprint) and a decaying "breath" from
 // the most recent hit. Modeled on BlipField; rendered by art.ts each tick.
 
+export { startOfLocalDay } from "../lib/localDay.js";
+
 export interface DepositInput {
   lat: number;
   lon: number;
@@ -74,11 +76,4 @@ export class SedimentField {
   clear(): void {
     this.sites.clear();
   }
-}
-
-/** Local midnight (ms) for the day containing `ts`. The portrait's lower bound. */
-export function startOfLocalDay(ts: number): number {
-  const d = new Date(ts);
-  d.setHours(0, 0, 0, 0);
-  return d.getTime();
 }
