@@ -116,9 +116,10 @@ export function toScanConfig(
     remoteListening: cfg.audio.remoteListening,
     // SAME gate: decode only on a helper that actually carries NWR. toScanConfig
     // injects the wx_same background channel into the main scan only when there
-    // is no dedicated weather radio (above); weather/monitor modes set channels
-    // to the weather channel directly. So "this helper's channels include the
-    // weather frequency" is exactly "this helper demodulates NWR".
+    // is no dedicated weather radio (above); weather mode sets channels to the
+    // weather channel directly (monitor mode only matches if the operator tuned
+    // NWR itself). So "this helper's channels include the weather frequency" is
+    // exactly "this helper demodulates NWR".
     sameEnable: !!cfg.weatherChannel
       && channels.some((c) => c.freq === cfg.weatherChannel!.freq),
   };
