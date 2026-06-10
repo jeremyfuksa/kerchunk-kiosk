@@ -290,7 +290,6 @@ export class WidebandEngine implements ScannerEngine {
     const args = [
       "--sink", cfg.audioSink,
       "--hang-ms", String(cfg.dwellMs),
-      "--audio-fd", "3",
       // Prefer serial (deterministic); fall back to index resolved at spawn.
       ...(this.rtlSerial
         ? ["--rtl-serial", this.rtlSerial]
@@ -307,6 +306,11 @@ export class WidebandEngine implements ScannerEngine {
     // `closeCall ?? true`). Off => the helper skips the 2048-pt FFT entirely.
     // A closeCall config change respawns the helper, so this stays in sync.
     if (cfg.closeCall !== false) args.push("--close-call");
+    // Remote-listening PCM tee: only ask the helper to build it when the
+    // feature is on. Off => the helper's --audio-fd default (-1) builds no tee,
+    // skipping the continuous float->s16 + fd-write. A change respawns the
+    // helper (toScanConfig diff), so the tee appears/disappears in lockstep.
+    if (cfg.remoteListening) args.push("--audio-fd", "3");
     if (cfg.gain !== "auto") args.push("--gain", String(cfg.gain));
     // Quieting squelch threshold: only passed when configured — the helper's
     // default is bench-calibrated for this hardware.

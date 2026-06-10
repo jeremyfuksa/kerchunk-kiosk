@@ -70,6 +70,13 @@ describe("WidebandEngine --detect-via", () => {
     expect(argsFor({ ...base, closeCall: true })).toContain("--close-call");
     expect(argsFor({ ...base, closeCall: false })).not.toContain("--close-call");
   });
+  it("includes --audio-fd only when remoteListening is true", () => {
+    expect(argsFor(base)).not.toContain("--audio-fd");                       // absent -> off
+    expect(argsFor({ ...base, remoteListening: false })).not.toContain("--audio-fd");
+    const on = argsFor({ ...base, remoteListening: true });
+    expect(on).toContain("--audio-fd");
+    expect(on[on.indexOf("--audio-fd") + 1]).toBe("3");
+  });
 });
 
 describe("audio.remoteListening", () => {
