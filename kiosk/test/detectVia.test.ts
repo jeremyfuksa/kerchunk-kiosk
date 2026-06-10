@@ -77,6 +77,11 @@ describe("WidebandEngine --detect-via", () => {
     expect(on).toContain("--audio-fd");
     expect(on[on.indexOf("--audio-fd") + 1]).toBe("3");
   });
+  it("includes --same-enable only when sameEnable is true", () => {
+    expect(argsFor(base)).not.toContain("--same-enable");
+    expect(argsFor({ ...base, sameEnable: false })).not.toContain("--same-enable");
+    expect(argsFor({ ...base, sameEnable: true })).toContain("--same-enable");
+  });
 });
 
 describe("audio.remoteListening", () => {

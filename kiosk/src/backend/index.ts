@@ -109,6 +109,7 @@ function startWeatherLane(): void {
     // Window matches the narrow front-end so the lone channel forms one group.
     windowBandwidthHz: WEATHER_RATE_HZ,
     closeCall: false,
+    sameEnable: true,
     knownHz: [config.weatherChannel.freq],
   }).catch((e) => console.error("[weather-radio]", (e as Error).message));
 }

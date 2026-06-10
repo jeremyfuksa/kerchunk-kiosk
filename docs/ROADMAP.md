@@ -958,20 +958,34 @@ stretch list above). What's open, in execution order:
    first skin (auto-replay) was removed (2026-06-08, see Idea 8); any future
    skin must NOT punch the camera on a quiet band. Optional, low priority.
 
-### Hardening backlog — DSP efficiency (from the 2026-06-06 review)
+### Hardening backlog — DSP efficiency (from the 2026-06-06 review) — COMPLETE 2026-06-09
 `docs/PROCESSOR-EFFICIENCY-REVIEW-2026-06-06.md` found the dominant cost is the
 GNU Radio helper (~2.4–2.5 cores for 12 lanes), not the Node backend — and a
-second weather radio roughly doubles it. The fixed 12-lane flowgraph runs every
-lane continuously (including parked ones) and runs BOTH FM and AM paths per
-lane. Highest-return work, in order:
-1. Build only the number and type of DSP lanes the current engine needs (skip
-   parked lanes; build AM path only for AM channels).
-2. Give the dedicated weather radio a one-lane, decode-only flowgraph.
-3. Don't run the Close Call FFT, SAME decoder, or PCM streaming tee when those
-   features are disabled.
-4. Make dashboard/map rendering event-driven while idle to cut continuous
-   Chromium work.
-Distinct from the parked polyphase-channelizer rewrite below — these are
+second weather radio roughly doubles it. The fixed 12-lane flowgraph ran every
+lane continuously (including parked ones) and ran BOTH FM and AM paths per lane.
+All four highest-return items are now shipped:
+1. **SHIPPED (PRs #122–#125, lane-fit DSP).** Build only the number and type of
+   DSP lanes the engine needs — `N = busiest group` lanes, each with only its
+   required FM/AM path — via a pure `lanePlan.ts`; build-once/retune-per-hop
+   unchanged.
+2. **SUBSUMED by #1.** "Give the dedicated weather radio a one-lane, decode-only
+   flowgraph" predates lane-fit, which already collapsed the weather helper to a
+   1-lane FM pipeline (no FFT, no AM path — confirmed on hardware: KIOSK03 runs
+   `--lanes 1 --lane-modes b`). Its only residual (the SAME/PCM taps) folded into
+   #3; no separate `--role weather` branch was built.
+3. **SHIPPED (lane-fit + PRs #128/#129, feature-tap gating).** Don't run the
+   Close Call FFT (gated on `--close-call` by lane-fit), the PCM streaming tee
+   (now opt-in via `audio.remoteListening`, default off — PR #128), or the SAME/
+   multimon-ng decoder (spawned only on a helper that carries NWR — PR #129) when
+   those features are inactive. Proven on hardware: `multimon-ng` dropped 2→1
+   (the redundant main-helper decoder removed; the weather helper's NWR decoder
+   kept, so SAME coverage is unchanged) and both helpers shed the always-on
+   `--audio-fd` tee.
+4. **SHIPPED (PR #106).** Dashboard/map rendering is event-driven while idle (map
+   self-suspends on a quiet band; surgical now-card paint; rAF-coalesced). Caveat
+   below in Watch items: the newer "Day's Map" art view (PR #118) does NOT yet
+   idle-suspend.
+Distinct from the parked polyphase-channelizer rewrite below — these were
 in-place wins on the current helper, not a DSP re-architecture.
 
 ### Tabled by operator (2026-06-06 — don't re-pitch; he'll return to them)
@@ -1002,6 +1016,12 @@ in-place wins on the current helper, not a DSP re-architecture.
   feed (banner only if alerts.sameTests).
 - **ERP estimator anchors**: estimates refine as licensed channels are
   heard; GMRS clamps at the Part 95 ceiling by design.
+- **"Day's Map" art view idle-suspend**: the artistic kiosk (`art.ts`, PR #118)
+  runs an unconditional `requestAnimationFrame` with no idle-suspend, unlike the
+  live map (PR #106). It is NOT the default kiosk screen, so it costs nothing
+  today — but it must gain a wake/sleep gate (the `map.ts` pattern: stop the loop
+  when the sediment field and breath are static) BEFORE it can become the default,
+  or it silently undoes the item-#4 idle-render win on a quiet band.
 
 
 ## Suggested sequencing (historical)
