@@ -2,14 +2,12 @@ import type { EngineEvent } from "../../backend/engine/ScannerEngine.js";
 import { ReconnectingWs } from "../lib/wsClient.js";
 import { api } from "../lib/api.js";
 import { fmtFreq, esc } from "../lib/format.js";
-import icoBellRing from "lucide-static/icons/bell-ring.svg?raw";
 import icoVolumeX from "lucide-static/icons/volume-x.svg?raw";
+import { alertTheme } from "./alertTheme.js";
 import { mountActivityMap } from "../map/map.js";
 import { matchesBank, spectrumLabelFor } from "../../backend/config/banks.js";
 import type { Bank, Channel } from "../../backend/config/schema.js";
 import "./dashboard.css";
-
-const ICO_BELL = icoBellRing;
 
 export interface NowPlaying { freq: number; alphaTag: string; }
 export interface LogRow { freq: number; alphaTag: string; ts: number; }
@@ -283,9 +281,17 @@ export function renderDashboard(root: HTMLElement): void {
       // Lower-right overlay card: a header strip, then the alert TYPE big, then
       // the affected counties as a prominent second line (no frequency — the
       // NWR channel number means nothing to someone glancing across the room).
+      // The theme (severity tier + storm kind) sets size, color, and icon; CSS
+      // keys the palette off the `tier` class + `data-kind` attribute.
+      const theme = alertTheme(state.alert.alphaTag);
+      const tierLabel = theme.tier === "watch" ? "WATCH"
+        : theme.tier === "statement" ? "STATEMENT" : "WARNING";
+      alertEl.dataset.kind = theme.kind;
+      alertEl.classList.remove("warning", "watch", "statement");
+      alertEl.classList.add(theme.tier);
       alertEl.innerHTML = `<div class="alertHead">`
-        + `<span class="alertGlyph">${ICO_BELL}</span>`
-        + `<span class="alertLabel">WEATHER ALERT</span></div>`
+        + `<span class="alertGlyph">${theme.icon}</span>`
+        + `<span class="alertLabel">${tierLabel}</span></div>`
         + `<div class="alertTag">${esc(state.alert.alphaTag)}</div>`
         + (state.alert.counties ? `<div class="alertCounties">${esc(state.alert.counties)}</div>` : "");
       alertEl.classList.add("on");

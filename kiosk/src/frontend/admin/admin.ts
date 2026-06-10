@@ -130,6 +130,8 @@ export function renderAdmin(root: HTMLElement): void {
           <div class="systemActions">
             <span class="systemActionsLabel">System controls</span>
             <button id="kioskReload" title="Refresh the display page and reload its map and frontend assets">Refresh kiosk screen</button>
+            <button id="testAlert" title="Show a sample weather-alert banner on the kiosk (for design + verifying alerts work)">Test weather alert</button>
+            <button id="testAlertClear" title="Clear the test weather-alert banner from the kiosk">Clear alert</button>
             <button id="backendRestart" class="danger" title="Restart the radio backend and scanner helpers">Restart radio backend</button>
             <span id="systemActionStatus" class="hint" role="status"></span>
           </div>
@@ -1495,6 +1497,44 @@ export function renderAdmin(root: HTMLElement): void {
     try {
       await api.reloadKiosk();
       systemActionStatus.textContent = "Refresh sent";
+    } catch (e) {
+      systemActionStatus.textContent = (e as Error).message;
+    } finally {
+      button.disabled = false;
+    }
+  });
+  // Cycle representative storm types so each themed banner can be designed/
+  // verified from one button: warning tiers (loud) → a watch → a winter warning.
+  const TEST_ALERTS = [
+    "TORNADO WARNING",
+    "SEVERE THUNDERSTORM WARNING",
+    "FLASH FLOOD WARNING",
+    "TORNADO WATCH",
+    "WINTER STORM WARNING",
+  ];
+  let testAlertIdx = 0;
+  root.querySelector<HTMLButtonElement>("#testAlert")!.addEventListener("click", async (event) => {
+    const button = event.currentTarget as HTMLButtonElement;
+    const alphaTag = TEST_ALERTS[testAlertIdx % TEST_ALERTS.length]!;
+    testAlertIdx += 1;
+    button.disabled = true;
+    systemActionStatus.textContent = `Showing “${alphaTag}”…`;
+    try {
+      await api.testAlert({ alphaTag });
+      systemActionStatus.textContent = `Showing “${alphaTag}” on kiosk — click again for the next type`;
+    } catch (e) {
+      systemActionStatus.textContent = (e as Error).message;
+    } finally {
+      button.disabled = false;
+    }
+  });
+  root.querySelector<HTMLButtonElement>("#testAlertClear")!.addEventListener("click", async (event) => {
+    const button = event.currentTarget as HTMLButtonElement;
+    button.disabled = true;
+    systemActionStatus.textContent = "Clearing test alert…";
+    try {
+      await api.testAlert({ clear: true });
+      systemActionStatus.textContent = "Test alert cleared";
     } catch (e) {
       systemActionStatus.textContent = (e as Error).message;
     } finally {

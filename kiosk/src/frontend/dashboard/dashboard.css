@@ -286,27 +286,44 @@ body {
 }
 
 /* ── Alert banner (ROADMAP Idea 6): a strip under the topbar, flamingo,
-   glanceable from across the room. Hidden (zero height) unless .on. */
+   glanceable from across the room. Hidden (zero height) unless .on.
+   Severity (tier class) sets size + intensity; storm type (data-kind) sets
+   color via the --alert-color / --alert-on pair below, so every rule stays
+   color-agnostic and one swatch tweak re-themes a whole storm category.
+   Colors follow NWS convention: tornado red, severe-tstorm amber, flood
+   green, winter magenta, wind goldenrod, fire orange-red, civil crimson. */
 .alertBar {
+  --alert-color: var(--red);   /* storm color (fallback: flamingo) */
+  --alert-on: #fff;            /* text/icon color when sitting on a solid fill */
   display: none;
   align-items: center;
   gap: 1.2rem;
   padding: 0.6rem 1.6rem;
-  background: color-mix(in srgb, var(--red) 18%, transparent);
-  border-top: 1px solid var(--red);
-  border-bottom: 1px solid var(--red);
+  background: color-mix(in srgb, var(--alert-color) 18%, transparent);
+  border-top: 1px solid var(--alert-color);
+  border-bottom: 1px solid var(--alert-color);
   font-family: var(--mono);
 }
+.alertBar[data-kind="tornado"]  { --alert-color: #e01a2b; --alert-on: #fff; }
+.alertBar[data-kind="severe"]   { --alert-color: #f5a623; --alert-on: #1a1205; }
+.alertBar[data-kind="flood"]    { --alert-color: #15924f; --alert-on: #fff; }
+.alertBar[data-kind="winter"]   { --alert-color: #d23a9d; --alert-on: #fff; }
+.alertBar[data-kind="wind"]     { --alert-color: #c59a2c; --alert-on: #1a1205; }
+.alertBar[data-kind="tropical"] { --alert-color: #a8327f; --alert-on: #fff; }
+.alertBar[data-kind="fire"]     { --alert-color: #e8501e; --alert-on: #fff; }
+.alertBar[data-kind="civil"]    { --alert-color: #c8102e; --alert-on: #fff; }
+.alertBar[data-kind="test"]     { --alert-color: #5b6b7a; --alert-on: #e8eef3; }
+.alertBar[data-kind="default"]  { --alert-color: var(--red); --alert-on: #fff; }
 .alertBar.on { display: flex; animation: alertPulse 1.2s ease-in-out infinite; }
 .alertBar .alertGlyph svg {
-  width: 1.6rem; height: 1.6rem; color: var(--red);
+  width: 1.6rem; height: 1.6rem; color: var(--alert-color);
   animation: alertRing 1.2s ease-in-out infinite;
 }
 .alertBar .alertLabel {
   font-family: var(--cond);
   font-size: 1.3rem;
   letter-spacing: 0.3em;
-  color: var(--red);
+  color: var(--alert-color);
 }
 .alertBar .alertFreq { font-size: 1.3rem; color: var(--ink); }
 .alertBar .alertTag {
@@ -325,15 +342,15 @@ body {
   font-size: 1.3rem;
   font-weight: 700;
   letter-spacing: 0.04em;
-  color: var(--red);
+  color: var(--alert-color);
   padding: 0.05rem 0.7rem;
-  border: 1px solid var(--red);
+  border: 1px solid var(--alert-color);
   border-radius: 0.4rem;
   white-space: nowrap;
 }
 @keyframes alertPulse {
-  0%, 100% { background: color-mix(in srgb, var(--red) 18%, transparent); }
-  50% { background: color-mix(in srgb, var(--red) 32%, transparent); }
+  0%, 100% { background: color-mix(in srgb, var(--alert-color) 18%, transparent); }
+  50% { background: color-mix(in srgb, var(--alert-color) 32%, transparent); }
 }
 @keyframes alertRing {
   0%, 100% { transform: rotate(0deg); }
@@ -418,15 +435,77 @@ body {
   font-size: 2.5rem; line-height: 1.04; font-weight: 700; color: var(--ink);
   white-space: normal; overflow: visible; text-overflow: clip; min-width: 0;
 }
+.dash.mapStage .alertBar .alertGlyph svg { color: var(--alert-color); }
+.dash.mapStage .alertBar .alertLabel { color: var(--alert-color); }
 .dash.mapStage .alertBar .alertCounties {
   margin: 0; padding: 0; border: none; flex: none;
-  font-size: 1.9rem; font-weight: 700; letter-spacing: 0.02em; color: var(--red);
+  font-size: 1.9rem; font-weight: 700; letter-spacing: 0.02em; color: var(--alert-color);
   white-space: normal;
 }
 @keyframes alertCardPulse {
-  0%, 100% { box-shadow: 0 10px 34px rgba(0, 0, 0, 0.55), 0 0 0 1.5px var(--red); }
-  50%      { box-shadow: 0 10px 34px rgba(0, 0, 0, 0.55), 0 0 0 1.5px var(--red),
-                         0 0 18px 2px color-mix(in srgb, var(--red) 55%, transparent); }
+  0%, 100% { box-shadow: 0 10px 34px rgba(0, 0, 0, 0.55), 0 0 0 1.5px var(--alert-color); }
+  50%      { box-shadow: 0 10px 34px rgba(0, 0, 0, 0.55), 0 0 0 1.5px var(--alert-color),
+                         0 0 18px 2px color-mix(in srgb, var(--alert-color) 55%, transparent); }
+}
+
+/* ── Severity tiers on the map-stage card ────────────────────────────────────
+   WATCH  = the baseline above: dark card, color frame + glow, color text.
+   STATEMENT = quieter: smaller type, a color spine, no pulse.
+   WARNING = loud: the card becomes a SOLID slab of the storm color with
+             high-contrast text, a larger event name + icon, and a heavier
+             glow pulse. Glanceable across the room; commands the map without
+             taking the whole screen. */
+
+/* WATCH: make the color frame read as deliberate (2px ring, not a hairline). */
+.dash.mapStage .alertBar.watch.on {
+  border: 2px solid color-mix(in srgb, var(--alert-color) 70%, transparent);
+}
+
+/* STATEMENT: subdued — a left spine in the storm color, calmer type, no pulse. */
+.dash.mapStage .alertBar.statement {
+  max-width: min(34rem, 40vw);
+  border-left: 4px solid var(--alert-color);
+  border-radius: 0 10px 10px 0;
+}
+.dash.mapStage .alertBar.statement.on { animation: none; }
+.dash.mapStage .alertBar.statement .alertTag { font-size: 1.9rem; }
+.dash.mapStage .alertBar.statement .alertCounties { font-size: 1.4rem; }
+
+/* WARNING: solid storm-color slab, bigger, louder. */
+.dash.mapStage .alertBar.warning {
+  max-width: min(54rem, 58vw);
+  padding: 1.5rem 2rem 1.7rem;
+  gap: 0.6rem;
+  background: var(--alert-color);
+}
+.dash.mapStage .alertBar.warning.on { animation: alertWarnPulse 1.6s ease-in-out infinite; }
+.dash.mapStage .alertBar.warning .alertGlyph svg {
+  width: 3rem; height: 3rem; color: var(--alert-on);
+}
+.dash.mapStage .alertBar.warning .alertLabel {
+  font-size: 1.35rem; letter-spacing: 0.3em; font-weight: 700;
+  color: var(--alert-on);
+}
+.dash.mapStage .alertBar.warning .alertTag {
+  font-size: 3.3rem; line-height: 1.02; color: var(--alert-on);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.28);
+}
+/* Counties become a high-contrast chip on the solid fill (the dark card glow
+   no longer separates them). */
+.dash.mapStage .alertBar.warning .alertCounties {
+  margin-top: 0.15rem;
+  padding: 0.1rem 0.65rem;
+  border-radius: 0.4rem;
+  font-size: 1.8rem;
+  color: var(--alert-on);
+  background: color-mix(in srgb, var(--alert-on) 16%, transparent);
+}
+@keyframes alertWarnPulse {
+  0%, 100% { box-shadow: 0 10px 34px rgba(0, 0, 0, 0.55),
+                         0 0 0 1px color-mix(in srgb, var(--alert-on) 30%, transparent); }
+  50%      { box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6),
+                         0 0 0 1px color-mix(in srgb, var(--alert-on) 40%, transparent),
+                         0 0 30px 4px color-mix(in srgb, var(--alert-color) 75%, transparent); }
 }
 .dash.mapStage .dashBody {
   position: relative; z-index: 1;
