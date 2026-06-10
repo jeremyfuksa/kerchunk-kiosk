@@ -83,6 +83,43 @@ describe("audio.remoteListening", () => {
   });
 });
 
+describe("toScanConfig feature-tap gates", () => {
+  it("passes audio.remoteListening through to ScanConfig.remoteListening", () => {
+    const cfg = defaultConfig();
+    expect(toScanConfig(cfg, "scan").remoteListening).toBe(false);
+    cfg.audio.remoteListening = true;
+    expect(toScanConfig(cfg, "scan").remoteListening).toBe(true);
+  });
+
+  it("sameEnable is false with no weather channel", () => {
+    expect(toScanConfig(defaultConfig(), "scan").sameEnable).toBe(false);
+  });
+
+  it("sameEnable is true when the main scan carries NWR (no dedicated radio)", () => {
+    const cfg = defaultConfig();
+    cfg.weatherChannel = { id: "wx", freq: 162_550_000, alphaTag: "NWR", mode: "nfm", enabled: true };
+    // No radios[] => NWR is injected into the main scan (visiting-slot tier).
+    expect(toScanConfig(cfg, "scan").sameEnable).toBe(true);
+  });
+
+  it("sameEnable is false on the main scan when a dedicated weather radio exists", () => {
+    const cfg = defaultConfig();
+    cfg.weatherChannel = { id: "wx", freq: 162_550_000, alphaTag: "NWR", mode: "nfm", enabled: true };
+    cfg.radios = [
+      { serial: "KIOSK01", role: "scan" },
+      { serial: "KIOSK03", role: "weather" },
+    ];
+    // Dedicated radio owns SAME => NWR is NOT injected into the main scan.
+    expect(toScanConfig(cfg, "scan").sameEnable).toBe(false);
+  });
+
+  it("sameEnable is true in weather mode (listening to NWR)", () => {
+    const cfg = defaultConfig();
+    cfg.weatherChannel = { id: "wx", freq: 162_550_000, alphaTag: "NWR", mode: "nfm", enabled: true };
+    expect(toScanConfig(cfg, "weather").sameEnable).toBe(true);
+  });
+});
+
 describe("toScanConfig detectVia passthrough", () => {
   it("passes detectVia: 'fft' through to ScanConfig", () => {
     const cfg = defaultConfig();
