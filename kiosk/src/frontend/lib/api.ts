@@ -40,8 +40,8 @@ export const api = {
     fetch("/api/mode", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ mode }) }).then(j<{ mode: "scan" | "weather"; state: string }>),
   skip: (holdoffSeconds?: number) =>
     fetch("/api/scan/skip", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(holdoffSeconds ? { holdoffSeconds } : {}) }),
-  testAlert: (clear?: boolean) =>
-    fetch("/api/test/alert", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(clear ? { clear: true } : {}) }).then(j<{ ok: boolean }>),
+  testAlert: (opts?: { alphaTag?: string; clear?: boolean }) =>
+    fetch("/api/test/alert", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(opts ?? {}) }).then(j<{ ok: boolean }>),
   reloadKiosk: () => fetch("/api/kiosk/reload", { method: "POST" }).then(j<{ ok: boolean }>),
   restartBackend: () => fetch("/api/backend/restart", { method: "POST" }).then(j<{ ok: boolean }>),
   getLogs: () => fetch("/api/logs").then(j<{ freq: number; alphaTag: string; ts: number }[]>),

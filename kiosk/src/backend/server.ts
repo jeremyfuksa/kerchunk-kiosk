@@ -732,11 +732,15 @@ export function createServer(deps: ServerDeps): { server: Server } {
     if (method === "POST" && path === "/api/test/alert") {
       const body = await readBody(req).catch(() => undefined);
       const clear = body?.clear === true;
+      // alphaTag lets the admin button cycle storm types to design each theme;
+      // it defaults to a tornado warning (the loudest, most-design-critical one).
+      const alphaTag = typeof body?.alphaTag === "string" && body.alphaTag.trim()
+        ? body.alphaTag.trim() : "TORNADO WARNING";
       const freq = config.weatherChannel?.freq ?? 162_550_000;
       const counties = fipsNames(config.alerts?.sameFips ?? [], config.alerts?.sameFips) || "Clay, Platte, Jackson";
       deps.wsHub.broadcast({
         type: "alert",
-        channel: { id: "test", freq, alphaTag: "TORNADO WARNING", mode: "nfm", enabled: true },
+        channel: { id: "test", freq, alphaTag, mode: "nfm", enabled: true },
         freq,
         holdSeconds: clear ? 0 : 600,
         ts: Date.now(),

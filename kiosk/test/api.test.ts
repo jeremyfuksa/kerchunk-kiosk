@@ -1091,4 +1091,12 @@ describe("admin test-alert trigger (banner design tool)", () => {
     expect(alerts).toHaveLength(1);
     expect(alerts[0].holdSeconds).toBe(0); // until = ts → dashboard drops it on next paint
   });
+
+  it("POST /api/test/alert honors a requested alphaTag (banner-design cycling)", async () => {
+    const { server, sent } = makeWithClient();
+    await request(server).post("/api/test/alert").send({ alphaTag: "SEVERE THUNDERSTORM WARNING" }).expect(200);
+    const alerts = sent.filter((e) => e.type === "alert");
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0].channel.alphaTag).toBe("SEVERE THUNDERSTORM WARNING");
+  });
 });

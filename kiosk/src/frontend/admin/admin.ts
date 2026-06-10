@@ -1503,13 +1503,25 @@ export function renderAdmin(root: HTMLElement): void {
       button.disabled = false;
     }
   });
+  // Cycle representative storm types so each themed banner can be designed/
+  // verified from one button: warning tiers (loud) → a watch → a winter warning.
+  const TEST_ALERTS = [
+    "TORNADO WARNING",
+    "SEVERE THUNDERSTORM WARNING",
+    "FLASH FLOOD WARNING",
+    "TORNADO WATCH",
+    "WINTER STORM WARNING",
+  ];
+  let testAlertIdx = 0;
   root.querySelector<HTMLButtonElement>("#testAlert")!.addEventListener("click", async (event) => {
     const button = event.currentTarget as HTMLButtonElement;
+    const alphaTag = TEST_ALERTS[testAlertIdx % TEST_ALERTS.length]!;
+    testAlertIdx += 1;
     button.disabled = true;
-    systemActionStatus.textContent = "Showing test alert…";
+    systemActionStatus.textContent = `Showing “${alphaTag}”…`;
     try {
-      await api.testAlert();
-      systemActionStatus.textContent = "Test alert shown on kiosk (10 min)";
+      await api.testAlert({ alphaTag });
+      systemActionStatus.textContent = `Showing “${alphaTag}” on kiosk — click again for the next type`;
     } catch (e) {
       systemActionStatus.textContent = (e as Error).message;
     } finally {
@@ -1521,7 +1533,7 @@ export function renderAdmin(root: HTMLElement): void {
     button.disabled = true;
     systemActionStatus.textContent = "Clearing test alert…";
     try {
-      await api.testAlert(true);
+      await api.testAlert({ clear: true });
       systemActionStatus.textContent = "Test alert cleared";
     } catch (e) {
       systemActionStatus.textContent = (e as Error).message;
