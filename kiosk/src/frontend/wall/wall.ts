@@ -109,7 +109,7 @@ async function boot(canvas: HTMLCanvasElement): Promise<void> {
         ctx.fillStyle = "rgba(232,237,244,0.92)";
         ctx.font = `${Math.round(11 * dpr)}px system-ui, sans-serif`;
         ctx.textAlign = "center";
-        ctx.fillText(c.tag, x, Math.max(PAD_TOP * 0.7, topY - 8));
+        ctx.fillText(`${c.tag} ${n}`, x, Math.max(PAD_TOP * 0.7, topY - 8));
         ctx.globalCompositeOperation = "screen";
       }
     });
