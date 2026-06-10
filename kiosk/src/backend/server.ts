@@ -725,6 +725,26 @@ export function createServer(deps: ServerDeps): { server: Server } {
       return json(res, 200, { ok: true });
     }
 
+    // Banner design/verification tool: fire (or clear) a canned weather alert
+    // through the SAME broadcast path so the real dashboard banner shows on
+    // demand — no SDR, no storm. `clear` re-broadcasts with holdSeconds 0, so
+    // `until` is already past and the dashboard drops the banner on next paint.
+    if (method === "POST" && path === "/api/test/alert") {
+      const body = await readBody(req).catch(() => undefined);
+      const clear = body?.clear === true;
+      const freq = config.weatherChannel?.freq ?? 162_550_000;
+      const counties = fipsNames(config.alerts?.sameFips ?? [], config.alerts?.sameFips) || "Clay, Platte, Jackson";
+      deps.wsHub.broadcast({
+        type: "alert",
+        channel: { id: "test", freq, alphaTag: "TORNADO WARNING", mode: "nfm", enabled: true },
+        freq,
+        holdSeconds: clear ? 0 : 600,
+        ts: Date.now(),
+        ...(clear ? {} : { counties }),
+      });
+      return json(res, 200, { ok: true });
+    }
+
     if (method === "POST" && path === "/api/scan/start") { await engine.start(toScanConfig(config, mode, monitorChannel)); return json(res, 200, { state: engine.state }); }
     if (method === "POST" && path === "/api/scan/stop") { await engine.stop(); return json(res, 200, { state: engine.state }); }
 

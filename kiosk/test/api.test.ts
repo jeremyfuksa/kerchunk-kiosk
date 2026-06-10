@@ -1058,3 +1058,37 @@ describe("SAME alerts (Idea 11)", () => {
     expect(sc.knownHz).toContain(162550000);
   });
 });
+
+describe("admin test-alert trigger (banner design tool)", () => {
+  function makeWithClient() {
+    dir = mkdtempSync(join(tmpdir(), "ksrv-"));
+    const configStore = new ConfigStore(join(dir, "config.json"));
+    const wsHub = new WsHub();
+    const sent: any[] = [];
+    wsHub.add({ readyState: 1, OPEN: 1, send: (d: string) => sent.push(JSON.parse(d)) });
+    const { server } = createServer({
+      configStore, engine: new FakeEngine(), activityLog: new ActivityLog(10),
+      wsHub, staticDir: dir,
+    });
+    return { server, sent };
+  }
+
+  it("POST /api/test/alert broadcasts a canned weather alert with counties and a long hold", async () => {
+    const { server, sent } = makeWithClient();
+    await request(server).post("/api/test/alert").expect(200);
+    const alerts = sent.filter((e) => e.type === "alert");
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0].channel.alphaTag).toBe("TORNADO WARNING");
+    expect(typeof alerts[0].counties).toBe("string");
+    expect(alerts[0].counties.length).toBeGreaterThan(0);
+    expect(alerts[0].holdSeconds).toBeGreaterThan(60); // long enough to design against
+  });
+
+  it("POST /api/test/alert with {clear:true} broadcasts an instantly-expired alert", async () => {
+    const { server, sent } = makeWithClient();
+    await request(server).post("/api/test/alert").send({ clear: true }).expect(200);
+    const alerts = sent.filter((e) => e.type === "alert");
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0].holdSeconds).toBe(0); // until = ts → dashboard drops it on next paint
+  });
+});

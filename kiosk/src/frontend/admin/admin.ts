@@ -130,6 +130,8 @@ export function renderAdmin(root: HTMLElement): void {
           <div class="systemActions">
             <span class="systemActionsLabel">System controls</span>
             <button id="kioskReload" title="Refresh the display page and reload its map and frontend assets">Refresh kiosk screen</button>
+            <button id="testAlert" title="Show a sample weather-alert banner on the kiosk (for design + verifying alerts work)">Test weather alert</button>
+            <button id="testAlertClear" title="Clear the test weather-alert banner from the kiosk">Clear alert</button>
             <button id="backendRestart" class="danger" title="Restart the radio backend and scanner helpers">Restart radio backend</button>
             <span id="systemActionStatus" class="hint" role="status"></span>
           </div>
@@ -1495,6 +1497,32 @@ export function renderAdmin(root: HTMLElement): void {
     try {
       await api.reloadKiosk();
       systemActionStatus.textContent = "Refresh sent";
+    } catch (e) {
+      systemActionStatus.textContent = (e as Error).message;
+    } finally {
+      button.disabled = false;
+    }
+  });
+  root.querySelector<HTMLButtonElement>("#testAlert")!.addEventListener("click", async (event) => {
+    const button = event.currentTarget as HTMLButtonElement;
+    button.disabled = true;
+    systemActionStatus.textContent = "Showing test alert…";
+    try {
+      await api.testAlert();
+      systemActionStatus.textContent = "Test alert shown on kiosk (10 min)";
+    } catch (e) {
+      systemActionStatus.textContent = (e as Error).message;
+    } finally {
+      button.disabled = false;
+    }
+  });
+  root.querySelector<HTMLButtonElement>("#testAlertClear")!.addEventListener("click", async (event) => {
+    const button = event.currentTarget as HTMLButtonElement;
+    button.disabled = true;
+    systemActionStatus.textContent = "Clearing test alert…";
+    try {
+      await api.testAlert(true);
+      systemActionStatus.textContent = "Test alert cleared";
     } catch (e) {
       systemActionStatus.textContent = (e as Error).message;
     } finally {
