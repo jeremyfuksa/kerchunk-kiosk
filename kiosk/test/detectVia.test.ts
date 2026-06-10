@@ -3,6 +3,7 @@ import { configSchema, defaultConfig } from "../src/backend/config/schema.js";
 import { WidebandEngine } from "../src/backend/engine/WidebandEngine.js";
 import { toScanConfig } from "../src/backend/server.js";
 
+
 describe("scan.detectVia", () => {
   it("defaults to absent (lane behavior) and accepts 'lane' | 'fft'", () => {
     const base = { sampleRate: 2_400_000, squelchLevel: 1800, gain: "auto" as const, dwellMs: 2000 };
@@ -68,6 +69,17 @@ describe("WidebandEngine --detect-via", () => {
     expect(argsFor(base)).toContain("--close-call");                       // absent -> on
     expect(argsFor({ ...base, closeCall: true })).toContain("--close-call");
     expect(argsFor({ ...base, closeCall: false })).not.toContain("--close-call");
+  });
+});
+
+describe("audio.remoteListening", () => {
+  it("defaults to false and is parseable as a boolean", () => {
+    const base = { sink: "default", volume: 70, muted: false };
+    expect(configSchema.shape.audio.parse({ ...base }).remoteListening).toBe(false);
+    expect(configSchema.shape.audio.parse({ ...base, remoteListening: true }).remoteListening).toBe(true);
+  });
+  it("is present and false in defaultConfig()", () => {
+    expect(defaultConfig().audio.remoteListening).toBe(false);
   });
 });
 

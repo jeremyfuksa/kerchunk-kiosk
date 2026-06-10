@@ -44,6 +44,13 @@ export interface ScanConfig {
   knownHz?: number[];
   // Power-detection source for the wideband engine ("lane" | "fft"). Others ignore it.
   detectVia?: "lane" | "fft";
+  // Remote listening: when true the wideband helper builds the PCM streaming
+  // tee (--audio-fd) that /api/stream.wav drains. Off => no tee, no idle cost.
+  remoteListening?: boolean;
+  // SAME decode wanted on THIS helper: true exactly when it carries NWR
+  // (derived in toScanConfig / set by the dedicated weather engine). Gates the
+  // multimon-ng spawn + the last-lane decoder tap (used by helperArgs in P2).
+  sameEnable?: boolean;
 }
 
 export type EngineState = "stopped" | "starting" | "running" | "error";
