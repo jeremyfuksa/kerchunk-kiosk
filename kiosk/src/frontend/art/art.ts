@@ -69,7 +69,9 @@ async function boot(canvas: HTMLCanvasElement): Promise<void> {
     canvas.height = Math.round(canvas.clientHeight * dpr);
   }
   resize();
-  window.addEventListener("resize", resize);
+  // Repaint after a resize: with the idle loop, a resize while suspended would
+  // otherwise leave the canvas stale at the new size until the next hit.
+  window.addEventListener("resize", () => { resize(); loop.wake(); });
 
   const ctx = canvas.getContext("2d")!;
 
