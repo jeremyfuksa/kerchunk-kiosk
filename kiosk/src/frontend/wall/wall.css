@@ -1,0 +1,3 @@
+/* kiosk/src/frontend/wall/wall.css */
+html, body { margin: 0; height: 100%; background: #05070a; overflow: hidden; }
+#wall-canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; background: #05070a; }

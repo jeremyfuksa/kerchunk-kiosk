@@ -7,6 +7,7 @@ import { api } from "../lib/api.js";
 import { colorFor } from "../lib/serviceColor.js";
 import { SedimentField, startOfLocalDay, type Deposit } from "./sediment.js";
 import { makeProjection, type Home } from "./project.js";
+import { createIdleLoop } from "../lib/idleLoop.js";
 import type { EngineEvent } from "../../backend/engine/ScannerEngine.js";
 import type { HistoryRow } from "../../backend/history.js";
 import "./art.css";
@@ -56,6 +57,7 @@ async function boot(canvas: HTMLCanvasElement): Promise<void> {
         color: colorFor(ev.freq, "active"),
         ts: ev.ts,
       });
+      loop.wake();
     }
     // closecall carries no location; the server files it as a channel whose later
     // "active" carries location — so nothing to plot here.
@@ -67,11 +69,13 @@ async function boot(canvas: HTMLCanvasElement): Promise<void> {
     canvas.height = Math.round(canvas.clientHeight * dpr);
   }
   resize();
-  window.addEventListener("resize", resize);
+  // Repaint after a resize: with the idle loop, a resize while suspended would
+  // otherwise leave the canvas stale at the new size until the next hit.
+  window.addEventListener("resize", () => { resize(); loop.wake(); });
 
   const ctx = canvas.getContext("2d")!;
 
-  function frame(): void {
+  function paint(): boolean {
     const now = Date.now();
     const today = startOfLocalDay(now);
     if (today !== dayStart) { field.clear(); dayStart = today; }
@@ -81,14 +85,26 @@ async function boot(canvas: HTMLCanvasElement): Promise<void> {
     ctx.clearRect(0, 0, w, h);
     ctx.globalCompositeOperation = "screen";
 
-    for (const dep of field.deposits(now)) {
+    const deps = field.deposits(now);
+    for (const dep of deps) {
       drawDeposit(ctx, project(dep.lat, dep.lon), dep);
     }
-
     ctx.globalCompositeOperation = "source-over";
-    requestAnimationFrame(frame);
+    // Keep animating only while a deposit is still blooming.
+    return deps.some((d) => d.breath > 0);
   }
-  requestAnimationFrame(frame);
+
+  const loop = createIdleLoop({ tick: paint });
+  // Initial paint of the seeded portrait.
+  loop.wake();
+
+  // Daily reset even while idle: wake once at the next local midnight so the
+  // portrait clears on time without a continuous poll. Re-arms each midnight.
+  function scheduleMidnight(): void {
+    const next = startOfLocalDay(Date.now()) + 24 * 60 * 60 * 1000;
+    setTimeout(() => { loop.wake(); scheduleMidnight(); }, Math.max(1000, next - Date.now()));
+  }
+  scheduleMidnight();
 
   function drawDeposit(c: CanvasRenderingContext2D, p: { x: number; y: number }, dep: Deposit): void {
     const maxHits = dep.strata[0]?.hits ?? 1;
