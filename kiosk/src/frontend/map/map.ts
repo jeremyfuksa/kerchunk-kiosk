@@ -145,21 +145,81 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
         : { styles: DARK_STYLE }),
     });
 
-    // ── NEXRAD radar overlay (ROADMAP Idea 2 follow-on, the SAME cross-tie:
-    // a warning banner with live precipitation under it). IEM's keyless
-    // cached composite — free, US-wide, Web Mercator, ~5 min volume scans.
-    // Transparent wherever there's no weather, so a dry day costs nothing;
-    // offline it just 404s to absence. Tile overlays render under every
-    // marker/circle, so blips and coverage stay on top.
-    const RADAR_REFRESH_MS = 5 * 60_000;
+    // ── Radar overlay (ROADMAP Idea 2 follow-on, the SAME cross-tie: a warning
+    // banner with live precipitation under it). Three keyless products,
+    // selected by display.radarProduct:
+    //   "n0q" (default) — IEM cached NEXRAD base-reflectivity mosaic, ~5 min,
+    //     ready-made XYZ tiles. Familiar green dBZ palette, but raw: paints
+    //     clear-air green (bugs, ground clutter, AP) on dry days.
+    //   "mrms-reflectivity" — NOAA MRMS quality-controlled 1 km base
+    //     reflectivity (ArcGIS export, ~2 min). Same green palette, but
+    //     dual-pol QC strips the clear-air clutter, so dry days stay clean.
+    //   "mrms-preciprate" — IEM MRMS Q3 2-minute precipitation (WMS GetMap, ~2
+    //     min). Fully precip-gated, but a rainfall-rate palette (blue = light)
+    //     with low 2-minute dynamic range.
+    // The MRMS products have no XYZ scheme, so we hand-compute each tile's Web
+    // Mercator bbox. Every product is transparent where there's no weather (a
+    // dry day costs nothing; offline it just 404s to absence) and renders under
+    // every marker/circle so blips and coverage stay on top.
+    const radarProduct = cfg.display?.radarProduct ?? "n0q";
+    // Web Mercator (EPSG:3857) world half-extent in meters — the edge of the
+    // tile grid. A z-level splits 2×MERC_MAX into 2^z equal tiles per axis.
+    const MERC_MAX = 20037508.342789244;
+    function tileBbox(x: number, y: number, z: number): string {
+      const span = (MERC_MAX * 2) / Math.pow(2, z);
+      const minx = -MERC_MAX + x * span;
+      const maxx = -MERC_MAX + (x + 1) * span;
+      // Google tile rows count down from the north; mercator Y counts up.
+      const maxy = MERC_MAX - y * span;
+      const miny = MERC_MAX - (y + 1) * span;
+      return `${minx},${miny},${maxx},${maxy}`;
+    }
+    type RadarSpec = {
+      tileUrl: (x: number, y: number, z: number, epoch: number) => string;
+      opacity: number;
+      name: string;
+      refreshMs: number;
+    };
+    const RADAR = {
+      "n0q": {
+        tileUrl: (x, y, z, epoch) =>
+          `https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-900913/${z}/${x}/${y}.png?_=${epoch}`,
+        opacity: 0.55,
+        name: "nexrad",
+        refreshMs: 5 * 60_000,
+      },
+      "mrms-reflectivity": {
+        tileUrl: (x, y, z, epoch) =>
+          "https://mapservices.weather.noaa.gov/eventdriven/rest/services"
+          + "/radar/radar_base_reflectivity/MapServer/export"
+          + `?bbox=${tileBbox(x, y, z)}&bboxSR=3857&imageSR=3857&size=256,256`
+          + `&format=png32&transparent=true&layers=show:0&f=image&_=${epoch}`,
+        opacity: 0.55,
+        name: "mrms-qc",
+        refreshMs: 2 * 60_000,
+      },
+      "mrms-preciprate": {
+        tileUrl: (x, y, z, epoch) =>
+          "https://mesonet.agron.iastate.edu/cgi-bin/wms/us/mrms.cgi"
+          + "?service=WMS&version=1.1.1&request=GetMap&layers=mrms_a2m&styles="
+          + "&srs=EPSG:3857&width=256&height=256&format=image/png&transparent=true"
+          + `&bbox=${tileBbox(x, y, z)}&_=${epoch}`,
+        // Precip-rate tiles are sparser than a reflectivity wash; a touch more
+        // opacity keeps light rain legible across the room.
+        opacity: 0.65,
+        name: "mrms-rate",
+        refreshMs: 2 * 60_000,
+      },
+    } satisfies Record<string, RadarSpec>;
+    const spec = RADAR[radarProduct];
     let radarEpoch = Date.now();
     function radarLayer(): any {
       return new google.maps.ImageMapType({
         getTileUrl: (c: { x: number; y: number }, z: number) =>
-          `https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-900913/${z}/${c.x}/${c.y}.png?_=${radarEpoch}`,
+          spec.tileUrl(c.x, c.y, z, radarEpoch),
         tileSize: new google.maps.Size(256, 256),
-        opacity: 0.55,
-        name: "nexrad",
+        opacity: spec.opacity,
+        name: spec.name,
       });
     }
     map.overlayMapTypes.push(radarLayer());
@@ -168,7 +228,7 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
       radarEpoch = Date.now();
       map.overlayMapTypes.pop();
       map.overlayMapTypes.push(radarLayer());
-    }, RADAR_REFRESH_MS);
+    }, spec.refreshMs);
 
     // Home: the kiosk's own antenna. Small, dim, unmistakable.
     new google.maps.Marker({
