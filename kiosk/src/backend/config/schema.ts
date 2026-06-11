@@ -168,6 +168,19 @@ export const configSchema = z.object({
     mapLat: z.number().optional(),
     mapLon: z.number().optional(),
     mapZoom: z.number().int().optional(),
+    // Radar overlay product (defaults to "n0q").
+    //   "n0q" — IEM's cached NEXRAD base-reflectivity mosaic. Familiar green
+    //     dBZ palette, but raw: paints clear-air green (bugs, ground clutter,
+    //     AP) on dry days.
+    //   "mrms-reflectivity" — NOAA's MRMS quality-controlled 1 km base
+    //     reflectivity. Same green palette as n0q, but dual-pol QC strips the
+    //     clear-air clutter, so dry days stay clean. Best of both.
+    //   "mrms-preciprate" — IEM MRMS Q3 2-minute precipitation. Fully
+    //     precip-gated (empty over clear air), but a rainfall-rate palette
+    //     (blue = light) with low 2-minute dynamic range.
+    radarProduct: z
+      .enum(["n0q", "mrms-reflectivity", "mrms-preciprate"])
+      .optional(),
   }).optional(),
   // Multi-SDR (ROADMAP Idea 10): role assignments by device identity.
   // Prefer SERIAL (e.g. "KIOSK01") — SoapySDR resolves it to the exact dongle
