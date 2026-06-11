@@ -1,3 +1,6 @@
 /* kiosk/src/frontend/wall/wall.css */
-html, body { margin: 0; height: 100%; background: #05070a; overflow: hidden; }
+/* Scoped to the wall route — this CSS is injected globally, so an unscoped
+   `html, body { overflow: hidden }` would kill scrolling on the admin page. */
+html[data-page="wall"], html[data-page="wall"] body { margin: 0; height: 100%; overflow: hidden; }
+html[data-page="wall"] body { background: #05070a; }
 #wall-canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; background: #05070a; }
