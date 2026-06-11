@@ -8,6 +8,7 @@ import { ConfigStore } from "../src/backend/config/ConfigStore.js";
 import { ActivityLog } from "../src/backend/activityLog.js";
 import { WsHub } from "../src/backend/ws.js";
 import { FakeEngine } from "../src/backend/engine/FakeEngine.js";
+import { HistoryStore } from "../src/backend/history.js";
 
 let dir: string;
 function makeApp() {
@@ -869,6 +870,53 @@ describe("activity history (Idea 5)", () => {
   it("404s without a store", async () => {
     const { server } = makeApp();
     expect((await request(server).get("/api/history")).status).toBe(404);
+  });
+});
+
+describe("alert feed deletion (Idea 6)", () => {
+  function makeWithRealHistory() {
+    dir = mkdtempSync(join(tmpdir(), "ksrv-"));
+    const configStore = new ConfigStore(join(dir, "config.json"));
+    const history = new HistoryStore({ path: ":memory:" });
+    history.record({ ts: 1000, kind: "alert", channelId: "c1", freq: 154130000, alphaTag: "Fire" });
+    history.record({ ts: 2000, kind: "alert", channelId: "c2", freq: 155340000, alphaTag: "EMS" });
+    history.record({ ts: 3000, kind: "active", channelId: "c3", freq: 146520000, alphaTag: "Ham" });
+    const { server } = createServer({
+      configStore, engine: new FakeEngine(), activityLog: new ActivityLog(10),
+      wsHub: new WsHub(), staticDir: dir, history,
+    });
+    return { server, history };
+  }
+
+  it("DELETE /api/history/alerts/:id dismisses one alert", async () => {
+    const { server, history } = makeWithRealHistory();
+    const id = history.query({ kind: "alert", freq: 154130000 })[0]!.id;
+    const res = await request(server).delete(`/api/history/alerts/${id}`);
+    expect(res.status).toBe(204);
+    expect(history.query({ kind: "alert" }).map((r) => r.alphaTag)).toEqual(["EMS"]);
+  });
+
+  it("DELETE /api/history/alerts/:id 404s for a row that isn't an alert", async () => {
+    const { server, history } = makeWithRealHistory();
+    const activeId = history.query({ kind: "active" })[0]!.id;
+    const res = await request(server).delete(`/api/history/alerts/${activeId}`);
+    expect(res.status).toBe(404);
+    expect(history.query({ kind: "active" })).toHaveLength(1); // hit row survives
+  });
+
+  it("DELETE /api/history/alerts clears the feed and reports the count", async () => {
+    const { server, history } = makeWithRealHistory();
+    const res = await request(server).delete("/api/history/alerts");
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ removed: 2 });
+    expect(history.query({ kind: "alert" })).toHaveLength(0);
+    expect(history.query({ kind: "active" })).toHaveLength(1); // hits untouched
+  });
+
+  it("alert-deletion routes 404 without a history store", async () => {
+    const { server } = makeApp();
+    expect((await request(server).delete("/api/history/alerts")).status).toBe(404);
+    expect((await request(server).delete("/api/history/alerts/1")).status).toBe(404);
   });
 });
 

@@ -205,6 +205,7 @@ export function renderAdmin(root: HTMLElement): void {
       <section class="alertFeed collapsible" data-key="alerts" data-page="home">
         <h2>Alerts <span class="hint">what fired while you were away — flag channels with the bell</span></h2>
         <ul id="alertRows" class="alertList"></ul>
+        <div class="alertFeedFoot"><button id="clearAlerts" class="alertClearAll" type="button" hidden>Clear all</button></div>
       </section>
       </div>
       <div class="pageIntro" data-page="scan">
@@ -576,15 +577,32 @@ export function renderAdmin(root: HTMLElement): void {
   // ── Alert feed (ROADMAP Idea 6): the durable "what fired while I was
   // away" review, straight off history rows with kind=alert.
   const alertRows = root.querySelector<HTMLElement>("#alertRows")!;
+  const clearAlertsBtn = root.querySelector<HTMLButtonElement>("#clearAlerts")!;
   async function renderAlertFeed(): Promise<void> {
     const rows = await fetch("/api/history?kind=alert&limit=25")
       .then((r) => (r.ok ? r.json() : [])) as
-      Array<{ ts: number; freq: number; alphaTag: string }>;
+      Array<{ id: number; ts: number; freq: number; alphaTag: string }>;
+    clearAlertsBtn.hidden = rows.length === 0;
     alertRows.innerHTML = rows.length
       ? rows.map((r) => `<li><span class="alertWhen">${new Date(r.ts).toLocaleString()}</span>
-          <span class="alertWhat">${fmtFreq(r.freq)} ${esc(r.alphaTag)}</span></li>`).join("")
+          <span class="alertWhat">${fmtFreq(r.freq)} ${esc(r.alphaTag)}</span>${iconBtn("alertDismiss", "del", "Dismiss this alert", `data-id="${r.id}"`)}</li>`).join("")
       : `<li class="hint">no alerts yet — flag a channel with “Alert on hit” in its drawer</li>`;
+    alertRows.querySelectorAll<HTMLButtonElement>(".alertDismiss").forEach((b) =>
+      b.addEventListener("click", async () => {
+        await api.dismissAlert(Number(b.dataset.id));
+        renderAlertFeed().catch(() => {});
+      }));
   }
+  clearAlertsBtn.addEventListener("click", async () => {
+    if (!await confirmAdminAction({
+      title: "Clear all alerts",
+      message: "Remove every alert from the feed? The underlying activity history is kept.",
+      confirmLabel: "Clear all",
+      danger: true,
+    })) return;
+    await api.clearAlerts();
+    renderAlertFeed().catch(() => {});
+  });
   void renderAlertFeed().catch(() => {});
   setInterval(() => { renderAlertFeed().catch(() => {}); }, 60_000);
 
