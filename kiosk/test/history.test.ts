@@ -149,4 +149,34 @@ describe("alert rows (ROADMAP Idea 6)", () => {
     expect(h.stats(0).byTag).toEqual([{ tag: "business", hits: 1 }]);
     expect(h.sites()[0]?.hits).toBe(1);
   });
+
+  it("deleteAlert removes only that alert row and reports whether it hit", () => {
+    const h = make();
+    h.record({ ts: 1000, kind: "alert", channelId: "c1", freq: 1, alphaTag: "A" });
+    h.record({ ts: 2000, kind: "alert", channelId: "c2", freq: 2, alphaTag: "B" });
+    const id = h.query({ kind: "alert", freq: 1 })[0]!.id;
+    expect(h.deleteAlert(id)).toBe(true);
+    expect(h.query({ kind: "alert" }).map((r) => r.alphaTag)).toEqual(["B"]);
+    expect(h.deleteAlert(id)).toBe(false); // already gone
+  });
+
+  it("deleteAlert refuses to delete a non-alert (active/closecall) row", () => {
+    const h = make();
+    h.record({ ts: 1000, kind: "active", channelId: "c1", freq: 1, alphaTag: "A" });
+    const id = h.query({})[0]!.id;
+    expect(h.deleteAlert(id)).toBe(false);
+    expect(h.query({})).toHaveLength(1); // the active hit row survives
+  });
+
+  it("clearAlerts wipes every alert row, returns the count, and spares hits", () => {
+    const h = make();
+    h.record({ ts: 1000, kind: "active", channelId: "c1", freq: 1, alphaTag: "A" });
+    h.record({ ts: 1001, kind: "alert", channelId: "c1", freq: 1, alphaTag: "A" });
+    h.record({ ts: 2000, kind: "closecall", channelId: "cc", freq: 2, alphaTag: "CC" });
+    h.record({ ts: 2001, kind: "alert", channelId: "cc", freq: 2, alphaTag: "CC" });
+    expect(h.clearAlerts()).toBe(2);
+    expect(h.query({ kind: "alert" })).toHaveLength(0);
+    expect(h.query({}).map((r) => r.kind).sort()).toEqual(["active", "closecall"]);
+    expect(h.clearAlerts()).toBe(0); // nothing left to clear
+  });
 });

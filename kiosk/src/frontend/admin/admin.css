@@ -535,6 +535,23 @@ body {
 .alertList li:last-child { border-bottom: none; }
 .alertList .alertWhen { color: var(--text-tertiary, #747b8a); white-space: nowrap; }
 .alertList .alertWhat { color: var(--text-primary, #f7f8f9); }
+/* Per-row dismiss: pushed to the far right. Kept faint so the feed stays calm
+   to read, but always visible — the admin is touch-first, so a hover-only
+   affordance would be undiscoverable on the phone. */
+.alertList .alertDismiss { margin-left: auto; align-self: center; opacity: 0.45; transition: opacity 0.15s; }
+.alertList li:hover .alertDismiss,
+.alertList .alertDismiss:focus-visible { opacity: 1; }
+
+.alertFeedFoot { display: flex; justify-content: flex-end; margin-top: 0.6rem; }
+.alertClearAll {
+  font-family: var(--cond); font-size: 0.72rem;
+  letter-spacing: 0.08em; text-transform: uppercase;
+  padding: 0.3rem 0.7rem;
+  color: var(--red); background: none;
+  border: 1px solid color-mix(in srgb, var(--red) 35%, transparent);
+  border-radius: 4px; cursor: pointer;
+}
+.alertClearAll:hover { background: color-mix(in srgb, var(--red) 12%, transparent); }
 
 /* ── Per-bank scan profile editor (Idea 7) */
 .bankGear { opacity: 0.55; margin-left: 0.45em; cursor: pointer; }

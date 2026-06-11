@@ -42,6 +42,8 @@ export const api = {
     fetch("/api/scan/skip", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(holdoffSeconds ? { holdoffSeconds } : {}) }),
   testAlert: (opts?: { alphaTag?: string; clear?: boolean }) =>
     fetch("/api/test/alert", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(opts ?? {}) }).then(j<{ ok: boolean }>),
+  dismissAlert: (id: number) => fetch(`/api/history/alerts/${id}`, { method: "DELETE" }),
+  clearAlerts: () => fetch("/api/history/alerts", { method: "DELETE" }).then(j<{ removed: number }>),
   reloadKiosk: () => fetch("/api/kiosk/reload", { method: "POST" }).then(j<{ ok: boolean }>),
   restartBackend: () => fetch("/api/backend/restart", { method: "POST" }).then(j<{ ok: boolean }>),
   getLogs: () => fetch("/api/logs").then(j<{ freq: number; alphaTag: string; ts: number }[]>),

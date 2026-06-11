@@ -205,6 +205,20 @@ export class HistoryStore {
     };
   }
 
+  /** Dismiss a single reviewed alert. The `kind = 'alert'` guard makes this
+   *  safe to expose: it can never delete an 'active'/'closecall' hit row, only
+   *  the alert annotation. Returns true if a row was removed. */
+  deleteAlert(id: number): boolean {
+    const res = this.db.prepare("DELETE FROM events WHERE id = ? AND kind = 'alert'").run(id);
+    return Number(res.changes) > 0;
+  }
+
+  /** Clear the whole alert feed ("mark all seen"). Returns the count removed.
+   *  Only alert rows go — the underlying hits and all stats are untouched. */
+  clearAlerts(): number {
+    return Number(this.db.prepare("DELETE FROM events WHERE kind = 'alert'").run().changes);
+  }
+
   /** Drop rows beyond the retention window (call at boot + daily). */
   prune(): void {
     const cutoff = Date.now() - this.retentionDays * 86_400_000;

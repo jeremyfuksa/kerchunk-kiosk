@@ -26,7 +26,7 @@ export interface ServerDeps {
   /** Optional current-conditions provider for the kiosk header. */
   weather?: Pick<NwsWeather, "current">;
   /** Optional durable activity history (ROADMAP Idea 5). */
-  history?: Pick<HistoryStore, "record" | "release" | "query" | "sites" | "stats">
+  history?: Pick<HistoryStore, "record" | "release" | "query" | "sites" | "stats" | "deleteAlert" | "clearAlerts">
     & Partial<Pick<HistoryStore, "setRf">>;
   /** Dedicated weather radio engine (Idea 10): its SAME events feed the
    *  same tee as the main engine's. */
@@ -948,6 +948,19 @@ export function createServer(deps: ServerDeps): { server: Server } {
     if (method === "GET" && path === "/api/history/sites") {
       if (!deps.history) return json(res, 404, { error: "no history store" });
       return json(res, 200, deps.history.sites());
+    }
+
+    // Alert-feed housekeeping (Idea 6): the operator clears reviewed alerts.
+    // Only alert rows are touched — the underlying hits and every stat survive.
+    if (method === "DELETE" && path === "/api/history/alerts") {
+      if (!deps.history) return json(res, 404, { error: "no history store" });
+      return json(res, 200, { removed: deps.history.clearAlerts() });
+    }
+    const alertMatch = /^\/api\/history\/alerts\/(\d+)$/.exec(path);
+    if (method === "DELETE" && alertMatch) {
+      if (!deps.history) return json(res, 404, { error: "no history store" });
+      const deleted = deps.history.deleteAlert(Number(alertMatch[1]));
+      return deleted ? json(res, 204, null) : json(res, 404, { error: "unknown alert" });
     }
 
     if (method === "GET" && path === "/api/stats") {
