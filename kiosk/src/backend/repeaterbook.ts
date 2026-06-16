@@ -155,7 +155,7 @@ export class RepeaterBook {
       const url = "https://www.repeaterbook.com/api/export.php?country=United%20States&state="
         + encodeURIComponent(state);
       const headers: Record<string, string> = { "User-Agent": this.opts.userAgent };
-      if (this.opts.apiToken) headers["Authorization"] = `Bearer ${this.opts.apiToken}`;
+      if (this.opts.apiToken) headers["X-RB-App-Token"] = this.opts.apiToken;
       const res = await this.opts.fetcher(url, { headers });
       if (!res.ok) return this.mem.get(state) ?? [];
       const body = await res.json() as { results?: RbRecord[] };
