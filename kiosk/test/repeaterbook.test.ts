@@ -54,8 +54,8 @@ describe("RepeaterBook", () => {
   });
 });
 
-describe("bearer token (March 2026 policy)", () => {
-  it("sends Authorization when a token is configured", async () => {
+describe("app token (March 2026 policy)", () => {
+  it("sends the X-RB-App-Token header when a token is configured", async () => {
     const fetcher = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => EXPORT });
     const dir = mkdtempSync(join(tmpdir(), "rb-"));
     const rb = new RepeaterBook({
@@ -63,7 +63,10 @@ describe("bearer token (March 2026 policy)", () => {
       states: ["Kansas"], cacheDir: dir, fetcher,
     });
     await rb.lookup(145130000);
-    expect(fetcher.mock.calls[0][1].headers["Authorization"]).toBe("Bearer app_abc123");
+    // RepeaterBook authenticates on X-RB-App-Token, NOT Authorization: Bearer
+    // (the latter 401s with auth_missing).
+    expect(fetcher.mock.calls[0][1].headers["X-RB-App-Token"]).toBe("app_abc123");
+    expect(fetcher.mock.calls[0][1].headers["Authorization"]).toBeUndefined();
   });
 });
 

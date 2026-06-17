@@ -1009,9 +1009,14 @@ in-place wins on the current helper, not a DSP re-architecture.
   lanes per window — rewrite risk vs a field-calibrated DSP.
 
 ### Watch items (no build, just time)
-- **RepeaterBook token** (pending since March-2026 policy): when issued,
+- ~~**RepeaterBook token** (pending since March-2026 policy): when issued,
   set config.lookup.apiToken AND clear lookedUpAt stamps on unlocated
-  channels so ham geo backfills.
+  channels so ham geo backfills.~~ DONE (Jun 2026): token issued and set in
+  config; stamps cleared on unlocated channels + discoveries; boot pass
+  re-queried them. Note the policy authenticates on the `X-RB-App-Token`
+  header, NOT `Authorization: Bearer` (that 401s `auth_missing`) — see PR
+  fixing the client. Remaining unlocated entries are genuinely non-ham
+  (railroad VHF, 2m/70cm simplex calling, business-band Close Call).
 - **SAME proof-of-life**: KEAX's next weekly test should land in the alert
   feed (banner only if alerts.sameTests).
 - **ERP estimator anchors**: estimates refine as licensed channels are
