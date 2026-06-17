@@ -43,7 +43,13 @@
    band's color instead of planting a synthetic dot. Faint, quick rise, slow
    fade; re-triggered per hit by toggling .pulse. */
 .edgeGlow {
-  position: absolute; inset: 0; pointer-events: none; z-index: 2;
+  /* Viewport-fixed, NOT absolute: the glow pulses the SCREEN edges, and fixing
+     it to the viewport means it never depends on (or mutates) the map
+     container's positioning. The kiosk map gets its fullscreen size from
+     `.mapStage .mapBase { position: absolute; inset: 0 }`; an absolute glow had
+     tempted the JS to force an inline `position: relative` on that container,
+     which overrode the class rule and collapsed the map to zero height. */
+  position: fixed; inset: 0; pointer-events: none; z-index: 2;
   opacity: 0;
   box-shadow: inset 0 0 90px 24px var(--glow-color, transparent);
 }

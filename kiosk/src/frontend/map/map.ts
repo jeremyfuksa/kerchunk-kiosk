@@ -150,7 +150,12 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
     // Edge glow: a hit with no honest map position has nowhere truthful to sit,
     // so instead of a synthetic dot we pulse the screen edges in the band's
     // color — "something on <service> just keyed up, location unknown".
-    if (getComputedStyle(root).position === "static") root.style.position = "relative";
+    // The glow is a viewport-fixed overlay (see .edgeGlow), so it needs NO
+    // positioning context on `root`. DON'T set root.style.position here: on the
+    // kiosk `root` is #mapBase, whose fullscreen size comes from the
+    // `.mapStage .mapBase { position: absolute; inset: 0 }` rule, and an inline
+    // `position: relative` overrides that class rule (inline > class), collapsing
+    // the container to zero height — a blank map in both vector and raster.
     const glow = document.createElement("div");
     glow.className = "edgeGlow";
     root.appendChild(glow);
