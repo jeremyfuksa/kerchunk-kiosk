@@ -1,7 +1,7 @@
 import { ReconnectingWs } from "../lib/wsClient.js";
 import { api } from "../lib/api.js";
 import { esc, fmtFreq } from "../lib/format.js";
-import { BlipField, syntheticPoint, coverageRadiusM } from "./blips.js";
+import { BlipField, coverageRadiusM } from "./blips.js";
 import type { EngineEvent } from "../../backend/engine/ScannerEngine.js";
 import icoTower from "lucide-static/icons/radio-tower.svg?raw";
 import { serviceFor } from "../../backend/config/banks.js";
@@ -446,22 +446,6 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
       }, 1500);
     }
 
-    // Unknown-frequency assignments stay fixed for this map session. Their
-    // initial position is chosen against all known sites loaded so far; once a
-    // later lookup supplies a real location, future events naturally use it.
-    const syntheticPositions = new Map<number, { lat: number; lng: number }>();
-    // Stable synthetic spot for an unlocated freq — seed once, reuse. Shared by
-    // nofix and the audible camera (a fresh tab can get `audible` for a freq it
-    // never saw `active`/`closecall` for, so the spot must be seedable here too).
-    function synthPos(freq: number): { lat: number; lng: number } {
-      let pos = syntheticPositions.get(freq);
-      if (!pos) {
-        pos = syntheticPoint(home, SYNTHETIC_FIELD_M, freq, knownPositions);
-        syntheticPositions.set(freq, pos);
-      }
-      return pos;
-    }
-
     function nofix(freqHz: number): void {
       // No honest position to plot — pulse the screen edges in the band's color
       // (active service color, not the muted nofix gray) instead of a fake dot.
@@ -519,18 +503,14 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
         // history backfills place them on the map properly.
         nofix(ev.freqHz);
       } else if (ev.type === "audible") {
-        // Camera follows AUDIO: punch to whatever owns the speaker right now,
-        // at its real location or its (seeded) synthetic spot. null = silence —
-        // hold the last view; the pull-back timer recenters after PUNCH_HOLD_MS.
+        // Camera follows AUDIO: punch to the speaker's real location. A
+        // no-location speaker has no honest spot to move to — hold the view and
+        // let its edge glow carry it. null = silence — also hold; the pull-back
+        // timer recenters after PUNCH_HOLD_MS.
         const ch = ev.channel;
         audibleId = ch?.id ?? null; // drives the signal-driven ring re-arm above
-        if (ch) {
-          if (ch.location?.lat != null && ch.location.lon != null) {
-            punch(ch.location.lat, ch.location.lon);
-          } else {
-            const pos = synthPos(ch.freq);
-            punch(pos.lat, pos.lng);
-          }
+        if (ch?.location?.lat != null && ch.location.lon != null) {
+          punch(ch.location.lat, ch.location.lon);
         }
       }
     }).connect();
