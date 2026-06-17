@@ -94,6 +94,9 @@ describe("sites() — distinct transmitter sites for the map's antenna layer", (
     expect(wof.lastTs).toBe(5);
     expect(wof.names).toContain("WoF Maint");
     expect(wof.names).toContain("WoF Security");
+    // freq = the site's MOST RECENT hit (ts=5 -> freq 2), so the map can derive
+    // the service pin from it when no located config channel seeded the site.
+    expect(wof.freq).toBe(2);
   });
 });
 
