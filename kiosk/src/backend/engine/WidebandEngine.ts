@@ -6,7 +6,7 @@ import type {
 } from "./ScannerEngine.js";
 import type { Channel } from "../config/schema.js";
 import { groupChannels, sweepCenters, type ChannelGroup } from "./grouping.js";
-import { computeLanePlan, lanePlanArgs } from "./lanePlan.js";
+import { computeLanePlan, lanePlanArgs, planFits, type LanePlan } from "./lanePlan.js";
 import { setVolume as amixerVolume, setMuted as amixerMuted } from "../audio.js";
 
 // Wideband group-hop scanner.
@@ -96,6 +96,11 @@ export class WidebandEngine implements ScannerEngine {
 
   private config: ScanConfig | null = null;
   private groups: Array<ChannelGroup<ScanChannel>> = [];
+  // The lane plan the LIVE helper was spawned with. retune() compares the new
+  // config against it: a config that fits re-points cheaply; one that needs
+  // more lanes or an absent demod path must respawn (the lane topology is a
+  // spawn arg, not something the `tune` command can change).
+  private spawnedPlan: LanePlan | null = null;
   private sweeps: number[] = [];
   private audioListeners = new Set<(chunk: Buffer) => void>();
   private sweepIndex = 0;
@@ -250,23 +255,41 @@ export class WidebandEngine implements ScannerEngine {
 
   /**
    * Re-point the LIVE flowgraph at a new config — a hop, not a restart. Used
-   * for mode switches (weather break-in ⇄ scan) so the operator never sees the
-   * warm-up overlay or hears the 300-thread cold-start chop. The helper's
-   * `tune` command re-centers the SDR and re-assigns the existing lanes; no
-   * respawn, no `booting`/`warmup` events (markFirstTune/markWarmReady already
-   * latched). If the helper isn't live (stopped, or never spawned), there is no
-   * graph to re-point — fall back to a full start.
+   * for mode switches (weather break-in ⇄ scan) and channel edits so the
+   * operator never sees the warm-up overlay or hears the 300-thread cold-start
+   * chop. The helper's `tune` command re-centers the SDR and re-assigns the
+   * EXISTING lanes; no respawn, no `booting`/`warmup` events.
+   *
+   * But the lane COUNT and per-lane demod paths are fixed at spawn — the tune
+   * command cannot grow lanes or add a demod path. So a re-point is only valid
+   * when the new config FITS the spawned lane plan (planFits): no more lanes
+   * than were built, every slot's needed FM/AM path already present, and at
+   * least one channel. A config that does not fit — a channel ADDED past a
+   * group's spawned lane count (the helper would silently truncate it), an AM
+   * edit/audition landing on an FM-only lane (it would mis-demodulate to
+   * silence), or an emptied channel set (the helper must be torn down to
+   * release the SDR, not left hot on a deleted window) — falls back to a full
+   * start(), which respawns with a correctly-sized channelizer. That is the
+   * ONLY case that re-shows the overlay, and only when the DSP topology must
+   * genuinely change; a rename/retag/priority/enable edit still re-points.
+   * If the helper isn't live there is no graph to re-point — also a full start.
    */
   async retune(config: ScanConfig): Promise<void> {
     if (this._state !== "running" || !this.child?.stdin?.writable) {
       return this.start(config);
     }
-    this.config = config;
-    this.groups = groupChannels(
+    const newGroups = groupChannels(
       config.channels,
       config.windowBandwidthHz ?? DEFAULT_WINDOW_HZ,
       MAX_CHANNELS_PER_GROUP,
     );
+    if (!this.spawnedPlan || !planFits(this.spawnedPlan, newGroups, MAX_CHANNELS_PER_GROUP)) {
+      // New topology (more lanes / a missing demod path / no channels) — the
+      // live helper can't honor it; respawn with a channelizer that can.
+      return this.start(config);
+    }
+    this.config = config;
+    this.groups = newGroups;
     this.groupIndex = 0;
     this.sweeps = sweepCenters(
       config.sweepRanges ?? [],
@@ -275,12 +298,6 @@ export class WidebandEngine implements ScannerEngine {
     );
     this.sweepIndex = 0;
     this.sweeping = false;
-    if (this.groups.length === 0) {
-      // Nothing to tune (config with no channels): hold the graph quiet rather
-      // than hop a phantom group.
-      this.clearDwellTimer();
-      return;
-    }
     this.sendTune();         // re-point now (emits "tuned", not "booting")
     this.startDwellTimer();  // re-arm the hop cadence (single group ⇒ parks)
   }
@@ -325,6 +342,7 @@ export class WidebandEngine implements ScannerEngine {
     // reconfigure); an empty config yields a safe 1-lane plan. The weather
     // engine rides the same path: its lone NWR channel collapses to one lane.
     const plan = computeLanePlan(this.groups, MAX_CHANNELS_PER_GROUP);
+    this.spawnedPlan = plan;   // remember what we built so retune() can fit-check
     args.push(...lanePlanArgs(plan));
     return args;
   }

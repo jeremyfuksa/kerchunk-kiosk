@@ -41,7 +41,8 @@ export type Fetcher = (url: string, init: { headers: Record<string, string> })
 
 export interface RepeaterBookOptions {
   userAgent: string;
-  /** Bearer token issued with API approval (required since March 2026). */
+  /** App token issued with API approval (required since March 2026); sent as
+   *  the X-RB-App-Token header. */
   apiToken?: string;
   states: string[];
   cacheDir: string;

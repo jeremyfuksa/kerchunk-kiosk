@@ -43,9 +43,11 @@ export class FakeEngine implements ScannerEngine {
   }
 
   // Mirrors WidebandEngine: re-point the live graph with NO warm-up/status
-  // churn. A stopped fake falls back to a fresh start, same as the real one.
+  // churn. A stopped fake — or an emptied channel set, which the real engine
+  // tears the helper down to release rather than re-pointing onto — falls back
+  // to a (re)start, same as the real one.
   async retune(config: ScanConfig): Promise<void> {
-    if (this._state !== "running") { await this.start(config); return; }
+    if (this._state !== "running" || config.channels.length === 0) { await this.start(config); return; }
     this.retunes.push(config);
     this.tunes.push(config);
     this.config = config;

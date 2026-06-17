@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeLanePlan, lanePlanArgs } from "../src/backend/engine/lanePlan.js";
+import { computeLanePlan, lanePlanArgs, planFits } from "../src/backend/engine/lanePlan.js";
 import type { ChannelGroup } from "../src/backend/engine/grouping.js";
 import type { Channel } from "../src/backend/config/schema.js";
 
@@ -72,5 +72,44 @@ describe("lanePlanArgs", () => {
       { fm: true, am: false }, { fm: false, am: true }, { fm: true, am: true },
     ]};
     expect(lanePlanArgs(plan)).toEqual(["--lanes", "3", "--lane-modes", "fab"]);
+  });
+});
+
+describe("planFits (re-point vs respawn decision)", () => {
+  // A helper spawned for two 3-channel FM groups: 3 lanes, slots f/f/b.
+  const spawned = computeLanePlan([
+    group(ch(146e6, "nfm"), ch(147e6, "nfm"), ch(147.5e6, "nfm")),
+  ], 12);
+
+  it("fits when the new config uses no more lanes than spawned (metadata edit)", () => {
+    const same = [group(ch(146e6, "nfm"), ch(147e6, "nfm"), ch(147.5e6, "nfm"))];
+    expect(planFits(spawned, same, 12)).toBe(true);
+  });
+
+  it("fits a SMALLER config — the weather break-in (one NFM channel) re-points", () => {
+    expect(planFits(spawned, [group(ch(162.55e6, "nfm"))], 12)).toBe(true);
+  });
+
+  it("does NOT fit when a group grows past the spawned lane count (added channel)", () => {
+    const bigger = [group(
+      ch(146e6, "nfm"), ch(147e6, "nfm"), ch(147.5e6, "nfm"), ch(147.9e6, "nfm"),
+    )];
+    expect(planFits(spawned, bigger, 12)).toBe(false); // needs 4 lanes, spawned 3
+  });
+
+  it("does NOT fit when a slot needs an AM path the spawned lane lacks", () => {
+    // slot 1 (middle freq) becomes AM; spawned lane 1 was FM-only.
+    const amMid = [group(ch(146e6, "nfm"), ch(147e6, "am"), ch(147.5e6, "nfm"))];
+    expect(planFits(spawned, amMid, 12)).toBe(false);
+  });
+
+  it("does NOT fit an empty channel set (tear down, never re-point)", () => {
+    expect(planFits(spawned, [], 12)).toBe(false);
+  });
+
+  it("AM still fits a lane built with an AM path (b = both)", () => {
+    // spawn with AM in slot 0 so lane 0 carries the AM path.
+    const amSpawn = computeLanePlan([group(ch(120e6, "am"), ch(146e6, "nfm"), ch(147e6, "nfm"))], 12);
+    expect(planFits(amSpawn, [group(ch(118e6, "am"), ch(146e6, "nfm"))], 12)).toBe(true);
   });
 });
