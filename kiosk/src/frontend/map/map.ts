@@ -345,6 +345,16 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
         // MORE transmission (merge = increment) — kept for the info-window count.
         existing.hits = increment ? existing.hits + hits : Math.max(existing.hits, hits);
         existing.lastTs = Math.max(existing.lastTs, lastTs);
+        // Upgrade a stuck-gray pin in place once a classifiable frequency lands,
+        // so an unknown site recolors live without a reload. Only ever gray ->
+        // known: never overwrite a real service pin, never re-set to gray.
+        if (existing.pin === pinUnknown && freq != null) {
+          const better = sitePin.get(key) ?? pinFor(freq);
+          if (better !== pinUnknown) {
+            existing.pin = better;
+            existing.marker.setIcon(pinMarker(better, Math.round(22 * mk)));
+          }
+        }
         return;
       }
       // A located config channel seeds the pin by service; otherwise derive it
@@ -356,7 +366,7 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
         icon: pinMarker(pin, Math.round(22 * mk)),
         title: names.join(", "),
       });
-      const entry = { marker, names: [...names], hits, lastTs };
+      const entry = { marker, names: [...names], hits, lastTs, pin };
       marker.addListener("click", () => {
         siteInfo.setContent(`<div class="blipInfo">${entry.names.map((n: string) => esc(n)).join("<br/>")}
           <div class="blipMeta">${entry.hits} hit${entry.hits === 1 ? "" : "s"} · last ${new Date(entry.lastTs).toLocaleTimeString()}</div></div>`);
