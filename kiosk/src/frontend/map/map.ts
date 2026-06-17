@@ -322,7 +322,7 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
     const antennas = new Map<string, any>();
     const siteInfo = new google.maps.InfoWindow({ disableAutoPan: true });
 
-    function antenna(lat: number, lon: number, names: string[], hits: number, lastTs: number, increment = false): void {
+    function antenna(lat: number, lon: number, names: string[], hits: number, lastTs: number, increment = false, freq?: number): void {
       const key = `${lat.toFixed(5)},${lon.toFixed(5)}`;
       const existing = antennas.get(key);
       if (existing) {
@@ -333,7 +333,10 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
         existing.lastTs = Math.max(existing.lastTs, lastTs);
         return;
       }
-      const pin = sitePin.get(key) ?? pinUnknown;
+      // A located config channel seeds the pin by service; otherwise derive it
+      // from the site's own heard frequency (history/live), so a heard biz site
+      // with no config location still wears its service pin instead of gray.
+      const pin = sitePin.get(key) ?? (freq != null ? pinFor(freq) : pinUnknown);
       const marker = new google.maps.Marker({
         map, position: { lat, lng: lon },
         icon: pinMarker(pin, Math.round(22 * mk)),
@@ -377,9 +380,9 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
     // fetch resolves, so each site already knows its service pin.
     const sitesReady = channelsReady.then(() => fetch("/api/history/sites")
       .then((r) => (r.ok ? r.json() : []))
-      .then((sites: Array<{ lat: number; lon: number; hits: number; lastTs: number; names: string[] }>) => {
+      .then((sites: Array<{ lat: number; lon: number; hits: number; lastTs: number; names: string[]; freq?: number }>) => {
         for (const sgt of sites) {
-          antenna(sgt.lat, sgt.lon, sgt.names, sgt.hits, sgt.lastTs);
+          antenna(sgt.lat, sgt.lon, sgt.names, sgt.hits, sgt.lastTs, false, sgt.freq);
           knownPositions.push({ lat: sgt.lat, lng: sgt.lon });
         }
       }))
@@ -462,7 +465,7 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
       wake(); // a blip was planted (live or backfilled) — ensure the loop runs
       // Live hits plant/refresh the persistent antenna. The pulse ring (startTx)
       // and the camera punch (audible) are driven from the WS handler, not here.
-      if (Date.now() - ts < 2000) antenna(lat, lon, [alphaTag], 1, ts, true);
+      if (Date.now() - ts < 2000) antenna(lat, lon, [alphaTag], 1, ts, true, freq);
     }
 
     // Backfill: the last hour, pre-decayed.

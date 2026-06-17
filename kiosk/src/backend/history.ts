@@ -141,11 +141,14 @@ export class HistoryStore {
       .map((r) => ({ ...r, tags: JSON.parse(String(r.tags)) }) as unknown as HistoryRow);
   }
 
-  /** Distinct transmitter sites for the map's persistent antenna layer. */
-  sites(): Array<{ lat: number; lon: number; hits: number; lastTs: number; names: string[] }> {
+  /** Distinct transmitter sites for the map's persistent antenna layer.
+   *  `freq` is the site's MOST RECENT frequency — the single MAX(ts) lets
+   *  SQLite's bare-column rule pull it from that same row — so the map can
+   *  derive the service pin even when no located config channel seeded it. */
+  sites(): Array<{ lat: number; lon: number; hits: number; lastTs: number; names: string[]; freq?: number }> {
     const rows = this.db.prepare(`
       SELECT ROUND(lat, 5) AS lat, ROUND(lon, 5) AS lon,
-             COUNT(*) AS hits, MAX(ts) AS lastTs,
+             COUNT(*) AS hits, MAX(ts) AS lastTs, freq AS freq,
              GROUP_CONCAT(DISTINCT alphaTag) AS names
       FROM events WHERE lat IS NOT NULL AND lon IS NOT NULL AND kind != 'alert'
       GROUP BY ROUND(lat, 5), ROUND(lon, 5)
@@ -154,6 +157,7 @@ export class HistoryStore {
       lat: Number(r.lat), lon: Number(r.lon),
       hits: Number(r.hits), lastTs: Number(r.lastTs),
       names: String(r.names ?? "").split(",").filter(Boolean),
+      freq: r.freq == null ? undefined : Number(r.freq),
     }));
   }
 
