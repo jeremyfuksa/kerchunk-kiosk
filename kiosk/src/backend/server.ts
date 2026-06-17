@@ -471,10 +471,12 @@ export function createServer(deps: ServerDeps): { server: Server } {
   // Re-point the live graph (retune) rather than stop()+start(): a restart
   // replays the WARMING UP overlay and cold-start audio chop. The helperless
   // RtlFm fallback keeps stop()+start().
-  const switchMode = (cfg: ScanConfig): void => {
-    if (engine.retune) void engine.retune(cfg);
-    else void engine.stop().then(() => engine.start(cfg));
-  };
+  // Re-point the live graph (retune) rather than stop()+start() wherever the
+  // engine is meant to keep playing through a config change — channel edits,
+  // mode/monitor switches. Returns the promise so callers that must finish
+  // before responding can await it; the helperless RtlFm fallback cold-starts.
+  const switchMode = (cfg: ScanConfig): Promise<void> =>
+    engine.retune ? engine.retune(cfg) : engine.stop().then(() => engine.start(cfg));
   // Shared revert: clears both timers, lifts the break-in freeze, and (unless
   // the operator changed mode in the meantime) hops back to the scan set.
   const revertToScan = (): void => {
@@ -483,7 +485,7 @@ export function createServer(deps: ServerDeps): { server: Server } {
     breakIn = false;                  // break-in over; thermal management resumes
     if (mode !== "weather") return;   // operator changed it; leave alone
     mode = "scan";
-    switchMode(toScanConfig(config, "scan"));
+    void switchMode(toScanConfig(config, "scan"));
   };
   const onSameEvent = (ev: EngineEvent): void => {
     if (ev.type !== "same") return;
@@ -527,7 +529,7 @@ export function createServer(deps: ServerDeps): { server: Server } {
       mode = "weather";
       monitorChannel = null;
       breakIn = true;   // freeze safetyMode bounces until we revert
-      switchMode(toScanConfig(config, "weather"));
+      void switchMode(toScanConfig(config, "weather"));
       if (sameRevertTimer) clearTimeout(sameRevertTimer);
       sameRevertTimer = setTimeout(
         revertToScan,
@@ -620,12 +622,15 @@ export function createServer(deps: ServerDeps): { server: Server } {
     }
   });
 
-  // Persist config AND restart the scanner so changes (e.g. editing channels in
+  // Persist config AND re-point the scanner so changes (e.g. editing channels in
   // the admin) take effect immediately, instead of only after a service restart.
+  // Uses switchMode's retune path: a channel add/edit/delete only changes the
+  // tuned channel set (carried in the live `tune` command), never a helper
+  // spawn arg — so it re-points in place with no "WARMING UP" overlay or audio
+  // chop. (switchMode falls back to stop()+start() on the helperless engine.)
   async function persistAndReload(): Promise<void> {
     configStore.save(config);
-    await engine.stop();
-    await engine.start(toScanConfig(config, mode, monitorChannel));
+    await switchMode(toScanConfig(config, mode, monitorChannel));
   }
 
   // amixer target from config: volume/mute must hit the card+control that
@@ -817,8 +822,7 @@ export function createServer(deps: ServerDeps): { server: Server } {
       }
       mode = next;
       monitorChannel = null;
-      await engine.stop();
-      await engine.start(toScanConfig(config, mode));
+      await switchMode(toScanConfig(config, mode));
       return json(res, 200, { mode, state: engine.state });
     }
 
@@ -843,16 +847,14 @@ export function createServer(deps: ServerDeps): { server: Server } {
         mode: mode_, enabled: true,
       };
       mode = "monitor";
-      await engine.stop();
-      await engine.start(toScanConfig(config, mode, monitorChannel));
+      await switchMode(toScanConfig(config, mode, monitorChannel));
       return json(res, 200, { mode, monitor: monitorChannel });
     }
 
     if (method === "POST" && path === "/api/monitor/stop") {
       mode = "scan";
       monitorChannel = null;
-      await engine.stop();
-      await engine.start(toScanConfig(config, mode));
+      await switchMode(toScanConfig(config, mode));
       return json(res, 200, { mode, state: engine.state });
     }
 

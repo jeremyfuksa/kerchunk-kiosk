@@ -158,16 +158,31 @@ describe("HTTP API", () => {
     expect(st.body.mode).toBe("scan");
   });
 
-  it("POST /api/mode scan restarts the engine with the scan channel list", async () => {
+  it("editing a channel retunes the live graph instead of cold-restarting (no WARMING UP)", async () => {
+    const { server, engine } = makeApp();
+    const created = await request(server).post("/api/channels")
+      .send({ freq: 145130000, alphaTag: "A", mode: "nfm", enabled: true });
+    // The create left the engine running (matches the booted appliance); the
+    // edit must re-point it in place, not stop()+start() (which replays the
+    // kiosk "WARMING UP" overlay and chops audio on every save).
+    const startsBefore = engine.starts.length;
+    const retunesBefore = engine.retunes.length;
+    const edit = await request(server).put(`/api/channels/${created.body.id}`)
+      .send({ freq: 145130000, alphaTag: "A2", mode: "nfm", enabled: true });
+    expect(edit.status).toBe(200);
+    expect(engine.starts.length).toBe(startsBefore);            // no cold start
+    expect(engine.retunes.length).toBe(retunesBefore + 1);      // re-pointed live
+  });
+
+  it("POST /api/mode scan re-points the engine at the scan channel list (retune, not cold restart)", async () => {
     const { server, engine } = makeApp();
     await request(server).post("/api/channels").send({ freq: 145130000, alphaTag: "A", mode: "nfm", enabled: true });
-    let lastStartChannels: any[] | null = null;
-    const realStart = engine.start.bind(engine);
-    engine.start = async (cfg) => { lastStartChannels = cfg.channels; return realStart(cfg); };
+    const startsBefore = engine.starts.length;       // engine is live after the create
     const res = await request(server).post("/api/mode").send({ mode: "scan" });
     expect(res.status).toBe(200);
     expect(res.body.mode).toBe("scan");
-    expect(lastStartChannels![0].freq).toBe(145130000);
+    expect(engine.starts.length).toBe(startsBefore); // no WARMING-UP cold start
+    expect(engine.tunes.at(-1)!.channels[0]!.freq).toBe(145130000);
   });
 
   it("POST /api/mode rejects an invalid mode value with 400", async () => {
@@ -349,12 +364,10 @@ describe("wideband config passthrough", () => {
 describe("PUT /api/channels/:id (table inline edit)", () => {
   const CH = { freq: 464275000, alphaTag: "WOF", mode: "nfm", enabled: true };
 
-  it("updates fields, persists, and restarts the engine", async () => {
+  it("updates fields, persists, and retunes the engine in place (no cold restart)", async () => {
     const { server, engine } = makeApp();
     const created = (await request(server).post("/api/channels").send(CH)).body;
-    let starts = 0;
-    const realStart = engine.start.bind(engine);
-    engine.start = async (sc) => { starts++; return realStart(sc); };
+    const startsBefore = engine.starts.length;   // engine is live after the create
     const res = await request(server)
       .put(`/api/channels/${created.id}`)
       .send({ alphaTag: "WOF Maint", priority: true });
@@ -362,7 +375,8 @@ describe("PUT /api/channels/:id (table inline edit)", () => {
     expect(res.body.alphaTag).toBe("WOF Maint");
     expect(res.body.priority).toBe(true);
     expect(res.body.freq).toBe(464275000); // untouched fields survive
-    expect(starts).toBe(1);
+    expect(engine.starts.length).toBe(startsBefore);                       // no WARMING-UP cold start
+    expect(engine.tunes.at(-1)!.channels[0]!.priority).toBe(true);          // re-pointed with the edit live
     const after = await request(server).get("/api/channels");
     expect(after.body[0].priority).toBe(true);
   });
@@ -382,17 +396,14 @@ describe("PUT /api/channels/:id (table inline edit)", () => {
 });
 
 describe("weather mode under wideband (monitor flag)", () => {
-  it("POST /api/mode weather starts the engine with monitor: true; scan mode without", async () => {
+  it("POST /api/mode weather tunes the engine with monitor: true; scan mode without", async () => {
     const { server, engine } = makeApp();
     await request(server).put("/api/weather-channel")
       .send({ freq: 162550000, alphaTag: "NOAA", mode: "nfm", enabled: true });
-    let lastStart: any = null;
-    const realStart = engine.start.bind(engine);
-    engine.start = async (sc) => { lastStart = sc; return realStart(sc); };
     await request(server).post("/api/mode").send({ mode: "weather" });
-    expect(lastStart.monitor).toBe(true);
+    expect(engine.tunes.at(-1)!.monitor).toBe(true);
     await request(server).post("/api/mode").send({ mode: "scan" });
-    expect(lastStart.monitor).toBe(false);
+    expect(engine.tunes.at(-1)!.monitor).toBe(false);
   });
 });
 
@@ -591,22 +602,19 @@ describe("discoveries workflow", () => {
 
   it("monitor mode: POST /api/monitor parks the engine on one frequency unsquelched", async () => {
     const { server, engine } = makeApp();
-    let lastStart: any = null;
-    const realStart = engine.start.bind(engine);
-    engine.start = async (sc) => { lastStart = sc; return realStart(sc); };
     const res = await request(server).post("/api/monitor")
       .send({ freq: 462887500, alphaTag: "Close Call 462.8875" });
     expect(res.status).toBe(200);
     expect(res.body.mode).toBe("monitor");
-    expect(lastStart.monitor).toBe(true);
-    expect(lastStart.channels).toHaveLength(1);
-    expect(lastStart.channels[0].freq).toBe(462887500);
+    expect(engine.tunes.at(-1)!.monitor).toBe(true);
+    expect(engine.tunes.at(-1)!.channels).toHaveLength(1);
+    expect(engine.tunes.at(-1)!.channels[0]!.freq).toBe(462887500);
     const st = await request(server).get("/api/status");
     expect(st.body.mode).toBe("monitor");
 
     const stop = await request(server).post("/api/monitor/stop");
     expect(stop.body.mode).toBe("scan");
-    expect(lastStart.monitor).toBe(false);
+    expect(engine.tunes.at(-1)!.monitor).toBe(false);
   });
 
   it("knownHz passed to the engine covers channels, discoveries, and lockouts", async () => {
@@ -793,22 +801,16 @@ describe("monitor demod mode", () => {
     const { server, engine } = makeApp();
     await request(server).post("/api/channels")
       .send({ freq: 128375000, alphaTag: "MCI ATIS", mode: "am", enabled: true });
-    let lastStart: any = null;
-    const realStart = engine.start.bind(engine);
-    engine.start = async (sc) => { lastStart = sc; return realStart(sc); };
     await request(server).post("/api/monitor").send({ freq: 128375000, alphaTag: "ATIS" });
-    expect(lastStart.channels[0].mode).toBe("am");
+    expect(engine.tunes.at(-1)!.channels[0]!.mode).toBe("am");
   });
 
   it("honors an explicit mode and defaults to nfm for unknown frequencies", async () => {
     const { server, engine } = makeApp();
-    let lastStart: any = null;
-    const realStart = engine.start.bind(engine);
-    engine.start = async (sc) => { lastStart = sc; return realStart(sc); };
     await request(server).post("/api/monitor").send({ freq: 123450000, mode: "am" });
-    expect(lastStart.channels[0].mode).toBe("am");
+    expect(engine.tunes.at(-1)!.channels[0]!.mode).toBe("am");
     await request(server).post("/api/monitor").send({ freq: 123450000 });
-    expect(lastStart.channels[0].mode).toBe("nfm");
+    expect(engine.tunes.at(-1)!.channels[0]!.mode).toBe("nfm");
   });
 });
 

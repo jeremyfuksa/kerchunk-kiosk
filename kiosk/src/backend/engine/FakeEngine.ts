@@ -19,12 +19,16 @@ export class FakeEngine implements ScannerEngine {
   private emit(ev: EngineEvent): void { for (const l of this.listeners) l(ev); }
 
   // Test hooks: tests assert HOW a mode switch was applied (light retune vs
-  // full restart) by counting these.
+  // full restart) by counting these. `tunes` is the union — every config the
+  // engine was handed via either path — so a test can assert WHAT it tuned to
+  // without caring WHICH path applied it.
   starts: ScanConfig[] = [];
   retunes: ScanConfig[] = [];
+  tunes: ScanConfig[] = [];
 
   async start(config: ScanConfig): Promise<void> {
     this.starts.push(config);
+    this.tunes.push(config);
     this.emit({ type: "warmup", phase: "booting", step: 1, of: 4, ts: nextTs() });
     this._state = "running";
     this.emit({ type: "status", state: "running", ts: nextTs() });
@@ -43,6 +47,7 @@ export class FakeEngine implements ScannerEngine {
   async retune(config: ScanConfig): Promise<void> {
     if (this._state !== "running") { await this.start(config); return; }
     this.retunes.push(config);
+    this.tunes.push(config);
     this.config = config;
     this.emit({ type: "tuned", freqHz: config.channels[0]?.freq ?? 0,
       channelIds: config.channels.map((c) => c.id), ts: nextTs() });
