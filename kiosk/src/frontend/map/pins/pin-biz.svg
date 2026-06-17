@@ -7,7 +7,7 @@
   </defs>
   <g transform="translate(2 1)" filter="url(#sh-biz)">
     <path d="M 21 0 C 32.598 0 42 9.402 42 21 C 42 29.893 36.473 37.494 28.666 40.557 L 22.196 49.401 C 22.061 49.586 21.882 49.737 21.674 49.841 C 21.466 49.946 21.235 50 21 50 C 20.765 50 20.534 49.946 20.326 49.841 C 20.118 49.737 19.939 49.586 19.804 49.401 L 13.334 40.557 C 5.527 37.494 0 29.893 0 21 C 0 9.402 9.402 0 21 0 Z" fill="#F5EBE8"></path>
-    <circle cx="21" cy="21" r="17.5" fill="#7C4FE0"></circle>
+    <circle cx="21" cy="21" r="17.5" fill="#6D28D9"></circle>
     <g transform="translate(10.5 10.5) scale(0.875)" fill="none" stroke="#ffffff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M16 20V4a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path><rect width="20" height="14" x="2" y="6" rx="2"></rect></g>
   </g>
 </svg>

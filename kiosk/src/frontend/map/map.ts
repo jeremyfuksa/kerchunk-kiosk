@@ -14,6 +14,7 @@ import pinRail from "./pins/pin-rail.svg?raw";
 import pinHam from "./pins/pin-ham.svg?raw";
 import pinGmrs from "./pins/pin-gmrs.svg?raw";
 import pinBiz from "./pins/pin-biz.svg?raw";
+import pinPublicSafety from "./pins/pin-publicsafety.svg?raw";
 import pinMarine from "./pins/pin-marine.svg?raw";
 import pinWeather from "./pins/pin-weather.svg?raw";
 import pinUnknown from "./pins/pin-unknown.svg?raw";
@@ -44,7 +45,12 @@ function pinFor(freqHz: number): string {
   if (svc === "GMRS/FRS") return pinGmrs;
   if (svc === "marine") return pinMarine;
   if (svc === "NOAA wx") return pinWeather;
-  if (svc && (svc.includes("biz") || svc.includes("PS") || svc.includes("trunked") || svc === "T-band")) return pinBiz;
+  // Public safety rides its own red pin: the dedicated 700 MHz PS band and
+  // 800 MHz trunked systems (the metro's primary PS presence). The mixed
+  // conventional "biz/PS" bands and T-band stay on biz — not separable from
+  // business traffic by frequency alone.
+  if (svc === "700 PS" || svc?.includes("trunked")) return pinPublicSafety;
+  if (svc && (svc.includes("biz") || svc === "T-band")) return pinBiz;
   return pinUnknown;
 }
 
