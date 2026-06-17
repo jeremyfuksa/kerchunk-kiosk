@@ -450,3 +450,74 @@ describe("hear-vs-see passthrough", () => {
     expect(first.channels.map((c: { audible: boolean }) => c.audible)).toEqual([false, true]);
   });
 });
+
+describe("retune fit-check (re-point vs respawn)", () => {
+  // Three channels within one 2 MHz window => a single 3-channel group.
+  const A = ch(146_790_000);            // slot 0
+  const B = ch(147_330_000);            // slot 1
+  const C = ch(147_900_000);            // slot 2 (SAME lane)
+
+  it("re-points (no respawn) when the new config fits the spawned lanes", async () => {
+    const args = tmpFile("args");
+    const tunes = tmpFile("tunes");
+    const { engine } = makeEngine({ FAKE_WB_ARGS_FILE: args, FAKE_WB_TUNES_FILE: tunes });
+    await engine.start(cfg([A, B]));                       // 2 lanes
+    await waitFor(() => lines(tunes).length >= 1, 1000);
+    const tunesBefore = lines(tunes).length;
+    await engine.retune(cfg([{ ...A, alphaTag: "renamed" }, B])); // same shape: fits
+    await waitFor(() => lines(tunes).length > tunesBefore, 1000);
+    await engine.stop();
+    expect(lines(args)).toHaveLength(1);                   // ONE helper, never respawned
+  });
+
+  it("re-points for a SMALLER config (the weather break-in: one NFM channel)", async () => {
+    const args = tmpFile("args");
+    const tunes = tmpFile("tunes");
+    const { engine } = makeEngine({ FAKE_WB_ARGS_FILE: args, FAKE_WB_TUNES_FILE: tunes });
+    await engine.start(cfg([A, B, C]));                    // 3 lanes
+    await waitFor(() => lines(tunes).length >= 1, 1000);
+    await engine.retune(cfg([ch(162_550_000)]));           // 1 lane <= 3: fits
+    await waitFor(() => lines(tunes).length >= 2, 1000);
+    await engine.stop();
+    expect(lines(args)).toHaveLength(1);
+  });
+
+  it("RESPAWNS when an added channel needs more lanes than were spawned", async () => {
+    const args = tmpFile("args");
+    const { engine } = makeEngine({ FAKE_WB_ARGS_FILE: args });
+    await engine.start(cfg([A, B]));                       // spawned 2 lanes
+    await waitFor(() => lines(args).length >= 1, 1000);
+    await engine.retune(cfg([A, B, C]));                   // one group of 3 => needs 3 lanes
+    await waitFor(() => lines(args).length >= 2, 2000);    // had to respawn
+    await engine.stop();
+    expect(lines(args).length).toBe(2);
+    expect(lines(args)[1]).toContain("--lanes 3");         // respawned with the bigger plan
+  });
+
+  it("RESPAWNS when an edit needs an AM path a spawned lane lacks", async () => {
+    const args = tmpFile("args");
+    const { engine } = makeEngine({ FAKE_WB_ARGS_FILE: args });
+    await engine.start(cfg([A, B, C]));                    // 3 FM lanes (slots f f b)
+    await waitFor(() => lines(args).length >= 1, 1000);
+    await engine.retune(cfg([A, { ...B, mode: "am" }, C])); // slot 1 now AM; lane 1 was FM-only
+    await waitFor(() => lines(args).length >= 2, 2000);
+    await engine.stop();
+    expect(lines(args).length).toBe(2);
+  });
+
+  it("tears the helper down (releases the SDR) when the last channel is deleted", async () => {
+    const args = tmpFile("args");
+    const { engine } = makeEngine({ FAKE_WB_ARGS_FILE: args });
+    await engine.start(cfg([A]));                          // 1 helper
+    await waitFor(() => lines(args).length >= 1, 1000);
+    await engine.retune(cfg([]));                          // empty: must NOT re-point onto nothing
+    // No new helper spawned for the empty set...
+    expect(lines(args).length).toBe(1);
+    // ...and the prior helper was released: a later real config must SPAWN
+    // afresh (if it were still alive, retune would have re-pointed it instead).
+    await engine.retune(cfg([A]));
+    await waitFor(() => lines(args).length >= 2, 2000);
+    await engine.stop();
+    expect(lines(args).length).toBe(2);
+  });
+});

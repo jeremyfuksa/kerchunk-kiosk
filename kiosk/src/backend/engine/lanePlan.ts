@@ -40,6 +40,35 @@ export function computeLanePlan(groups: ChannelGroup[], maxChans: number): LaneP
   return { laneCount, perLane };
 }
 
+/** Can a helper ALREADY spawned for `spawned` correctly run `newGroups` by a
+ *  live re-point (`tune`) alone — no respawn? The channelizer's lane COUNT and
+ *  per-lane demod paths are fixed at spawn; the tune command only re-assigns
+ *  channels to those existing lanes (positionally, slot 0..n). So re-pointing is
+ *  safe iff the new config needs no MORE lanes than were built and every slot's
+ *  required demod path (FM/AM) already exists on that spawned lane. An empty set
+ *  never fits (the helper must be torn down to release the SDR, not re-pointed).
+ *  When this returns false, the caller must respawn (stop()+start()). */
+export function planFits(spawned: LanePlan, newGroups: ChannelGroup[], maxChans: number): boolean {
+  const biggest = newGroups.reduce((m, g) => Math.max(m, g.channels.length), 0);
+  const need = Math.min(maxChans, biggest);
+  if (need === 0) return false;            // no channels: tear down, don't re-point
+  if (need > spawned.laneCount) return false;
+  for (let i = 0; i < need; i++) {
+    let fm = false, am = false;
+    for (const g of newGroups) {
+      const c = g.channels[i];
+      if (!c) continue;
+      if (isFm(c.mode)) fm = true;
+      if (isAm(c.mode)) am = true;
+    }
+    const lane = spawned.perLane[i];
+    if (!lane) return false;
+    if (fm && !lane.fm) return false;      // needs an FM path this lane lacks
+    if (am && !lane.am) return false;      // needs an AM path this lane lacks
+  }
+  return true;
+}
+
 /** Serialize a plan to helper CLI args: --lanes N --lane-modes <mask>.
  *  Mask is one char/lane: f=FM-only, a=AM-only, b=both. */
 export function lanePlanArgs(plan: LanePlan): string[] {

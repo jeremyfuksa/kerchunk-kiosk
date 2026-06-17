@@ -395,6 +395,35 @@ describe("PUT /api/channels/:id (table inline edit)", () => {
   });
 });
 
+describe("DELETE /api/channels/:id", () => {
+  it("removes the channel, persists, and re-applies the scan config", async () => {
+    const { server, engine } = makeApp();
+    const a = (await request(server).post("/api/channels")
+      .send({ freq: 146790000, alphaTag: "A", mode: "nfm", enabled: true })).body;
+    await request(server).post("/api/channels")
+      .send({ freq: 147330000, alphaTag: "B", mode: "nfm", enabled: true });
+    const del = await request(server).delete(`/api/channels/${a.id}`);
+    expect(del.status).toBe(204);
+    const after = (await request(server).get("/api/channels")).body;
+    expect(after.map((c: { alphaTag: string }) => c.alphaTag)).toEqual(["B"]);
+    // The remaining channel still fits the live lanes → re-pointed, not cold-started.
+    expect(engine.tunes.at(-1)!.channels.map((c: { freq: number }) => c.freq)).toEqual([147330000]);
+  });
+
+  it("deleting the LAST channel tears the engine down instead of re-pointing onto an empty set", async () => {
+    const { server, engine } = makeApp();
+    const a = (await request(server).post("/api/channels")
+      .send({ freq: 146790000, alphaTag: "Only", mode: "nfm", enabled: true })).body;
+    const startsBefore = engine.starts.length;
+    const del = await request(server).delete(`/api/channels/${a.id}`);
+    expect(del.status).toBe(204);
+    // Empty channel set: the engine (re)starts to release the helper rather than
+    // emitting a phantom retune onto a deleted window (WidebandEngine respawns).
+    expect(engine.starts.length).toBe(startsBefore + 1);
+    expect(engine.tunes.at(-1)!.channels).toHaveLength(0);
+  });
+});
+
 describe("weather mode under wideband (monitor flag)", () => {
   it("POST /api/mode weather tunes the engine with monitor: true; scan mode without", async () => {
     const { server, engine } = makeApp();

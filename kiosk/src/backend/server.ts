@@ -468,13 +468,13 @@ export function createServer(deps: ServerDeps): { server: Server } {
   // so clustered alerts (a new header inside the window) hold straight through.
   const EOM_GRACE_MS = 8_000;
   let sameEomTimer: NodeJS.Timeout | null = null;
-  // Re-point the live graph (retune) rather than stop()+start(): a restart
-  // replays the WARMING UP overlay and cold-start audio chop. The helperless
-  // RtlFm fallback keeps stop()+start().
   // Re-point the live graph (retune) rather than stop()+start() wherever the
   // engine is meant to keep playing through a config change — channel edits,
-  // mode/monitor switches. Returns the promise so callers that must finish
-  // before responding can await it; the helperless RtlFm fallback cold-starts.
+  // mode/monitor switches. A restart replays the WARMING UP overlay and the
+  // cold-start audio chop; retune avoids both, and itself respawns only when
+  // the new config can't fit the live channelizer (see WidebandEngine.retune).
+  // Returns the promise so callers that must finish before responding can await
+  // it; the helperless RtlFm fallback always cold-starts.
   const switchMode = (cfg: ScanConfig): Promise<void> =>
     engine.retune ? engine.retune(cfg) : engine.stop().then(() => engine.start(cfg));
   // Shared revert: clears both timers, lifts the break-in freeze, and (unless
@@ -485,7 +485,8 @@ export function createServer(deps: ServerDeps): { server: Server } {
     breakIn = false;                  // break-in over; thermal management resumes
     if (mode !== "weather") return;   // operator changed it; leave alone
     mode = "scan";
-    void switchMode(toScanConfig(config, "scan"));
+    void switchMode(toScanConfig(config, "scan"))
+      .catch((e) => console.error(`[switchMode] revert-to-scan failed: ${(e as Error).message}`));
   };
   const onSameEvent = (ev: EngineEvent): void => {
     if (ev.type !== "same") return;
@@ -529,7 +530,8 @@ export function createServer(deps: ServerDeps): { server: Server } {
       mode = "weather";
       monitorChannel = null;
       breakIn = true;   // freeze safetyMode bounces until we revert
-      void switchMode(toScanConfig(config, "weather"));
+      void switchMode(toScanConfig(config, "weather"))
+        .catch((e) => console.error(`[switchMode] weather break-in failed: ${(e as Error).message}`));
       if (sameRevertTimer) clearTimeout(sameRevertTimer);
       sameRevertTimer = setTimeout(
         revertToScan,
