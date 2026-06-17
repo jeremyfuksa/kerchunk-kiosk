@@ -141,24 +141,33 @@ export class HistoryStore {
       .map((r) => ({ ...r, tags: JSON.parse(String(r.tags)) }) as unknown as HistoryRow);
   }
 
-  /** Distinct transmitter sites for the map's persistent antenna layer.
-   *  `freq` is the site's MOST RECENT frequency — the single MAX(ts) lets
-   *  SQLite's bare-column rule pull it from that same row — so the map can
-   *  derive the service pin even when no located config channel seeded it. */
-  sites(): Array<{ lat: number; lon: number; hits: number; lastTs: number; names: string[]; freq?: number }> {
+  /** Distinct transmitter sites for the map's persistent antenna layer. Returns
+   *  per-site the distinct frequencies heard there, each with its LATEST stored
+   *  label (one MAX(ts) per (site,freq) group lets SQLite's bare-column rule pull
+   *  alphaTag from the most-recent row). `freq` is the site's most-recent freq
+   *  (for the service pin). Labels are frozen here on purpose — the server
+   *  resolves them to current channel names by freq; `channels` keeps the per-
+   *  freq identity so that resolution can replace stale names precisely. */
+  sites(): Array<{ lat: number; lon: number; hits: number; lastTs: number; freq?: number; channels: Array<{ freq: number; alphaTag: string }> }> {
     const rows = this.db.prepare(`
-      SELECT ROUND(lat, 5) AS lat, ROUND(lon, 5) AS lon,
-             COUNT(*) AS hits, MAX(ts) AS lastTs, freq AS freq,
-             GROUP_CONCAT(DISTINCT alphaTag) AS names
+      SELECT ROUND(lat, 5) AS lat, ROUND(lon, 5) AS lon, freq AS freq, alphaTag AS alphaTag,
+             COUNT(*) AS hits, MAX(ts) AS lastTs
       FROM events WHERE lat IS NOT NULL AND lon IS NOT NULL AND kind != 'alert'
-      GROUP BY ROUND(lat, 5), ROUND(lon, 5)
+      GROUP BY ROUND(lat, 5), ROUND(lon, 5), freq
     `).all() as Array<Record<string, unknown>>;
-    return rows.map((r) => ({
-      lat: Number(r.lat), lon: Number(r.lon),
-      hits: Number(r.hits), lastTs: Number(r.lastTs),
-      names: String(r.names ?? "").split(",").filter(Boolean),
-      freq: r.freq == null ? undefined : Number(r.freq),
-    }));
+    type Site = { lat: number; lon: number; hits: number; lastTs: number; freq?: number; channels: Array<{ freq: number; alphaTag: string }> };
+    const bySite = new Map<string, Site>();
+    for (const r of rows) {
+      const lat = Number(r.lat), lon = Number(r.lon), freq = Number(r.freq), lastTs = Number(r.lastTs);
+      const key = `${lat},${lon}`;
+      let s = bySite.get(key);
+      if (!s) { s = { lat, lon, hits: 0, lastTs: 0, freq: undefined, channels: [] }; bySite.set(key, s); }
+      s.hits += Number(r.hits);
+      // Representative freq = the freq of the site's most-recent hit (for the pin).
+      if (lastTs >= s.lastTs) { s.lastTs = lastTs; s.freq = freq; }
+      s.channels.push({ freq, alphaTag: String(r.alphaTag ?? "") });
+    }
+    return [...bySite.values()];
   }
 
   /** Aggregates for the admin Insights panel (ROADMAP Idea 9). */
@@ -180,8 +189,12 @@ export class HistoryStore {
     // counting both would double every alerted hit.
     const totals = one(`SELECT COUNT(*) n, COALESCE(SUM(durationMs), 0) air,
         SUM(kind = 'closecall') cc FROM events WHERE ts >= ? AND kind != 'alert'`);
+    // MAX(ts) makes the bare alphaTag deterministic — the freq's LATEST stored
+    // label (SQLite bare-column rule), not an arbitrary one. The server then
+    // overrides it with the channel's current name; this is the fallback for
+    // freqs no longer configured.
     const top = all(`SELECT alphaTag, freq, COUNT(*) hits,
-        COALESCE(SUM(durationMs), 0) airtimeMs
+        COALESCE(SUM(durationMs), 0) airtimeMs, MAX(ts) lastTs
       FROM events WHERE ts >= ? AND kind = 'active'
       GROUP BY freq ORDER BY hits DESC, airtimeMs DESC LIMIT 12`);
     const byTag = all(`SELECT je.value tag, COUNT(*) hits
