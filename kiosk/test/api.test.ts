@@ -1179,3 +1179,45 @@ describe("admin test-alert trigger (banner design tool)", () => {
     expect(alerts[0].channel.alphaTag).toBe("SEVERE THUNDERSTORM WARNING");
   });
 });
+
+describe("current-label resolution (rename propagation)", () => {
+  it("serves a channel's CURRENT name for historical hits across stats, history, and sites", async () => {
+    dir = mkdtempSync(join(tmpdir(), "ksrv-"));
+    const configStore = new ConfigStore(join(dir, "config.json"));
+    const history = new HistoryStore({ path: ":memory:" });
+    const { server } = createServer({
+      configStore, engine: new FakeEngine(), activityLog: new ActivityLog(100),
+      wsHub: new WsHub(), staticDir: dir, history,
+    });
+    const FREQ = 463350000;
+    // a historical hit frozen under the OLD label, at a located site
+    history.record({ ts: Date.now(), kind: "active", channelId: "c1", freq: FREQ, alphaTag: "OLD LABEL", lat: 39.05, lon: -94.58 });
+    // operator renames the channel (same freq)
+    await request(server).post("/api/channels").send({ freq: FREQ, alphaTag: "Arrowhead", mode: "nfm", enabled: true }).expect(201);
+
+    const stats = (await request(server).get("/api/stats")).body;
+    expect(stats.topChannels.find((t: { freq: number }) => t.freq === FREQ)?.alphaTag).toBe("Arrowhead");
+
+    const hist = (await request(server).get(`/api/history?freq=${FREQ}`)).body;
+    expect(hist[0].alphaTag).toBe("Arrowhead");
+
+    const sites = (await request(server).get("/api/history/sites")).body;
+    const site = sites.find((s: { lat: number }) => s.lat === 39.05);
+    expect(site.names).toContain("Arrowhead");
+    expect(site.names).not.toContain("OLD LABEL");
+  });
+
+  it("falls back to the latest stored label for a freq no longer configured", async () => {
+    dir = mkdtempSync(join(tmpdir(), "ksrv-"));
+    const configStore = new ConfigStore(join(dir, "config.json"));
+    const history = new HistoryStore({ path: ":memory:" });
+    const { server } = createServer({
+      configStore, engine: new FakeEngine(), activityLog: new ActivityLog(100),
+      wsHub: new WsHub(), staticDir: dir, history,
+    });
+    history.record({ ts: 1000, kind: "active", channelId: "x", freq: 999000000, alphaTag: "Retired Early" });
+    history.record({ ts: 2000, kind: "active", channelId: "x", freq: 999000000, alphaTag: "Retired Latest" });
+    const stats = (await request(server).get("/api/stats?since=0")).body;
+    expect(stats.topChannels.find((t: { freq: number }) => t.freq === 999000000)?.alphaTag).toBe("Retired Latest");
+  });
+});

@@ -81,7 +81,7 @@ describe("HistoryStore", () => {
 });
 
 describe("sites() — distinct transmitter sites for the map's antenna layer", () => {
-  it("groups located events by site with names, counts, last-heard", () => {
+  it("groups located events by site with per-freq channels, counts, last-heard", () => {
     const h = make();
     h.record({ ts: 1, kind: "active", channelId: "a", freq: 1, alphaTag: "WoF Maint", lat: 39.17, lon: -94.48 });
     h.record({ ts: 5, kind: "active", channelId: "b", freq: 2, alphaTag: "WoF Security", lat: 39.17, lon: -94.48 });
@@ -92,11 +92,20 @@ describe("sites() — distinct transmitter sites for the map's antenna layer", (
     const wof = sites.find((s) => s.lat === 39.17)!;
     expect(wof.hits).toBe(2);
     expect(wof.lastTs).toBe(5);
-    expect(wof.names).toContain("WoF Maint");
-    expect(wof.names).toContain("WoF Security");
-    // freq = the site's MOST RECENT hit (ts=5 -> freq 2), so the map can derive
-    // the service pin from it when no located config channel seeded the site.
+    // freq = the site's MOST RECENT hit (ts=5 -> freq 2), for the service pin.
     expect(wof.freq).toBe(2);
+    // per-freq identity is preserved so the server can resolve current names.
+    expect(wof.channels).toContainEqual({ freq: 1, alphaTag: "WoF Maint" });
+    expect(wof.channels).toContainEqual({ freq: 2, alphaTag: "WoF Security" });
+  });
+
+  it("keeps each freq's LATEST stored label when a channel is renamed", () => {
+    const h = make();
+    h.record({ ts: 10, kind: "active", channelId: "a", freq: 7, alphaTag: "Old Name", lat: 38, lon: -94 });
+    h.record({ ts: 20, kind: "active", channelId: "a", freq: 7, alphaTag: "New Name", lat: 38, lon: -94 });
+    const site = h.sites().find((s) => s.lat === 38)!;
+    expect(site.channels).toEqual([{ freq: 7, alphaTag: "New Name" }]);
+    expect(site.hits).toBe(2);
   });
 });
 

@@ -941,17 +941,29 @@ export function createServer(deps: ServerDeps): { server: Server } {
       if (!deps.history) return json(res, 404, { error: "no history store" });
       const sp = new URL(req.url ?? "/", "http://localhost").searchParams;
       const num = (k: string) => sp.has(k) ? Number(sp.get(k)) : undefined;
-      return json(res, 200, deps.history.query({
+      const rows = deps.history.query({
         sinceMs: num("since"), untilMs: num("until"), freq: num("freq"),
         tag: sp.get("tag") ?? undefined,
         kind: sp.get("kind") ?? undefined,
         limit: num("limit"),
-      }));
+      });
+      // History labels are frozen at hit time; serve the channel's CURRENT name
+      // (by freq) so a rename shows everywhere, falling back to the stored label
+      // for freqs no longer configured.
+      const nameByFreq = new Map(config.channels.map((c) => [c.freq, c.alphaTag]));
+      return json(res, 200, rows.map((r) => ({ ...r, alphaTag: nameByFreq.get(r.freq) ?? r.alphaTag })));
     }
 
     if (method === "GET" && path === "/api/history/sites") {
       if (!deps.history) return json(res, 404, { error: "no history store" });
-      return json(res, 200, deps.history.sites());
+      // Resolve each site's frozen per-freq labels to current channel names,
+      // falling back to the latest stored label for freqs no longer configured.
+      const nameByFreq = new Map(config.channels.map((c) => [c.freq, c.alphaTag]));
+      const sites = deps.history.sites().map((s) => ({
+        lat: s.lat, lon: s.lon, hits: s.hits, lastTs: s.lastTs, freq: s.freq,
+        names: [...new Set(s.channels.map((c) => nameByFreq.get(c.freq) ?? c.alphaTag).filter(Boolean))],
+      }));
+      return json(res, 200, sites);
     }
 
     // Alert-feed housekeeping (Idea 6): the operator clears reviewed alerts.
@@ -971,7 +983,12 @@ export function createServer(deps: ServerDeps): { server: Server } {
       if (!deps.history) return json(res, 404, { error: "no history store" });
       const sp = new URL(req.url ?? "/", "http://localhost").searchParams;
       const since = sp.has("since") ? Number(sp.get("since")) : Date.now() - 86_400_000;
-      return json(res, 200, deps.history.stats(since));
+      const stats = deps.history.stats(since);
+      // Insights groups hits by freq; show each freq's CURRENT channel name,
+      // falling back to its latest stored label for freqs no longer configured.
+      const nameByFreq = new Map(config.channels.map((c) => [c.freq, c.alphaTag]));
+      stats.topChannels = stats.topChannels.map((t) => ({ ...t, alphaTag: nameByFreq.get(t.freq) ?? t.alphaTag }));
+      return json(res, 200, stats);
     }
 
     if (method === "GET" && path === "/api/weather") {
