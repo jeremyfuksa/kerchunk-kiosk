@@ -38,3 +38,18 @@
 .mapLegend .lgAnt svg { width: 14px; height: 14px; color: var(--golden-amber, #ffc05c); display: inline-block; vertical-align: -2px; }
 
 .mapLegend .lgBlip.nofix { background: #4a7c7e; box-shadow: 0 0 8px rgba(74, 124, 126, 0.6); }
+
+/* Edge glow: a hit with no honest map position pulses the screen edges in the
+   band's color instead of planting a synthetic dot. Faint, quick rise, slow
+   fade; re-triggered per hit by toggling .pulse. */
+.edgeGlow {
+  position: absolute; inset: 0; pointer-events: none; z-index: 2;
+  opacity: 0;
+  box-shadow: inset 0 0 90px 24px var(--glow-color, transparent);
+}
+.edgeGlow.pulse { animation: edgeGlowPulse 7s ease-out; }
+@keyframes edgeGlowPulse {
+  0%   { opacity: 0; }
+  6%   { opacity: 0.4; }
+  100% { opacity: 0; }
+}

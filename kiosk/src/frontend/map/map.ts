@@ -73,7 +73,7 @@ export function renderMap(root: HTMLElement): void {
     <div id="gmap"></div>
     <div class="mapLegend">
       <span class="lgAnt"></span> pins = sites by service · gray ? = unclassified
-      <span class="lgNote">pine pulses = stable synthetic position, location unknown · weather = live NEXRAD</span>
+      <span class="lgNote">edge glow = activity, location unknown · weather = live NEXRAD</span>
     </div>
     <div id="mapMsg" class="mapMsg"></div>
   </div>`;
@@ -150,6 +150,20 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
         ? { mapId, isFractionalZoomEnabled: true, colorScheme: "DARK" }
         : { styles: DARK_STYLE }),
     });
+
+    // Edge glow: a hit with no honest map position has nowhere truthful to sit,
+    // so instead of a synthetic dot we pulse the screen edges in the band's
+    // color — "something on <service> just keyed up, location unknown".
+    if (getComputedStyle(root).position === "static") root.style.position = "relative";
+    const glow = document.createElement("div");
+    glow.className = "edgeGlow";
+    root.appendChild(glow);
+    function glowEdges(color: string): void {
+      glow.style.setProperty("--glow-color", color);
+      glow.classList.remove("pulse");
+      void glow.offsetWidth; // force reflow so the animation restarts every hit
+      glow.classList.add("pulse");
+    }
 
     // ── Radar overlay (ROADMAP Idea 2 follow-on, the SAME cross-tie: a warning
     // banner with live precipitation under it). Three keyless products,
@@ -448,16 +462,10 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
       return pos;
     }
 
-    function nofix(freqHz: number, alphaTag: string, ts: number): void {
-      let pos = syntheticPositions.get(freqHz);
-      if (!pos) {
-        pos = syntheticPoint(home, SYNTHETIC_FIELD_M, freqHz, knownPositions);
-        syntheticPositions.set(freqHz, pos);
-      }
-      field.add({ lat: pos.lat, lon: pos.lng, alphaTag, kind: "nofix", ts, freq: freqHz });
-      wake(); // a blip was planted (live or backfilled) — ensure the loop runs
-      // The pulse ring (startTx) and the camera punch (audible) are driven from
-      // the WS handler; detection itself just plants the blip.
+    function nofix(freqHz: number): void {
+      // No honest position to plot — pulse the screen edges in the band's color
+      // (active service color, not the muted nofix gray) instead of a fake dot.
+      glowEdges(colorFor(freqHz, "active"));
     }
 
     function push(lat: number, lon: number, alphaTag: string, kind: "active" | "closecall", ts: number, freq?: number): void {
@@ -491,9 +499,9 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
           push(ch.location.lat, ch.location.lon, ch.alphaTag || fmtFreq(ev.freq), "active", Date.now(), ev.freq);
           startTx(ch.id, ch.location.lat, ch.location.lon, ev.freq, "active");
         } else {
-          nofix(ev.freq, ch.alphaTag || fmtFreq(ev.freq), Date.now());
-          const pos = synthPos(ev.freq);
-          startTx(ch.id, pos.lat, pos.lng, ev.freq, "active");
+          // No location: edge-glow only — no synthetic dot, and no ring pulsing
+          // at a made-up spot.
+          nofix(ev.freq);
         }
       } else if (ev.type === "release") {
         endTx(ev.channelId); // transmission closed — stop its ring
@@ -506,13 +514,10 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
         // keeps pulsing instead of dying on the safety ttl mid-transmission.
         if (audibleId) { const tx = liveTx.get(audibleId); if (tx) tx.until = Date.now() + TX_TTL_MS; }
       } else if (ev.type === "closecall") {
-        // discoveries are unlocated at the moment they fire (identification
-        // is async) — they pulse at a stable synthetic position; once enriched,
-        // future events and history backfills place them properly. No release
-        // ever arrives for a discovery, so the ring self-expires on its ttl.
-        nofix(ev.freqHz, `Close Call ${fmtFreq(ev.freqHz)}`, Date.now());
-        const pos = synthPos(ev.freqHz);
-        startTx(`cc_${ev.freqHz}`, pos.lat, pos.lng, ev.freqHz, "closecall", 5000);
+        // discoveries are unlocated at the moment they fire (identification is
+        // async) — they pulse the edge glow; once enriched, future events and
+        // history backfills place them on the map properly.
+        nofix(ev.freqHz);
       } else if (ev.type === "audible") {
         // Camera follows AUDIO: punch to whatever owns the speaker right now,
         // at its real location or its (seeded) synthetic spot. null = silence —
