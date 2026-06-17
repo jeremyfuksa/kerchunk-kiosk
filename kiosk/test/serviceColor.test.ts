@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { PIN_COLORS, colorFor } from "../src/frontend/lib/serviceColor.js";
+import { PIN_COLORS, colorFor, categoryFor } from "../src/frontend/lib/serviceColor.js";
 
 describe("colorFor", () => {
   it("maps a ham frequency to the ham pin color", () => {
@@ -37,5 +37,35 @@ describe("colorFor", () => {
     expect(PIN_COLORS.rail).toBe("#8B5034"); // subdued rust, was #F5821F
     expect(PIN_COLORS.biz).toBe("#6D28D9"); // deeper violet, was #7C4FE0
     expect(PIN_COLORS.publicsafety).toBe("#E5383B"); // new public-safety red
+  });
+});
+
+describe("operator service tag overrides the frequency guess", () => {
+  // A conventional UHF EMS/hospital channel: by FREQUENCY it's biz/PS, but the
+  // operator filed it in the Public Safety bank — the tag must win (red).
+  const PS_FREQ = 462_975_000; // BuchCo EMS — serviceFor() => "UHF biz/PS"
+
+  it("a public-safety tag turns a biz-by-frequency channel red", () => {
+    expect(colorFor(PS_FREQ, "active")).toBe(PIN_COLORS.biz);                 // no tag: freq wins
+    expect(colorFor(PS_FREQ, "active", ["public-safety"])).toBe(PIN_COLORS.publicsafety);
+    expect(categoryFor(PS_FREQ, ["public-safety"])).toBe("publicsafety");
+  });
+
+  it("ignores unrecognized tags and falls back to frequency", () => {
+    expect(colorFor(PS_FREQ, "active", ["liberty", "casino"])).toBe(PIN_COLORS.biz);
+    expect(categoryFor(PS_FREQ, [])).toBe("biz");
+  });
+
+  it("the first RECOGNIZED tag decides (skips bank-irrelevant tags)", () => {
+    expect(categoryFor(PS_FREQ, ["liberty", "public-safety"])).toBe("publicsafety");
+  });
+
+  it("a tag classifies even a location-only blip with no usable frequency", () => {
+    expect(colorFor(undefined, "active", ["public-safety"])).toBe(PIN_COLORS.publicsafety);
+    expect(colorFor(undefined, "active")).toBe("#ff6b35"); // still the warm orange with no tag
+  });
+
+  it("the nofix gray still wins over any tag (geography is the uncertain bit)", () => {
+    expect(colorFor(PS_FREQ, "nofix", ["public-safety"])).toBe("#4a7c7e");
   });
 });

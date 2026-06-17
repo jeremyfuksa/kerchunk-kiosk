@@ -4,8 +4,7 @@ import { esc, fmtFreq } from "../lib/format.js";
 import { BlipField, coverageRadiusM } from "./blips.js";
 import type { EngineEvent } from "../../backend/engine/ScannerEngine.js";
 import icoTower from "lucide-static/icons/radio-tower.svg?raw";
-import { serviceFor } from "../../backend/config/banks.js";
-import { PIN_COLORS, colorFor } from "../lib/serviceColor.js";
+import { PIN_COLORS, colorFor, categoryFor, type PinCategory } from "../lib/serviceColor.js";
 // Operator-designed service pins (claude.ai/design handoff, 2026-06-07):
 // cream teardrops with vivid service heads; Home is deliberately inverted
 // (spark ring, cream head) so the QTH reads as YOURS on the dark map.
@@ -37,21 +36,18 @@ function pinMarker(svg: string, w: number): any {
 // Which pin does a frequency's service wear? The full operator-designed
 // family covers every allocation; anything unclassified gets the gray "?"
 // pin, which deliberately recedes next to the vivid services.
-function pinFor(freqHz: number): string {
-  const svc = serviceFor(freqHz);
-  if (svc === "air") return pinAir;
-  if (svc === "rail") return pinRail;
-  if (svc?.startsWith("ham")) return pinHam;
-  if (svc === "GMRS/FRS") return pinGmrs;
-  if (svc === "marine") return pinMarine;
-  if (svc === "NOAA wx") return pinWeather;
-  // Public safety rides its own red pin: the dedicated 700 MHz PS band and
-  // 800 MHz trunked systems (the metro's primary PS presence). The mixed
-  // conventional "biz/PS" bands and T-band stay on biz — not separable from
-  // business traffic by frequency alone.
-  if (svc === "700 PS" || svc?.includes("trunked")) return pinPublicSafety;
-  if (svc && (svc.includes("biz") || svc === "T-band")) return pinBiz;
-  return pinUnknown;
+const PIN_SVG: Record<PinCategory, string> = {
+  air: pinAir, rail: pinRail, ham: pinHam, gmrs: pinGmrs, biz: pinBiz,
+  marine: pinMarine, weather: pinWeather, publicsafety: pinPublicSafety, unknown: pinUnknown,
+};
+
+// Pin for a site: an operator service tag (bank label) wins over the frequency
+// allocation — so a conventional-UHF EMS/hospital channel filed in the Public
+// Safety bank wears the red pin even though its frequency reads as "biz/PS".
+// Heard-only sites and transient blips have no channel tags and fall back to
+// frequency (see categoryFor).
+function pinFor(freqHz: number, tags?: readonly string[]): string {
+  return PIN_SVG[categoryFor(freqHz, tags)];
 }
 
 // Live activity map (ROADMAP Idea 2, Google Maps per operator decision):
@@ -309,6 +305,12 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
     const TX_TTL_MS = 60_000;
     const liveTx = new Map<string, { lat: number; lng: number; key: string; color: string; born: number; until: number }>();
     const txRings = new Map<string, any>();
+    // freq -> operator bank tags, learned from /api/channels. Lets the transient
+    // blip layer (keyed only by frequency) honor the same operator service tag
+    // the site pins do — a public-safety-tagged channel pulses red, not biz.
+    const freqTags = new Map<number, readonly string[]>();
+    const tagsFor = (freq?: number): readonly string[] | undefined =>
+      freq == null ? undefined : freqTags.get(freq);
     let audibleId: string | null = null; // current speaker owner (drives ring re-arm)
     // The render loop self-suspends on a quiet map; wake() (defined with tick)
     // restarts it. `ticking` guards against double-starting.
@@ -319,7 +321,7 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
       const existing = liveTx.get(id);
       liveTx.set(id, {
         lat, lng, key: `${lat.toFixed(5)},${lng.toFixed(5)}`,
-        color: colorFor(freq, kind), born: existing?.born ?? now, until: now + ttlMs,
+        color: colorFor(freq, kind, tagsFor(freq)), born: existing?.born ?? now, until: now + ttlMs,
       });
       wake();
     }
@@ -349,7 +351,7 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
         // so an unknown site recolors live without a reload. Only ever gray ->
         // known: never overwrite a real service pin, never re-set to gray.
         if (existing.pin === pinUnknown && freq != null) {
-          const better = sitePin.get(key) ?? pinFor(freq);
+          const better = sitePin.get(key) ?? pinFor(freq, tagsFor(freq));
           if (better !== pinUnknown) {
             existing.pin = better;
             existing.marker.setIcon(pinMarker(better, Math.round(22 * mk)));
@@ -360,7 +362,7 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
       // A located config channel seeds the pin by service; otherwise derive it
       // from the site's own heard frequency (history/live), so a heard biz site
       // with no config location still wears its service pin instead of gray.
-      const pin = sitePin.get(key) ?? (freq != null ? pinFor(freq) : pinUnknown);
+      const pin = sitePin.get(key) ?? (freq != null ? pinFor(freq, tagsFor(freq)) : pinUnknown);
       const marker = new google.maps.Marker({
         map, position: { lat, lng: lon },
         icon: pinMarker(pin, Math.round(22 * mk)),
@@ -386,15 +388,16 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
     const knownPositions: Array<{ lat: number; lng: number }> = [];
     const channelsReady = fetch("/api/channels")
       .then((r) => (r.ok ? r.json() : []))
-      .then((chs: Array<{ freq: number; location?: { lat?: number; lon?: number; powerWatts?: number; antennaHaatM?: number } }>) => {
+      .then((chs: Array<{ freq: number; tags?: string[]; location?: { lat?: number; lon?: number; powerWatts?: number; antennaHaatM?: number } }>) => {
         for (const c of chs) {
+          if (c.tags?.length) freqTags.set(c.freq, c.tags);
           if (c.location?.lat != null && c.location.lon != null) {
             knownPositions.push({ lat: c.location.lat, lng: c.location.lon });
             const key = `${c.location.lat.toFixed(5)},${c.location.lon.toFixed(5)}`;
             if (c.location.powerWatts) {
               coverage.set(key, coverageRadiusM(c.location.powerWatts, c.location.antennaHaatM));
             }
-            if (!sitePin.has(key)) sitePin.set(key, pinFor(c.freq));
+            if (!sitePin.has(key)) sitePin.set(key, pinFor(c.freq, c.tags));
           }
         }
       })
@@ -459,7 +462,7 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
     function nofix(freqHz: number): void {
       // No honest position to plot — pulse the screen edges in the band's color
       // (active service color, not the muted nofix gray) instead of a fake dot.
-      glowEdges(colorFor(freqHz, "active"));
+      glowEdges(colorFor(freqHz, "active", tagsFor(freqHz)));
     }
 
     function push(lat: number, lon: number, alphaTag: string, kind: "active" | "closecall", ts: number, freq?: number): void {
@@ -489,6 +492,7 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
     new ReconnectingWs(`${proto}://${location.host}/ws`, (ev: EngineEvent) => {
       if (ev.type === "active") {
         const ch = ev.channel;
+        if (ch.tags?.length) freqTags.set(ev.freq, ch.tags); // learn tags live, pre-fetch
         if (ch.location?.lat != null && ch.location.lon != null) {
           push(ch.location.lat, ch.location.lon, ch.alphaTag || fmtFreq(ev.freq), "active", Date.now(), ev.freq);
           startTx(ch.id, ch.location.lat, ch.location.lon, ev.freq, "active");
@@ -552,7 +556,7 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
           entry = { circle, info, last: null };
           circles.set(key, entry);
         }
-        const col = colorFor(b.freq, b.kind);
+        const col = colorFor(b.freq, b.kind, tagsFor(b.freq));
         // Quantize the 60s opacity fade to ~16 steps so steady-state decay
         // rarely changes a written value — the dirty-check then skips the
         // (geometry+style) WebGL re-upload. Imperceptible at a 60s fade.
