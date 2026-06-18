@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { removedHexes, planeIconRotation } from "../src/frontend/map/aircraft.js";
+import { removedHexes, planeIconRotation, kindScale } from "../src/frontend/map/aircraft.js";
 
 describe("removedHexes", () => {
   it("returns hexes present before but absent from the new snapshot", () => {
@@ -23,5 +23,18 @@ describe("planeIconRotation", () => {
   });
   it("defaults to 0 when heading is unknown", () => {
     expect(planeIconRotation(null)).toBe(0);
+  });
+});
+
+describe("kindScale", () => {
+  it("sizes airliners largest and unknown smallest", () => {
+    expect(kindScale("airliner", "A3")).toBeGreaterThan(kindScale("prop", "A1"));
+    expect(kindScale("unknown", null)).toBeLessThan(kindScale("prop", "A1"));
+  });
+  it("shrinks A2 small/regional jets below heavy airliners", () => {
+    expect(kindScale("airliner", "A2")).toBeLessThan(kindScale("airliner", "A3"));
+  });
+  it("does not shrink a heavy airliner", () => {
+    expect(kindScale("airliner", "A5")).toBe(kindScale("airliner", "A3"));
   });
 });

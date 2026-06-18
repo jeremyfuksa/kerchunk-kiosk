@@ -1,4 +1,4 @@
-import type { AircraftTarget } from "./engine/ScannerEngine.js";
+import type { AircraftTarget, AircraftKind } from "./engine/ScannerEngine.js";
 import { distKm } from "./powerEstimator.js";
 
 // Airplanes.live network ADS-B feed → airborne targets near the QTH. No SDR,
@@ -27,7 +27,7 @@ export interface AircraftFeedOpts {
 }
 
 // Only the airplanes.live fields we read. alt_baro is a number while airborne
-// and the string "ground" on the ramp.
+// and the string "ground" on the ramp; category is the ADS-B emitter class.
 interface RawAc {
   hex?: string;
   flight?: string;
@@ -36,6 +36,24 @@ interface RawAc {
   lon?: number;
   track?: number;
   alt_baro?: number | string;
+  category?: string;
+}
+
+/** Visual class from the ADS-B emitter category (airplanes.live `category`):
+ *    A1 light            -> prop        A5 heavy             -> airliner
+ *    A2 small            -> airliner    A6 high-performance  -> military
+ *    A3 large            -> airliner    A7 rotorcraft        -> helicopter
+ *    A4 high-vortex large-> airliner    A0 / B* / C* / none  -> unknown
+ *  A2 still classes as an airliner (a small/regional/biz jet); the glyph
+ *  renders smaller off the raw category, so it reads distinct from a heavy. */
+export function classifyKind(category: string | null | undefined): AircraftKind {
+  switch ((category ?? "").toUpperCase()) {
+    case "A7": return "helicopter";
+    case "A6": return "military";
+    case "A2": case "A3": case "A4": case "A5": return "airliner";
+    case "A1": return "prop";
+    default: return "unknown";
+  }
 }
 
 /** Map a /v2/point body to airborne targets, nearest `maxTargets` from home. */
@@ -56,12 +74,15 @@ export function parseAircraft(
     if (!hex) continue;
     const callsign =
       (raw.flight ?? "").trim() || (raw.r ?? "").trim() || hex.toUpperCase();
+    const category = (raw.category ?? "").trim() || null;
     out.push({
       hex,
       callsign,
       lat: raw.lat,
       lon: raw.lon,
       heading: typeof raw.track === "number" ? raw.track : null,
+      kind: classifyKind(category),
+      category,
     });
   }
   // Nearest-first, then cap. Distance is a sort key only — never stored on the

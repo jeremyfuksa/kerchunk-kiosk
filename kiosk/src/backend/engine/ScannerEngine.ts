@@ -55,6 +55,11 @@ export interface ScanConfig {
 
 export type EngineState = "stopped" | "starting" | "running" | "error";
 
+/** Visual class of an aircraft, derived from its ADS-B emitter category.
+ *  Drives the map glyph + color. "airliner" covers all jets (A2–A5); the A2
+ *  small/regional/biz subset renders smaller via `category`. */
+export type AircraftKind = "airliner" | "prop" | "helicopter" | "military" | "unknown";
+
 /** One airborne aircraft as plotted on the kiosk map (network ADS-B, not RF). */
 export interface AircraftTarget {
   hex: string;          // ICAO 24-bit address — stable identity for reconcile
@@ -62,6 +67,8 @@ export interface AircraftTarget {
   lat: number;
   lon: number;
   heading: number | null; // degrees true (track); null when unknown
+  kind: AircraftKind;     // glyph + color class
+  category: string | null; // raw ADS-B emitter category (e.g. "A2"); sizes the glyph
 }
 
 export type EngineEvent =

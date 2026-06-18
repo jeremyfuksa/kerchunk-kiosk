@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { AircraftFeed, parseAircraft } from "../src/backend/aircraft.js";
+import { AircraftFeed, parseAircraft, classifyKind } from "../src/backend/aircraft.js";
 
 const QTH = { lat: 39.29, lon: -94.5 };
 
@@ -9,15 +9,44 @@ function body(ac: unknown[]) {
 }
 const plane = (over: Record<string, unknown> = {}) => ({
   hex: "add10d", flight: "N99HV   ", r: "N99HV", t: "C172",
-  alt_baro: 1900, track: 155.56, lat: 39.0, lon: -94.6, ...over,
+  category: "A1", alt_baro: 1900, track: 155.56, lat: 39.0, lon: -94.6, ...over,
+});
+
+describe("classifyKind", () => {
+  it("maps emitter categories to visual kinds", () => {
+    expect(classifyKind("A1")).toBe("prop");
+    expect(classifyKind("A2")).toBe("airliner"); // small/regional/biz jet
+    expect(classifyKind("A3")).toBe("airliner");
+    expect(classifyKind("A4")).toBe("airliner");
+    expect(classifyKind("A5")).toBe("airliner");
+    expect(classifyKind("A6")).toBe("military");
+    expect(classifyKind("A7")).toBe("helicopter");
+  });
+  it("is case-insensitive", () => {
+    expect(classifyKind("a7")).toBe("helicopter");
+  });
+  it("falls back to unknown for A0, B/C classes, and missing", () => {
+    expect(classifyKind("A0")).toBe("unknown");
+    expect(classifyKind("B2")).toBe("unknown"); // lighter-than-air
+    expect(classifyKind("C3")).toBe("unknown"); // surface obstruction
+    expect(classifyKind(null)).toBe("unknown");
+    expect(classifyKind(undefined)).toBe("unknown");
+  });
 });
 
 describe("parseAircraft", () => {
-  it("maps fields and trims the callsign", () => {
+  it("maps fields, trims the callsign, and classifies the kind", () => {
     const out = parseAircraft({ ac: [plane()] }, QTH, 60);
     expect(out).toEqual([
-      { hex: "add10d", callsign: "N99HV", lat: 39.0, lon: -94.6, heading: 155.56 },
+      { hex: "add10d", callsign: "N99HV", lat: 39.0, lon: -94.6, heading: 155.56, kind: "prop", category: "A1" },
     ]);
+  });
+
+  it("classifies an A3 as an airliner and normalises missing category to null", () => {
+    expect(parseAircraft({ ac: [plane({ category: "A3" })] }, QTH, 60)[0]!.kind).toBe("airliner");
+    const noCat = parseAircraft({ ac: [plane({ category: undefined })] }, QTH, 60)[0]!;
+    expect(noCat.category).toBeNull();
+    expect(noCat.kind).toBe("unknown");
   });
 
   it("drops on-ground targets (alt_baro === 'ground')", () => {
