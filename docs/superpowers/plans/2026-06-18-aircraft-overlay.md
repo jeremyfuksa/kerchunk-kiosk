@@ -424,7 +424,7 @@ export function parseAircraft(
 ): AircraftTarget[] {
   const ac = (body as { ac?: unknown } | null)?.ac;
   if (!Array.isArray(ac)) return [];
-  const out: Array<AircraftTarget & { dist: number }> = [];
+  const out: AircraftTarget[] = [];
   for (const raw of ac as RawAc[]) {
     // Airborne only: a grounded target reports alt_baro === "ground". A missing
     // or numeric altitude is treated as airborne.
@@ -440,11 +440,15 @@ export function parseAircraft(
       lat: raw.lat,
       lon: raw.lon,
       heading: typeof raw.track === "number" ? raw.track : null,
-      dist: distKm(home, { lat: raw.lat, lon: raw.lon }),
     });
   }
-  out.sort((a, b) => a.dist - b.dist);
-  return out.slice(0, maxTargets).map(({ dist: _dist, ...t }) => t);
+  // Nearest-first, then cap. Distance is a sort key only — never stored on the
+  // target — so it never leaks into the WS payload.
+  return out
+    .map((t) => ({ t, d: distKm(home, { lat: t.lat, lon: t.lon }) }))
+    .sort((a, b) => a.d - b.d)
+    .slice(0, maxTargets)
+    .map((s) => s.t);
 }
 
 export class AircraftFeed implements AircraftSource {
