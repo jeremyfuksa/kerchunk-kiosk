@@ -518,31 +518,31 @@ body {
   flex: none;
   display: inline-flex;
   width: fit-content;
-  min-width: 26rem;
-  max-width: min(46rem, 52vw);
+  min-width: 22rem;
+  max-width: min(40rem, 46vw);
   align-items: flex-start;
   background: color-mix(in srgb, var(--bg) 90%, transparent);
   border: 1px solid var(--panel-edge);
-  border-radius: 10px;
-  padding: 1.2rem 1.6rem 1.4rem;
-  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.45);
+  border-radius: 9px;
+  padding: 0.95rem 1.35rem 1.1rem;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
 }
-.dash.mapStage .now .active { font-size: 1.3rem; }
+.dash.mapStage .now .active { font-size: 1.12rem; }
 .dash.mapStage .now .tag {
-  font-size: clamp(2.7rem, 4.6vw, 4.5rem);
+  font-size: clamp(2.3rem, 3.9vw, 3.85rem);
   text-align: left;
   max-width: 100%;
-  margin-top: 0.5rem;
+  margin-top: 0.42rem;
 }
-.dash.mapStage .now .freq { font-size: 2.1rem; margin-top: 0.45rem; }
+.dash.mapStage .now .freq { font-size: 1.8rem; margin-top: 0.4rem; }
 .dash.mapStage .meter {
-  width: 100%; max-width: 400px; height: 15px;
-  margin: 1.2rem 0 0;
+  width: 100%; max-width: 340px; height: 13px;
+  margin: 1rem 0 0;
 }
-.dash.mapStage .meterDb { font-size: 1rem; }
+.dash.mapStage .meterDb { font-size: 0.9rem; }
 .dash.mapStage .now .scanning { text-align: left; }
-.dash.mapStage .now .scanning .scanText { font-size: 1.9rem; }
-.dash.mapStage .now .scanning .sweep { width: 320px; margin: 1.1rem 0 0; }
+.dash.mapStage .now .scanning .scanText { font-size: 1.62rem; }
+.dash.mapStage .now .scanning .sweep { width: 280px; margin: 1rem 0 0; }
 .dash.mapStage .now .scanning .standbyHint { font-size: 1.05rem; }
 .dash.mapStage .now .err { font-size: 1.05rem; max-width: 100%; padding: 0.9rem; }
 
