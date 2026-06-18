@@ -57,6 +57,40 @@ describe("configSchema", () => {
     // staying below the signal level, so >= 1500 documents that rationale.
     expect(defaultConfig().scan.squelchLevel).toBeGreaterThanOrEqual(1500);
   });
+
+  it("defaults the aircraft block fields when given an empty object", () => {
+    const cfg = configSchema.parse({ ...defaultConfig(), aircraft: {} });
+    expect(cfg.aircraft).toEqual({
+      enabled: false,
+      radiusKm: 75,
+      pollIntervalMs: 5000,
+      maxTargets: 60,
+      url: "http://api.airplanes.live/v2/point",
+    });
+  });
+
+  it("accepts an enabled aircraft block with overrides", () => {
+    const cfg = configSchema.parse({
+      ...defaultConfig(),
+      aircraft: { enabled: true, radiusKm: 40, maxTargets: 30 },
+    });
+    expect(cfg.aircraft?.enabled).toBe(true);
+    expect(cfg.aircraft?.radiusKm).toBe(40);
+    expect(cfg.aircraft?.maxTargets).toBe(30);
+    expect(cfg.aircraft?.pollIntervalMs).toBe(5000); // still defaulted
+  });
+
+  it("rejects a non-URL aircraft url", () => {
+    expect(() => configSchema.parse({
+      ...defaultConfig(),
+      aircraft: { url: "not-a-url" },
+    })).toThrow();
+  });
+
+  it("omits aircraft entirely when not provided", () => {
+    const cfg = configSchema.parse(defaultConfig());
+    expect(cfg.aircraft).toBeUndefined();
+  });
 });
 
 describe("weatherChannel", () => {
