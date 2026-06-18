@@ -196,6 +196,10 @@ export const configSchema = z.object({
     maxTargets: z.number().int().positive().default(60),
     // airplanes.live REST base. The poller appends /{lat}/{lon}/{radiusNm}.
     url: z.string().url().default("http://api.airplanes.live/v2/point"),
+    // Comet trails: a short, fading line behind each aircraft, accumulated
+    // client-side from the snapshots and redrawn only on the poll tick (no
+    // animation). Off by default — keeps the wall uncluttered.
+    trails: z.boolean().default(false),
   }).optional(),
   // Multi-SDR (ROADMAP Idea 10): role assignments by device identity.
   // Prefer SERIAL (e.g. "KIOSK01") — SoapySDR resolves it to the exact dongle

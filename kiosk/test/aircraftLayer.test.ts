@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { removedHexes, planeIconRotation, kindScale } from "../src/frontend/map/aircraft.js";
+import { removedHexes, planeIconRotation, kindScale, segmentOpacity } from "../src/frontend/map/aircraft.js";
 
 describe("removedHexes", () => {
   it("returns hexes present before but absent from the new snapshot", () => {
@@ -36,5 +36,22 @@ describe("kindScale", () => {
   });
   it("does not shrink a heavy airliner", () => {
     expect(kindScale("airliner", "A5")).toBe(kindScale("airliner", "A3"));
+  });
+});
+
+describe("segmentOpacity", () => {
+  it("fades from brightest at the head to faintest at the tail", () => {
+    const segCount = 6;
+    const head = segmentOpacity(segCount - 1, segCount);
+    const tail = segmentOpacity(0, segCount);
+    expect(head).toBeGreaterThan(tail);
+    expect(tail).toBeGreaterThan(0);
+  });
+  it("never exceeds the head opacity", () => {
+    expect(segmentOpacity(9, 10, 0.5)).toBeCloseTo(0.5, 5);
+    for (let i = 0; i < 10; i++) expect(segmentOpacity(i, 10, 0.5)).toBeLessThanOrEqual(0.5);
+  });
+  it("returns 0 for an empty trail", () => {
+    expect(segmentOpacity(0, 0)).toBe(0);
   });
 });

@@ -68,9 +68,28 @@ export function kindScale(kind: AircraftKind, category: string | null): number {
   return base;
 }
 
+// Comet trail: how many recent positions to keep (one per poll tick ≈ 5 s, so
+// ~10 ≈ the last ~50 s) and how opaque the freshest segment (at the plane) is.
+const TRAIL_POINTS = 10;
+const TRAIL_HEAD_OPACITY = 0.5;
+
+/** Opacity of trail segment `i` of `segCount` (0 = oldest/tail). Newest segment
+ *  (nearest the plane) is brightest; the tail fades toward transparent. Pure. */
+export function segmentOpacity(i: number, segCount: number, headOpacity = TRAIL_HEAD_OPACITY): number {
+  if (segCount <= 0) return 0;
+  return headOpacity * ((i + 1) / segCount);
+}
+
 export class AircraftLayer {
   private readonly markers = new Map<string, any>();
-  constructor(private readonly map: any, private readonly scale: number) {}
+  // hex -> recent positions (comet trail); hex -> its reused Polyline segments.
+  private readonly history = new Map<string, any[]>();
+  private readonly trailSegs = new Map<string, any[]>();
+  constructor(
+    private readonly map: any,
+    private readonly scale: number,
+    private readonly trails = false,
+  ) {}
 
   update(targets: AircraftTarget[]): void {
     for (const t of targets) {
@@ -91,10 +110,12 @@ export class AircraftLayer {
         marker.setIcon(this.icon(t));
         marker.setLabel(this.label(t));
       }
+      if (this.trails) this.updateTrail(t);
     }
     for (const hex of removedHexes(this.markers.keys(), targets)) {
       this.markers.get(hex)?.setMap(null);
       this.markers.delete(hex);
+      this.clearTrail(hex);
     }
   }
 
@@ -124,5 +145,42 @@ export class AircraftLayer {
       color: KIND_COLOR[t.kind] ?? KIND_COLOR.unknown,
       className: "acLabel",
     };
+  }
+
+  // Append the new position to the hex's trail (capped) and redraw it as
+  // recency-faded segments, reusing Polyline objects to avoid per-tick churn.
+  // Called only on the poll tick, so the trail snaps like the glyph — no rAF.
+  private updateTrail(t: AircraftTarget): void {
+    const pts = this.history.get(t.hex) ?? [];
+    pts.push({ lat: t.lat, lng: t.lon });
+    while (pts.length > TRAIL_POINTS) pts.shift();
+    this.history.set(t.hex, pts);
+
+    const segCount = pts.length - 1;
+    let segs = this.trailSegs.get(t.hex);
+    if (!segs) { segs = []; this.trailSegs.set(t.hex, segs); }
+    const color = KIND_COLOR[t.kind] ?? KIND_COLOR.unknown;
+    for (let i = 0; i < segCount; i++) {
+      let seg = segs[i];
+      if (!seg) {
+        seg = new google.maps.Polyline({ map: this.map, clickable: false, zIndex: 1 });
+        segs[i] = seg;
+      }
+      seg.setOptions({
+        path: [pts[i], pts[i + 1]],
+        strokeColor: color,
+        strokeOpacity: segmentOpacity(i, segCount),
+        strokeWeight: 2,
+      });
+    }
+    // Trail shrank (plane reacquired with fewer points): drop extra segments.
+    for (let i = segCount; i < segs.length; i++) segs[i]?.setMap(null);
+    segs.length = segCount;
+  }
+
+  private clearTrail(hex: string): void {
+    const segs = this.trailSegs.get(hex);
+    if (segs) { for (const s of segs) s?.setMap(null); this.trailSegs.delete(hex); }
+    this.history.delete(hex);
   }
 }

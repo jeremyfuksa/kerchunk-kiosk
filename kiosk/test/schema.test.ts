@@ -66,6 +66,7 @@ describe("configSchema", () => {
       pollIntervalMs: 5000,
       maxTargets: 60,
       url: "http://api.airplanes.live/v2/point",
+      trails: false,
     });
   });
 

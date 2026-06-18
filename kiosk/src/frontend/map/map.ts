@@ -151,7 +151,7 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
     // Aircraft overlay layer: fed by "aircraft" WS snapshots below. Markers
     // snap on each poll (no per-frame animation), so this never wakes the blip
     // idle loop. The layer is inert until the first snapshot arrives.
-    const aircraft = new AircraftLayer(map, geo);
+    const aircraft = new AircraftLayer(map, geo, cfg.aircraft?.trails ?? false);
 
     // Edge glow: a hit with no honest map position has nowhere truthful to sit,
     // so instead of a synthetic dot we pulse the screen edges in the band's
