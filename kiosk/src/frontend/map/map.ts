@@ -365,7 +365,7 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
           const better = sitePin.get(key) ?? pinFor(freq, tagsFor(freq));
           if (better !== pinUnknown) {
             existing.pin = better;
-            existing.marker.setIcon(pinMarker(better, Math.round(22 * mk)));
+            existing.marker.setIcon(pinMarker(better, Math.round(19 * mk)));
           }
         }
         return;
@@ -376,7 +376,7 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
       const pin = sitePin.get(key) ?? (freq != null ? pinFor(freq, tagsFor(freq)) : pinUnknown);
       const marker = new google.maps.Marker({
         map, position: { lat, lng: lon },
-        icon: pinMarker(pin, Math.round(22 * mk)),
+        icon: pinMarker(pin, Math.round(19 * mk)),
         title: names.join(", "),
       });
       const entry = { marker, names: [...names], hits, lastTs, pin };
