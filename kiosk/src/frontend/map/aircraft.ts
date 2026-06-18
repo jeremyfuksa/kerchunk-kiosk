@@ -69,15 +69,21 @@ export function kindScale(kind: AircraftKind, category: string | null): number {
 }
 
 // Comet trail: how many recent positions to keep (one per poll tick ≈ 5 s, so
-// ~10 ≈ the last ~50 s) and how opaque the freshest segment (at the plane) is.
-const TRAIL_POINTS = 10;
-const TRAIL_HEAD_OPACITY = 0.5;
+// ~14 ≈ the last ~70 s) and how opaque the freshest segment (at the plane) is.
+const TRAIL_POINTS = 14;
+const TRAIL_HEAD_OPACITY = 0.62;
+// Don't let the tail fade all the way out: a slow aircraft's trail is only a
+// few short segments, and a ramp straight to ~0 made it nearly invisible. The
+// tail holds at this fraction of the head so even a stubby trail reads.
+const TRAIL_TAIL_FLOOR = 0.35;
 
 /** Opacity of trail segment `i` of `segCount` (0 = oldest/tail). Newest segment
- *  (nearest the plane) is brightest; the tail fades toward transparent. Pure. */
+ *  (nearest the plane) is brightest; the tail fades toward — but not past — the
+ *  floor, so short (slow-aircraft) trails stay legible. Pure. */
 export function segmentOpacity(i: number, segCount: number, headOpacity = TRAIL_HEAD_OPACITY): number {
   if (segCount <= 0) return 0;
-  return headOpacity * ((i + 1) / segCount);
+  const ramp = TRAIL_TAIL_FLOOR + (1 - TRAIL_TAIL_FLOOR) * ((i + 1) / segCount);
+  return headOpacity * ramp;
 }
 
 export class AircraftLayer {
@@ -170,7 +176,7 @@ export class AircraftLayer {
         path: [pts[i], pts[i + 1]],
         strokeColor: color,
         strokeOpacity: segmentOpacity(i, segCount),
-        strokeWeight: 2,
+        strokeWeight: 3,
       });
     }
     // Trail shrank (plane reacquired with fewer points): drop extra segments.
