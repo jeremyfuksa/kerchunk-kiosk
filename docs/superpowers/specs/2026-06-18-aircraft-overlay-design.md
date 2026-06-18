@@ -238,6 +238,28 @@ used by this feature; the network feed keeps it off-SDR.
 - Feeding airplanes.live to earn API access — the unauthenticated
   non-commercial endpoint is sufficient.
 
+## Addendum — type-aware visual system (2026-06-18, post-build refinement)
+
+The initial build used one cyan heading-arrow for every aircraft. Operator
+review on the kiosk refined this into a type-aware system:
+
+- **Kind** is derived in the poller from the ADS-B emitter `category`
+  (`classifyKind`): A3/A4/A5 → `airliner`, A2 → `airliner` (rendered smaller),
+  A1 → `prop`, A7 → `helicopter`, A6 → `military`, else → `unknown`. The target
+  carries `kind` and the raw `category` (the latter sizes the glyph).
+- **Silhouette** per kind: top-view heading-rotated Google Maps Symbol paths —
+  swept-wing jet, straight-wing prop, rotor-cross helicopter, delta military,
+  chevron unknown.
+- **Vivid per-type palette** (operator chose vivid over "quiet-common"):
+  airliner `#5fb0e6`, prop `#a8c76f`, helicopter `#ffc05c`, military `#f08080`,
+  unknown `#7d8893`. Distinct from the cream-headed site pins by form + motion.
+- **Size grades** by kind (airliners largest; A2 jets smaller than heavies).
+- **Labels** are Campfire instrument chips: condensed, uppercase, wide-tracked
+  on a dark plate, callsign tinted to the type color (`.acLabel`).
+
+`AircraftTarget` accordingly gained `kind: AircraftKind` and
+`category: string | null`.
+
 ## Licensing note
 
 All the free public ADS-B tiers (airplanes.live, adsb.fi/lol, OpenSky) are
