@@ -59,3 +59,24 @@
   6%   { opacity: 0.4; }
   100% { opacity: 0; }
 }
+
+/* Aircraft callsign chips — Campfire instrument language: condensed, uppercase,
+   wide-tracked on a dark plate, sitting just below the heading glyph so they
+   never overprint it. Text color is set per-marker to the type color (see
+   AircraftLayer.label), tying the chip to its silhouette. !important beats the
+   Google Maps inline label styles. */
+.acLabel {
+  font-family: var(--font-sans, ui-sans-serif, system-ui), sans-serif !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.14em !important;
+  text-transform: uppercase;
+  padding: 2px 6px 2px 7px;
+  border-radius: 2px;
+  background: rgba(10, 13, 18, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.55);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
+  transform: translateY(24px);
+  white-space: nowrap;
+}

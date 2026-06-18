@@ -15,6 +15,7 @@ import { RadioReference } from "./radioreference.js";
 import { MyGmrs } from "./mygmrs.js";
 import { FccProx } from "./fccprox.js";
 import { BusinessGuess } from "./businessGuess.js";
+import { AircraftFeed } from "./aircraft.js";
 import { composeLookups, type LookupProvider } from "./lookup.js";
 import { NwsWeather } from "./weather.js";
 import { HistoryStore } from "./history.js";
@@ -205,9 +206,21 @@ history.prune();
 const pruneTimer = setInterval(() => history.prune(), 24 * 3600 * 1000);
 pruneTimer.unref?.();
 
+// Aircraft overlay (network ADS-B): only when enabled AND a QTH is configured
+// (it reuses display.weatherLat/Lon, like the other QTH-anchored providers).
+const aircraftFeed = config.aircraft?.enabled && config.display
+  ? new AircraftFeed({
+      home: { lat: config.display.weatherLat, lon: config.display.weatherLon },
+      radiusKm: config.aircraft.radiusKm,
+      pollIntervalMs: config.aircraft.pollIntervalMs,
+      maxTargets: config.aircraft.maxTargets,
+      url: config.aircraft.url,
+    })
+  : undefined;
+
 const { server } = createServer({
   configStore, engine, weatherEngine, activityLog, wsHub, staticDir: STATIC_DIR,
-  lookup, weather, history,
+  lookup, weather, history, aircraftFeed,
   selfProtect: true,
   // systemd uses Restart=on-failure, so an intentional non-zero exit performs
   // a full backend/helper restart without requiring passwordless systemctl.
@@ -243,5 +256,5 @@ server.listen(PORT, () => {
     .catch((err) => console.error("engine start failed:", err));
 });
 
-process.on("SIGTERM", async () => { await engine.stop(); server.close(); process.exit(0); });
-process.on("SIGINT", async () => { await engine.stop(); server.close(); process.exit(0); });
+process.on("SIGTERM", async () => { aircraftFeed?.stop(); await engine.stop(); server.close(); process.exit(0); });
+process.on("SIGINT", async () => { aircraftFeed?.stop(); await engine.stop(); server.close(); process.exit(0); });

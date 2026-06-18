@@ -182,6 +182,25 @@ export const configSchema = z.object({
       .enum(["n0q", "mrms-reflectivity", "mrms-preciprate"])
       .optional(),
   }).optional(),
+  // Aircraft overlay (network ADS-B): plots airborne targets near the QTH on
+  // the kiosk map from the airplanes.live public feed (no SDR, no DSP). Off by
+  // default; see docs/superpowers/specs/2026-06-18-aircraft-overlay-design.md.
+  aircraft: z.object({
+    enabled: z.boolean().default(false),
+    // Coverage radius around the QTH (km). airplanes.live /v2/point takes
+    // nautical miles; the poller converts. 75 km ≈ 40 nm.
+    radiusKm: z.number().positive().default(75),
+    pollIntervalMs: z.number().int().positive().default(5000),
+    // Nearest-N cap: with "all within radius" a busy metro can return many
+    // targets; keep the nearest this-many to bound marker churn.
+    maxTargets: z.number().int().positive().default(60),
+    // airplanes.live REST base. The poller appends /{lat}/{lon}/{radiusNm}.
+    url: z.string().url().default("http://api.airplanes.live/v2/point"),
+    // Comet trails: a short, fading line behind each aircraft, accumulated
+    // client-side from the snapshots and redrawn only on the poll tick (no
+    // animation). Off by default — keeps the wall uncluttered.
+    trails: z.boolean().default(false),
+  }).optional(),
   // Multi-SDR (ROADMAP Idea 10): role assignments by device identity.
   // Prefer SERIAL (e.g. "KIOSK01") — SoapySDR resolves it to the exact dongle
   // regardless of librtlsdr enumeration order, which the USB PORT->index map

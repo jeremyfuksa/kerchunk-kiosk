@@ -13,11 +13,18 @@ export class WsHub {
   // means "a channel opened", audible means "this is what the speaker plays".
   private lastNowPlaying: EngineEvent | null = null;
   private audibleSeen = false;
+  // Last non-empty aircraft snapshot, replayed to late clients so a reconnecting
+  // kiosk isn't blank for one poll interval. A separate slot from lastNowPlaying
+  // so aircraft never interact with the now-playing replay reset.
+  private lastAircraft: EngineEvent | null = null;
 
   add(ws: Sendable): void {
     this.clients.add(ws);
     if (this.lastNowPlaying && ws.readyState === ws.OPEN) {
       ws.send(JSON.stringify(this.lastNowPlaying));
+    }
+    if (this.lastAircraft && ws.readyState === ws.OPEN) {
+      ws.send(JSON.stringify(this.lastAircraft));
     }
   }
   remove(ws: Sendable): void { this.clients.delete(ws); }
@@ -30,6 +37,10 @@ export class WsHub {
       if (!this.audibleSeen) this.lastNowPlaying = event;
     } else if (event.type === "idle") {
       if (!this.audibleSeen) this.lastNowPlaying = null;
+    } else if (event.type === "aircraft") {
+      // An empty snapshot means "no aircraft" — clear the replay so a late
+      // client doesn't get stale planes.
+      this.lastAircraft = event.targets.length ? event : null;
     } else if (event.type === "status") {
       this.lastNowPlaying = null;
       this.audibleSeen = false;

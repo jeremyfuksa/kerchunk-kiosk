@@ -2,6 +2,7 @@ import { ReconnectingWs } from "../lib/wsClient.js";
 import { api } from "../lib/api.js";
 import { esc, fmtFreq } from "../lib/format.js";
 import { BlipField, coverageRadiusM } from "./blips.js";
+import { AircraftLayer } from "./aircraft.js";
 import type { EngineEvent } from "../../backend/engine/ScannerEngine.js";
 import icoTower from "lucide-static/icons/radio-tower.svg?raw";
 import { PIN_COLORS, colorFor, categoryFor, type PinCategory } from "../lib/serviceColor.js";
@@ -146,6 +147,11 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
         ? { mapId, isFractionalZoomEnabled: true, colorScheme: "DARK" }
         : { styles: DARK_STYLE }),
     });
+
+    // Aircraft overlay layer: fed by "aircraft" WS snapshots below. Markers
+    // snap on each poll (no per-frame animation), so this never wakes the blip
+    // idle loop. The layer is inert until the first snapshot arrives.
+    const aircraft = new AircraftLayer(map, geo, cfg.aircraft?.trails ?? false);
 
     // Edge glow: a hit with no honest map position has nowhere truthful to sit,
     // so instead of a synthetic dot we pulse the screen edges in the band's
@@ -531,6 +537,11 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
         if (ch?.location?.lat != null && ch.location.lon != null) {
           punch(ch.location.lat, ch.location.lon);
         }
+      } else if (ev.type === "aircraft") {
+        // Full snapshot each poll — reconcile the marker set. No wake(): the
+        // aircraft layer manages its own Google Maps markers and is independent
+        // of the blip render loop.
+        aircraft.update(ev.targets);
       }
     }).connect();
 

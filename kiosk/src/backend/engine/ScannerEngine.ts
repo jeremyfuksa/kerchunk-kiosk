@@ -55,6 +55,22 @@ export interface ScanConfig {
 
 export type EngineState = "stopped" | "starting" | "running" | "error";
 
+/** Visual class of an aircraft, derived from its ADS-B emitter category.
+ *  Drives the map glyph + color. "airliner" covers all jets (A2–A5); the A2
+ *  small/regional/biz subset renders smaller via `category`. */
+export type AircraftKind = "airliner" | "prop" | "helicopter" | "military" | "unknown";
+
+/** One airborne aircraft as plotted on the kiosk map (network ADS-B, not RF). */
+export interface AircraftTarget {
+  hex: string;          // ICAO 24-bit address — stable identity for reconcile
+  callsign: string;     // flight / registration, trimmed; never empty
+  lat: number;
+  lon: number;
+  heading: number | null; // degrees true (track); null when unknown
+  kind: AircraftKind;     // glyph + color class
+  category: string | null; // raw ADS-B emitter category (e.g. "A2"); sizes the glyph
+}
+
 export type EngineEvent =
   | { type: "active"; channel: Channel; freq: number; ts: number }
   // Which channel OWNS THE SPEAKER right now (null = silence). Distinct from
@@ -89,6 +105,11 @@ export type EngineEvent =
   // the engine — it rides the same union so the WS hub and dashboards treat
   // it like any other event.
   | { type: "alert"; channel: Channel; freq: number; holdSeconds: number; ts: number; counties?: string }
+  // Aircraft overlay snapshot (network ADS-B via AircraftFeed). Full snapshot
+  // each poll — the frontend reconciles its markers against it. Synthesized by
+  // the server from the poller, like "alert"; rides the union so the WS hub
+  // and dashboards treat it like any other event.
+  | { type: "aircraft"; targets: AircraftTarget[]; ts: number }
   | { type: "status"; state: EngineState; ts: number }
   // Cold-start warm-up progress (drives the kiosk "WARMING UP" overlay). A
   // distinct type — NOT a status substate — so it never trips the WS replay

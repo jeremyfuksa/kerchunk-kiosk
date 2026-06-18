@@ -89,3 +89,39 @@ describe("WsHub replay prefers audible", () => {
     expect(late.send).not.toHaveBeenCalled();
   });
 });
+
+describe("WsHub aircraft replay", () => {
+  const targets = [
+    { hex: "abc123", callsign: "N99HV", lat: 39.0, lon: -95.2, heading: 155 },
+  ];
+
+  it("replays the last non-empty aircraft snapshot to a late client", () => {
+    const hub = new WsHub();
+    hub.broadcast({ type: "aircraft", targets, ts: 7 });
+    const late = fakeClient();
+    hub.add(late);
+    expect(late.send).toHaveBeenCalledWith(
+      JSON.stringify({ type: "aircraft", targets, ts: 7 }),
+    );
+  });
+
+  it("an empty aircraft snapshot clears the replay", () => {
+    const hub = new WsHub();
+    hub.broadcast({ type: "aircraft", targets, ts: 7 });
+    hub.broadcast({ type: "aircraft", targets: [], ts: 8 });
+    const late = fakeClient();
+    hub.add(late);
+    expect(late.send).not.toHaveBeenCalled();
+  });
+
+  it("aircraft replay is independent of now-playing replay", () => {
+    const hub = new WsHub();
+    const ch = { id: "c1", freq: 162550000, alphaTag: "WX1", mode: "nfm" as const, enabled: true };
+    hub.broadcast({ type: "active", channel: ch, freq: ch.freq, ts: 1 });
+    hub.broadcast({ type: "aircraft", targets, ts: 2 });
+    const late = fakeClient();
+    hub.add(late);
+    // Both the active (now-playing) and the aircraft snapshot replay.
+    expect(late.send).toHaveBeenCalledTimes(2);
+  });
+});
