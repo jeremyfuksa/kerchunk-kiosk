@@ -38,9 +38,10 @@ const KIND_PATH: Record<AircraftKind, string> = {
 };
 
 // Base glyph scale per kind (airliners read largest); the map's own scale
-// factor (1 interactive, 1.6 kiosk) multiplies on top.
+// factor (1 interactive, 1.6 kiosk) multiplies on top. Sized to read across
+// the room on the wall.
 const KIND_BASE_SCALE: Record<AircraftKind, number> = {
-  airliner: 0.62, prop: 0.5, helicopter: 0.56, military: 0.58, unknown: 0.44,
+  airliner: 1.0, prop: 0.82, helicopter: 0.9, military: 0.92, unknown: 0.7,
 };
 
 /** Markers whose hex is no longer in the snapshot — pure for testability. */
