@@ -10,6 +10,7 @@ import type { NwsWeather } from "./weather.js";
 import type { HistoryStore } from "./history.js";
 import { WsHub } from "./ws.js";
 import type { EngineEvent, ScannerEngine, ScanConfig } from "./engine/ScannerEngine.js";
+import type { AircraftSource } from "./aircraft.js";
 import { setVolume as amixerVolume, setMuted as amixerMuted, type AmixerOpts } from "./audio.js";
 import { isScannable, isAudible, profileFor } from "./config/banks.js";
 import { collides, findDuplicateSets } from "./config/channelDedup.js";
@@ -40,6 +41,8 @@ export interface ServerDeps {
   restartBackend?: () => void;
   /** Enable temporary thermal load-shedding on the appliance process. */
   selfProtect?: boolean;
+  /** Optional network ADS-B aircraft overlay feed (off unless configured). */
+  aircraftFeed?: AircraftSource;
 }
 
 const MIME: Record<string, string> = {
@@ -1030,6 +1033,16 @@ export function createServer(deps: ServerDeps): { server: Server } {
       "Cache-Control": hashed ? "public, max-age=31536000, immutable" : "no-cache",
     });
     res.end(readFileSync(filePath));
+  }
+
+  // Aircraft overlay: the poller emits a full snapshot each tick; rebroadcast
+  // it verbatim and tie its lifecycle to the server so tests/shutdown clean up.
+  if (deps.aircraftFeed) {
+    deps.aircraftFeed.onUpdate((targets) => {
+      deps.wsHub.broadcast({ type: "aircraft", targets, ts: Date.now() });
+    });
+    deps.aircraftFeed.start();
+    server.on("close", () => deps.aircraftFeed?.stop());
   }
 
   return { server };

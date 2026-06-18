@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import request from "supertest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -9,6 +9,17 @@ import { ActivityLog } from "../src/backend/activityLog.js";
 import { WsHub } from "../src/backend/ws.js";
 import { FakeEngine } from "../src/backend/engine/FakeEngine.js";
 import { HistoryStore } from "../src/backend/history.js";
+import type { AircraftSource } from "../src/backend/aircraft.js";
+import type { AircraftTarget } from "../src/backend/engine/ScannerEngine.js";
+
+class FakeAircraftFeed implements AircraftSource {
+  started = false;
+  private cb: ((t: AircraftTarget[]) => void) | null = null;
+  onUpdate(cb: (t: AircraftTarget[]) => void) { this.cb = cb; }
+  start() { this.started = true; }
+  stop() { /* no-op */ }
+  fire(targets: AircraftTarget[]) { this.cb?.(targets); }
+}
 
 let dir: string;
 function makeApp() {
@@ -337,6 +348,27 @@ describe("HTTP API", () => {
     // engine-capability 404 — proving the remote-listening gate was passed.
     expect(res.status).toBe(404);
     expect(res.body.error).toBe("engine has no audio tee");
+  });
+
+  it("broadcasts aircraft snapshots from the feed over the WS hub", () => {
+    dir = mkdtempSync(join(tmpdir(), "ksrv-"));
+    const configStore = new ConfigStore(join(dir, "config.json"));
+    const engine = new FakeEngine();
+    const activityLog = new ActivityLog(100);
+    const wsHub = new WsHub();
+    const aircraftFeed = new FakeAircraftFeed();
+    createServer({ configStore, engine, activityLog, wsHub, staticDir: dir, aircraftFeed });
+
+    expect(aircraftFeed.started).toBe(true);
+
+    const client = { readyState: 1, OPEN: 1, send: vi.fn() } as any;
+    wsHub.add(client);
+    const targets = [{ hex: "abc123", callsign: "N99HV", lat: 39, lon: -94.6, heading: 155 }];
+    aircraftFeed.fire(targets);
+
+    const sent = client.send.mock.calls.map((c: any[]) => JSON.parse(c[0]));
+    const ac = sent.find((m: any) => m.type === "aircraft");
+    expect(ac.targets).toEqual(targets);
   });
 });
 
