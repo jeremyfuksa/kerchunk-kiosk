@@ -40,7 +40,12 @@ const EVENT_NAMES: Record<string, string> = {
   DMO: "PRACTICE/DEMO", NPT: "NATIONAL PERIODIC TEST",
 };
 
-const HEADER_RE = /ZCZC-(\w{3})-(\w{3})((?:-\d{6})+)\+(\d{4})-(\d{7})-([\w/ ]+?)-?\s*$/;
+// Sender (LLLLLLLL) allows dashes: relayed/civil EAS station IDs are commonly
+// hyphenated ("KDAF-TV", "EAS-STAT"), not just the slash-form NWS uses
+// ("KEAX/NWS"). Without the dash the whole header fails to parse and the alert
+// is silently dropped. The trailing `-?\s*$` still strips the field's own
+// terminating dash (the non-greedy sender consumes up to it).
+const HEADER_RE = /ZCZC-(\w{3})-(\w{3})((?:-\d{6})+)\+(\d{4})-(\d{7})-([\w/ -]+?)-?\s*$/;
 
 export function parseSame(line: string): SameHeader | null {
   const m = HEADER_RE.exec(line);
@@ -62,6 +67,13 @@ export function isEom(line: string): boolean {
   return /\bNNNN\b/.test(line);
 }
 
+// Reduce a FIPS code to its 5-digit SSCCC (state+county), dropping any leading
+// part-of-county digit (P) on a 6-digit PSSCCC. Whole-county matching: a
+// subdivision alert (P≠0, e.g. "129047") still matches the operator's county,
+// and a configured 6-digit code ("029047") still matches such an alert. Both
+// sides normalize, so the P digit never blocks a match in either direction.
+const ssccc = (code: string): string => code.slice(-5);
+
 /**
  * Does the alert cover the operator? Configured codes may be 5-digit county
  * FIPS (SSCCC) or full 6-digit SAME codes (PSSCCC, P = part-of-county).
@@ -69,8 +81,8 @@ export function isEom(line: string): boolean {
  */
 export function fipsMatch(alertFips: string[], configured: string[] | undefined): boolean {
   if (!configured || configured.length === 0) return true;
-  const want = new Set(configured.map((c) => c.trim()).filter(Boolean));
-  return alertFips.some((f) => want.has(f) || want.has(f.slice(1)));
+  const want = new Set(configured.map((c) => c.trim()).filter(Boolean).map(ssccc));
+  return alertFips.some((f) => want.has(ssccc(f)));
 }
 
 /** Tests are routine; real warnings are not. */
@@ -113,12 +125,12 @@ const COUNTY_NAMES: Record<string, string> = {
  */
 export function fipsNames(alertFips: string[], configured?: string[] | null): string {
   const want = configured && configured.length
-    ? new Set(configured.map((c) => c.trim()).filter(Boolean))
+    ? new Set(configured.map((c) => c.trim()).filter(Boolean).map(ssccc))
     : null;
   const covered = want
-    ? alertFips.filter((f) => want.has(f) || want.has(f.slice(1)))
+    ? alertFips.filter((f) => want.has(ssccc(f)))
     : alertFips;
   const codes = covered.length ? covered : alertFips;
-  const names = codes.map((f) => COUNTY_NAMES[f.slice(1)] ?? f);
+  const names = codes.map((f) => COUNTY_NAMES[ssccc(f)] ?? f);
   return [...new Set(names)].join(", ");
 }

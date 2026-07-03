@@ -52,6 +52,27 @@ describe("RepeaterBook", () => {
     const { rb } = make(vi.fn().mockResolvedValue({ ok: false, status: 403, json: async () => ({}) }));
     expect(await rb.lookup(145130000)).toBeNull();
   });
+
+  it("serves a stale disk cache when a refetch fails (no degrade to no-match)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "rb-"));
+    const ok = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => EXPORT });
+    // ttlMs 0 forces every cache read to be treated as stale, so rb2 must fetch.
+    const rb1 = new RepeaterBook({ userAgent: "t", states: ["Kansas"], cacheDir: dir, fetcher: ok, ttlMs: 0 });
+    await rb1.lookup(145130000); // writes the disk cache
+
+    const fail = vi.fn().mockResolvedValue({ ok: false, status: 503, json: async () => ({}) });
+    const rb2 = new RepeaterBook({ userAgent: "t", states: ["Kansas"], cacheDir: dir, fetcher: fail, ttlMs: 0 });
+    expect((await rb2.lookup(145130000))?.callsign).toBe("W0ABC"); // stale disk despite the 503
+  });
+
+  it("throttles refetch after a failure — does not hammer export.php", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "rb-"));
+    const fail = vi.fn().mockResolvedValue({ ok: false, status: 503, json: async () => ({}) });
+    const rb = new RepeaterBook({ userAgent: "t", states: ["Kansas"], cacheDir: dir, fetcher: fail, ttlMs: 0 });
+    await rb.lookup(145130000);
+    await rb.lookup(462675000);
+    expect(fail).toHaveBeenCalledTimes(1); // second lookup served from the backoff entry
+  });
 });
 
 describe("app token (March 2026 policy)", () => {
@@ -92,5 +113,21 @@ describe("location capture", () => {
     expect(hit?.location).toEqual({
       lat: 38.8814, lon: -94.8191, city: "Olathe", state: "KS", source: "repeaterbook",
     });
+  });
+
+  it("omits location entirely when the record has no coordinates", async () => {
+    // A coordinate-less record must NOT carry a location — otherwise it stops
+    // the lookup chain before FccProx can donate lat/lon.
+    const data = { count: 1, results: [
+      { Callsign: "W0NOGEO", Frequency: "145.130", "Nearest City": "Somewhere", State: "Kansas", Lat: "0", Long: "" },
+    ] };
+    const dir = mkdtempSync(join(tmpdir(), "rb-"));
+    const rb = new RepeaterBook({
+      userAgent: "t", states: ["Kansas"], cacheDir: dir,
+      fetcher: vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => data }),
+    });
+    const hit = await rb.lookup(145130000);
+    expect(hit?.callsign).toBe("W0NOGEO");
+    expect(hit?.location).toBeUndefined();
   });
 });

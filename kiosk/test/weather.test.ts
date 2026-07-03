@@ -37,4 +37,39 @@ describe("NwsWeather", () => {
     const wx = new NwsWeather({ lat: 1, lon: 1, userAgent: "t", fetcher });
     expect(await wx.current()).toBeNull();
   });
+
+  it("re-resolves the gridpoint after the hourly URL 404s (grid re-issued)", async () => {
+    let hourlyStatus = 404;
+    const urls: string[] = [];
+    const fetcher = vi.fn(async (url: string) => {
+      urls.push(url);
+      if (url.includes("/points/")) return { ok: true, status: 200, json: async () => POINTS };
+      return { ok: hourlyStatus === 200, status: hourlyStatus, json: async () => HOURLY };
+    });
+    const wx = new NwsWeather({ lat: 1, lon: 1, userAgent: "t", fetcher, ttlMs: 0 });
+    expect(await wx.current()).toBeNull();               // hourly 404 → no data yet
+    hourlyStatus = 200;
+    expect((await wx.current())?.tempF).toBe(38);         // re-resolved gridpoint, then succeeds
+    expect(urls.filter((u) => u.includes("/points/")).length).toBe(2); // gridpoint fetched twice
+  });
+
+  it("stops serving stale conditions past staleMaxMs", async () => {
+    vi.useFakeTimers();
+    try {
+      let ok = true;
+      const fetcher = vi.fn(async (url: string) => ({
+        ok, status: ok ? 200 : 503,
+        json: async () => (url.includes("/points/") ? POINTS : HOURLY),
+      }));
+      const wx = new NwsWeather({ lat: 1, lon: 1, userAgent: "t", fetcher, ttlMs: 0, staleMaxMs: 60_000 });
+      expect((await wx.current())?.tempF).toBe(38); // fresh at t0
+      ok = false;
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect((await wx.current())?.tempF).toBe(38); // within staleMaxMs → still served
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(await wx.current()).toBeNull();         // past staleMaxMs → line drops
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

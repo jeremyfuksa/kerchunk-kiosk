@@ -20,6 +20,11 @@ describe("SAME header parsing", () => {
     expect(parseSame("EAS: static noise")).toBeNull();
     expect(isEom("EAS: NNNN")).toBe(true);
   });
+  it("parses relayed EAS headers with a hyphenated station ID", () => {
+    const h = parseSame("EAS: ZCZC-EAS-RWT-029047+0015-1561800-KDAF-TV -")!;
+    expect(h.event).toBe("RWT");
+    expect(h.sender).toBe("KDAF-TV");
+  });
 });
 
 describe("FIPS scoping", () => {
@@ -28,6 +33,13 @@ describe("FIPS scoping", () => {
     expect(fipsMatch(["029047"], ["029047"])).toBe(true);
     expect(fipsMatch(["029047"], ["20091"])).toBe(false);
     expect(fipsMatch(["029047"], undefined)).toBe(true); // unscoped = all
+  });
+  it("matches a partial-county (P≠0) alert against the configured county", () => {
+    // North-half-of-county alert (leading 1) still covers the whole-county filter.
+    expect(fipsMatch(["129047"], ["29047"])).toBe(true);
+    expect(fipsMatch(["129047"], ["029047"])).toBe(true);
+    expect(fipsMatch(["229095", "129047"], ["29047"])).toBe(true);
+    expect(fipsMatch(["129047"], ["29095"])).toBe(false);
   });
   it("flags routine tests", () => {
     expect(isTest("RWT")).toBe(true);
@@ -50,5 +62,8 @@ describe("FIPS county names (banner display)", () => {
   });
   it("falls back to the raw code for an unknown county (never blank)", () => {
     expect(fipsNames(["099999"], undefined)).toBe("099999");
+  });
+  it("names a partial-county alert covered by a whole-county filter", () => {
+    expect(fipsNames(["129047"], ["29047"])).toBe("Clay");
   });
 });
