@@ -1,5 +1,24 @@
 import { describe, it, expect } from "vitest";
-import { reduce, initialState, esc } from "../src/frontend/dashboard/dashboard.js";
+import { reduce, initialState, esc, mergeLogs } from "../src/frontend/dashboard/dashboard.js";
+
+describe("mergeLogs", () => {
+  it("keeps live WS rows and backfills history, newest-first, deduped", () => {
+    const live = [{ freq: 200, alphaTag: "B", ts: 20 }]; // arrived over WS
+    const fetched = [
+      { freq: 200, alphaTag: "B", ts: 20 },              // duplicate of the live row
+      { freq: 100, alphaTag: "A", ts: 10 },              // historical backfill
+    ];
+    expect(mergeLogs(live, fetched)).toEqual([
+      { freq: 200, alphaTag: "B", ts: 20 },
+      { freq: 100, alphaTag: "A", ts: 10 },
+    ]);
+  });
+
+  it("caps at 100 rows", () => {
+    const fetched = Array.from({ length: 150 }, (_, i) => ({ freq: i, alphaTag: "x", ts: i }));
+    expect(mergeLogs([], fetched)).toHaveLength(100);
+  });
+});
 
 describe("dashboard reduce", () => {
   it("active sets nowPlaying and prepends to log", () => {

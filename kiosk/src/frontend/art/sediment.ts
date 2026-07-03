@@ -3,7 +3,7 @@
 // strata (sub-layers within its own footprint) and a decaying "breath" from
 // the most recent hit. Modeled on BlipField; rendered by art.ts each tick.
 
-export { startOfLocalDay } from "../lib/localDay.js";
+export { startOfLocalDay, startOfNextLocalDay } from "../lib/localDay.js";
 
 export interface DepositInput {
   lat: number;

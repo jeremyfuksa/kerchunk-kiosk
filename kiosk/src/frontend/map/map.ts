@@ -501,6 +501,7 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
     // Live feed.
     const proto = location.protocol === "https:" ? "wss" : "ws";
     new ReconnectingWs(`${proto}://${location.host}/ws`, (ev: EngineEvent) => {
+      if (ev.type === "reload") { location.reload(); return; }
       if (ev.type === "active") {
         const ch = ev.channel;
         if (ch.tags?.length) freqTags.set(ev.freq, ch.tags); // learn tags live, pre-fetch

@@ -453,19 +453,25 @@ export function renderAdmin(root: HTMLElement): void {
       .split(",").map((t) => t.trim()).filter(Boolean);
     const lo = root.querySelector<HTMLInputElement>("#bkLo")!.value.trim();
     const hi = root.querySelector<HTMLInputElement>("#bkHi")!.value.trim();
-    const cfg = await api.getConfig();
-    cfg.banks = [...(cfg.banks ?? []), {
-      id: `bk_${Math.random().toString(36).slice(2, 10)}`,
-      name, enabled: true,
-      ...(band ? { band: band as Bank["band"] } : {}),
-      ...(lo ? { loHz: Math.round(Number(lo) * 1e6) } : {}),
-      ...(hi ? { hiHz: Math.round(Number(hi) * 1e6) } : {}),
-      ...(tags.length ? { tags } : {}),
-    }];
-    await api.putConfig(cfg);
-    root.querySelector<HTMLInputElement>("#bkName")!.value = "";
-    root.querySelector<HTMLInputElement>("#bkTags")!.value = "";
-    await refresh();
+    try {
+      const cfg = await api.getConfig();
+      cfg.banks = [...(cfg.banks ?? []), {
+        id: `bk_${Math.random().toString(36).slice(2, 10)}`,
+        name, enabled: true,
+        ...(band ? { band: band as Bank["band"] } : {}),
+        ...(lo ? { loHz: Math.round(Number(lo) * 1e6) } : {}),
+        ...(hi ? { hiHz: Math.round(Number(hi) * 1e6) } : {}),
+        ...(tags.length ? { tags } : {}),
+      }];
+      await api.putConfig(cfg);
+      root.querySelector<HTMLInputElement>("#bkName")!.value = "";
+      root.querySelector<HTMLInputElement>("#bkTags")!.value = "";
+      await refresh();
+    } catch (e) {
+      // Without this, a rejected save was an unhandled rejection and the button
+      // looked dead — the operator's bank definition lost with no message.
+      bkErr.textContent = (e as Error).message || "could not save bank";
+    }
   });
 
   // ── Insights (ROADMAP Idea 9): aggregates over the history store ──
@@ -944,6 +950,11 @@ export function renderAdmin(root: HTMLElement): void {
 
   function closeDrawer(): void {
     drawerId = null;
+    // Clear the analytics-poll state too: the 5 s interval keys off
+    // drawerKind/analyticsFreq, so leaving them set kept fetching history and
+    // rewriting the hidden drawer every 5 s forever after the drawer closed.
+    drawerKind = "channel";
+    analyticsFreq = null;
     drawer.classList.remove("open");
     scrim.classList.remove("open");
   }
@@ -1667,12 +1678,21 @@ export function renderAdmin(root: HTMLElement): void {
         });
       if (sweeps.length) cfg.scan.sweepRanges = sweeps;
       else delete cfg.scan.sweepRanges;
-      if (tMapsKey.value.trim() && cfg.display) cfg.display.googleMapsApiKey = tMapsKey.value.trim();
+      const mapsKey = tMapsKey.value.trim();
+      const mapId = tMapsMapId.value.trim();
       if (cfg.display) {
-        // Clearable: an emptied field drops back to the raster map.
-        const mapId = tMapsMapId.value.trim();
+        // Both fields are prefilled from config, so an emptied field means
+        // "clear it" — drop back to the raster map (matches the Map ID).
+        if (mapsKey) cfg.display.googleMapsApiKey = mapsKey;
+        else delete cfg.display.googleMapsApiKey;
         if (mapId) cfg.display.googleMapsMapId = mapId;
         else delete cfg.display.googleMapsMapId;
+      } else if (mapsKey || mapId) {
+        // No display block (no weather location yet) means no place to store
+        // these AND no map without coordinates — say so instead of a silent
+        // "saved" that drops the key.
+        tErr.textContent = "set a weather location first — the map needs coordinates";
+        return;
       }
       // Alert knobs: empty fields fall back to defaults (15 min / 30 s).
       const ntfy = tAlertNtfy.value.trim();
