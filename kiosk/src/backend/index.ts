@@ -218,7 +218,7 @@ const aircraftFeed = config.aircraft?.enabled && config.display
     })
   : undefined;
 
-const { server } = createServer({
+const { server, getConfig } = createServer({
   configStore, engine, weatherEngine, activityLog, wsHub, staticDir: STATIC_DIR,
   lookup, weather, history, aircraftFeed,
   selfProtect: true,
@@ -232,6 +232,8 @@ const { server } = createServer({
 
 const wss = new WebSocketServer({ server, path: "/ws" });
 wss.on("connection", (ws) => wsHub.attach(ws));
+// A WebSocketServer "error" with no listener is an uncaught exception.
+wss.on("error", (err) => console.error("[ws] server error:", err.message));
 
 server.listen(PORT, () => {
   console.log(`kerchunk-kiosk listening on :${PORT} (engine: ${engineKind})`);
@@ -244,7 +246,10 @@ server.listen(PORT, () => {
     }, 9000);
     weatherFallback.unref?.();
   }
-  engine.start(toScanConfig(config, "scan"))
+  // getConfig() is the server's migrated config (legacy cc_ channels moved to
+  // discoveries), not the pre-migration snapshot loaded above — so boot starts
+  // the engine from the same source of truth the API path uses.
+  engine.start(toScanConfig(getConfig(), "scan"))
     // Re-apply persisted volume/mute to the hardware mixer on boot, so the saved
     // setting actually takes effect instead of inheriting the OS mixer state.
     // Direct audio.js calls WITH the configured mixer card/control — the same
@@ -256,5 +261,15 @@ server.listen(PORT, () => {
     .catch((err) => console.error("engine start failed:", err));
 });
 
-process.on("SIGTERM", async () => { aircraftFeed?.stop(); await engine.stop(); server.close(); process.exit(0); });
-process.on("SIGINT", async () => { aircraftFeed?.stop(); await engine.stop(); server.close(); process.exit(0); });
+// Stop BOTH engines on shutdown: leaving the weather helper running orphans a
+// second GNU Radio process holding the weather SDR, which then blocks the next
+// start from opening the device (systemd's cgroup kill masks this only in the
+// service path).
+const shutdown = async (): Promise<void> => {
+  aircraftFeed?.stop();
+  await Promise.all([engine.stop(), weatherEngine?.stop() ?? Promise.resolve()]);
+  server.close();
+  process.exit(0);
+};
+process.on("SIGTERM", () => { void shutdown(); });
+process.on("SIGINT", () => { void shutdown(); });

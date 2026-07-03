@@ -16,6 +16,10 @@ export interface NwsWeatherOptions {
   lon: number;
   userAgent: string;
   ttlMs?: number;
+  /** Stop serving stale conditions once the cache is older than this
+   *  (default 2 h). A permanently-failing feed must not show hours-old
+   *  weather forever. */
+  staleMaxMs?: number;
   fetcher?: (url: string, init: { headers: Record<string, string> })
     => Promise<{ ok: boolean; status: number; json(): Promise<unknown> }>;
 }
@@ -41,7 +45,8 @@ export class NwsWeather {
   constructor(opts: NwsWeatherOptions) {
     this.opts = {
       ttlMs: 10 * 60 * 1000,
-      fetcher: (url, init) => fetch(url, init),
+      staleMaxMs: 2 * 60 * 60 * 1000,
+      fetcher: (url, init) => fetch(url, { ...init, signal: AbortSignal.timeout(15_000) }),
       ...opts,
     };
   }
@@ -61,7 +66,13 @@ export class NwsWeather {
         if (!this.hourlyUrl) return this.stale();
       }
       const res = await this.opts.fetcher(this.hourlyUrl, { headers });
-      if (!res.ok) return this.stale();
+      if (!res.ok) {
+        // A gridpoint forecast URL 404/410s after NWS re-issues the grid.
+        // Drop it so the next call re-resolves from /points instead of
+        // failing forever; other statuses are likely transient.
+        if (res.status === 404 || res.status === 410) this.hourlyUrl = null;
+        return this.stale();
+      }
       const period = (await res.json() as NwsHourly).properties?.periods?.[0];
       if (!period || typeof period.temperature !== "number") return this.stale();
       const wx: CurrentWx = {
@@ -77,8 +88,12 @@ export class NwsWeather {
     }
   }
 
-  /** On failure, serve the stale cache rather than blanking the display. */
+  /** On failure, serve the stale cache rather than blanking the display —
+   *  but only up to staleMaxMs, so a permanently-failing feed eventually
+   *  drops the line instead of showing hours-old conditions indefinitely. */
   private stale(): CurrentWx | null {
-    return this.cached?.wx ?? null;
+    if (!this.cached) return null;
+    if (Date.now() - this.cached.at > this.opts.staleMaxMs) return null;
+    return this.cached.wx;
   }
 }

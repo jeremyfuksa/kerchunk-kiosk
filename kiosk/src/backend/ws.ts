@@ -35,6 +35,16 @@ export class WsHub {
       this.lastNowPlaying = event.channel ? event : null;
     } else if (event.type === "active") {
       if (!this.audibleSeen) this.lastNowPlaying = event;
+    } else if (event.type === "release") {
+      // Pre-audible engines (RtlFm, or the wideband warm-up window) store the
+      // "active" event as the now-playing slot, which only "idle" clears — but
+      // wideband emits "idle" only when ALL channels close. So a channel that
+      // released while another stayed open would replay forever to late
+      // clients. Clear the slot when the stored channel is the one releasing.
+      if (!this.audibleSeen && this.lastNowPlaying?.type === "active"
+          && this.lastNowPlaying.channel.id === event.channelId) {
+        this.lastNowPlaying = null;
+      }
     } else if (event.type === "idle") {
       if (!this.audibleSeen) this.lastNowPlaying = null;
     } else if (event.type === "aircraft") {
@@ -53,6 +63,11 @@ export class WsHub {
 
   attach(ws: WebSocket): void {
     this.add(ws as unknown as Sendable);
-    ws.on("close", () => this.remove(ws as unknown as Sendable));
+    const drop = (): void => { this.remove(ws as unknown as Sendable); };
+    ws.on("close", drop);
+    // An "error" (e.g. ECONNRESET when the kiosk display power-cycles) on a
+    // socket with no listener is an uncaught exception that would take down the
+    // whole backend. Treat it as a disconnect.
+    ws.on("error", drop);
   }
 }

@@ -22,9 +22,14 @@ export interface AircraftFeedOpts {
   /** Retain the last good snapshot for this many consecutive failed polls
    *  before clearing the map. Default 2. */
   maxStaleTicks?: number;
-  /** Injected for tests; defaults to global fetch. */
-  fetcher?: (url: string) => Promise<{ json(): Promise<unknown> }>;
+  /** Injected for tests; defaults to global fetch (with a request timeout). */
+  fetcher?: (url: string) => Promise<{ ok: boolean; status: number; json(): Promise<unknown> }>;
 }
+
+// airplanes.live is a shared free feed; a bare fetch with no timeout can hang
+// for minutes on a black-holed connection, and this poll loop is strictly
+// serial — one stuck request would freeze the overlay. Bound every request.
+const FETCH_TIMEOUT_MS = 8_000;
 
 // Only the airplanes.live fields we read. alt_baro is a number while airborne
 // and the string "ground" on the ramp; category is the ADS-B emitter class.
@@ -115,7 +120,7 @@ export class AircraftFeed implements AircraftSource {
     this.maxTargets = opts.maxTargets ?? 60;
     this.maxStaleTicks = opts.maxStaleTicks ?? 2;
     this.url = opts.url ?? "http://api.airplanes.live/v2/point";
-    this.fetcher = opts.fetcher ?? ((u) => fetch(u));
+    this.fetcher = opts.fetcher ?? ((u) => fetch(u, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) }));
   }
 
   onUpdate(cb: (t: AircraftTarget[]) => void): void {
@@ -140,6 +145,11 @@ export class AircraftFeed implements AircraftSource {
     const endpoint = `${this.url}/${this.home.lat}/${this.home.lon}/${this.radiusNm}`;
     try {
       const res = await this.fetcher(endpoint);
+      // A non-2xx (e.g. 429 rate-limit, 5xx) must NOT be treated as an empty
+      // sky: parsing its error body would blank the map and reset the fail
+      // streak, defeating both stale-retention and backoff. Route it through
+      // the catch path like any other failure.
+      if (!res.ok) throw new Error(`aircraft feed HTTP ${res.status}`);
       const targets = parseAircraft(await res.json(), this.home, this.maxTargets);
       this.failStreak = 0;
       this.last = targets;

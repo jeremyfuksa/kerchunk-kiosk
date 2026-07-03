@@ -36,20 +36,37 @@ const MATCH_TOLERANCE_HZ = 2_500;
 const GMRS_LOW = 462_000_000;
 const GMRS_HIGH = 463_000_000;
 
+// Full name → USPS code for every state (+ DC). The API's ?state= expects the
+// two-letter code; passing a full name for an out-of-region state silently
+// returned nothing (an incomplete feature masquerading as "no repeaters").
 const STATE_ABBR: Record<string, string> = {
-  Missouri: "MO", Kansas: "KS", Iowa: "IA", Nebraska: "NE", Oklahoma: "OK",
-  Arkansas: "AR", Illinois: "IL", Colorado: "CO", Texas: "TX",
+  Alabama: "AL", Alaska: "AK", Arizona: "AZ", Arkansas: "AR", California: "CA",
+  Colorado: "CO", Connecticut: "CT", Delaware: "DE", "District of Columbia": "DC",
+  Florida: "FL", Georgia: "GA", Hawaii: "HI", Idaho: "ID", Illinois: "IL",
+  Indiana: "IN", Iowa: "IA", Kansas: "KS", Kentucky: "KY", Louisiana: "LA",
+  Maine: "ME", Maryland: "MD", Massachusetts: "MA", Michigan: "MI",
+  Minnesota: "MN", Mississippi: "MS", Missouri: "MO", Montana: "MT",
+  Nebraska: "NE", Nevada: "NV", "New Hampshire": "NH", "New Jersey": "NJ",
+  "New Mexico": "NM", "New York": "NY", "North Carolina": "NC",
+  "North Dakota": "ND", Ohio: "OH", Oklahoma: "OK", Oregon: "OR",
+  Pennsylvania: "PA", "Rhode Island": "RI", "South Carolina": "SC",
+  "South Dakota": "SD", Tennessee: "TN", Texas: "TX", Utah: "UT",
+  Vermont: "VT", Virginia: "VA", Washington: "WA", "West Virginia": "WV",
+  Wisconsin: "WI", Wyoming: "WY",
 };
+
+// After a failed fetch, don't re-hit the API for this long (independent of TTL).
+const FAIL_BACKOFF_MS = 10 * 60_000;
 
 export class MyGmrs implements LookupProvider {
   private readonly opts: Required<MyGmrsOptions>;
-  private mem = new Map<string, GmrsItem[]>();
+  private mem = new Map<string, { items: GmrsItem[]; expiresAt: number }>();
 
   constructor(opts: MyGmrsOptions) {
     this.opts = {
       ttlMs: 7 * 24 * 3600 * 1000,
       maxKm: 120,
-      fetcher: (url, init) => fetch(url, init),
+      fetcher: (url, init) => fetch(url, { ...init, signal: AbortSignal.timeout(15_000) }),
       ...opts,
     };
   }
@@ -90,16 +107,24 @@ export class MyGmrs implements LookupProvider {
   }
 
   private async stateItems(state: string): Promise<GmrsItem[]> {
+    const now = Date.now();
     const hit = this.mem.get(state);
-    if (hit) return hit;
+    if (hit && now < hit.expiresAt) return hit.items;
+
     const path = join(this.opts.cacheDir, `mygmrs-${state.toLowerCase().replace(/\s+/g, "-")}.json`);
+    // Load the disk cache regardless of age: fresh is served directly, stale is
+    // the fallback if the refetch below fails (better than degrading to no-match).
+    let diskItems: GmrsItem[] | null = null;
+    let diskAgeMs = Infinity;
     try {
-      if (Date.now() - statSync(path).mtimeMs < this.opts.ttlMs) {
-        const items = JSON.parse(readFileSync(path, "utf8")) as GmrsItem[];
-        this.mem.set(state, items);
-        return items;
-      }
-    } catch { /* no/stale cache */ }
+      diskAgeMs = now - statSync(path).mtimeMs;
+      diskItems = JSON.parse(readFileSync(path, "utf8")) as GmrsItem[];
+    } catch { /* no cache on disk */ }
+    if (diskItems && diskAgeMs < this.opts.ttlMs) {
+      this.mem.set(state, { items: diskItems, expiresAt: now + (this.opts.ttlMs - diskAgeMs) });
+      return diskItems;
+    }
+
     try {
       const abbr = STATE_ABBR[state] ?? state;
       // The endpoint paginates at 25 by default and silently truncates —
@@ -108,21 +133,29 @@ export class MyGmrs implements LookupProvider {
       const res = await this.opts.fetcher(
         `https://api.mygmrs.com/repeaters?state=${encodeURIComponent(abbr)}&limit=1000`,
         { headers: { "User-Agent": this.opts.userAgent } });
-      if (!res.ok) return this.mem.get(state) ?? [];
+      if (!res.ok) return this.degrade(state, diskItems, now);
       const body = await res.json() as { items?: GmrsItem[]; info?: { total?: number } };
       const items = body.items ?? [];
       if (body.info?.total !== undefined && items.length < body.info.total) {
         console.error(`[mygmrs] ${state}: got ${items.length} of ${body.info.total} — raise the limit`);
       }
-      this.mem.set(state, items);
+      this.mem.set(state, { items, expiresAt: now + this.opts.ttlMs });
       try {
         mkdirSync(this.opts.cacheDir, { recursive: true });
         writeFileSync(path, JSON.stringify(items));
       } catch { /* cache write is best-effort */ }
       return items;
     } catch {
-      return [];
+      return this.degrade(state, diskItems, now);
     }
+  }
+
+  /** Fetch failed: serve a stale disk copy if any (else no-match), and throttle
+   *  the next attempt so an erroring endpoint isn't hammered per Close Call. */
+  private degrade(state: string, diskItems: GmrsItem[] | null, now: number): GmrsItem[] {
+    const items = diskItems ?? [];
+    this.mem.set(state, { items, expiresAt: now + FAIL_BACKOFF_MS });
+    return items;
   }
 }
 

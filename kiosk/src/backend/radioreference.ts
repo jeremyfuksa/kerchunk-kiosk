@@ -36,7 +36,7 @@ export class RadioReference implements LookupProvider {
   private modeNames = new Map<string, string>();
 
   constructor(opts: RadioReferenceOptions) {
-    this.opts = { fetcher: (url, init) => fetch(url, init), ...opts };
+    this.opts = { fetcher: (url, init) => fetch(url, { ...init, signal: AbortSignal.timeout(15_000) }), ...opts };
   }
 
   async lookup(freqHz: number): Promise<LookupHit | null> {
@@ -45,8 +45,16 @@ export class RadioReference implements LookupProvider {
       const key = `${ctid}:${freqHz}`;
       let hit = this.cache.get(key);
       if (hit === undefined) {
-        hit = await this.searchCountyFreq(ctid, mhz);
-        this.cache.set(key, hit);
+        try {
+          hit = await this.searchCountyFreq(ctid, mhz);
+        } catch {
+          // Transient failure (network/auth/5xx): do NOT memoize. Caching a
+          // null here would negatively cache the frequency for the process
+          // lifetime — a boot-time RR outage would leave it forever
+          // unidentified. Skip this county; a later Close Call retries.
+          continue;
+        }
+        this.cache.set(key, hit); // only genuine results (hit or true miss) cache
       }
       if (hit) return hit;
     }
@@ -110,44 +118,43 @@ export class RadioReference implements LookupProvider {
 </SOAP-ENV:Envelope>`;
   }
 
+  /** Resolves to a hit, or `null` for a genuine "county doesn't know this
+   *  frequency" miss (safe to cache). THROWS on any transient failure
+   *  (network/auth/5xx) so the caller leaves it uncached and retries later. */
   private async searchCountyFreq(ctid: number, mhz: number): Promise<LookupHit | null> {
-    try {
-      const res = await this.opts.fetcher(ENDPOINT, {
-        method: "POST",
-        headers: { "Content-Type": "text/xml; charset=utf-8", SOAPAction: "" },
-        body: this.envelope(ctid, mhz),
-      });
-      if (!res.ok) {
-        // SOAP faults arrive as HTTP 500 with a faultstring — surface it in
-        // the journal ("Not a premium subscriber" cost a debugging round
-        // when this was a silent null).
-        const fault = /<faultstring[^>]*>([\s\S]*?)<\/faultstring>/
-          .exec(await res.text().catch(() => ""))?.[1]?.trim();
-        console.error(`[radioreference] ${res.status}${fault ? `: ${fault}` : ""}`);
-        return null;
-      }
-      const xml = await res.text();
-      // Tolerant extraction: each result is an <item>...</item> block with
-      // out/callsign/descr/alpha leaf elements (rpc/encoded may add attrs).
-      for (const item of xml.match(/<item[\s>][\s\S]*?<\/item>/g) ?? []) {
-        const out = Number(leaf(item, "out"));
-        if (!Number.isFinite(out) || Math.abs(out - mhz) > MATCH_TOLERANCE_MHZ) continue;
-        const alpha = leaf(item, "alpha");
-        const descr = leaf(item, "descr");
-        const callsign = leaf(item, "callsign");
-        const modeRaw = leaf(item, "mode");
-        const mode = modeRaw ? normalizeMode(await this.resolveMode(modeRaw)) : null;
-        const name = (alpha || descr || "").trim();
-        if (!name && !callsign) continue;
-        const tag = name
-          ? (callsign ? `${name} · ${callsign}` : name)
-          : callsign!;
-        return { tag, ...(mode ? { mode } : {}) };
-      }
-      return null;
-    } catch {
-      return null; // offline/auth/parse: identification is best-effort
+    const res = await this.opts.fetcher(ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "text/xml; charset=utf-8", SOAPAction: "" },
+      body: this.envelope(ctid, mhz),
+    });
+    if (!res.ok) {
+      // SOAP faults arrive as HTTP 500 with a faultstring — surface it in
+      // the journal ("Not a premium subscriber" cost a debugging round
+      // when this was a silent null).
+      const fault = /<faultstring[^>]*>([\s\S]*?)<\/faultstring>/
+        .exec(await res.text().catch(() => ""))?.[1]?.trim();
+      console.error(`[radioreference] ${res.status}${fault ? `: ${fault}` : ""}`);
+      throw new Error(`radioreference ${res.status}`); // transient: do not cache
     }
+    const xml = await res.text();
+    // Tolerant extraction: each result is an <item>...</item> block with
+    // out/callsign/descr/alpha leaf elements (rpc/encoded may add attrs).
+    for (const item of xml.match(/<item[\s>][\s\S]*?<\/item>/g) ?? []) {
+      const out = Number(leaf(item, "out"));
+      if (!Number.isFinite(out) || Math.abs(out - mhz) > MATCH_TOLERANCE_MHZ) continue;
+      const alpha = leaf(item, "alpha");
+      const descr = leaf(item, "descr");
+      const callsign = leaf(item, "callsign");
+      const modeRaw = leaf(item, "mode");
+      const mode = modeRaw ? normalizeMode(await this.resolveMode(modeRaw)) : null;
+      const name = (alpha || descr || "").trim();
+      if (!name && !callsign) continue;
+      const tag = name
+        ? (callsign ? `${name} · ${callsign}` : name)
+        : callsign!;
+      return { tag, ...(mode ? { mode } : {}) };
+    }
+    return null; // parsed cleanly, no county match: a genuine miss
   }
 }
 

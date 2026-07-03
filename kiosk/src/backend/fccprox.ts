@@ -19,7 +19,9 @@ import { decodeXml } from "./radioreference.js";
 //      FREQUENCY — only a license actually granted the channel's frequency
 //      may donate its coordinates. Name-match alone never places a pin.
 
-const ENDPOINT = "http://api.radioreference.com/soap2/";
+// HTTPS: these SOAP calls carry the operator's premium RadioReference
+// credentials in the request envelope (see authXml) — never in cleartext.
+const ENDPOINT = "https://api.radioreference.com/soap2/";
 const MATCH_TOLERANCE_HZ = 2_500;
 const PROBE_RANGE_MILES = 3;     // per the API's own guidance
 const PROBE_RINGS: Array<{ miles: number; points: number }> = [
@@ -78,7 +80,7 @@ export class FccProx implements LookupProvider {
   constructor(opts: FccProxOptions) {
     this.opts = {
       ttlMs: 30 * 24 * 3600 * 1000,
-      fetcher: (url, init) => fetch(url, init),
+      fetcher: (url, init) => fetch(url, { ...init, signal: AbortSignal.timeout(15_000) }),
       ...opts,
     };
   }

@@ -20,6 +20,8 @@ export interface RepeaterHit {
   pl: string | null;
   /** Display tag for the channel table / dashboard. */
   tag: string;
+  /** Modulation as RB reports it (FM, DMR, P25, ...), when a mode flag is set. */
+  mode?: string;
   location?: {
     lat?: number; lon?: number; city?: string; state?: string; source: string;
   };
@@ -90,14 +92,21 @@ const STATE_ABBR: Record<string, string> = {
   "West Virginia": "WV", Wisconsin: "WI", Wyoming: "WY",
 };
 
+// After a failed export fetch, don't retry that state for this long — RB asks
+// integrators not to hammer export.php, so an erroring/rate-limiting endpoint
+// must not be re-hit on every Close Call. Independent of the (much longer) TTL.
+const FAIL_BACKOFF_MS = 10 * 60_000;
+
 export class RepeaterBook {
   private readonly opts: Omit<Required<RepeaterBookOptions>, "apiToken"> & { apiToken?: string };
-  private mem = new Map<string, RbRecord[]>();
+  // Records keyed by state, with an explicit expiry so an always-on process
+  // actually re-fetches after the TTL (a bare Map never expired in-process).
+  private mem = new Map<string, { records: RbRecord[]; expiresAt: number }>();
 
   constructor(opts: RepeaterBookOptions) {
     this.opts = {
       ttlMs: 7 * 24 * 3600 * 1000,
-      fetcher: (url, init) => fetch(url, init),
+      fetcher: (url, init) => fetch(url, { ...init, signal: AbortSignal.timeout(15_000) }),
       ...opts,
     };
   }
@@ -116,18 +125,29 @@ export class RepeaterBook {
         const pl = r.PL && r.PL.trim() !== "" ? r.PL.trim() : null;
         const tag = `${callsign} ${city} ${st}`.trim() + (pl ? ` · PL ${pl}` : "");
         const lat = Number(r.Lat), lon = Number(r.Long);
+        const hasLat = Number.isFinite(lat) && lat !== 0;
+        const hasLon = Number.isFinite(lon) && lon !== 0;
         const rawMode = rbMode(r);
         const mode = rawMode ? normalizeMode(rawMode) : null;
         return {
           callsign, city, state: st, pl, tag,
           ...(mode ? { mode } : {}),
-          location: {
-            ...(Number.isFinite(lat) && lat !== 0 ? { lat } : {}),
-            ...(Number.isFinite(lon) && lon !== 0 ? { lon } : {}),
-            ...(city ? { city } : {}),
-            ...(st ? { state: st } : {}),
-            source: "repeaterbook",
-          },
+          // Only attach a location when we actually have COORDINATES. The
+          // lookup chain stops walking once a hit carries a `location`, so a
+          // coordinate-less RB record (city/state only) would otherwise block
+          // FccProx from donating lat/lon — leaving the channel permanently
+          // pinless. City/state still ride the alphaTag either way.
+          ...(hasLat || hasLon
+            ? {
+                location: {
+                  ...(hasLat ? { lat } : {}),
+                  ...(hasLon ? { lon } : {}),
+                  ...(city ? { city } : {}),
+                  ...(st ? { state: st } : {}),
+                  source: "repeaterbook",
+                },
+              }
+            : {}),
         };
       }
     }
@@ -139,18 +159,24 @@ export class RepeaterBook {
   }
 
   private async stateRecords(state: string): Promise<RbRecord[]> {
+    const now = Date.now();
     const hit = this.mem.get(state);
-    if (hit) return hit;
+    if (hit && now < hit.expiresAt) return hit.records;
 
-    // Disk cache survives restarts (and respects RepeaterBook between them).
+    // Load the disk cache regardless of age: a FRESH copy is served directly,
+    // a STALE copy is the fallback if the refetch below fails (better than
+    // degrading a known repeater to no-match). Disk cache survives restarts.
     const path = this.cachePath(state);
+    let diskRecords: RbRecord[] | null = null;
+    let diskAgeMs = Infinity;
     try {
-      if (Date.now() - statSync(path).mtimeMs < this.opts.ttlMs) {
-        const records = JSON.parse(readFileSync(path, "utf8")) as RbRecord[];
-        this.mem.set(state, records);
-        return records;
-      }
-    } catch { /* no/stale cache: fetch */ }
+      diskAgeMs = now - statSync(path).mtimeMs;
+      diskRecords = JSON.parse(readFileSync(path, "utf8")) as RbRecord[];
+    } catch { /* no cache on disk */ }
+    if (diskRecords && diskAgeMs < this.opts.ttlMs) {
+      this.mem.set(state, { records: diskRecords, expiresAt: now + (this.opts.ttlMs - diskAgeMs) });
+      return diskRecords;
+    }
 
     try {
       const url = "https://www.repeaterbook.com/api/export.php?country=United%20States&state="
@@ -158,17 +184,25 @@ export class RepeaterBook {
       const headers: Record<string, string> = { "User-Agent": this.opts.userAgent };
       if (this.opts.apiToken) headers["X-RB-App-Token"] = this.opts.apiToken;
       const res = await this.opts.fetcher(url, { headers });
-      if (!res.ok) return this.mem.get(state) ?? [];
+      if (!res.ok) return this.degrade(state, diskRecords, now);
       const body = await res.json() as { results?: RbRecord[] };
       const records = body.results ?? [];
-      this.mem.set(state, records);
+      this.mem.set(state, { records, expiresAt: now + this.opts.ttlMs });
       try {
         mkdirSync(this.opts.cacheDir, { recursive: true });
         writeFileSync(path, JSON.stringify(records));
       } catch { /* cache write failure is non-fatal */ }
       return records;
     } catch {
-      return []; // offline / DNS / etc: lookup degrades to no-match
+      return this.degrade(state, diskRecords, now); // offline / DNS / etc
     }
+  }
+
+  /** Fetch failed: serve a stale disk copy if we have one (else no-match), and
+   *  throttle the next fetch attempt so an erroring endpoint isn't hammered. */
+  private degrade(state: string, diskRecords: RbRecord[] | null, now: number): RbRecord[] {
+    const records = diskRecords ?? [];
+    this.mem.set(state, { records, expiresAt: now + FAIL_BACKOFF_MS });
+    return records;
   }
 }

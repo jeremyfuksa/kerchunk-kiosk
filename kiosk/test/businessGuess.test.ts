@@ -101,6 +101,18 @@ describe("BusinessGuess provider", () => {
     expect(calls).toBe(1); // latched after the first hard error — no further round-trips
   }));
 
+  it("does NOT latch on a transient quota error — a later lookup retries", () => withDir(async (dir) => {
+    let calls = 0;
+    const g = new BusinessGuess({ apiKey: "k", home: QTH, cacheDir: dir,
+      fetcher: async () => { calls++; return calls === 1
+        ? { json: async () => ({ error: { status: "RESOURCE_EXHAUSTED", message: "quota" } }) }
+        : place("The Home Depot", 39.2479, -94.4576); } });
+    expect(await g.lookup(467_762_500)).toBeNull(); // quota blip, not disabled
+    const hit = await g.lookup(467_762_500);        // retried — Places is back
+    expect(hit?.tag).toBe("Home Depot (likely)");
+    expect(calls).toBe(2);
+  }));
+
   it("survives a network throw without caching a transient miss", () => withDir(async (dir) => {
     let calls = 0;
     const g = new BusinessGuess({ apiKey: "k", home: QTH, cacheDir: dir,

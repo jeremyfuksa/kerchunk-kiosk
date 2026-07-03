@@ -14,6 +14,8 @@
 // blip 2x — exactly the tolerance the map's coverage circles were designed
 // around.
 
+import { serviceFor } from "./config/banks.js";
+
 /** Path-loss exponent: 2 = free space; suburban VHF/UHF runs ~2.5-3. */
 const PATH_LOSS_EXP = 2.7;
 const MIN_WATTS = 1;
@@ -53,8 +55,10 @@ export function estimateWatts(rfDb: number, distKm: number, freqMhz: number, k: 
   // Regulatory ceilings beat path-loss math: a GMRS machine "measuring"
   // 130 W is a great antenna site, not an illegal transmitter (Part 95
   // caps the main channels at 50 W). The model lumps height into power;
-  // the law un-lumps it for us where it can.
-  const cap = freqMhz >= 462 && freqMhz < 468 ? 50 : MAX_WATTS;
+  // the law un-lumps it for us where it can. Match the ACTUAL GMRS/FRS
+  // allocations — a raw 462–468 range also swallowed the Part 90 business
+  // repeaters (e.g. 463.425) that legally run well past 50 W.
+  const cap = serviceFor(freqMhz * 1e6) === "GMRS/FRS" ? 50 : MAX_WATTS;
   const w = Math.min(cap, Math.max(MIN_WATTS, 10 ** (pDbw / 10)));
   // 2 significant figures — the model has no business claiming more.
   const mag = 10 ** Math.floor(Math.log10(w) - 1);

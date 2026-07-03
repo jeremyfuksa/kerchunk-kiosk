@@ -44,4 +44,14 @@ describe("regulatory ceilings", () => {
     expect(estimateWatts(rf(400, 8, 462.6), 8, 462.6, k)).toBe(50);   // GMRS clamp
     expect(estimateWatts(rf(400, 8, 443.775), 8, 443.775, k)).toBe(400); // ham: no clamp
   });
+  it("does NOT clamp a Part 90 business repeater near the GMRS band (463.425)", () => {
+    const anchors = [
+      { powerWatts: 110, distKm: 13.2, freqMhz: 463.425, rfDb: rf(110, 13.2, 463.425) },
+      { powerWatts: 45, distKm: 9.1, freqMhz: 160.5, rfDb: rf(45, 9.1, 160.5) },
+      { powerWatts: 5, distKm: 19.4, freqMhz: 160.32, rfDb: rf(5, 19.4, 160.32) },
+    ];
+    const k = solveK(anchors)!;
+    // 463.425 is UHF business, not GMRS — the estimate must keep its licensed scale.
+    expect(estimateWatts(rf(110, 13.2, 463.425), 13.2, 463.425, k)).toBe(110);
+  });
 });

@@ -82,6 +82,30 @@ describe("HTTP API", () => {
     expect(cfg.body.audio.volume).toBe(55);
   });
 
+  it("POST /api/audio/volume rejects a NaN/out-of-range percent with 400 (config not poisoned)", async () => {
+    const { server } = makeApp();
+    expect((await request(server).post("/api/audio/volume").send({})).status).toBe(400);
+    expect((await request(server).post("/api/audio/volume").send({ percent: 150 })).status).toBe(400);
+    expect((await request(server).post("/api/audio/volume").send({ percent: 55.5 })).status).toBe(400);
+    // A later full save (e.g. a channel add) still works — config wasn't poisoned.
+    const add = await request(server).post("/api/channels")
+      .send({ freq: 155_000_000, alphaTag: "T", mode: "nfm", enabled: true });
+    expect(add.status).toBe(201);
+  });
+
+  it("DELETE /api/channels/:id returns 404 for an unknown id", async () => {
+    const { server } = makeApp();
+    const res = await request(server).delete("/api/channels/does-not-exist");
+    expect(res.status).toBe(404);
+  });
+
+  it("rejects a malformed JSON body with 400, not 500", async () => {
+    const { server } = makeApp();
+    const res = await request(server).post("/api/channels")
+      .set("Content-Type", "application/json").send("{ not valid json");
+    expect(res.status).toBe(400);
+  });
+
   it("GET /api/system includes a health verdict and core count", async () => {
     const { server } = makeApp();
     const res = await request(server).get("/api/system");
@@ -147,18 +171,20 @@ describe("HTTP API", () => {
     expect(res.status).toBe(400);
   });
 
-  it("POST /api/mode weather holds the weather channel (engine restarted, single channel)", async () => {
+  it("POST /api/mode weather holds the weather channel (single channel)", async () => {
     const { server, engine } = makeApp();
     await request(server).put("/api/weather-channel").send(WX);
-    let lastStartChannels: any[] | null = null;
-    const realStart = engine.start.bind(engine);
-    engine.start = async (cfg) => { lastStartChannels = cfg.channels; return realStart(cfg); };
+    const before = engine.tunes.length;
     const res = await request(server).post("/api/mode").send({ mode: "weather" });
     expect(res.status).toBe(200);
     expect(res.body.mode).toBe("weather");
-    expect(lastStartChannels).toHaveLength(1);
-    expect(lastStartChannels![0].freq).toBe(162550000);
-    expect(lastStartChannels![0].enabled).toBe(true);
+    // Path-agnostic: the mode switch may re-point (retune) or restart — assert
+    // WHAT it tuned to via the union, not WHICH path applied it.
+    expect(engine.tunes.length).toBeGreaterThan(before);
+    const last = engine.tunes[engine.tunes.length - 1]!;
+    expect(last.channels).toHaveLength(1);
+    expect(last.channels[0]!.freq).toBe(162550000);
+    expect(last.channels[0]!.enabled).toBe(true);
   });
 
   it("POST /api/mode weather with NO weather channel returns 400 and does not switch", async () => {

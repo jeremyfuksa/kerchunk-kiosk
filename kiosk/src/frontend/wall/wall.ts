@@ -8,7 +8,7 @@
 import { ReconnectingWs } from "../lib/wsClient.js";
 import { api } from "../lib/api.js";
 import { colorFor } from "../lib/serviceColor.js";
-import { startOfLocalDay } from "../lib/localDay.js";
+import { startOfLocalDay, startOfNextLocalDay } from "../lib/localDay.js";
 import { createIdleLoop } from "../lib/idleLoop.js";
 import { WallField } from "./wallField.js";
 import type { EngineEvent } from "../../backend/engine/ScannerEngine.js";
@@ -140,6 +140,10 @@ async function boot(canvas: HTMLCanvasElement): Promise<void> {
   window.addEventListener("resize", () => { resize(); if (reduceMotion) paint(); else loop.wake(); });
 
   function onEvent(ev: EngineEvent): void {
+    // Admin "Refresh kiosk screen" (and config-relevant changes) broadcast a
+    // reload; the wall computes its columns once at boot, so reloading is how a
+    // channel added mid-day gets a column instead of silently dropping hits.
+    if (ev.type === "reload") { location.reload(); return; }
     if (ev.type === "active" && known.has(ev.freq)) {
       field.deposit({ freq: ev.freq, ts: ev.ts });
       if (reduceMotion) paint(); else loop.wake();
@@ -156,7 +160,7 @@ async function boot(canvas: HTMLCanvasElement): Promise<void> {
   // Daily reset even while idle: wake once at the next local midnight so the
   // wall clears on time without a continuous poll. Re-arms each midnight.
   function scheduleMidnight(): void {
-    const next = startOfLocalDay(Date.now()) + 24 * 60 * 60 * 1000;
+    const next = startOfNextLocalDay(Date.now());
     setTimeout(() => { if (reduceMotion) paint(); else loop.wake(); scheduleMidnight(); },
       Math.max(1000, next - Date.now()));
   }

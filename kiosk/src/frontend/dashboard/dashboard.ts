@@ -45,6 +45,17 @@ export function initialState(): DashState {
   return { nowPlaying: null, tunedIds: [], tunedHz: null, alert: null, log: [], error: null, signalDb: null, engineState: "running", audibleDriven: false, warmed: true, warmupPhase: null, warmupStep: 0, warmupOf: 4 };
 }
 
+/** Merge live WS log rows (already in state) with a historical backfill fetch:
+ *  newest-first, deduped by ts+freq, capped at 100. The initial getLogs()
+ *  resolves AFTER the WS is live, so wholesale-replacing state.log dropped any
+ *  "active" rows that arrived in between; merging keeps them. */
+export function mergeLogs(live: LogRow[], fetched: LogRow[]): LogRow[] {
+  const seen = new Set(live.map((r) => `${r.ts}:${r.freq}`));
+  return [...live, ...fetched.filter((r) => !seen.has(`${r.ts}:${r.freq}`))]
+    .sort((a, b) => b.ts - a.ts)
+    .slice(0, 100);
+}
+
 export function reduce(s: DashState, ev: EngineEvent): DashState {
   switch (ev.type) {
     // active/idle prove the engine is working, so they also clear any stale
@@ -463,7 +474,7 @@ export function renderDashboard(root: HTMLElement): void {
   paintWeather();
   setInterval(paintWeather, 10 * 60 * 1000);
 
-  api.getLogs().then((rows) => { state = { ...state, log: rows }; paint(); }).catch(() => {});
+  api.getLogs().then((rows) => { state = { ...state, log: mergeLogs(state.log, rows) }; paint(); }).catch(() => {});
   const proto = location.protocol === "https:" ? "wss" : "ws";
   new ReconnectingWs(`${proto}://${location.host}/ws`, (ev) => {
     if (ev.type === "reload") { location.reload(); return; }

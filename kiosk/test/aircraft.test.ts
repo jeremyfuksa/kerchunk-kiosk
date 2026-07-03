@@ -5,7 +5,7 @@ const QTH = { lat: 39.29, lon: -94.5 };
 
 // A trimmed airplanes.live /v2/point body.
 function body(ac: unknown[]) {
-  return { json: async () => ({ ac }) };
+  return { ok: true, status: 200, json: async () => ({ ac }) };
 }
 const plane = (over: Record<string, unknown> = {}) => ({
   hex: "add10d", flight: "N99HV   ", r: "N99HV", t: "C172",
@@ -111,6 +111,25 @@ describe("AircraftFeed", () => {
     await feed.pollOnce();          // fail 1 → retain (1)
     await feed.pollOnce();          // fail 2 → retain (1)
     await feed.pollOnce();          // fail 3 → clear (0)
+    expect(seen).toEqual([1, 1, 1, 0]);
+  });
+
+  it("treats a non-2xx response as a failure (retains, does not blank)", async () => {
+    let mode: "ok" | "http429" = "ok";
+    const feed = new AircraftFeed({
+      home: QTH, maxStaleTicks: 2,
+      fetcher: async () =>
+        mode === "http429"
+          ? { ok: false, status: 429, json: async () => ({ error: "rate limited" }) }
+          : body([plane()]),
+    });
+    const seen: number[] = [];
+    feed.onUpdate((t) => seen.push(t.length));
+    await feed.pollOnce();        // ok → 1
+    mode = "http429";
+    await feed.pollOnce();        // 429 → retain (1), NOT an empty sky
+    await feed.pollOnce();        // 429 → retain (1)
+    await feed.pollOnce();        // 429 → clear (0)
     expect(seen).toEqual([1, 1, 1, 0]);
   });
 

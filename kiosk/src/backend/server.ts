@@ -141,7 +141,7 @@ function json(res: ServerResponse, status: number, body: unknown): void {
   res.end(data);
 }
 
-export function createServer(deps: ServerDeps): { server: Server } {
+export function createServer(deps: ServerDeps): { server: Server; getConfig: () => Config } {
   const { configStore, engine, activityLog, staticDir } = deps;
   let config = configStore.load();
   // Runtime mode. Deliberately not read from or written to config: the kiosk
@@ -258,6 +258,15 @@ export function createServer(deps: ServerDeps): { server: Server } {
     // msSinceStart measures time since the last full engine start, not last respawn.
     if (ev.type === "warmup" && ev.phase === "booting") engineStartedAt = Date.now();
     if (ev.type === "error") recentErrors.push(ev.ts);
+  });
+  // The dedicated weather engine's failures feed the SAME health signal — a
+  // crash-looping SAME/NWR helper is a weather-safety problem and must not stay
+  // invisible while /api/system otherwise reads healthy.
+  deps.weatherEngine?.on((ev) => {
+    if (ev.type === "error") {
+      recentErrors.push(ev.ts);
+      console.error(`[weather-engine] ${ev.message ?? ev.code ?? "error"}`);
+    }
   });
   function helperRestartsRecent(nowMs: number): number {
     while (recentErrors.length > 0 && nowMs - recentErrors[0]! > ERROR_WINDOW_MS) recentErrors.shift();
@@ -383,7 +392,7 @@ export function createServer(deps: ServerDeps): { server: Server } {
       : null;
     if (!home) return { anchors: 0, estimated: [] };
     const anchors: Anchor[] = config.channels
-      .filter((c) => c.rfDb !== undefined && c.location?.lat != null
+      .filter((c) => c.rfDb !== undefined && c.location?.lat != null && c.location?.lon != null
         && c.location.powerWatts && !c.location.powerEstimated)
       .map((c) => ({
         rfDb: c.rfDb!, powerWatts: c.location!.powerWatts!,
@@ -396,10 +405,13 @@ export function createServer(deps: ServerDeps): { server: Server } {
     config = {
       ...config,
       channels: config.channels.map((c) => {
-        if (c.rfDb === undefined || c.location?.lat == null) return c;
+        // Require BOTH lat and lon: a lat-only location (schema allows it, and
+        // RepeaterBook gates the two independently) would make distKm NaN →
+        // NaN watts → configStore.save throws (powerWatts must be positive).
+        if (c.rfDb === undefined || c.location?.lat == null || c.location?.lon == null) return c;
         if (c.location.powerWatts && !c.location.powerEstimated) return c; // licensed
         const watts = estimateWatts(
-          c.rfDb, distKm(home, { lat: c.location.lat, lon: c.location.lon! }),
+          c.rfDb, distKm(home, { lat: c.location.lat, lon: c.location.lon }),
           c.freq / 1e6, k);
         if (c.location.powerWatts === watts) return c;
         estimated.push({ alphaTag: c.alphaTag, watts });
@@ -409,7 +421,13 @@ export function createServer(deps: ServerDeps): { server: Server } {
     if (estimated.length > 0) configStore.save(config);
     return { anchors: anchors.length, estimated };
   }
-  const estTimer = setInterval(() => { runPowerEstimate(); }, 12 * 3600 * 1000);
+  // try/catch: this runs unattended every 12 h — an exception here (e.g. a
+  // provider hit with a malformed location) would be an unhandled throw inside
+  // setInterval and take the process down.
+  const estTimer = setInterval(() => {
+    try { runPowerEstimate(); }
+    catch (e) { console.error(`[power-estimate] ${(e as Error).message}`); }
+  }, 12 * 3600 * 1000);
   estTimer.unref?.();
 
   // ── System health (ROADMAP Idea 16): host + DSP-helper stats, sampled
@@ -451,10 +469,7 @@ export function createServer(deps: ServerDeps): { server: Server } {
         && (config.scan.sweepRanges?.length ?? 0) === 0;
       if (nothingToShed) return;
       safetyTransition = true;
-      const effective = safetyMode
-        ? { ...config, scan: { ...config.scan, closeCall: false, sweepRanges: [] } }
-        : config;
-      void engine.stop().then(() => engine.start(toScanConfig(effective, mode, monitorChannel)))
+      void engine.stop().then(() => engine.start(scanConfigFor(mode, monitorChannel)))
         .finally(() => { safetyTransition = false; });
     },
   });
@@ -488,7 +503,7 @@ export function createServer(deps: ServerDeps): { server: Server } {
     breakIn = false;                  // break-in over; thermal management resumes
     if (mode !== "weather") return;   // operator changed it; leave alone
     mode = "scan";
-    void switchMode(toScanConfig(config, "scan"))
+    void switchMode(scanConfigFor("scan", null))
       .catch((e) => console.error(`[switchMode] revert-to-scan failed: ${(e as Error).message}`));
   };
   const onSameEvent = (ev: EngineEvent): void => {
@@ -533,7 +548,7 @@ export function createServer(deps: ServerDeps): { server: Server } {
       mode = "weather";
       monitorChannel = null;
       breakIn = true;   // freeze safetyMode bounces until we revert
-      void switchMode(toScanConfig(config, "weather"))
+      void switchMode(scanConfigFor("weather", null))
         .catch((e) => console.error(`[switchMode] weather break-in failed: ${(e as Error).message}`));
       if (sameRevertTimer) clearTimeout(sameRevertTimer);
       sameRevertTimer = setTimeout(
@@ -633,9 +648,22 @@ export function createServer(deps: ServerDeps): { server: Server } {
   // tuned channel set (carried in the live `tune` command), never a helper
   // spawn arg — so it re-points in place with no "WARMING UP" overlay or audio
   // chop. (switchMode falls back to stop()+start() on the helperless engine.)
+  // Engine scan config with the thermal shed applied. Whenever safetyMode is
+  // set (box ≥90°C), Close Call + sweeps stay OFF no matter WHICH path re-tunes
+  // the engine — a channel edit, a SAME break-in revert, or a config PUT would
+  // otherwise silently bring Close Call back on a hot box while /api/system
+  // still reports it paused. Identical to toScanConfig when not protecting.
+  // (function declaration: hoisted so the onSample handler above can call it.)
+  function scanConfigFor(m: "scan" | "weather" | "monitor", mc: Channel | null): ScanConfig {
+    const base = safetyMode
+      ? { ...config, scan: { ...config.scan, closeCall: false, sweepRanges: [] } }
+      : config;
+    return toScanConfig(base, m, mc);
+  }
+
   async function persistAndReload(): Promise<void> {
     configStore.save(config);
-    await switchMode(toScanConfig(config, mode, monitorChannel));
+    await switchMode(scanConfigFor(mode, monitorChannel));
   }
 
   // amixer target from config: volume/mute must hit the card+control that
@@ -657,6 +685,9 @@ export function createServer(deps: ServerDeps): { server: Server } {
       }
       serveStatic(path, res);
     } catch (err) {
+      // A malformed JSON body throws in readBody — that's a client error (400),
+      // not a server fault (500).
+      if (err instanceof SyntaxError) { json(res, 400, { error: "invalid JSON body" }); return; }
       json(res, 500, { error: (err as Error).message });
     }
   });
@@ -689,7 +720,7 @@ export function createServer(deps: ServerDeps): { server: Server } {
         !== JSON.stringify({ ...after, knownHz: [] });
       if (scanChanged) {
         await engine.stop();
-        await engine.start(after);
+        await engine.start(scanConfigFor(mode, monitorChannel));
       } else if (JSON.stringify(before.knownHz) !== JSON.stringify(after.knownHz)) {
         engine.updateKnownHz?.(after.knownHz ?? []);
       }
@@ -749,6 +780,9 @@ export function createServer(deps: ServerDeps): { server: Server } {
         return json(res, 200, config.channels.find((c) => c.id === id));
       }
       if (method === "DELETE") {
+        // 404 on an unknown id instead of a misleading 204 + a needless full
+        // persist and engine retune (audio-path churn for a no-op delete).
+        if (!config.channels.some((c) => c.id === id)) return json(res, 404, { error: "unknown channel" });
         config = { ...config, channels: config.channels.filter((c) => c.id !== id) };
         await persistAndReload();
         return json(res, 204, null);
@@ -786,12 +820,19 @@ export function createServer(deps: ServerDeps): { server: Server } {
       return json(res, 200, { ok: true });
     }
 
-    if (method === "POST" && path === "/api/scan/start") { await engine.start(toScanConfig(config, mode, monitorChannel)); return json(res, 200, { state: engine.state }); }
+    if (method === "POST" && path === "/api/scan/start") { await engine.start(scanConfigFor(mode, monitorChannel)); return json(res, 200, { state: engine.state }); }
     if (method === "POST" && path === "/api/scan/stop") { await engine.stop(); return json(res, 200, { state: engine.state }); }
 
     if (method === "POST" && path === "/api/audio/volume") {
       const body = await readBody(req);
       const percent = Number(body?.percent);
+      // Validate BEFORE mutating config: an out-of-range/NaN percent that
+      // reaches config poisons every later full save (configSchema requires
+      // int 0-100), and a telemetry save would then persist it as null and
+      // corrupt the file on next boot.
+      if (!Number.isInteger(percent) || percent < 0 || percent > 100) {
+        return json(res, 400, { error: "percent must be an integer 0-100" });
+      }
       config = { ...config, audio: { ...config.audio, volume: percent } };
       await amixerVolume(percent, mixerOpts());
       configStore.save(config);
@@ -815,7 +856,11 @@ export function createServer(deps: ServerDeps): { server: Server } {
       if (!parsed.success) return json(res, 400, { error: "invalid weather channel", issues: parsed.error.issues });
       const weatherChannel: Channel = { id: `wx_${randomUUID().slice(0, 8)}`, ...parsed.data };
       config = { ...config, weatherChannel };
-      configStore.save(config);
+      // Re-point the engine, not just save: the weather channel feeds the
+      // wx_same ride-along channel, sameEnable, and knownHz in toScanConfig, so
+      // first-time NWR setup must start SAME decoding now (and a frequency
+      // change must re-tune) rather than waiting for an unrelated edit/reboot.
+      await persistAndReload();
       return json(res, 200, { weatherChannel });
     }
     if (method === "POST" && path === "/api/mode") {
@@ -827,7 +872,7 @@ export function createServer(deps: ServerDeps): { server: Server } {
       }
       mode = next;
       monitorChannel = null;
-      await switchMode(toScanConfig(config, mode));
+      await switchMode(scanConfigFor(mode, null));
       return json(res, 200, { mode, state: engine.state });
     }
 
@@ -852,14 +897,14 @@ export function createServer(deps: ServerDeps): { server: Server } {
         mode: mode_, enabled: true,
       };
       mode = "monitor";
-      await switchMode(toScanConfig(config, mode, monitorChannel));
+      await switchMode(scanConfigFor(mode, monitorChannel));
       return json(res, 200, { mode, monitor: monitorChannel });
     }
 
     if (method === "POST" && path === "/api/monitor/stop") {
       mode = "scan";
       monitorChannel = null;
-      await switchMode(toScanConfig(config, mode));
+      await switchMode(scanConfigFor(mode, null));
       return json(res, 200, { mode, state: engine.state });
     }
 
@@ -1045,5 +1090,8 @@ export function createServer(deps: ServerDeps): { server: Server } {
     server.on("close", () => deps.aircraftFeed?.stop());
   }
 
-  return { server };
+  // Expose the server's (migrated) config so the boot path in index.ts starts
+  // the engine from the SAME snapshot the API uses, not a pre-migration copy
+  // loaded before createServer ran (CLAUDE.md's boot-vs-API divergence warning).
+  return { server, getConfig: () => config };
 }

@@ -58,6 +58,19 @@ describe("RadioReference", () => {
     expect(await rr.lookup(464275000)).toBeNull();
   });
 
+  it("does not negative-cache a transient failure — a later lookup retries", async () => {
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce({ ok: false, status: 503, text: async () => "down" })
+      .mockResolvedValueOnce({ ok: false, status: 503, text: async () => "down" })
+      .mockResolvedValue({ ok: true, status: 200, text: async () => SOAP_HIT });
+    const rr = new RadioReference({
+      appKey: "k", username: "u", password: "p", countyIds: [1310, 1023], fetcher,
+    });
+    expect(await rr.lookup(464275000)).toBeNull(); // both counties fail transiently
+    const hit = await rr.lookup(464275000);        // retry — RR is back
+    expect(hit?.tag).toBe("WOF Maint · WQAB123");
+  });
+
   it("caches per county+freq — repeat lookup does not refetch", async () => {
     const { rr, fetcher } = make(SOAP_HIT);
     await rr.lookup(464275000);

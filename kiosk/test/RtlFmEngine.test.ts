@@ -86,6 +86,14 @@ describe("RtlFmEngine.buildArgs", () => {
     expect(args).not.toContain("-g");
   });
 
+  it("uses -M am for an AM airband channel", () => {
+    const e = new RtlFmEngine({ rtlFmCmd: LOUD, sinkCmd: null, ...TIMING });
+    const c = ch({ freq: 124_000_000, mode: "am" });
+    const args = e.buildArgs(c, cfg([c], { gain: "auto" }));
+    const mi = args.indexOf("-M");
+    expect(args[mi + 1]).toBe("am");
+  });
+
   it("includes -g 30 when gain is 30", () => {
     const e = new RtlFmEngine({ rtlFmCmd: LOUD, sinkCmd: null, ...TIMING });
     const c = ch();

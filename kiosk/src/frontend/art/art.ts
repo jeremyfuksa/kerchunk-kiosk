@@ -5,7 +5,7 @@
 import { ReconnectingWs } from "../lib/wsClient.js";
 import { api } from "../lib/api.js";
 import { colorFor } from "../lib/serviceColor.js";
-import { SedimentField, startOfLocalDay, type Deposit } from "./sediment.js";
+import { SedimentField, startOfLocalDay, startOfNextLocalDay, type Deposit } from "./sediment.js";
 import { makeProjection, type Home } from "./project.js";
 import { createIdleLoop } from "../lib/idleLoop.js";
 import type { EngineEvent } from "../../backend/engine/ScannerEngine.js";
@@ -50,6 +50,7 @@ async function boot(canvas: HTMLCanvasElement): Promise<void> {
   ws.connect();
 
   function onEvent(ev: EngineEvent): void {
+    if (ev.type === "reload") { location.reload(); return; }
     if (ev.type === "active" && ev.channel.location?.lat != null && ev.channel.location.lon != null) {
       field.deposit({
         lat: ev.channel.location.lat,
@@ -101,7 +102,7 @@ async function boot(canvas: HTMLCanvasElement): Promise<void> {
   // Daily reset even while idle: wake once at the next local midnight so the
   // portrait clears on time without a continuous poll. Re-arms each midnight.
   function scheduleMidnight(): void {
-    const next = startOfLocalDay(Date.now()) + 24 * 60 * 60 * 1000;
+    const next = startOfNextLocalDay(Date.now());
     setTimeout(() => { loop.wake(); scheduleMidnight(); }, Math.max(1000, next - Date.now()));
   }
   scheduleMidnight();

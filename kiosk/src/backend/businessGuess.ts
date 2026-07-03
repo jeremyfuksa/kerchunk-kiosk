@@ -21,6 +21,14 @@ const TOLERANCE_HZ = 2_500;
 // the nearest store three states over when the chain isn't local at all.
 const MAX_KM = 40;
 const SEARCH_RADIUS_M = 40_000;
+// Re-check a "not in area" chain roughly monthly so a newly-opened store is
+// eventually rediscovered. Positive hits are kept indefinitely (a store's
+// coordinates don't move). Only NEGATIVE cache entries expire.
+const NEGATIVE_TTL_MS = 30 * 24 * 3600 * 1000;
+// Places error statuses that mean the KEY/request is broken (not a transient
+// blip): latch the provider off only for these. Quota (RESOURCE_EXHAUSTED),
+// 5xx (INTERNAL/UNAVAILABLE), and DEADLINE_EXCEEDED are retryable.
+const PERMANENT_ERRORS = new Set(["PERMISSION_DENIED", "UNAUTHENTICATED", "INVALID_ARGUMENT"]);
 
 interface PlaceResult { name: string; lat: number; lon: number; city?: string; }
 
@@ -50,19 +58,29 @@ export class BusinessGuess implements LookupProvider {
   private readonly opts: BusinessGuessOpts;
   private readonly fetcher: NonNullable<BusinessGuessOpts["fetcher"]>;
   private readonly cacheFile: string;
-  // Per-chain nearest store (or null = looked up, genuinely not in area).
-  private readonly cache = new Map<string, PlaceResult | null>();
-  // Latched on a hard Places auth/quota error so one misconfigured key doesn't
-  // make every Close Call lookup pay a doomed round-trip.
+  // Per-chain nearest store (or null = looked up, genuinely not in area), with
+  // the time it was resolved so negatives can expire.
+  private readonly cache = new Map<string, { result: PlaceResult | null; ts: number }>();
+  // Latched ONLY on a hard Places auth/config error so one misconfigured key
+  // doesn't make every Close Call lookup pay a doomed round-trip. A transient
+  // quota/5xx error must NOT latch (it would kill guessing for the process).
   private disabled = false;
 
   constructor(opts: BusinessGuessOpts) {
     this.opts = opts;
-    this.fetcher = opts.fetcher ?? ((url, init) => fetch(url, init));
+    this.fetcher = opts.fetcher ?? ((url, init) => fetch(url, { ...init, signal: AbortSignal.timeout(15_000) }));
     this.cacheFile = join(opts.cacheDir, "places-cache.json");
     try {
-      const disk = JSON.parse(readFileSync(this.cacheFile, "utf8")) as Record<string, PlaceResult | null>;
-      for (const [k, v] of Object.entries(disk)) this.cache.set(k, v);
+      const disk = JSON.parse(readFileSync(this.cacheFile, "utf8")) as Record<string, unknown>;
+      for (const [k, v] of Object.entries(disk)) {
+        // New format is {result, ts}; migrate a legacy bare PlaceResult|null
+        // (ts 0 → any negative is immediately re-checked, positives kept).
+        if (v && typeof v === "object" && "ts" in v && "result" in v) {
+          this.cache.set(k, v as { result: PlaceResult | null; ts: number });
+        } else {
+          this.cache.set(k, { result: v as PlaceResult | null, ts: 0 });
+        }
+      }
     } catch { /* no cache yet */ }
   }
 
@@ -88,7 +106,10 @@ export class BusinessGuess implements LookupProvider {
   }
 
   private async nearest(chain: BusinessChain): Promise<PlaceResult | null> {
-    if (this.cache.has(chain.name)) return this.cache.get(chain.name)!;
+    const cached = this.cache.get(chain.name);
+    if (cached && (cached.result !== null || Date.now() - cached.ts < NEGATIVE_TTL_MS)) {
+      return cached.result; // positive = permanent; negative = until it expires
+    }
     let result: PlaceResult | null = null;
     try {
       const res = await this.fetcher(PLACES_URL, {
@@ -111,11 +132,13 @@ export class BusinessGuess implements LookupProvider {
       });
       const body = (await res.json()) as PlacesResponse;
       if (body?.error) {
+        const status = body.error.status ?? "";
+        const permanent = PERMANENT_ERRORS.has(status);
         console.error(
-          `[business-guess] Places disabled: ${body.error.status ?? ""} ${body.error.message ?? ""}`.trim().slice(0, 200),
+          `[business-guess] Places ${permanent ? "disabled" : "error"}: ${status} ${body.error.message ?? ""}`.trim().slice(0, 200),
         );
-        this.disabled = true;
-        return null;   // don't cache: a fixed key should work next boot
+        if (permanent) this.disabled = true; // else a transient blip — retry next time
+        return null;   // don't cache: a fixed key / passed quota should work later
       }
       const p = body?.places?.[0];
       const lat = p?.location?.latitude;
@@ -129,7 +152,9 @@ export class BusinessGuess implements LookupProvider {
     }
     // Cache the verified answer — including a genuine null (chain not in area),
     // so absent chains (e.g. Kroger here) aren't re-queried every Close Call.
-    this.cache.set(chain.name, result);
+    // The timestamp lets a negative expire (NEGATIVE_TTL_MS) so a store that
+    // opens later is eventually found.
+    this.cache.set(chain.name, { result, ts: Date.now() });
     this.persist();
     return result;
   }
