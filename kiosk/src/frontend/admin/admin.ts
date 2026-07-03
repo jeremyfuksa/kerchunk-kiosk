@@ -1305,7 +1305,7 @@ export function renderAdmin(root: HTMLElement): void {
     dcSelCount.textContent = dcSelected.size > 0 ? `${dcSelected.size} selected` : "";
   }
 
-  async function renderDiscoveries(): Promise<void> {
+  async function renderDiscoveries(opts: { refreshDrawer?: boolean } = {}): Promise<void> {
     const cfg = await api.getConfig();
     syncAudioControls(cfg); // one poll feeds both (was a separate 5s loop)
     const all = [...(cfg.discoveries ?? [])].sort((a, b) => b.ts - a.ts);
@@ -1341,7 +1341,11 @@ export function renderAdmin(root: HTMLElement): void {
       const id = (cell.closest("tr") as HTMLElement).dataset.id!;
       cell.addEventListener("click", () => openDrawer("discovery", id));
     });
-    if (drawerId && drawerKind === "discovery") renderDrawer();
+    // Re-render the open discovery drawer only for action-driven refreshes, not
+    // the passive 15 s poll: rebuilding it wipes in-progress operator input
+    // (display name, search, dragged pin) and leaks a new Google Map instance
+    // each time. The poll passes refreshDrawer:false.
+    if (opts.refreshDrawer !== false && drawerId && drawerKind === "discovery") renderDrawer();
     dcRows.querySelectorAll<HTMLInputElement>(".dSel").forEach((cb) => {
       const id = (cb.closest("tr") as HTMLElement).dataset.id!;
       cb.addEventListener("change", () => {
@@ -1401,7 +1405,7 @@ export function renderAdmin(root: HTMLElement): void {
   dcLockSel.addEventListener("click", () => bulkDiscoveries(true));
 
   renderDiscoveries();
-  setInterval(() => { renderDiscoveries().catch(() => {}); }, 15000);
+  setInterval(() => { renderDiscoveries({ refreshDrawer: false }).catch(() => {}); }, 15000);
 
   const loList = root.querySelector<HTMLElement>("#loList")!;
   async function renderLockouts(): Promise<void> {

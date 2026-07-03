@@ -44,9 +44,12 @@ const TEMP_CRITICAL_C = 90;
 // reading or a cold-start burst can't flap the banner on and off.
 const SUSTAIN_SAMPLES = 3;
 
-/** True only if `pred` holds across the whole recent debounce window. */
+/** True only if `pred` holds across the whole recent debounce window. Requires
+ *  a FULL window: with fewer than SUSTAIN_SAMPLES readings (the first ~7.5 s
+ *  after boot) a single hot sample must not raise, which is the debounce's
+ *  whole point. */
 function sustained(recent: SystemSample[], pred: (s: SystemSample) => boolean): boolean {
-  if (recent.length === 0) return false;
+  if (recent.length < SUSTAIN_SAMPLES) return false;
   return recent.slice(-SUSTAIN_SAMPLES).every(pred);
 }
 

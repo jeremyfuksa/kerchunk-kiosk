@@ -141,7 +141,7 @@ function json(res: ServerResponse, status: number, body: unknown): void {
   res.end(data);
 }
 
-export function createServer(deps: ServerDeps): { server: Server } {
+export function createServer(deps: ServerDeps): { server: Server; getConfig: () => Config } {
   const { configStore, engine, activityLog, staticDir } = deps;
   let config = configStore.load();
   // Runtime mode. Deliberately not read from or written to config: the kiosk
@@ -685,6 +685,9 @@ export function createServer(deps: ServerDeps): { server: Server } {
       }
       serveStatic(path, res);
     } catch (err) {
+      // A malformed JSON body throws in readBody — that's a client error (400),
+      // not a server fault (500).
+      if (err instanceof SyntaxError) { json(res, 400, { error: "invalid JSON body" }); return; }
       json(res, 500, { error: (err as Error).message });
     }
   });
@@ -777,6 +780,9 @@ export function createServer(deps: ServerDeps): { server: Server } {
         return json(res, 200, config.channels.find((c) => c.id === id));
       }
       if (method === "DELETE") {
+        // 404 on an unknown id instead of a misleading 204 + a needless full
+        // persist and engine retune (audio-path churn for a no-op delete).
+        if (!config.channels.some((c) => c.id === id)) return json(res, 404, { error: "unknown channel" });
         config = { ...config, channels: config.channels.filter((c) => c.id !== id) };
         await persistAndReload();
         return json(res, 204, null);
@@ -1084,5 +1090,8 @@ export function createServer(deps: ServerDeps): { server: Server } {
     server.on("close", () => deps.aircraftFeed?.stop());
   }
 
-  return { server };
+  // Expose the server's (migrated) config so the boot path in index.ts starts
+  // the engine from the SAME snapshot the API uses, not a pre-migration copy
+  // loaded before createServer ran (CLAUDE.md's boot-vs-API divergence warning).
+  return { server, getConfig: () => config };
 }

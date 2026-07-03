@@ -98,6 +98,15 @@ export class HistoryStore {
       ev.lat ?? null, ev.lon ?? null,
     );
     if (ev.kind === "active") {
+      // A second "active" without an intervening release (e.g. a helper respawn
+      // mid-transmission) would orphan the previous open row's durationMs as
+      // NULL forever, skewing airtime stats. Close it out at this event's ts.
+      const prev = this.open.get(ev.channelId);
+      if (prev !== undefined) {
+        this.db.prepare(
+          `UPDATE events SET durationMs = MAX(0, ? - ts) WHERE id = ? AND durationMs IS NULL`,
+        ).run(ev.ts, prev);
+      }
       this.open.set(ev.channelId, Number(res.lastInsertRowid));
     }
   }

@@ -68,6 +68,18 @@ describe("HistoryStore", () => {
     expect(h.query({ limit: 1 })[0]!.ts).toBe(3);
   });
 
+  it("closes a prior open row when a second active arrives without a release", () => {
+    const h = make();
+    h.record({ ts: 1000, kind: "active", channelId: "a", freq: 100, alphaTag: "A" });
+    // Second active for the same channel, no release between (helper respawn).
+    h.record({ ts: 1500, kind: "active", channelId: "a", freq: 100, alphaTag: "A" });
+    h.release("a", 2000);
+    const rows = h.query({ freq: 100 }).sort((x, y) => x.ts - y.ts);
+    expect(rows).toHaveLength(2);
+    expect(rows[0]!.durationMs).toBe(500);  // first row closed at the 2nd active's ts, not left NULL
+    expect(rows[1]!.durationMs).toBe(500);  // second row closed by the release
+  });
+
   it("clamps a bogus limit instead of returning everything (LIMIT -1 = unlimited)", () => {
     const h = make();
     for (let i = 0; i < 10; i++) {

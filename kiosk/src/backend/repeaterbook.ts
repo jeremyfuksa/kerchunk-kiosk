@@ -20,6 +20,8 @@ export interface RepeaterHit {
   pl: string | null;
   /** Display tag for the channel table / dashboard. */
   tag: string;
+  /** Modulation as RB reports it (FM, DMR, P25, ...), when a mode flag is set. */
+  mode?: string;
   location?: {
     lat?: number; lon?: number; city?: string; state?: string; source: string;
   };

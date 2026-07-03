@@ -17,26 +17,6 @@ const defaultRun: Runner = (cmd, args) =>
 // both, and names are stable across boots while indices can swap probe order.
 export interface AmixerOpts { run?: Runner; control?: string; card?: number | string; }
 
-// Best-effort ALSA card index from a sink string like "hdmi:CARD=vc4hdmi1" or
-// "plughw:CARD=Headphones,DEV=0".
-//
-// KNOWN LIMITATION: ALSA sinks identify the card by NAME (CARD=<name>), not by
-// the numeric index amixer wants, and mapping name -> index requires parsing
-// `aplay -l`. We deliberately do NOT do that here: we only recognize an
-// explicit numeric form ("hw:1", "plughw:CARD=...,DEV=0" with a leading index,
-// etc.) and otherwise return null so the caller falls back to the default card.
-// Correct control discovery / name->index mapping is left as future work; this
-// fix's goal is that a missing/wrong control degrades to a safe no-op rather
-// than crashing the boot chain (see setVolume/setMuted).
-export function cardFromSink(sink: string): number | null {
-  if (!sink) return null;
-  // Match a numeric card index after "hw:" / "plughw:" (e.g. "hw:1", "plughw:2,0").
-  const m = /^(?:plug)?hw:(\d+)/.exec(sink.trim());
-  if (m) return Number(m[1]);
-  // Name-based sinks (CARD=<name>) cannot be mapped without `aplay -l`.
-  return null;
-}
-
 // The slider is a LOG FADER: UI 1-100 maps linearly onto VOLUME_MIN_DB..0 dB
 // (UI 0 = raw 0 = silence). Loudness perception is linear in dB, so this puts
 // the same perceived step on every slider notch, across the whole travel.

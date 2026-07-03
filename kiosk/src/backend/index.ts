@@ -218,7 +218,7 @@ const aircraftFeed = config.aircraft?.enabled && config.display
     })
   : undefined;
 
-const { server } = createServer({
+const { server, getConfig } = createServer({
   configStore, engine, weatherEngine, activityLog, wsHub, staticDir: STATIC_DIR,
   lookup, weather, history, aircraftFeed,
   selfProtect: true,
@@ -246,7 +246,10 @@ server.listen(PORT, () => {
     }, 9000);
     weatherFallback.unref?.();
   }
-  engine.start(toScanConfig(config, "scan"))
+  // getConfig() is the server's migrated config (legacy cc_ channels moved to
+  // discoveries), not the pre-migration snapshot loaded above — so boot starts
+  // the engine from the same source of truth the API path uses.
+  engine.start(toScanConfig(getConfig(), "scan"))
     // Re-apply persisted volume/mute to the hardware mixer on boot, so the saved
     // setting actually takes effect instead of inheriting the OS mixer state.
     // Direct audio.js calls WITH the configured mixer card/control — the same

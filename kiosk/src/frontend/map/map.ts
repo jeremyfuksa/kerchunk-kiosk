@@ -303,7 +303,7 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
     const field = new BlipField(BLIP_LIFETIME_MS);
     // site key -> rendered circle + label marker (+ last-written style for the
     // tick() dirty-check, so unchanged blips skip the WebGL re-upload).
-    const circles = new Map<string, { circle: any; info: any; last: any }>();
+    const circles = new Map<string, { circle: any; info: any; last: any; alphaTag: string }>();
     // Live transmission rings: while a transmission is OPEN, a ring pulses at
     // its site, expanding out to the site's tx (coverage) radius and looping —
     // so it lasts as long as the transmission and stays visible even when the
@@ -565,14 +565,19 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
             radius: 400, strokeWeight: 1.5,
           });
           const info = new google.maps.InfoWindow({ disableAutoPan: true });
+          const e = { circle, info, last: null, alphaTag: b.alphaTag };
           circle.addListener("click", () => {
-            info.setContent(`<div class="blipInfo">${esc(b.alphaTag)}</div>`);
+            // Read the entry's CURRENT label, not the closed-over first blip —
+            // a reused circle (repeat traffic at one site within the 60s
+            // lifetime) otherwise always showed the first channel's name.
+            info.setContent(`<div class="blipInfo">${esc(e.alphaTag)}</div>`);
             info.setPosition({ lat: b.lat, lng: b.lon });
             info.open({ map });
           });
-          entry = { circle, info, last: null };
+          entry = e;
           circles.set(key, entry);
         }
+        entry.alphaTag = b.alphaTag; // keep the click label current for this site
         const col = colorFor(b.freq, b.kind, tagsFor(b.freq));
         // Quantize the 60s opacity fade to ~16 steps so steady-state decay
         // rarely changes a written value — the dirty-check then skips the

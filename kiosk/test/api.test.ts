@@ -93,6 +93,19 @@ describe("HTTP API", () => {
     expect(add.status).toBe(201);
   });
 
+  it("DELETE /api/channels/:id returns 404 for an unknown id", async () => {
+    const { server } = makeApp();
+    const res = await request(server).delete("/api/channels/does-not-exist");
+    expect(res.status).toBe(404);
+  });
+
+  it("rejects a malformed JSON body with 400, not 500", async () => {
+    const { server } = makeApp();
+    const res = await request(server).post("/api/channels")
+      .set("Content-Type", "application/json").send("{ not valid json");
+    expect(res.status).toBe(400);
+  });
+
   it("GET /api/system includes a health verdict and core count", async () => {
     const { server } = makeApp();
     const res = await request(server).get("/api/system");
