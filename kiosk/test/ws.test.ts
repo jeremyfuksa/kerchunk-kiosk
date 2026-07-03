@@ -63,6 +63,17 @@ describe("WsHub state replay on connect", () => {
     hub.add(late);
     expect(late.send).not.toHaveBeenCalled();
   });
+
+  it("clears the replay when the stored channel releases before any audible", () => {
+    // Pre-audible: A opens, then A releases while another channel is still up
+    // (so no "idle" fires). A late client must not be told A is still playing.
+    const hub = new WsHub();
+    hub.broadcast({ type: "active", channel: ch, freq: ch.freq, ts: 1 });
+    hub.broadcast({ type: "release", channelId: ch.id, ts: 2 });
+    const late = fakeClient();
+    hub.add(late);
+    expect(late.send).not.toHaveBeenCalled();
+  });
 });
 
 describe("WsHub replay prefers audible", () => {

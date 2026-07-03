@@ -77,6 +77,29 @@ describe("ConfigStore", () => {
     expect(store.lastLoadWasReset).toBe(true);
   });
 
+  it("preserves a doubly-rejected file instead of clobbering it", () => {
+    writeFileSync(path, '{"hand":"edited creds"}');
+    writeFileSync(path + ".bak", "also garbage");
+    new ConfigStore(path).load();
+    // The operator's rejected file is set aside, not overwritten by defaults.
+    expect(existsSync(path + ".rejected")).toBe(true);
+    expect(readFileSync(path + ".rejected", "utf8")).toBe('{"hand":"edited creds"}');
+    // And the main file is now valid defaults going forward.
+    expect(JSON.parse(readFileSync(path, "utf8"))).toEqual(defaultConfig());
+  });
+
+  it("repairs main from a good .bak so the next save can't clobber the backup", () => {
+    const store = new ConfigStore(path);
+    const good = store.load();
+    store.save({ ...good, audio: { ...good.audio, volume: 33 } }); // main + .bak both good
+    writeFileSync(path, "{ not json");                              // corrupt main only
+    const reloaded = new ConfigStore(path).load();
+    expect(reloaded.audio.volume).toBe(good.audio.volume);          // recovered from .bak
+    // Main was rewritten from the good .bak (not left corrupt), so a later
+    // operator save() copies a VALID main into .bak.
+    expect(JSON.parse(readFileSync(path, "utf8")).audio.volume).toBe(good.audio.volume);
+  });
+
   it("rejects a schema-invalid config on save", () => {
     const store = new ConfigStore(path);
     const cfg = store.load();

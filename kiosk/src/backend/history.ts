@@ -126,9 +126,12 @@ export class HistoryStore {
     const where: string[] = [];
     const args: Array<number | string> = [];
     if (q.kind !== undefined) { where.push("kind = ?"); args.push(q.kind); }
-    if (q.sinceMs !== undefined) { where.push("ts >= ?"); args.push(q.sinceMs); }
-    if (q.untilMs !== undefined) { where.push("ts <= ?"); args.push(q.untilMs); }
-    if (q.freq !== undefined) { where.push("freq = ?"); args.push(q.freq); }
+    // Numeric filters: a NaN (e.g. from Number("abc") on a bad query param)
+    // binds as NULL and silently matches nothing — drop it instead so a
+    // malformed param is ignored, not turned into "no results".
+    if (q.sinceMs !== undefined && Number.isFinite(q.sinceMs)) { where.push("ts >= ?"); args.push(q.sinceMs); }
+    if (q.untilMs !== undefined && Number.isFinite(q.untilMs)) { where.push("ts <= ?"); args.push(q.untilMs); }
+    if (q.freq !== undefined && Number.isFinite(q.freq)) { where.push("freq = ?"); args.push(q.freq); }
     if (q.tag !== undefined) {
       // tags is a JSON array; match the quoted element.
       where.push("tags LIKE ?"); args.push(`%"${q.tag.replaceAll('"', "")}"%`);
@@ -136,7 +139,11 @@ export class HistoryStore {
     const sql = `SELECT * FROM events
       ${where.length ? "WHERE " + where.join(" AND ") : ""}
       ORDER BY ts DESC LIMIT ?`;
-    args.push(Math.min(q.limit ?? 500, 5000));
+    // Clamp to [1, 5000]. Math.min alone let a negative or NaN limit through:
+    // SQLite treats `LIMIT -1` (and a NULL bind from NaN) as UNLIMITED, so
+    // `?limit=-1` could serialize a whole month of rows into one response.
+    const rawLimit = Number(q.limit);
+    args.push(Number.isFinite(rawLimit) ? Math.min(Math.max(1, Math.floor(rawLimit)), 5000) : 500);
     return (this.db.prepare(sql).all(...args) as Array<Record<string, unknown>>)
       .map((r) => ({ ...r, tags: JSON.parse(String(r.tags)) }) as unknown as HistoryRow);
   }

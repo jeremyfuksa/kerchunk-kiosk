@@ -12,11 +12,34 @@ export class ConfigStore {
     const fromMain = this.tryRead(this.path);
     if (fromMain) return fromMain;
     const fromBak = this.tryRead(this.path + ".bak");
-    if (fromBak) return fromBak;
+    if (fromBak) {
+      // Main was rejected but .bak is good. Repair main from it now, so the
+      // corrupt file isn't left in place to be copied OVER the good .bak by the
+      // next operator save() — which would briefly leave zero valid copies.
+      this.preserveRejected(this.path);
+      this.writeAtomic(fromBak);
+      return fromBak;
+    }
     const def = defaultConfig();
-    this.lastLoadWasReset = existsSync(this.path) || existsSync(this.path + ".bak");
+    const hadFiles = existsSync(this.path) || existsSync(this.path + ".bak");
+    this.lastLoadWasReset = hadFiles;
+    if (hadFiles) {
+      // Both files were rejected. Set them ASIDE rather than clobbering — the
+      // operator's hand-edited file (credentials, channels) may be recoverable
+      // by hand, and silently overwriting it once "ate an operator's creds."
+      this.preserveRejected(this.path);
+      this.preserveRejected(this.path + ".bak");
+    }
     this.writeAtomic(def); // persist defaults so the file exists going forward
     return def;
+  }
+
+  // Rename a rejected file to a .rejected sibling so it isn't overwritten. A
+  // fixed suffix (not a timestamp) keeps exactly the last rejected copy — Date
+  // is avoided so the store stays deterministic and testable.
+  private preserveRejected(p: string): void {
+    if (!existsSync(p)) return;
+    try { renameSync(p, p + ".rejected"); } catch { /* best-effort */ }
   }
 
   // opts.telemetry: a high-frequency rfDb/levelTrim EMA save (~100x/hr). These

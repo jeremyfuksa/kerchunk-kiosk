@@ -68,6 +68,18 @@ describe("HistoryStore", () => {
     expect(h.query({ limit: 1 })[0]!.ts).toBe(3);
   });
 
+  it("clamps a bogus limit instead of returning everything (LIMIT -1 = unlimited)", () => {
+    const h = make();
+    for (let i = 0; i < 10; i++) {
+      h.record({ ts: i, kind: "closecall", channelId: `cc${i}`, freq: 100 + i, alphaTag: "C" });
+    }
+    // -1 means "unlimited" to SQLite — must be clamped to the [1,5000] floor,
+    // never passed through. NaN falls back to the default (500 → all 10 rows).
+    expect(h.query({ limit: -1 })).toHaveLength(1);           // clamped up to the min, not unlimited
+    expect(h.query({ limit: NaN as unknown as number })).toHaveLength(10); // default
+    expect(h.query({ limit: 3 })).toHaveLength(3);            // valid limit still honored
+  });
+
   it("retention prunes rows older than the window", () => {
     const h = make({ retentionDays: 30 });
     const now = Date.now();

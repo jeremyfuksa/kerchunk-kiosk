@@ -232,6 +232,8 @@ const { server } = createServer({
 
 const wss = new WebSocketServer({ server, path: "/ws" });
 wss.on("connection", (ws) => wsHub.attach(ws));
+// A WebSocketServer "error" with no listener is an uncaught exception.
+wss.on("error", (err) => console.error("[ws] server error:", err.message));
 
 server.listen(PORT, () => {
   console.log(`kerchunk-kiosk listening on :${PORT} (engine: ${engineKind})`);
@@ -256,5 +258,15 @@ server.listen(PORT, () => {
     .catch((err) => console.error("engine start failed:", err));
 });
 
-process.on("SIGTERM", async () => { aircraftFeed?.stop(); await engine.stop(); server.close(); process.exit(0); });
-process.on("SIGINT", async () => { aircraftFeed?.stop(); await engine.stop(); server.close(); process.exit(0); });
+// Stop BOTH engines on shutdown: leaving the weather helper running orphans a
+// second GNU Radio process holding the weather SDR, which then blocks the next
+// start from opening the device (systemd's cgroup kill masks this only in the
+// service path).
+const shutdown = async (): Promise<void> => {
+  aircraftFeed?.stop();
+  await Promise.all([engine.stop(), weatherEngine?.stop() ?? Promise.resolve()]);
+  server.close();
+  process.exit(0);
+};
+process.on("SIGTERM", () => { void shutdown(); });
+process.on("SIGINT", () => { void shutdown(); });
