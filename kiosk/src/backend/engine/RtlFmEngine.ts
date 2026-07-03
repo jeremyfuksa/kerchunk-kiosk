@@ -118,7 +118,9 @@ export class RtlFmEngine implements ScannerEngine {
   buildArgs(channel: Channel, config: ScanConfig): string[] {
     const args = [
       "-f", String(channel.freq),
-      "-M", "fm",
+      // Honor the channel's demod mode: AM airband must not demodulate as FM
+      // (rtl_fm supports -M am). fm/nfm both map to rtl_fm's "fm".
+      "-M", channel.mode === "am" ? "am" : "fm",
       "-s", String(config.sampleRate),
       "-l", "0",
       "-t", "5",

@@ -505,7 +505,10 @@ export class WidebandEngine implements ScannerEngine {
     this.groupStartedAt = this.now();
     this.child.stdin.write(JSON.stringify({
       cmd: "tune", centerHz, channels: [],
-      monitor: false, closeCall: true,
+      // Honor the configured Close Call flag: sweep stops exist to hunt with
+      // Close Call, but if the operator disabled it the empty-window stop must
+      // not silently re-enable detection.
+      monitor: false, closeCall: this.config?.closeCall ?? true,
       closeCallDb: this.config?.closeCallDb ?? 15,
       knownHz: this.config?.knownHz ?? [],
     }) + "\n");

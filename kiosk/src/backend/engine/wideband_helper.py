@@ -520,6 +520,15 @@ class Helper(gr.top_block):
 
     def tune(self, center_hz, channels, monitor=False,
              close_call=False, close_call_db=15.0, known_hz=None):
+        # Emit "close" for any chain still open from the previous window before
+        # we reassign/park it. Node tracks open channels to decide when to hop;
+        # an "open" event already in flight when this tune arrives would leave a
+        # stale id in that set with no "close" ever following (the chain is
+        # about to change), wedging the scanner parked on this window forever.
+        # These closes precede the "tuned" ack, so they cancel any late open.
+        for chain in self.chains:
+            if chain.channel_id is not None and chain.open:
+                emit({"ev": "close", "id": chain.channel_id})
         # Lane-fit: the helper may have built fewer than MAX_CHANS lanes, so the
         # SAME/weather lane is the LAST BUILT lane and truncation is to the built
         # count (lane-fit guarantees no group exceeds it, but stay defensive).
@@ -862,6 +871,10 @@ class Helper(gr.top_block):
             # multimon-ng emits "EAS: ZCZC-WXR-TOR-..." and "EAS: NNNN".
             if "ZCZC" in line or "NNNN" in line:
                 emit({"ev": "same", "raw": line})
+        # stdout closed = multimon-ng exited. Surface it: SAME decoding is a
+        # weather-safety feature, and a silent death would drop it until the
+        # next full helper respawn with nothing in the journal to explain why.
+        emit({"ev": "log", "msg": "multimon-ng exited: SAME decoding stopped"})
 
     def alert_unmute(self, channel_id, hold_s):
         """Alert pull-in (ROADMAP Idea 6): route a see-only chain's audio to
