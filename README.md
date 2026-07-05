@@ -64,6 +64,9 @@ restart kerchunk-kiosk`.
   (wideband engine, Close Call, …)
 - [`docs/Kerchunk Vision.md`](docs/Kerchunk%20Vision.md) — the original
   pocket-scanner vision this project pivoted from
+- [`docs/Kerchunk Go Feasibility.md`](docs/Kerchunk%20Go%20Feasibility.md) —
+  hardware feasibility study for the tiny in-car scanner (ESP32 vs Pi-class
+  vs ESP32-P4 tracks, power/thermal budgets, sprint plans)
 - [`bench/`](bench/), [`kiosk/bench/`](kiosk/bench/) — feasibility-spike
   protocols and measured results
 
