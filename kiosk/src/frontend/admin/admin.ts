@@ -184,7 +184,6 @@ export function renderAdmin(root: HTMLElement): void {
             <span id="bkErr" class="err"></span>
           </div>
         </details>
-        <div id="bankProfile" class="bankProfile"></div>
         <div id="dupPanel" class="dupPanel" hidden></div>
         <div class="tableWrap">
           <table class="chTable">
@@ -427,53 +426,6 @@ export function renderAdmin(root: HTMLElement): void {
 
   // ── Banks: toggleable predicates over band/tags (ROADMAP Idea 1) ──
   const bkErr = root.querySelector<HTMLElement>("#bkErr")!;
-
-  // ── Per-bank scan profile editor (ROADMAP Idea 7): squelch trio applies
-  // to the bank's channels; dwell weight scales its windows' park time.
-  // Empty field = inherit the global Scan tuning value.
-  const bankProfBox = root.querySelector<HTMLElement>("#bankProfile")!;
-  function openProfileEditor(b: Bank | undefined): void {
-    if (!b) return;
-    const num = (v: number | undefined) => (v !== undefined ? String(v) : "");
-    bankProfBox.innerHTML = `
-      <h3>${esc(b.name)} — scan profile <span class="hint">empty = global default</span></h3>
-      <label>Squelch open (dB over floor) <input id="bpOpen" type="number" min="1" step="0.5" value="${num(b.openAboveFloorDb)}" placeholder="global" /></label>
-      <label>Quieting threshold (dB) <input id="bpQuiet" type="number" max="-1" step="0.5" value="${num(b.noiseQuietDb)}" placeholder="global" /></label>
-      <label>Hang time (ms) <input id="bpHang" type="number" min="100" step="100" value="${num(b.hangMs)}" placeholder="global" /></label>
-      <label>Dwell weight <input id="bpDwell" type="number" min="0.1" step="0.1" value="${num(b.dwellWeight)}" placeholder="1" title="2 = this bank's windows get twice the park time; 0.5 = half" /></label>
-      <button id="bpSave">Save profile</button>
-      <button id="bpCancel">Cancel</button>
-      <span id="bpErr" class="err"></span>`;
-    bankProfBox.classList.add("open");
-    const val = (sel: string): number | undefined => {
-      const raw = bankProfBox.querySelector<HTMLInputElement>(sel)!.value.trim();
-      return raw === "" ? undefined : Number(raw);
-    };
-    bankProfBox.querySelector<HTMLButtonElement>("#bpCancel")!
-      .addEventListener("click", () => { bankProfBox.classList.remove("open"); bankProfBox.innerHTML = ""; });
-    bankProfBox.querySelector<HTMLButtonElement>("#bpSave")!.addEventListener("click", async () => {
-      const err = bankProfBox.querySelector<HTMLElement>("#bpErr")!;
-      err.textContent = "";
-      try {
-        const cfg = await api.getConfig();
-        cfg.banks = (cfg.banks ?? []).map((x) => {
-          if (x.id !== b.id) return x;
-          const { openAboveFloorDb: _o, noiseQuietDb: _q, hangMs: _h, dwellWeight: _d, ...rest } = x;
-          return {
-            ...rest,
-            ...(val("#bpOpen") !== undefined ? { openAboveFloorDb: val("#bpOpen") } : {}),
-            ...(val("#bpQuiet") !== undefined ? { noiseQuietDb: val("#bpQuiet") } : {}),
-            ...(val("#bpHang") !== undefined ? { hangMs: val("#bpHang") } : {}),
-            ...(val("#bpDwell") !== undefined ? { dwellWeight: val("#bpDwell") } : {}),
-          };
-        });
-        await api.putConfig(cfg);
-        bankProfBox.classList.remove("open");
-        bankProfBox.innerHTML = "";
-        await refresh();
-      } catch (e) { err.textContent = (e as Error).message; }
-    });
-  }
 
   root.querySelector<HTMLButtonElement>("#bkAdd")!.addEventListener("click", async () => {
     bkErr.textContent = "";
@@ -942,7 +894,10 @@ export function renderAdmin(root: HTMLElement): void {
         await bulk({ enabled: false });
       });
       tr.querySelector<HTMLButtonElement>(".bkGear")?.addEventListener("click", () =>
-        openProfileEditor(banksCache.find((x) => x.id === id)));
+        {
+          const b = banksCache.find((x) => x.id === id);
+          if (b) openBankProfile(b);
+        });
       tr.querySelector<HTMLButtonElement>(".bkAddCh")?.addEventListener("click", () => {
         const b = banksCache.find((x) => x.id === id);
         pendingTags = b?.tags?.length ? [b.tags[0]!] : [];
@@ -976,8 +931,10 @@ export function renderAdmin(root: HTMLElement): void {
   const drawer = root.querySelector<HTMLElement>("#chDrawer")!;
   const scrim = root.querySelector<HTMLElement>("#drawerScrim")!;
   let drawerId: string | null = null;
-  let drawerKind: "channel" | "discovery" | "analytics" = "channel";
+  let drawerKind: "channel" | "discovery" | "analytics" | "bank" = "channel";
   let analyticsFreq: number | null = null;
+  // New-channel mode: tags preset by the bank whose menu opened the editor.
+  let drawerPresetTags: string[] = [];
 
   function closeDrawer(): void {
     drawerId = null;
@@ -998,6 +955,26 @@ export function renderAdmin(root: HTMLElement): void {
     scrim.classList.add("open");
   }
 
+  // The drawer is the ONLY channel editor (spec 2026-07-16 admin IA).
+  // No argument = new channel; presetTags seed the Tags field so a channel
+  // added from a bank's menu actually matches that bank.
+  function openChannelEditor(c?: Channel, presetTags: string[] = []): void {
+    drawerPresetTags = presetTags;
+    drawerKind = "channel";
+    drawerId = c?.id ?? "new";
+    renderDrawer();
+    drawer.classList.add("open");
+    scrim.classList.add("open");
+  }
+
+  function openBankProfile(b: Bank): void {
+    drawerKind = "bank";
+    drawerId = b.id;
+    renderDrawer();
+    drawer.classList.add("open");
+    scrim.classList.add("open");
+  }
+
   function openAnalytics(freq: number): void {
     drawerKind = "analytics";
     analyticsFreq = freq;
@@ -1010,28 +987,35 @@ export function renderAdmin(root: HTMLElement): void {
   function renderDrawer(): void {
     if (drawerKind === "discovery") { renderDiscoveryDrawer(); return; }
     if (drawerKind === "analytics") { if (analyticsFreq) void renderAnalyticsDrawer(analyticsFreq); return; }
-    const c = channels.find((x) => x.id === drawerId);
-    if (!c) { closeDrawer(); return; }
-    const loc = c.location;
+    if (drawerKind === "bank") { renderBankProfileDrawer(); return; }
+    const c = drawerId === "new" ? undefined : channels.find((x) => x.id === drawerId);
+    if (drawerId !== "new" && !c) { closeDrawer(); return; }
+    renderChannelDrawer(c);
+  }
+
+  // One form for edit and create: `c` undefined = new channel. The dossier
+  // (freq hero, info list, Listen/Lock out) only renders for existing rows.
+  function renderChannelDrawer(c?: Channel): void {
+    const loc = c?.location;
     drawer.innerHTML = `
       <header class="dwHead">
-        <h3>${esc(c.alphaTag) || fmtFreq(c.freq)}</h3>
+        <h3>${c ? esc(c.alphaTag) || fmtFreq(c.freq) : "New channel"}</h3>
         ${iconBtn("dwClose", "dismiss", "Close")}
       </header>
-      <div class="dwFreq">${fmtFreq(c.freq)}<span class="dwUnit">MHz</span></div>
+      ${c ? `<div class="dwFreq">${fmtFreq(c.freq)}<span class="dwUnit">MHz</span></div>` : ""}
       <div class="dwForm">
-        <label>Freq (MHz) <input id="dwMhz" value="${fmtFreq(c.freq)}" /></label>
-        <label>Name <input id="dwTag" value="${esc(c.alphaTag)}" /></label>
-        <label>Mode <select id="dwMode">${modeOptions(c.mode)}</select></label>
-        <label>Tags <input id="dwTags" value="${esc((c.tags ?? []).join(", "))}" placeholder="air, rail, ham" /></label>
-        <label>Site lat, lon <input id="dwLoc" value="${c.location?.lat != null ? `${c.location.lat}, ${c.location.lon}` : ""}" placeholder="39.1755, -94.4861" title="Transmitter site — drives the map blip" /></label>
-        <label><input id="dwPrio" type="checkbox" ${c.priority ? "checked" : ""} /> Priority</label>
-        <label title="A hit flashes the kiosk, lands in the alert feed, and temporarily plays a silent tracked channel through the speaker. The channel must not be archived."><input id="dwAlert" type="checkbox" ${c.alert ? "checked" : ""} /> Alert on hit</label>
-        <label><input id="dwAudible" type="checkbox" ${c.audible !== false ? "checked" : ""} /> Audible</label>
-        <label title="Archived channels keep their identity and location but stop consuming scanner capacity."><input id="dwArchived" type="checkbox" ${!c.enabled ? "checked" : ""} /> Archived</label>
-        <div><button id="dwSave" class="save">Save</button> <span id="dwErr" class="err"></span></div>
+        <label>Freq (MHz) <input id="dwMhz" value="${c ? fmtFreq(c.freq) : ""}" placeholder="145.130" /></label>
+        <label>Name <input id="dwTag" value="${c ? esc(c.alphaTag) : ""}" placeholder="KC0KW — Gibbs Rd" /></label>
+        <label>Mode <select id="dwMode">${modeOptions(c?.mode ?? "nfm")}</select></label>
+        <label>Tags <input id="dwTags" value="${esc((c ? c.tags ?? [] : drawerPresetTags).join(", "))}" placeholder="air, rail, ham" /></label>
+        <label>Site lat, lon <input id="dwLoc" value="${c?.location?.lat != null ? `${c.location.lat}, ${c.location.lon}` : ""}" placeholder="39.1755, -94.4861" title="Transmitter site — drives the map blip" /></label>
+        <label><input id="dwPrio" type="checkbox" ${c?.priority ? "checked" : ""} /> Priority</label>
+        <label title="A hit flashes the kiosk, lands in the alert feed, and temporarily plays a silent tracked channel through the speaker. The channel must not be archived."><input id="dwAlert" type="checkbox" ${c?.alert ? "checked" : ""} /> Alert on hit</label>
+        <label><input id="dwAudible" type="checkbox" ${!c || c.audible !== false ? "checked" : ""} /> Audible</label>
+        <label title="Archived channels keep their identity and location but stop consuming scanner capacity."><input id="dwArchived" type="checkbox" ${c && !c.enabled ? "checked" : ""} /> Archived</label>
+        <div><button id="dwSave" class="save">${c ? "Save" : "Add channel"}</button> <span id="dwErr" class="err"></span></div>
       </div>
-      <dl class="dwInfo">
+      ${c ? `<dl class="dwInfo">
         <dt>band</dt><dd>${bandFor(c.freq).toUpperCase()}</dd>
         <dt>exact</dt><dd>${c.freq.toLocaleString()} Hz</dd>
         <dt>location</dt><dd>${loc
@@ -1047,7 +1031,7 @@ export function renderAdmin(root: HTMLElement): void {
       <div class="dwActions">
         <button id="dwListen" class="listen">Listen</button>
         <button id="dwLock" class="lock">Lock out</button>
-      </div>`;
+      </div>` : ""}`;
     drawer.querySelector<HTMLButtonElement>(".dwClose")!.addEventListener("click", closeDrawer);
     drawer.querySelector<HTMLButtonElement>("#dwSave")!.addEventListener("click", async () => {
       const err = drawer.querySelector<HTMLElement>("#dwErr")!;
@@ -1059,18 +1043,18 @@ export function renderAdmin(root: HTMLElement): void {
           mode: drawer.querySelector<HTMLSelectElement>("#dwMode")!.value,
         });
         const locRaw = drawer.querySelector<HTMLInputElement>("#dwLoc")!.value.trim();
-        let location = c.location;
+        let location = c?.location;
         if (locRaw === "") {
           location = undefined;
         } else {
           const m = locRaw.split(",").map((x) => Number(x.trim()));
           if (m.length === 2 && m.every(Number.isFinite)) {
-            location = { ...(c.location ?? {}), lat: m[0]!, lon: m[1]!, source: "operator" };
+            location = { ...(c?.location ?? {}), lat: m[0]!, lon: m[1]!, source: "operator" };
           } else {
             throw new Error("site must be 'lat, lon'");
           }
         }
-        await api.updateChannel(c.id, {
+        const patch = {
           location,
           ...base,
           tags: drawer.querySelector<HTMLInputElement>("#dwTags")!.value
@@ -1079,16 +1063,72 @@ export function renderAdmin(root: HTMLElement): void {
           alert: drawer.querySelector<HTMLInputElement>("#dwAlert")!.checked,
           enabled: !drawer.querySelector<HTMLInputElement>("#dwArchived")!.checked,
           audible: drawer.querySelector<HTMLInputElement>("#dwAudible")!.checked,
-        });
-        await refresh();
-        err.textContent = "saved";
+        };
+        if (c) {
+          await api.updateChannel(c.id, patch);
+          await refresh();
+          err.textContent = "saved";
+        } else {
+          await api.addChannel(patch);
+          closeDrawer();
+          await refresh();
+        }
       } catch (e) { err.textContent = (e as Error).message; }
     });
-    drawer.querySelector<HTMLButtonElement>("#dwListen")!.addEventListener("click", () =>
-      api.monitor(c.freq, c.alphaTag || fmtFreq(c.freq)));
-    drawer.querySelector<HTMLButtonElement>("#dwLock")!.addEventListener("click", async () => {
-      await lockoutFreq(c.freq, c.alphaTag || fmtFreq(c.freq));
-      closeDrawer();
+    if (c) {
+      drawer.querySelector<HTMLButtonElement>("#dwListen")!.addEventListener("click", () =>
+        api.monitor(c.freq, c.alphaTag || fmtFreq(c.freq)));
+      drawer.querySelector<HTMLButtonElement>("#dwLock")!.addEventListener("click", async () => {
+        await lockoutFreq(c.freq, c.alphaTag || fmtFreq(c.freq));
+        closeDrawer();
+      });
+    }
+  }
+
+  // Bank scan profile in the drawer — the same side-panel pattern channels
+  // use, replacing the box that used to inject at the top of the page.
+  function renderBankProfileDrawer(): void {
+    const b = banksCache.find((x) => x.id === drawerId);
+    if (!b) { closeDrawer(); return; }
+    const num = (v: number | undefined) => (v !== undefined ? String(v) : "");
+    drawer.innerHTML = `
+      <header class="dwHead">
+        <h3>${esc(b.name)} — scan profile</h3>
+        ${iconBtn("dwClose", "dismiss", "Close")}
+      </header>
+      <div class="dwForm">
+        <p class="dwHelp">Overrides for this bank's channels. Empty fields inherit the global scanning settings.</p>
+        <label>Squelch open (dB over floor) <input id="bpOpen" type="number" min="1" step="0.5" value="${num(b.openAboveFloorDb)}" placeholder="global" /></label>
+        <label>Quieting threshold (dB) <input id="bpQuiet" type="number" max="-1" step="0.5" value="${num(b.noiseQuietDb)}" placeholder="global" /></label>
+        <label>Hang time (ms) <input id="bpHang" type="number" min="100" step="100" value="${num(b.hangMs)}" placeholder="global" /></label>
+        <label>Dwell weight <input id="bpDwell" type="number" min="0.1" step="0.1" value="${num(b.dwellWeight)}" placeholder="1" title="2 = this bank's windows get twice the park time; 0.5 = half" /></label>
+        <div><button id="bpSave" class="save">Save profile</button> <span id="bpErr" class="err"></span></div>
+      </div>`;
+    drawer.querySelector<HTMLButtonElement>(".dwClose")!.addEventListener("click", closeDrawer);
+    const val = (sel: string): number | undefined => {
+      const raw = drawer.querySelector<HTMLInputElement>(sel)!.value.trim();
+      return raw === "" ? undefined : Number(raw);
+    };
+    drawer.querySelector<HTMLButtonElement>("#bpSave")!.addEventListener("click", async () => {
+      const err = drawer.querySelector<HTMLElement>("#bpErr")!;
+      err.textContent = "";
+      try {
+        const cfg = await api.getConfig();
+        cfg.banks = (cfg.banks ?? []).map((x) => {
+          if (x.id !== b.id) return x;
+          const { openAboveFloorDb: _o, noiseQuietDb: _q, hangMs: _h, dwellWeight: _d, ...rest } = x;
+          return {
+            ...rest,
+            ...(val("#bpOpen") !== undefined ? { openAboveFloorDb: val("#bpOpen") } : {}),
+            ...(val("#bpQuiet") !== undefined ? { noiseQuietDb: val("#bpQuiet") } : {}),
+            ...(val("#bpHang") !== undefined ? { hangMs: val("#bpHang") } : {}),
+            ...(val("#bpDwell") !== undefined ? { dwellWeight: val("#bpDwell") } : {}),
+          };
+        });
+        await api.putConfig(cfg);
+        closeDrawer();
+        await refresh();
+      } catch (e) { err.textContent = (e as Error).message; }
     });
   }
 
