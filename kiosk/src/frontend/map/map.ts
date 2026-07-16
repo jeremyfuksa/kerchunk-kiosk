@@ -304,13 +304,14 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
     // site key -> rendered circle + label marker (+ last-written style for the
     // tick() dirty-check, so unchanged blips skip the WebGL re-upload).
     const circles = new Map<string, { circle: any; info: any; last: any; alphaTag: string }>();
-    // Live transmission rings: while a transmission is OPEN, a ring pulses at
-    // its site, expanding out to the site's tx (coverage) radius and looping —
-    // so it lasts as long as the transmission and stays visible even when the
-    // camera is pulled out wide (the old fixed ~5 km one-shot vanished there).
-    // Tied to the open->close lifecycle: active/closecall start it, release/idle
-    // end it; TX_TTL_MS is a safety cap if a release is ever missed.
-    const PULSE_MS = 1800;       // one expand-and-fade cycle of the ring
+    // Live transmission rings: when a hit is recorded a ring at the site does a
+    // quick eased expand from a small ring out to the site's tx (coverage)
+    // radius, then HOLDS at full for the rest of the transmission — so it stays
+    // visible even when the camera is pulled out wide (the old fixed ~5 km
+    // one-shot vanished there). Tied to the open->close lifecycle:
+    // active/closecall start it, release/idle end it; TX_TTL_MS is a safety cap
+    // if a release is ever missed.
+    const TX_GROW_MS = 420;      // quick (300-500ms) ease-out expand on the hit
     // Safety cap if a `release` is ever missed; the audible channel re-arms it
     // on every `signal`, so a continuous carrier doesn't expire mid-transmission.
     const TX_TTL_MS = 60_000;
@@ -365,7 +366,7 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
           const better = sitePin.get(key) ?? pinFor(freq, tagsFor(freq));
           if (better !== pinUnknown) {
             existing.pin = better;
-            existing.marker.setIcon(pinMarker(better, Math.round(22 * mk)));
+            existing.marker.setIcon(pinMarker(better, Math.round(19 * mk)));
           }
         }
         return;
@@ -376,7 +377,7 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
       const pin = sitePin.get(key) ?? (freq != null ? pinFor(freq, tagsFor(freq)) : pinUnknown);
       const marker = new google.maps.Marker({
         map, position: { lat, lng: lon },
-        icon: pinMarker(pin, Math.round(22 * mk)),
+        icon: pinMarker(pin, Math.round(19 * mk)),
         title: names.join(", "),
       });
       const entry = { marker, names: [...names], hits, lastTs, pin };
@@ -606,13 +607,17 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
           circles.delete(key);
         }
       }
-      // Live transmission rings: pulse out to the site's tx (coverage) radius,
-      // looping while the transmission is open. ttl expiry is the safety net.
+      // Live transmission rings: a one-shot ease-out expand from a small ring to
+      // the site's coverage radius when the hit lands, then a steady hold. `born`
+      // is preserved across signal re-arms, so it grows exactly once per
+      // transmission. ttl expiry is the safety net.
       const expired: string[] = [];
       for (const [id, tx] of liveTx) {
         if (now >= tx.until) { expired.push(id); continue; }
         const txRadius = coverage.get(tx.key) ?? circles.get(tx.key)?.last?.radius ?? 7500 * geo;
-        const t = ((now - tx.born) % PULSE_MS) / PULSE_MS;
+        const p = Math.min(1, (now - tx.born) / TX_GROW_MS);
+        const eased = 1 - Math.pow(1 - p, 3); // easeOutCubic — quick out, settle
+        const radius = Math.max(1, txRadius * (0.1 + 0.9 * eased));
         let ring = txRings.get(id);
         if (!ring) {
           ring = new google.maps.Circle({
@@ -621,14 +626,19 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
           });
           txRings.set(id, ring);
         }
-        ring.setOptions({ radius: Math.max(1, txRadius * t), strokeOpacity: 0.8 * (1 - t) });
+        // Dirty-check: once settled at full, radius stops changing, so skip the
+        // WebGL re-upload — a held ring then costs nothing per tick.
+        if (ring._kcR !== radius) {
+          ring.setOptions({ radius, strokeOpacity: 0.75 });
+          ring._kcR = radius;
+        }
       }
       for (const id of expired) endTx(id);
       // Quiet map: stop scheduling entirely so the WebGL compositor can deep-
       // idle (it shares the CPU/iGPU envelope with the DSP). wake() resumes.
       if (alive.length === 0 && liveTx.size === 0) { ticking = false; return; }
       if (liveTx.size) {
-        // rAF gives the rings their smooth pulse — but it must NEVER be the SOLE
+        // rAF gives the rings their smooth grow — but it must NEVER be the SOLE
         // re-arm: if the compositor defers/drops the rAF (deep idle), a wall-clock
         // fallback still continues the loop, so `ticking` can't get stranded true
         // and freeze the map. `ran` guards against double-firing.
