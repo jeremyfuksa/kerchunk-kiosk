@@ -1,5 +1,6 @@
 import type { AircraftTarget, AircraftKind } from "./engine/ScannerEngine.js";
 import { distKm } from "./powerEstimator.js";
+import { AIRPLANES_LIVE_URL } from "./config/schema.js";
 
 // Airplanes.live network ADS-B feed → airborne targets near the QTH. No SDR,
 // no DSP: a plain HTTP poll. Off unless config.aircraft.enabled. The endpoint
@@ -18,7 +19,7 @@ export interface AircraftFeedOpts {
   radiusKm?: number;        // default 75 (≈ 40 nm)
   pollIntervalMs?: number;  // default 5000
   maxTargets?: number;      // default 60 (nearest-N cap)
-  url?: string;             // default http://api.airplanes.live/v2/point
+  url?: string;             // default https://api.airplanes.live/v2/point
   /** Retain the last good snapshot for this many consecutive failed polls
    *  before clearing the map. Default 2. */
   maxStaleTicks?: number;
@@ -30,6 +31,18 @@ export interface AircraftFeedOpts {
 // for minutes on a black-holed connection, and this poll loop is strictly
 // serial — one stuck request would freeze the overlay. Bound every request.
 const FETCH_TIMEOUT_MS = 8_000;
+
+/** undici collapses every network-level failure into the bare message "fetch
+ *  failed" and hangs the real reason (ECONNRESET, EAI_AGAIN, a TLS error, ...)
+ *  off `cause`. Unwrap it: logging only `message` made a DNS blip, a reset
+ *  socket and a dead route all read identically in the journal. */
+function describeError(err: unknown): string {
+  if (!(err instanceof Error)) return String(err);
+  const cause: unknown = err.cause;
+  if (!(cause instanceof Error)) return err.message;
+  const code = (cause as { code?: unknown }).code;
+  return `${err.message} (${typeof code === "string" ? code : cause.message})`;
+}
 
 // Only the airplanes.live fields we read. alt_baro is a number while airborne
 // and the string "ground" on the ramp; category is the ADS-B emitter class.
@@ -119,7 +132,7 @@ export class AircraftFeed implements AircraftSource {
     this.pollIntervalMs = opts.pollIntervalMs ?? 5000;
     this.maxTargets = opts.maxTargets ?? 60;
     this.maxStaleTicks = opts.maxStaleTicks ?? 2;
-    this.url = opts.url ?? "http://api.airplanes.live/v2/point";
+    this.url = opts.url ?? AIRPLANES_LIVE_URL;
     this.fetcher = opts.fetcher ?? ((u) => fetch(u, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) }));
   }
 
@@ -157,8 +170,7 @@ export class AircraftFeed implements AircraftSource {
     } catch (err) {
       this.failStreak++;
       if (this.failStreak === 1) {
-        const msg = err instanceof Error ? err.message : String(err);
-        console.error(`[aircraft] feed error: ${msg}`.slice(0, 200));
+        console.error(`[aircraft] feed error: ${describeError(err)}`.slice(0, 200));
       }
       // Retain the last good snapshot briefly so a single network blip doesn't
       // blank the map; after maxStaleTicks consecutive failures, clear it.

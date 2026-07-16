@@ -1,6 +1,15 @@
 // kiosk/src/backend/config/schema.ts
 import { z } from "zod";
 
+// airplanes.live REST base, over HTTPS. The endpoint 301s http -> https, so a
+// cleartext base spent two requests and two TCP connections per poll — double
+// the rate-limit budget the 5s cadence is sized against, and double the surface
+// for the transient connection errors that surface as an opaque "fetch failed".
+export const AIRPLANES_LIVE_URL = "https://api.airplanes.live/v2/point";
+/** The superseded cleartext base. Persisted in every config written before the
+ *  fix, where it shadows the new default — migrated on load (see `aircraft`). */
+export const LEGACY_AIRPLANES_LIVE_URL = "http://api.airplanes.live/v2/point";
+
 // Where a transmitter lives, when an identification source knows. Captured
 // from RepeaterBook (lat/lon/city/state) or RadioReference; source records
 // which database said so.
@@ -195,7 +204,13 @@ export const configSchema = z.object({
     // targets; keep the nearest this-many to bound marker churn.
     maxTargets: z.number().int().positive().default(60),
     // airplanes.live REST base. The poller appends /{lat}/{lon}/{radiusNm}.
-    url: z.string().url().default("http://api.airplanes.live/v2/point"),
+    // Migrates the superseded cleartext default (which every config written
+    // before the fix has persisted, where it would otherwise shadow the new
+    // one) — but only that exact value: a custom http:// base is a self-hosted
+    // receiver on the LAN and must keep its scheme.
+    url: z.string().url()
+      .default(AIRPLANES_LIVE_URL)
+      .transform((u) => (u === LEGACY_AIRPLANES_LIVE_URL ? AIRPLANES_LIVE_URL : u)),
     // Comet trails: a short, fading line behind each aircraft, accumulated
     // client-side from the snapshots and redrawn only on the poll tick (no
     // animation). Off by default — keeps the wall uncluttered.

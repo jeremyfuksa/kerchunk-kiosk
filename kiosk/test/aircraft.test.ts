@@ -94,8 +94,30 @@ describe("AircraftFeed", () => {
     let got: unknown = null;
     feed.onUpdate((t) => { got = t; });
     await feed.pollOnce();
-    expect(urls[0]).toBe("http://api.airplanes.live/v2/point/39.29/-94.5/40"); // 75 km → 40 nm
+    expect(urls[0]).toBe("https://api.airplanes.live/v2/point/39.29/-94.5/40"); // 75 km → 40 nm
     expect(got).toHaveLength(1);
+  });
+
+  // undici reports every network-level failure as the bare message "fetch
+  // failed" and hangs the real reason (ECONNRESET, EAI_AGAIN, ...) off
+  // err.cause. Logging only err.message made 215 production failures
+  // indistinguishable from each other and impossible to diagnose.
+  it("logs the underlying cause of an opaque fetch failure", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const feed = new AircraftFeed({
+        home: QTH,
+        fetcher: async () => {
+          throw new Error("fetch failed", { cause: Object.assign(new Error("read ECONNRESET"), { code: "ECONNRESET" }) });
+        },
+      });
+      feed.onUpdate(() => {});
+      await feed.pollOnce();
+      expect(spy).toHaveBeenCalledOnce();
+      expect(String(spy.mock.calls[0]?.[0])).toContain("ECONNRESET");
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it("retains the last good snapshot for maxStaleTicks failures, then clears", async () => {
