@@ -136,3 +136,27 @@ describe("WsHub aircraft replay", () => {
     expect(late.send).toHaveBeenCalledTimes(2);
   });
 });
+
+describe("WsHub backpressure", () => {
+  it("stops sending to a client whose socket buffer is backed up", () => {
+    // A stalled client (wedged browser, dead TCP peer pre-timeout) never
+    // drains bufferedAmount; pushing 4Hz signal events into it grows the
+    // buffer without bound. Events are ephemeral state — drop them for the
+    // stuck client; the replay slots recover it if it ever drains.
+    const hub = new WsHub();
+    const stuck = fakeClient(); stuck.bufferedAmount = 1_000_000;
+    const healthy = fakeClient(); healthy.bufferedAmount = 0;
+    hub.add(stuck); hub.add(healthy);
+    hub.broadcast({ type: "idle", ts: 1 });
+    expect(stuck.send).not.toHaveBeenCalled();
+    expect(healthy.send).toHaveBeenCalled();
+  });
+
+  it("still sends when bufferedAmount is absent (fake sockets in tests)", () => {
+    const hub = new WsHub();
+    const bare = fakeClient(); // no bufferedAmount field at all
+    hub.add(bare);
+    hub.broadcast({ type: "idle", ts: 2 });
+    expect(bare.send).toHaveBeenCalled();
+  });
+});

@@ -1001,9 +1001,16 @@ def main():
                                 bool(cmd.get("closeCall", False)),
                                 float(cmd.get("closeCallDb", 15.0)),
                                 cmd.get("knownHz", []))
-            if helper.center_hz is not None and not helper.monitor:
+            if helper.center_hz is not None:
                 now_mono = time.monotonic()
-                helper.poll(now_mono)
+                # Monitor mode holds the lone channel open with no squelch, so
+                # the poll() state machine (and Close Call, via cc_enabled)
+                # stays off — but the power telemetry must keep flowing.
+                # power_levels() reads the live probes, not poll() state, so
+                # the signal meter tracks the carrier instead of freezing at
+                # the db:0 stamped on the open event for the whole break-in.
+                if not helper.monitor:
+                    helper.poll(now_mono)
                 polls += 1
                 if polls % POWER_EVERY == 0:
                     emit({"ev": "power", "levels": helper.power_levels(),

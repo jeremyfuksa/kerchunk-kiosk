@@ -1331,3 +1331,36 @@ describe("thermal self-protect restart", () => {
     }
   });
 });
+
+describe("config mutation serialization", () => {
+  it("never overlaps engine stop/start across concurrent scan-relevant PUTs", async () => {
+    // A GNU Radio restart takes ~1s on hardware; an admin double-click lands a
+    // second scan-relevant PUT inside the first one's engine restart. Without
+    // serialization the interleaving can become stopA stopB startA startB —
+    // two concurrent start() calls, i.e. two helpers contending for the SDR.
+    const { server, engine } = makeApp();
+    let inFlight = 0;
+    let overlapped = false;
+    const slow = async (): Promise<void> => {
+      inFlight++;
+      if (inFlight > 1) overlapped = true;
+      await new Promise((r) => setTimeout(r, 25));
+      inFlight--;
+    };
+    const realStart = engine.start.bind(engine);
+    const realStop = engine.stop.bind(engine);
+    engine.start = async (sc) => { await slow(); return realStart(sc); };
+    engine.stop = async () => { await slow(); return realStop(); };
+
+    const cfg = (await request(server).get("/api/config")).body;
+    const a = { ...cfg, scan: { ...cfg.scan, squelchLevel: 151 } };  // scan-relevant
+    const b = { ...cfg, scan: { ...cfg.scan, squelchLevel: 152 } };  // scan-relevant
+    const [ra, rb] = await Promise.all([
+      request(server).put("/api/config").send(a),
+      request(server).put("/api/config").send(b),
+    ]);
+    expect(ra.status).toBe(200);
+    expect(rb.status).toBe(200);
+    expect(overlapped).toBe(false); // engine calls strictly serialized
+  });
+});

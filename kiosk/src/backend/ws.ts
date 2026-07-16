@@ -1,7 +1,14 @@
 import type { WebSocket } from "ws";
 import type { EngineEvent } from "./engine/ScannerEngine.js";
 
-interface Sendable { readyState: number; OPEN: number; send(data: string): void; }
+interface Sendable { readyState: number; OPEN: number; send(data: string): void; bufferedAmount?: number; }
+
+// Per-client send buffer cap. A stalled client (wedged browser, dead TCP peer
+// before the keepalive notices) never drains bufferedAmount, and the 4 Hz
+// signal stream would grow it without bound. Events are ephemeral state —
+// drop them for a stuck client; the replay slots in add() recover the picture
+// if it ever drains and reconnects. /stream.wav applies the same principle.
+const MAX_BUFFERED_BYTES = 512 * 1024;
 
 export class WsHub {
   private clients = new Set<Sendable>();
@@ -57,7 +64,9 @@ export class WsHub {
     }
     const data = JSON.stringify(event);
     for (const ws of this.clients) {
-      if (ws.readyState === ws.OPEN) ws.send(data);
+      if (ws.readyState !== ws.OPEN) continue;
+      if ((ws.bufferedAmount ?? 0) > MAX_BUFFERED_BYTES) continue; // stuck client: drop
+      ws.send(data);
     }
   }
 

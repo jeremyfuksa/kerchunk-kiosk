@@ -680,6 +680,13 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
     return { card: config.audio.mixerCard, control: config.audio.mixerControl };
   }
 
+  // Mutating API requests run one at a time. Handlers await engine restarts
+  // (~1s of GNU Radio teardown/spawn on hardware) mid-request, and a second
+  // mutation landing inside that window can interleave stop/start into two
+  // concurrent start() calls — two helpers contending for the SDR. GETs
+  // (including the long-lived /stream.wav) stay concurrent.
+  let mutation: Promise<unknown> = Promise.resolve();
+
   const server = httpCreateServer(async (req, res) => {
     try {
       const url = new URL(req.url ?? "/", "http://localhost");
@@ -687,7 +694,13 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
       const method = req.method ?? "GET";
 
       if (path.startsWith("/api/")) {
-        await handleApi(method, path, req, res);
+        if (method === "GET") {
+          await handleApi(method, path, req, res);
+        } else {
+          const run = mutation.then(() => handleApi(method, path, req, res));
+          mutation = run.catch(() => {}); // a failed request must not wedge the chain
+          await run;
+        }
         return;
       }
       serveStatic(path, res);
