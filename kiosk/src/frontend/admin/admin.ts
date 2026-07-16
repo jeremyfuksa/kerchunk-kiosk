@@ -930,16 +930,23 @@ export function renderAdmin(root: HTMLElement): void {
       </header>
       ${c ? `<div class="dwFreq">${fmtFreq(c.freq)}<span class="dwUnit">MHz</span></div>` : ""}
       <div class="dwForm">
-        <label>Freq (MHz) <input id="dwMhz" value="${c ? fmtFreq(c.freq) : ""}" placeholder="145.130" /></label>
-        <label>Name <input id="dwTag" value="${c ? esc(c.alphaTag) : ""}" placeholder="KC0KW — Gibbs Rd" /></label>
-        <label>Mode <select id="dwMode">${modeOptions(c?.mode ?? "nfm")}</select></label>
-        <label>Tags <input id="dwTags" value="${esc((c ? c.tags ?? [] : drawerPresetTags).join(", "))}" placeholder="air, rail, ham" /></label>
-        <label>Site lat, lon <input id="dwLoc" value="${c?.location?.lat != null ? `${c.location.lat}, ${c.location.lon}` : ""}" placeholder="39.1755, -94.4861" title="Transmitter site — drives the map blip" /></label>
-        <label><input id="dwPrio" type="checkbox" ${c?.priority ? "checked" : ""} /> Priority</label>
-        <label title="A hit flashes the kiosk, lands in the alert feed, and temporarily plays a silent tracked channel through the speaker. The channel must not be archived."><input id="dwAlert" type="checkbox" ${c?.alert ? "checked" : ""} /> Alert on hit</label>
-        <label><input id="dwAudible" type="checkbox" ${!c || c.audible !== false ? "checked" : ""} /> Audible</label>
-        <label title="Archived channels keep their identity and location but stop consuming scanner capacity."><input id="dwArchived" type="checkbox" ${c && !c.enabled ? "checked" : ""} /> Archived</label>
-        <div><button id="dwSave" class="save">${c ? "Save" : "Add channel"}</button> <span id="dwErr" class="err"></span></div>
+        <div class="dwSection">Identity</div>
+        <label class="dwRow"><span>Freq <small>MHz</small></span><input id="dwMhz" value="${c ? fmtFreq(c.freq) : ""}" placeholder="145.130" /></label>
+        <label class="dwRow"><span>Name</span><input id="dwTag" value="${c ? esc(c.alphaTag) : ""}" placeholder="KC0KW — Gibbs Rd" /></label>
+        <label class="dwRow"><span>Mode</span><select id="dwMode">${modeOptions(c?.mode ?? "nfm")}</select></label>
+        <label class="dwRow"><span>Tags <small>Comma-separated — banks match on these</small></span><input id="dwTags" value="${esc((c ? c.tags ?? [] : drawerPresetTags).join(", "))}" placeholder="air, rail, ham" /></label>
+        <label class="dwRow"><span>Site <small>Transmitter lat, lon — drives the map blip</small></span><input id="dwLoc" value="${c?.location?.lat != null ? `${c.location.lat}, ${c.location.lon}` : ""}" placeholder="39.1755, -94.4861" /></label>
+        <div class="dwSection">Behavior</div>
+        <label class="dwRow switchRow"><span>Audible <small>Play through the speaker</small></span><input id="dwAudible" type="checkbox" ${!c || c.audible !== false ? "checked" : ""} /></label>
+        <label class="dwRow switchRow"><span>Priority <small>Preempts other channels in its group</small></span><input id="dwPrio" type="checkbox" ${c?.priority ? "checked" : ""} /></label>
+        <label class="dwRow switchRow"><span>Alert on hit <small>Flashes the kiosk and lands in the alert feed</small></span><input id="dwAlert" type="checkbox" ${c?.alert ? "checked" : ""} /></label>
+        <label class="dwRow switchRow"><span>Archived <small>Keep identity and location, stop scanning</small></span><input id="dwArchived" type="checkbox" ${c && !c.enabled ? "checked" : ""} /></label>
+        <div class="dwFooter">
+          <button id="dwSave" class="primary">${c ? "Save" : "Add channel"}</button>
+          ${c ? `<button id="dwListen" class="listen">Listen</button>
+          <button id="dwLock" class="lock">Lock out</button>` : ""}
+        </div>
+        <span id="dwErr" class="err"></span>
       </div>
       ${c ? `<dl class="dwInfo">
         <dt>band</dt><dd>${bandFor(c.freq).toUpperCase()}</dd>
@@ -953,11 +960,7 @@ export function renderAdmin(root: HTMLElement): void {
         <dt>level trim</dt><dd>${c.levelTrimDb != null ? `${c.levelTrimDb > 0 ? "+" : ""}${c.levelTrimDb} dB` : "learning"}</dd>
         <dt>looked up</dt><dd>${c.lookedUpAt ? new Date(c.lookedUpAt).toLocaleString() : "never"}</dd>
         <dt>id</dt><dd>${esc(c.id)}</dd>
-      </dl>
-      <div class="dwActions">
-        <button id="dwListen" class="listen">Listen</button>
-        <button id="dwLock" class="lock">Lock out</button>
-      </div>` : ""}`;
+      </dl>` : ""}`;
     drawer.querySelector<HTMLButtonElement>(".dwClose")!.addEventListener("click", closeDrawer);
     drawer.querySelector<HTMLButtonElement>("#dwSave")!.addEventListener("click", async () => {
       const err = drawer.querySelector<HTMLElement>("#dwErr")!;
@@ -1023,12 +1026,14 @@ export function renderAdmin(root: HTMLElement): void {
         ${iconBtn("dwClose", "dismiss", "Close")}
       </header>
       <div class="dwForm">
+        <div class="dwSection">Scan profile</div>
         <p class="dwHelp">Overrides for this bank's channels. Empty fields inherit the global scanning settings.</p>
-        <label>Squelch open (dB over floor) <input id="bpOpen" type="number" min="1" step="0.5" value="${num(b.openAboveFloorDb)}" placeholder="global" /></label>
-        <label>Quieting threshold (dB) <input id="bpQuiet" type="number" max="-1" step="0.5" value="${num(b.noiseQuietDb)}" placeholder="global" /></label>
-        <label>Hang time (ms) <input id="bpHang" type="number" min="100" step="100" value="${num(b.hangMs)}" placeholder="global" /></label>
-        <label>Dwell weight <input id="bpDwell" type="number" min="0.1" step="0.1" value="${num(b.dwellWeight)}" placeholder="1" title="2 = this bank's windows get twice the park time; 0.5 = half" /></label>
-        <div><button id="bpSave" class="save">Save profile</button> <span id="bpErr" class="err"></span></div>
+        <label class="dwRow"><span>Squelch open <small>dB over the noise floor</small></span><input id="bpOpen" type="number" min="1" step="0.5" value="${num(b.openAboveFloorDb)}" placeholder="global" /></label>
+        <label class="dwRow"><span>Quieting threshold <small>dB</small></span><input id="bpQuiet" type="number" max="-1" step="0.5" value="${num(b.noiseQuietDb)}" placeholder="global" /></label>
+        <label class="dwRow"><span>Hang time <small>ms after a transmission ends</small></span><input id="bpHang" type="number" min="100" step="100" value="${num(b.hangMs)}" placeholder="global" /></label>
+        <label class="dwRow"><span>Dwell weight <small>2 = twice the park time, 0.5 = half</small></span><input id="bpDwell" type="number" min="0.1" step="0.1" value="${num(b.dwellWeight)}" placeholder="1" /></label>
+        <div class="dwFooter"><button id="bpSave" class="primary">Save profile</button></div>
+        <span id="bpErr" class="err"></span>
       </div>`;
     drawer.querySelector<HTMLButtonElement>(".dwClose")!.addEventListener("click", closeDrawer);
     const val = (sel: string): number | undefined => {

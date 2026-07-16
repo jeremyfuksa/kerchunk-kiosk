@@ -401,10 +401,39 @@ body {
   margin-left: 0.4em;
   vertical-align: 0.5em;
 }
-.drawer .dwForm { border-top: 1px solid var(--etch); padding-top: 0.8rem; }
-.drawer .dwHelp { margin: 0 0 0.6rem; color: var(--label); font-size: 0.82rem; line-height: 1.5; }
-.drawer .dwForm label { display: block; margin: 0.4rem 0; }
-.drawer .dwForm input[type="text"], .drawer .dwForm input:not([type]) { width: 12rem; }
+/* Drawer forms share the settings-card row grammar (spec 2026-07-16 polish):
+   section legends, label-left/input-right rows with visible hints, one
+   primary Save in a footer row. */
+.drawer .dwForm { border-top: 1px solid var(--etch); padding-top: 0.2rem; }
+.drawer .dwHelp { margin: 0.4rem 0 0.2rem; color: var(--label); font-size: 0.82rem; line-height: 1.5; }
+.drawer .dwSection {
+  margin-top: 0.9rem;
+  padding-bottom: 0.35rem;
+  font-family: var(--cond);
+  font-weight: 600; font-size: 0.72rem;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--label);
+}
+.drawer .dwRow {
+  display: grid;
+  grid-template-columns: minmax(9rem, 1fr) minmax(7rem, 1fr);
+  align-items: center;
+  gap: 0.8rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--etch);
+}
+.drawer .dwRow > span:first-child { display: grid; gap: 0.15rem; color: var(--ink); }
+.drawer .dwRow small { color: var(--dim); font-size: 0.68rem; line-height: 1.35; }
+.drawer .dwRow input, .drawer .dwRow select { box-sizing: border-box; width: 100%; margin: 0; }
+.drawer .dwRow.switchRow { grid-template-columns: 1fr auto; }
+.drawer .dwRow.switchRow input { width: auto; }
+.drawer .dwFooter {
+  display: flex; align-items: center; gap: 0.6rem;
+  margin-top: 1rem; padding-top: 1rem;
+  border-top: 1px solid var(--etch);
+}
+.drawer .dwFooter .listen { margin-left: auto; }
+.drawer .dwErr:not(:empty), .drawer .err:not(:empty) { display: inline-block; margin-top: 0.5rem; }
 .drawer .dwInfo {
   border-top: 1px solid var(--etch);
   margin: 1rem 0 0; padding-top: 0.8rem;
