@@ -18,6 +18,7 @@ import icoInbox from "lucide-static/icons/inbox.svg?raw";
 import icoList from "lucide-static/icons/list.svg?raw";
 import icoSliders from "lucide-static/icons/sliders-horizontal.svg?raw";
 import icoGear from "lucide-static/icons/settings-2.svg?raw";
+import icoWrench from "lucide-static/icons/wrench.svg?raw";
 import type { Bank } from "../../backend/config/schema.js";
 import { ReconnectingWs } from "../lib/wsClient.js";
 import type { EngineEvent } from "../../backend/engine/ScannerEngine.js";
@@ -119,7 +120,8 @@ export function renderAdmin(root: HTMLElement): void {
         <a href="#/" data-route="home"><span class="navIco" data-ico="home"></span><span class="navCopy"><b>Overview</b><small>Live status and activity</small></span></a>
         <a href="#/triage" data-route="triage"><span class="navIco" data-ico="triage"></span><span class="navCopy"><b>Triage</b><small>Review new discoveries</small></span><span id="navDcCount" class="navBadge"></span></a>
         <a href="#/channels" data-route="channels"><span class="navIco" data-ico="channels"></span><span class="navCopy"><b>Channels</b><small>Organize what you scan</small></span></a>
-        <a href="#/scan" data-route="scan"><span class="navIco" data-ico="scan"></span><span class="navCopy"><b>Settings</b><small>Scanning and integrations</small></span></a>
+        <a href="#/scan" data-route="scan"><span class="navIco" data-ico="scan"></span><span class="navCopy"><b>Settings</b><small>Scanning, alerts, weather</small></span></a>
+        <a href="#/system" data-route="system"><span class="navIco" data-ico="system"></span><span class="navCopy"><b>System</b><small>Appliance health and controls</small></span></a>
       </nav>
       <div class="pages">
       <div id="healthBanner" class="healthBanner healthClear" data-page="home" role="alert"></div>
@@ -143,19 +145,7 @@ export function renderAdmin(root: HTMLElement): void {
             <button id="tlockBtn" title="Suppress this channel for 30 minutes (clears on restart)" disabled>Pause 30 min</button>
             <button id="lockBtn" class="danger" title="Remove this channel and never Close-Call its frequency again" disabled>Lock out channel</button>
           </div>
-          <div class="systemActions">
-            <span class="systemActionsLabel">System controls</span>
-            <button id="kioskReload" title="Refresh the display page and reload its map and frontend assets">Refresh kiosk screen</button>
-            <button id="testAlert" title="Show a sample weather-alert banner on the kiosk (for design + verifying alerts work)">Test weather alert</button>
-            <button id="testAlertClear" title="Clear the test weather-alert banner from the kiosk">Clear alert</button>
-            <button id="backendRestart" class="danger" title="Restart the radio backend and scanner helpers">Restart radio backend</button>
-            <span id="systemActionStatus" class="hint" role="status"></span>
-          </div>
         </div>
-      </section>
-      <section class="sysHealth collapsible" data-key="system" data-page="home">
-        <h2>System health <span class="hint">the machine under the radio — helper CPU is the usual suspect</span></h2>
-        <div id="sysBody"></div>
       </section>
       <section class="discoveries" data-page="triage">
         <div class="pageIntro sectionIntro">
@@ -261,10 +251,6 @@ export function renderAdmin(root: HTMLElement): void {
         </div>
         <div class="formActions"><button id="tSave" class="primary">Save scanner settings</button><span id="tErr" class="err"></span></div>
       </section>
-      <section class="lockouts collapsible" data-key="lockouts">
-        <h2>Close Call lockouts</h2>
-        <ul id="loList"></ul>
-      </section>
       <section class="weather collapsible" data-key="weather" data-page="scan">
         <h2>Weather</h2>
         <p class="sectionHelp">Choose the local NOAA channel used by weather-only mode.</p>
@@ -275,6 +261,27 @@ export function renderAdmin(root: HTMLElement): void {
         <span id="wxErr" class="err"></span>
       </section>
       </div>
+      <div class="pageIntro" data-page="system">
+        <div><span class="eyebrow">System</span><h1>Appliance</h1><p>Machine health, kiosk screen controls, and Close Call lockouts.</p></div>
+      </div>
+      <section class="sysHealth" data-page="system">
+        <h2>System health <span class="hint">the machine under the radio — helper CPU is the usual suspect</span></h2>
+        <div id="sysBody"></div>
+      </section>
+      <section class="systemCard" data-page="system">
+        <h2>Kiosk &amp; radio actions</h2>
+        <div class="systemActions">
+          <button id="kioskReload" title="Refresh the display page and reload its map and frontend assets">Refresh kiosk screen</button>
+          <button id="testAlert" title="Show a sample weather-alert banner on the kiosk (for design + verifying alerts work)">Test weather alert</button>
+          <button id="testAlertClear" title="Clear the test weather-alert banner from the kiosk">Clear alert</button>
+          <button id="backendRestart" class="danger" title="Restart the radio backend and scanner helpers">Restart radio backend</button>
+          <span id="systemActionStatus" class="hint" role="status"></span>
+        </div>
+      </section>
+      <section class="lockouts collapsible" data-key="lockouts" data-page="system">
+        <h2>Close Call lockouts</h2>
+        <ul id="loList"></ul>
+      </section>
     </main>
       </div>
       </div>
@@ -323,9 +330,9 @@ export function renderAdmin(root: HTMLElement): void {
   // ── Admin IA (ROADMAP Idea 15): config is a destination, monitoring is
   // the landing. Pure re-layout — all sections stay wired as before; the
   // route only decides which data-page group is visible. Unknown = home.
-  const ROUTES = new Set(["home", "triage", "channels", "scan"]);
+  const ROUTES = new Set(["home", "triage", "channels", "scan", "system"]);
   const NAV_ICONS: Record<string, string> = {
-    home: icoGauge, triage: icoInbox, channels: icoList, scan: icoSliders,
+    home: icoGauge, triage: icoInbox, channels: icoList, scan: icoSliders, system: icoWrench,
   };
   root.querySelectorAll<HTMLElement>(".navIco").forEach((el) => {
     el.innerHTML = NAV_ICONS[el.dataset.ico!] ?? "";
@@ -337,7 +344,7 @@ export function renderAdmin(root: HTMLElement): void {
   }
   function applyRoute(): void {
     const route = currentRoute();
-    const titles: Record<string, string> = { home: "Overview", triage: "Triage", channels: "Channels", scan: "Settings" };
+    const titles: Record<string, string> = { home: "Overview", triage: "Triage", channels: "Channels", scan: "Settings", system: "System" };
     document.title = `${titles[route]} · Kerchunk Admin`;
     root.querySelectorAll<HTMLElement>("[data-page]").forEach((el) => {
       el.classList.toggle("pageHidden", el.dataset.page !== route);

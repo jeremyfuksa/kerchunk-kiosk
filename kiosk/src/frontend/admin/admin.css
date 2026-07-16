@@ -960,16 +960,10 @@ body { font-family: var(--font-sans, sans-serif); }
   padding-top: 0.75rem;
   border-top: 1px solid var(--etch);
 }
-.admin .systemActionsLabel {
-  margin-right: auto;
-  color: var(--dim);
-  font-family: var(--cond);
-  font-size: 0.72rem;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
 .admin .systemActions .hint { min-width: 8rem; text-align: right; }
+/* On the System page the actions live in their own card, not the hero grid. */
+.systemCard .systemActions { grid-column: auto; padding-top: 0; border-top: 0; }
+.systemCard .systemActions .hint { margin-left: auto; }
 
 .admin .discoveries,
 .admin .channels {
