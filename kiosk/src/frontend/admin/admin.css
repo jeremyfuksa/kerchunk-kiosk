@@ -299,24 +299,6 @@ body {
 }
 
 
-/* ── Progressive disclosure ── */
-
-/* Collapsible minor modules: the legend is the toggle */
-.admin section.collapsible h2 { cursor: pointer; user-select: none; }
-.admin section.collapsible h2::after {
-  content: "";
-  display: inline-block;
-  width: 0.45em; height: 0.45em;
-  margin-left: 0.5em;
-  border-right: 2px solid var(--dim);
-  border-bottom: 2px solid var(--dim);
-  transform: rotate(45deg) translateY(-2px);
-  transition: transform 0.15s;
-}
-.admin section.collapsed h2::after { transform: rotate(-45deg) translateY(1px); }
-.admin section.collapsed > :not(h2) { display: none; }
-.admin section.collapsed { padding-bottom: 0.45rem; }
-
 /* Discovery drill-in rows */
 .admin .dToggle {
   padding: 0.15rem 0.3rem;

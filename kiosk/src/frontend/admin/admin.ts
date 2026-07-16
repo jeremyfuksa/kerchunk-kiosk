@@ -329,11 +329,6 @@ export function renderAdmin(root: HTMLElement): void {
     });
   }
 
-  // Progressive disclosure: minor modules collapse behind their legends.
-  // State persists per device (an operator who tunes often keeps it open).
-  const COLLAPSE_KEY = "kerchunk.admin.collapsed";
-  const collapsed = readStoredStringSet(
-    localStorage.getItem(COLLAPSE_KEY), ["tuning", "lockouts", "weather", "insights"]);
   // ── Admin IA (ROADMAP Idea 15): config is a destination, monitoring is
   // the landing. Pure re-layout — all sections stay wired as before; the
   // route only decides which data-page group is visible. Unknown = home.
@@ -365,25 +360,6 @@ export function renderAdmin(root: HTMLElement): void {
   }
   window.addEventListener("hashchange", applyRoute);
   applyRoute();
-
-  root.querySelectorAll<HTMLElement>("section.collapsible").forEach((sec) => {
-    const key = sec.dataset.key!;
-    if (collapsed.has(key)) sec.classList.add("collapsed");
-    const heading = sec.querySelector<HTMLElement>("h2")!;
-    heading.tabIndex = 0;
-    heading.setAttribute("role", "button");
-    heading.setAttribute("aria-expanded", String(!sec.classList.contains("collapsed")));
-    const toggle = () => {
-      sec.classList.toggle("collapsed");
-      heading.setAttribute("aria-expanded", String(!sec.classList.contains("collapsed")));
-      if (sec.classList.contains("collapsed")) collapsed.add(key); else collapsed.delete(key);
-      localStorage.setItem(COLLAPSE_KEY, JSON.stringify([...collapsed]));
-    };
-    heading.addEventListener("click", toggle);
-    heading.addEventListener("keydown", (ev) => {
-      if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); toggle(); }
-    });
-  });
 
   // Any click/tap outside an open bank menu closes it.
   document.addEventListener("click", (ev) => {
