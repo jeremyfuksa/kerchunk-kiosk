@@ -196,6 +196,7 @@ body {
   background: color-mix(in srgb, var(--flamingo) 6%, transparent);
   border-radius: 8px;
 }
+.now .err .errHint { font-size: 0.75em; color: var(--label); margin-top: 0.6rem; }
 
 /* ── Signal meter: LED segments ── */
 .dash .meter {

@@ -464,7 +464,7 @@ export function renderAdmin(root: HTMLElement): void {
   root.querySelector<HTMLButtonElement>("#bkAdd")!.addEventListener("click", async () => {
     bkErr.textContent = "";
     const name = root.querySelector<HTMLInputElement>("#bkName")!.value.trim();
-    if (!name) { bkErr.textContent = "name required"; return; }
+    if (!name) { bkErr.textContent = "Enter a bank name"; return; }
     const band = root.querySelector<HTMLSelectElement>("#bkBand")!.value;
     const tags = root.querySelector<HTMLInputElement>("#bkTags")!.value
       .split(",").map((t) => t.trim()).filter(Boolean);
@@ -503,7 +503,7 @@ export function renderAdmin(root: HTMLElement): void {
   async function renderInsights(): Promise<void> {
     const since = Date.now() - inHours * 3_600_000;
     const r = await fetch(`/api/stats?since=${since}`);
-    if (!r.ok) { inBody.innerHTML = `<div class="empty">history store unavailable</div>`; return; }
+    if (!r.ok) { inBody.innerHTML = `<div class="empty">History store unavailable — restart the radio backend if this persists.</div>`; return; }
     const st: {
       totalHits: number; totalAirtimeMs: number; discoveries: number;
       topChannels: Array<{ alphaTag: string; freq: number; hits: number; airtimeMs: number }>;
@@ -653,7 +653,7 @@ export function renderAdmin(root: HTMLElement): void {
       health: { verdict: "healthy" | "stressed" | "trouble"; reason: string };
       coreCount: number;
     };
-    if (!now) { sysBody.textContent = "no samples yet"; return; }
+    if (!now) { sysBody.textContent = "No readings yet — data appears within a minute."; return; }
     healthBanner.classList.toggle("healthClear", alerts.length === 0);
     healthBanner.classList.toggle("severe", alerts.some((a) => a.severity === "severe"));
     healthBanner.innerHTML = alerts.length ? `${safetyMode ? `<div class="safetyMode"><strong>Protection active:</strong> Close Call and sweep ranges are paused until temperature recovers.</div>` : ""}${alerts.map((a) => `<div class="healthAlert">
@@ -787,7 +787,7 @@ export function renderAdmin(root: HTMLElement): void {
       <td><input type="checkbox" class="prio" ${c.priority ? "checked" : ""} /></td>
       <td><input type="checkbox" class="audible" ${c.audible !== false ? "checked" : ""} /></td>
       <td><input type="checkbox" class="archived" ${!c.enabled ? "checked" : ""} /></td>
-      <td class="actions">${iconBtn("listen", "listen", "Listen — park the radio on this channel (unsquelched)")}${iconBtn("lock", "lockout", "Lockout — remove and never Close-Call this frequency again")}</td>
+      <td class="actions">${iconBtn("listen", "listen", "Listen — park the radio on this channel (unsquelched)")}${iconBtn("lock", "lockout", "Lock out — remove and never Close-Call this frequency again")}</td>
     </tr>`;
   }
 
@@ -822,7 +822,7 @@ export function renderAdmin(root: HTMLElement): void {
         return bankHeaderRow(g) + body;
       }).join("") +
       (channels.length === 0 && editingId !== "new"
-        ? `<tr><td colspan="7" class="empty">no channels — hit + Add</td></tr>` : "");
+        ? `<tr><td colspan="7" class="empty">No channels yet — use Add channel above.</td></tr>` : "");
     addBtn.disabled = editingId !== null;
     wireRows();
     wireBankRows();
@@ -1032,7 +1032,7 @@ export function renderAdmin(root: HTMLElement): void {
       </dl>
       <div class="dwActions">
         <button id="dwListen" class="listen">Listen</button>
-        <button id="dwLock" class="lock">Lockout</button>
+        <button id="dwLock" class="lock">Lock out</button>
       </div>`;
     drawer.querySelector<HTMLButtonElement>(".dwClose")!.addEventListener("click", closeDrawer);
     drawer.querySelector<HTMLButtonElement>("#dwSave")!.addEventListener("click", async () => {
@@ -1140,9 +1140,9 @@ export function renderAdmin(root: HTMLElement): void {
       </section>
       <div class="dwActions">
         <button id="dwListen" class="listen">Listen</button>
-        <button id="dwAdd" class="dAdd">Add</button>
+        <button id="dwAdd" class="dAdd">Add channel</button>
         <button id="dwSuppress">Suppress likely noise</button>
-        <button id="dwLock" class="lock">Lockout</button>
+        <button id="dwLock" class="lock">Lock out</button>
         <button id="dwDismiss" class="dDismiss">Dismiss</button>
       </div>`;
     drawer.querySelector<HTMLButtonElement>(".dwClose")!.addEventListener("click", closeDrawer);
@@ -1344,13 +1344,13 @@ export function renderAdmin(root: HTMLElement): void {
     const present = new Set(ds.map((d) => d.id));
     for (const id of dcSelected) if (!present.has(id)) dcSelected.delete(id);
     dcRows.innerHTML = ds.length === 0
-      ? `<tr><td colspan="5" class="empty">nothing pending — Close Call is hunting</td></tr>`
+      ? `<tr><td colspan="5" class="empty">Nothing pending — Close Call is hunting. New discoveries land here.</td></tr>`
       : ds.map((d) => `<tr data-id="${esc(d.id)}" class="dcRow">
           <td><input type="checkbox" class="dSel" ${dcSelected.has(d.id) ? "checked" : ""} /></td>
           <td class="rowOpen">${fmtFreq(d.freq)}<span class="dcSvc${serviceFor(d.freq) ? "" : " outband"}">${esc(serviceFor(d.freq) ?? "OUTBAND")}</span></td>
           <td class="rowOpen">${esc(d.alphaTag)}${d.audible === false ? '<span class="dcSee" title="Identified as data/paging — filed seen-not-heard; promotes as SEE">SEE</span>' : d.audible === true ? '<span class="dcHear" title="Identified as analog voice — hearable">HEAR</span>' : ""}${locChip(d.location)}<span class="rowChev" aria-hidden="true">›</span></td>
           <td class="rowOpen dMode${d.mode && DIGITAL.some((x) => d.mode!.toUpperCase().includes(x)) ? " digital" : ""}">${d.mode ? esc(d.mode.toUpperCase()) : "—"}</td>
-          <td class="actions">${iconBtn("dListen", "listen", "Listen — audition this discovery")}${iconBtn("dAdd", "add", "Add as an enabled channel")}${iconBtn("dLock", "lockout", "Lockout — never Close-Call this frequency again")}${iconBtn("dDismiss", "dismiss", "Dismiss (may be rediscovered later)")}</td>
+          <td class="actions">${iconBtn("dListen", "listen", "Listen — audition this discovery")}${iconBtn("dAdd", "add", "Add as an enabled channel")}${iconBtn("dLock", "lockout", "Lock out — never Close-Call this frequency again")}${iconBtn("dDismiss", "dismiss", "Dismiss (may be rediscovered later)")}</td>
         </tr>`).join("");
     dcAll.checked = ds.length > 0 && dcSelected.size === ds.length;
     paintDcToolbar();
@@ -1429,7 +1429,7 @@ export function renderAdmin(root: HTMLElement): void {
     const cfg = await api.getConfig();
     const lo = cfg.scan.lockoutHz ?? [];
     loList.innerHTML = lo.length === 0
-      ? `<li class="empty">none</li>`
+      ? `<li class="empty">No locked-out frequencies.</li>`
       : lo.map((f) => `<li>${fmtFreq(f)} ${iconBtn("unlock", "unlock", "Remove lockout", `data-hz="${f}"`)}</li>`).join("");
     loList.querySelectorAll<HTMLButtonElement>(".unlock").forEach((b) =>
       b.addEventListener("click", async () => {

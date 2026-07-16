@@ -352,7 +352,8 @@ export function renderDashboard(root: HTMLElement): void {
         nowEl.innerHTML = `<div class="scanning"><div class="scanText">RETUNING</div>
           <div class="sweep"><div class="sweepBar"></div></div></div>`;
       } else if (state.error) {
-        nowEl.innerHTML = `<div class="err">${esc(state.error)}</div>`;
+        nowEl.innerHTML = `<div class="err"><div>Radio error: ${esc(state.error)}</div>
+          <div class="errHint">Scanning resumes automatically. If this stays up, restart the radio backend from the admin page.</div></div>`;
       } else if (state.nowPlaying) {
         const db = state.signalDb;
         // Tag-first hierarchy: the NAME reads across the room; freq supports it.
@@ -370,7 +371,7 @@ export function renderDashboard(root: HTMLElement): void {
       } else {
         nowEl.innerHTML = scanCount === 0
           ? `<div class="scanning"><div class="scanText standby">STANDBY</div>
-             <div class="standbyHint">no channels enabled — check banks</div></div>`
+             <div class="standbyHint">No channels are enabled — turn a bank on in the admin.</div></div>`
           : `<div class="scanning"><div class="scanText">SCANNING</div>
              <div class="sweep"><div class="sweepBar"></div></div></div>`;
       }
