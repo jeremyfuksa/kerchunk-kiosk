@@ -284,9 +284,12 @@ export function renderAdmin(root: HTMLElement): void {
           <span id="systemActionStatus" class="hint" role="status"></span>
         </div>
       </section>
-      <section class="lockouts collapsible" data-key="lockouts" data-page="system">
+      <section class="lockouts" data-page="system">
         <h2>Close Call lockouts</h2>
-        <ul id="loList"></ul>
+        <details class="lockoutsBox">
+          <summary>Locked-out frequencies <span id="loCount" class="count"></span></summary>
+          <div id="loList" class="loChips"></div>
+        </details>
       </section>
     </main>
       </div>
@@ -1398,9 +1401,11 @@ export function renderAdmin(root: HTMLElement): void {
   async function renderLockouts(): Promise<void> {
     const cfg = await api.getConfig();
     const lo = cfg.scan.lockoutHz ?? [];
+    const loCount = root.querySelector<HTMLElement>("#loCount");
+    if (loCount) loCount.textContent = String(lo.length);
     loList.innerHTML = lo.length === 0
-      ? `<li class="empty">No locked-out frequencies.</li>`
-      : lo.map((f) => `<li>${fmtFreq(f)} ${iconBtn("unlock", "unlock", "Remove lockout", `data-hz="${f}"`)}</li>`).join("");
+      ? `<span class="empty">No locked-out frequencies.</span>`
+      : lo.map((f) => `<span class="loChip">${fmtFreq(f)}${iconBtn("unlock", "unlock", `Remove lockout ${fmtFreq(f)}`, `data-hz="${f}"`)}</span>`).join("");
     loList.querySelectorAll<HTMLButtonElement>(".unlock").forEach((b) =>
       b.addEventListener("click", async () => {
         const cfg2 = await api.getConfig();

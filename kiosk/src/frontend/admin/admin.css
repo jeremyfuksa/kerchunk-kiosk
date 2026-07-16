@@ -205,7 +205,28 @@ body {
 /* Discoveries toolbar */
 .admin .dcToolbar { display: flex; gap: 0.6rem; align-items: center; margin: 0.2rem 0 0.5rem; }
 
-/* Lockouts */
+/* Lockouts: a graveyard — collapsed until the operator needs to undo a
+   mistake. Chips, not rows: 30 lockouts fit one screen. */
+.lockoutsBox summary {
+  cursor: pointer;
+  min-height: 2.75rem; box-sizing: border-box;
+  display: flex; align-items: center; gap: 0.4rem;
+  color: var(--label);
+}
+.lockoutsBox summary:hover { color: var(--ink); }
+.loChips { display: flex; flex-wrap: wrap; gap: 0.5rem; padding: 0.4rem 0 0.2rem; }
+.loChips .empty { color: var(--dim); font-style: italic; font-size: 0.85rem; }
+.loChip {
+  display: inline-flex; align-items: center; gap: 0.25rem;
+  padding: 0.15rem 0.3rem 0.15rem 0.6rem;
+  border: 1px solid var(--panel-edge);
+  border-radius: 4px;
+  font-variant-numeric: tabular-nums;
+  color: var(--label);
+}
+.loChip .unlock { margin: 0; }
+@media (pointer: coarse) { .loChip .iconBtn { min-width: 2.35rem; min-height: 2.35rem; } }
+
 .admin ul { list-style: none; padding: 0; margin: 0.2rem 0 0; }
 .admin li {
   display: flex; align-items: center; gap: 0.8rem;
