@@ -202,7 +202,7 @@ export function renderAdmin(root: HTMLElement): void {
         <div id="archiveRecommendations" class="archiveRecommendations"></div>
       </section>
       <div class="statRow" data-page="home" id="statRow"></div>
-      <section class="insights collapsible" data-key="insights" data-page="home">
+      <section class="insights" data-page="home">
         <h2>Insights <span class="hint" id="inPeriodHint"></span></h2>
         <div class="inToolbar">
           <button class="inPeriod" data-h="24">24 h</button>
@@ -490,27 +490,35 @@ export function renderAdmin(root: HTMLElement): void {
     const maxHour = Math.max(1, ...st.byHour);
     const nowHour = new Date().getHours();
 
+    // Glance first (spec 2026-07-16 polish): a headline and the hour clock
+    // are the take-away; the full table lives behind one disclosure.
+    const busiest = st.topChannels[0];
+    const wasOpen = inBody.querySelector<HTMLDetailsElement>(".inBreakdown")?.open ?? false;
     inBody.innerHTML = `
       <div class="inTotals">
         <span><b>${st.totalHits}</b> hits</span>
         <span><b>${fmtAir(st.totalAirtimeMs)}</b> airtime</span>
         <span><b>${st.discoveries}</b> close calls</span>
+        <span class="inBusiest">${busiest ? `busiest <b>${esc(busiest.alphaTag) || fmtFreq(busiest.freq)}</b>` : "quiet band"}</span>
       </div>
       <div class="inClock" title="activity by hour of day">
         ${st.byHour.map((n, h) => `<div class="inHr${h === nowHour ? " now" : ""}" style="height:${(4 + 26 * n / maxHour).toFixed(0)}px" title="${String(h).padStart(2, "0")}:00 — ${n}"></div>`).join("")}
       </div>
-      <table class="inTop">
-        ${st.topChannels.slice(0, 8).map((c) => `<tr class="inChannel" data-freq="${c.freq}" tabindex="0" title="Open channel analytics">
-          <td class="inName">${esc(c.alphaTag) || fmtFreq(c.freq)}</td>
-          <td class="inBar"><div style="width:${(100 * c.hits / maxHits).toFixed(0)}%"></div></td>
-          <td class="inN">${c.hits}</td>
-          <td class="inAir">${fmtAir(c.airtimeMs)}</td>
-        </tr>`).join("")}
-      </table>
-      <div class="inSplit">
-        ${st.byBand.map((b) => `<span class="inChip">${esc(b.band.toUpperCase())} ${b.hits}</span>`).join("")}
-        ${st.byTag.map((t) => `<span class="inChip tag">${esc(t.tag)} ${t.hits}</span>`).join("")}
-      </div>`;
+      <details class="inBreakdown"${wasOpen ? " open" : ""}>
+        <summary>Show breakdown</summary>
+        <table class="inTop">
+          ${st.topChannels.slice(0, 8).map((c) => `<tr class="inChannel" data-freq="${c.freq}" tabindex="0" title="Open channel analytics">
+            <td class="inName">${esc(c.alphaTag) || fmtFreq(c.freq)}</td>
+            <td class="inBar"><div style="width:${(100 * c.hits / maxHits).toFixed(0)}%"></div></td>
+            <td class="inN">${c.hits}</td>
+            <td class="inAir">${fmtAir(c.airtimeMs)}</td>
+          </tr>`).join("")}
+        </table>
+        <div class="inSplit">
+          ${st.byBand.map((b) => `<span class="inChip">${esc(b.band.toUpperCase())} ${b.hits}</span>`).join("")}
+          ${st.byTag.map((t) => `<span class="inChip tag">${esc(t.tag)} ${t.hits}</span>`).join("")}
+        </div>
+      </details>`;
     root.querySelector<HTMLElement>("#inPeriodHint")!.textContent =
       inHours === 24 ? "last 24 hours" : inHours === 168 ? "last 7 days" : "last 30 days";
     root.querySelectorAll<HTMLButtonElement>(".inPeriod").forEach((b) =>
