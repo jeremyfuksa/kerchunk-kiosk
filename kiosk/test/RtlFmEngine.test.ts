@@ -11,6 +11,7 @@ const SILENT = join(__dirname, "fakes", "fake-rtl_fm-silent.sh");
 const CRASH = join(__dirname, "fakes", "fake-rtl_fm-crash.sh");
 const NODEVICE = join(__dirname, "fakes", "fake-rtl_fm-nodevice.sh");
 const SINK = join(__dirname, "fakes", "fake-sink.sh");
+const SINK_DIES = join(__dirname, "fakes", "fake-sink-dies.sh");
 
 beforeAll(() => {
   chmodSync(LOUD, 0o755);
@@ -18,6 +19,7 @@ beforeAll(() => {
   chmodSync(CRASH, 0o755);
   chmodSync(NODEVICE, 0o755);
   chmodSync(SINK, 0o755);
+  chmodSync(SINK_DIES, 0o755);
 });
 
 function ch(over: Partial<Channel> = {}): Channel {
@@ -392,5 +394,27 @@ describe("RtlFmEngine lifecycle", () => {
     await e.stop();
     expect(e.state).toBe("stopped");
     expect(events.some((ev) => ev.type === "status" && ev.state === "stopped")).toBe(true);
+  });
+});
+
+describe("sink pipe failure", () => {
+  it("survives the sink breaking its pipe mid-stream (EPIPE must not crash)", async () => {
+    // aplay's real failure mode: the ALSA device goes away and the sink stops
+    // reading while rtl_fm keeps producing. The .writable guard is a TOCTOU
+    // check — the pipe can break before the stream object knows — so the
+    // write's async EPIPE lands as an 'error' event on sink.stdin. With no
+    // listener there, Node's EventEmitter contract crashes the process.
+    const engine = new RtlFmEngine({ rtlFmCmd: LOUD, sinkCmd: [SINK_DIES], ...TIMING });
+    const uncaught: unknown[] = [];
+    const onErr = (e: unknown): void => { uncaught.push(e); };
+    process.on("uncaughtException", onErr);
+    try {
+      await engine.start(cfg([ch()]));
+      await new Promise((r) => setTimeout(r, 600)); // loud PCM vs a closed pipe
+      expect(uncaught).toEqual([]);
+    } finally {
+      process.off("uncaughtException", onErr);
+      await engine.stop();
+    }
   });
 });

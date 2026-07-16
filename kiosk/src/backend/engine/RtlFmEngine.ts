@@ -187,6 +187,11 @@ export class RtlFmEngine implements ScannerEngine {
         stdio: ["pipe", "ignore", "ignore"],
       });
       this.sink.on("error", () => { /* sink failure is non-fatal for scanning */ });
+      // The pipe itself can break before the stream object knows (aplay dies
+      // mid-write): the .writable guard at the write site can't see that, and
+      // the write's async EPIPE arrives as an 'error' event HERE — uncaught,
+      // it would kill the whole backend. Non-fatal: respawn-on-hop recovers.
+      this.sink.stdin?.on("error", () => {});
     } else {
       this.sink = null;
     }

@@ -41,6 +41,8 @@ export interface ServerDeps {
   restartBackend?: () => void;
   /** Enable temporary thermal load-shedding on the appliance process. */
   selfProtect?: boolean;
+  /** Injectable file reader for SystemStats (tests fake /sys thermal reads). */
+  statsReadFile?: (path: string) => string;
   /** Optional network ADS-B aircraft overlay feed (off unless configured). */
   aircraftFeed?: AircraftSource;
 }
@@ -452,6 +454,7 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
     helperPid: () => (engine as { helperPid?: number | null }).helperPid ?? null,
     openCount: () => openIds.size,
     dataDir: "/var/lib/kerchunk-kiosk",
+    ...(deps.statsReadFile ? { readFile: deps.statsReadFile } : {}),
     onSample: (sample) => {
       if (!deps.selfProtect) return;
       const shouldProtect = sample.tempC !== null && sample.tempC >= 90;
@@ -470,6 +473,10 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
       if (nothingToShed) return;
       safetyTransition = true;
       void engine.stop().then(() => engine.start(scanConfigFor(mode, monitorChannel)))
+        // Contained, not rethrown: this chain runs from the stats sampler with
+        // no request handler above it — an uncaught rejection here kills the
+        // backend mid-thermal-event, the one moment self-protect must survive.
+        .catch((e) => console.error(`[safety] shed restart failed: ${(e as Error).message}`))
         .finally(() => { safetyTransition = false; });
     },
   });
@@ -716,8 +723,13 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
       // push that to the helper live instead of bouncing audio for ~1s.
       const before = toScanConfig(prev, mode, monitorChannel);
       const after = toScanConfig(config, mode, monitorChannel);
-      const scanChanged = JSON.stringify({ ...before, knownHz: [] })
-        !== JSON.stringify({ ...after, knownHz: [] });
+      // lockoutHz is stripped along with knownHz: knownHz already folds the
+      // lockout list in (so the live push below carries it), and the engine's
+      // own lockoutHz field is only a fallback it never reads when the server
+      // supplies knownHz. Leaving it in the diff made every lockout-only edit
+      // take the restart branch this comparison exists to avoid.
+      const scanChanged = JSON.stringify({ ...before, knownHz: [], lockoutHz: [] })
+        !== JSON.stringify({ ...after, knownHz: [], lockoutHz: [] });
       if (scanChanged) {
         await engine.stop();
         await engine.start(scanConfigFor(mode, monitorChannel));

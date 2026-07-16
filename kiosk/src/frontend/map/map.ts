@@ -2,6 +2,7 @@ import { ReconnectingWs } from "../lib/wsClient.js";
 import { api } from "../lib/api.js";
 import { esc, fmtFreq } from "../lib/format.js";
 import { BlipField, coverageRadiusM } from "./blips.js";
+import { heldTxRadius } from "./txRing.js";
 import { AircraftLayer } from "./aircraft.js";
 import type { EngineEvent } from "../../backend/engine/ScannerEngine.js";
 import icoTower from "lucide-static/icons/radio-tower.svg?raw";
@@ -315,7 +316,7 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
     // Safety cap if a `release` is ever missed; the audible channel re-arms it
     // on every `signal`, so a continuous carrier doesn't expire mid-transmission.
     const TX_TTL_MS = 60_000;
-    const liveTx = new Map<string, { lat: number; lng: number; key: string; color: string; born: number; until: number }>();
+    const liveTx = new Map<string, { lat: number; lng: number; key: string; color: string; born: number; until: number; radiusM?: number }>();
     const txRings = new Map<string, any>();
     // freq -> operator bank tags, learned from /api/channels. Lets the transient
     // blip layer (keyed only by frequency) honor the same operator service tag
@@ -334,6 +335,8 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
       liveTx.set(id, {
         lat, lng, key: `${lat.toFixed(5)},${lng.toFixed(5)}`,
         color: colorFor(freq, kind, tagsFor(freq)), born: existing?.born ?? now, until: now + ttlMs,
+        // Preserved like `born`: the latched hold radius survives re-arms.
+        ...(existing?.radiusM !== undefined ? { radiusM: existing.radiusM } : {}),
       });
       wake();
     }
@@ -614,7 +617,10 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
       const expired: string[] = [];
       for (const [id, tx] of liveTx) {
         if (now >= tx.until) { expired.push(id); continue; }
-        const txRadius = coverage.get(tx.key) ?? circles.get(tx.key)?.last?.radius ?? 7500 * geo;
+        // Latched on first resolve (see txRing.ts): the blip circle this can
+        // borrow from is pruned at 60s, which a re-armed continuous carrier
+        // outlives — re-deriving would pop the held ring to the default.
+        const txRadius = heldTxRadius(tx, coverage, circles.get(tx.key)?.last?.radius, geo);
         const p = Math.min(1, (now - tx.born) / TX_GROW_MS);
         const eased = 1 - Math.pow(1 - p, 3); // easeOutCubic — quick out, settle
         const radius = Math.max(1, txRadius * (0.1 + 0.9 * eased));

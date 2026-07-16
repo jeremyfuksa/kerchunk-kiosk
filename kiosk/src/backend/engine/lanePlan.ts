@@ -16,6 +16,23 @@ export interface LanePlan {
 const isAm = (mode: string): boolean => mode === "am";
 const isFm = (mode: string): boolean => mode === "fm" || mode === "nfm";
 
+/** The channel the helper will actually run on slot `i` of `laneCount` built
+ *  lanes. Mirrors tune()'s assignment in wideband_helper.py: background
+ *  channels are pinned to the LAST BUILT lane and the remaining regular
+ *  channels are compacted into the earlier slots — NOT frequency-sorted
+ *  position. Planning by raw position put the group's post-background
+ *  channels one slot too late, so an AM channel grouped with the injected
+ *  wx_same could land on a lane whose AM path was never built (silent audio). */
+function channelAtSlot(
+  g: ChannelGroup, i: number, laneCount: number,
+): { mode: string } | undefined {
+  const chans = g.channels as Array<{ mode: string; background?: boolean }>;
+  const bgs = chans.filter((c) => c.background);
+  if (bgs.length === 0) return chans[i];
+  if (i === laneCount - 1) return bgs[0];
+  return chans.filter((c) => !c.background).slice(0, laneCount - 1)[i];
+}
+
 export function computeLanePlan(groups: ChannelGroup[], maxChans: number): LanePlan {
   const biggest = groups.reduce((m, g) => Math.max(m, g.channels.length), 0);
   const laneCount = Math.max(1, Math.min(maxChans, biggest));
@@ -29,7 +46,7 @@ export function computeLanePlan(groups: ChannelGroup[], maxChans: number): LaneP
     }
     let fm = false, am = false;
     for (const g of groups) {
-      const c = g.channels[i];
+      const c = channelAtSlot(g, i, laneCount);
       if (!c) continue;
       if (isFm(c.mode)) fm = true;
       if (isAm(c.mode)) am = true;
@@ -53,10 +70,12 @@ export function planFits(spawned: LanePlan, newGroups: ChannelGroup[], maxChans:
   const need = Math.min(maxChans, biggest);
   if (need === 0) return false;            // no channels: tear down, don't re-point
   if (need > spawned.laneCount) return false;
-  for (let i = 0; i < need; i++) {
+  for (let i = 0; i < spawned.laneCount; i++) {
     let fm = false, am = false;
     for (const g of newGroups) {
-      const c = g.channels[i];
+      // Slot assignment against the BUILT lane count: the helper compacts
+      // around the background channel relative to its spawned chains.
+      const c = channelAtSlot(g, i, spawned.laneCount);
       if (!c) continue;
       if (isFm(c.mode)) fm = true;
       if (isAm(c.mode)) am = true;

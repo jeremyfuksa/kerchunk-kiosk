@@ -40,6 +40,22 @@ async function loadAdminMaps(): Promise<boolean> {
   return mapsReady;
 }
 
+/** Parse a persisted JSON string-set (collapse state) defensively. localStorage
+ *  outlives app versions and can hold junk — and this runs during renderAdmin's
+ *  synchronous init with no catch above it, where a throw bricks the whole
+ *  admin page. Anything but a string array falls back to the default. */
+export function readStoredStringSet(raw: string | null, fallback: string[]): Set<string> {
+  if (raw !== null) {
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.every((v) => typeof v === "string")) {
+        return new Set(parsed as string[]);
+      }
+    } catch { /* corrupt: fall through to the default */ }
+  }
+  return new Set(fallback);
+}
+
 export function mhzToHz(mhz: string): number {
   const n = Number(mhz);
   if (!Number.isFinite(n)) throw new Error(`invalid frequency: ${mhz}`);
@@ -302,7 +318,8 @@ export function renderAdmin(root: HTMLElement): void {
   // Progressive disclosure: minor modules collapse behind their legends.
   // State persists per device (an operator who tunes often keeps it open).
   const COLLAPSE_KEY = "kerchunk.admin.collapsed";
-  const collapsed = new Set<string>(JSON.parse(localStorage.getItem(COLLAPSE_KEY) ?? '["tuning","lockouts","weather","insights"]'));
+  const collapsed = readStoredStringSet(
+    localStorage.getItem(COLLAPSE_KEY), ["tuning", "lockouts", "weather", "insights"]);
   // ── Admin IA (ROADMAP Idea 15): config is a destination, monitoring is
   // the landing. Pure re-layout — all sections stay wired as before; the
   // route only decides which data-page group is visible. Unknown = home.
@@ -705,7 +722,7 @@ export function renderAdmin(root: HTMLElement): void {
   let pendingGroup: string | null = null;
   // Collapsed bank groups (persisted like the collapsible modules).
   const GROUPS_KEY = "kerchunk.admin.banksCollapsed";
-  const collapsedBanks = new Set<string>(JSON.parse(localStorage.getItem(GROUPS_KEY) ?? "[]"));
+  const collapsedBanks = readStoredStringSet(localStorage.getItem(GROUPS_KEY), []);
   let editingId: string | null = null;
 
   const MODES: Channel["mode"][] = ["nfm", "fm", "am"];
