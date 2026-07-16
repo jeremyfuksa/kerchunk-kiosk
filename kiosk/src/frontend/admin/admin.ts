@@ -215,51 +215,58 @@ export function renderAdmin(root: HTMLElement): void {
       </section>
       </div>
       <div class="pageIntro" data-page="scan">
-        <div><span class="eyebrow">Settings</span><h1>Scanner settings</h1><p>Adjust scan behavior and optional services. Changes apply when you save each section.</p></div>
+        <div><span class="eyebrow">Settings</span><h1>Scanner settings</h1><p>Tune scanning, alerts, the weather channel, and integrations. Each card saves on its own.</p></div>
       </div>
-      <div class="moduleRow" data-page="scan">
-      <section class="tuning settingsPanel">
-        <h2>Scan behavior</h2>
-        <p class="sectionHelp">These defaults control how quickly the scanner moves and when a signal opens.</p>
+      <div class="settingsCards" data-page="scan">
+      <details class="settingsCard tuning" open>
+        <summary><h2>Scanning</h2><span class="cardHint">Dwell, squelch, and discovery</span></summary>
+        <div class="cardBody">
         <div class="settingGroups">
-          <fieldset>
-            <legend>Timing and squelch</legend>
-            <label><span>Group dwell <small>Time spent on each frequency group</small></span><span class="inputUnit"><input id="tGroupDwell" type="number" min="500" step="100" placeholder="3000" /><b>ms</b></span></label>
-            <label><span>Hang time <small>Wait after a transmission ends</small></span><span class="inputUnit"><input id="tHang" type="number" min="100" step="100" placeholder="2000" /><b>ms</b></span></label>
-            <label><span>Squelch open <small>Signal level above the noise floor</small></span><span class="inputUnit"><input id="tOpenDb" type="number" min="1" step="0.5" placeholder="9" /><b>dB</b></span></label>
-            <label><span>Quieting threshold <small>Absolute noise threshold</small></span><span class="inputUnit"><input id="tQuietDb" type="number" max="-1" step="0.5" placeholder="-86" /><b>dB</b></span></label>
-          </fieldset>
-          <fieldset>
-            <legend>Discovery</legend>
-            <label class="switchRow"><span>Close Call <small>Find strong nearby signals outside your channel list</small></span><input id="tCloseCall" type="checkbox" /></label>
-            <label><span>Close Call threshold <small>Higher values reduce false discoveries</small></span><span class="inputUnit"><input id="tCloseCallDb" type="number" min="5" step="1" placeholder="15" /><b>dB</b></span></label>
-            <label><span>Sweep ranges <small>Comma-separated MHz ranges; empty disables sweeping</small></span><input id="tSweep" type="text" placeholder="450-470, 150-162" title="Band-sweep: one empty-window stop per rotation hunts for activity inside these ranges" /></label>
-          </fieldset>
-          <fieldset>
-            <legend>Alerts</legend>
-            <label><span>Alert cooldown <small>Minimum time before repeating an alert</small></span><span class="inputUnit"><input id="tAlertCool" type="number" min="1" step="1" placeholder="15" /><b>min</b></span></label>
-            <label><span>Alert hold <small>How long an alert remains visible</small></span><span class="inputUnit"><input id="tAlertHold" type="number" min="5" step="5" placeholder="30" /><b>sec</b></span></label>
-            <label><span>Push notification URL <small>Optional ntfy topic URL</small></span><input id="tAlertNtfy" type="text" placeholder="https://ntfy.sh/your-topic" /></label>
-            <label><span>SAME county codes <small>Comma-separated FIPS codes; empty allows all</small></span><input id="tSameFips" type="text" placeholder="029047, 029095" title="County FIPS codes for SAME/EAS scoping — 5-digit SSCCC or 6-digit PSSCCC" /></label>
-            <label class="switchRow"><span>Show SAME tests <small>Include weekly and monthly test banners</small></span><input id="tSameTests" type="checkbox" /></label>
-          </fieldset>
-          <fieldset>
-            <legend>Map integration</legend>
-            <label><span>Google Maps key</span><input id="tMapsKey" type="text" placeholder="AIza…" /></label>
-            <label><span>Google Maps Map ID</span><input id="tMapsMapId" type="text" placeholder="Optional vector map ID" /></label>
-          </fieldset>
+          <label><span>Group dwell <small>Time spent on each frequency group</small></span><span class="inputUnit"><input id="tGroupDwell" type="number" min="500" step="100" placeholder="3000" /><b>ms</b></span></label>
+          <label><span>Hang time <small>Wait after a transmission ends</small></span><span class="inputUnit"><input id="tHang" type="number" min="100" step="100" placeholder="2000" /><b>ms</b></span></label>
+          <label><span>Squelch open <small>Signal level above the noise floor</small></span><span class="inputUnit"><input id="tOpenDb" type="number" min="1" step="0.5" placeholder="9" /><b>dB</b></span></label>
+          <label><span>Quieting threshold <small>Absolute noise threshold</small></span><span class="inputUnit"><input id="tQuietDb" type="number" max="-1" step="0.5" placeholder="-86" /><b>dB</b></span></label>
+          <label class="switchRow"><span>Close Call <small>Find strong nearby signals outside your channel list</small></span><input id="tCloseCall" type="checkbox" /></label>
+          <label><span>Close Call threshold <small>Higher values reduce false discoveries</small></span><span class="inputUnit"><input id="tCloseCallDb" type="number" min="5" step="1" placeholder="15" /><b>dB</b></span></label>
+          <label><span>Sweep ranges <small>Comma-separated MHz ranges; empty disables sweeping</small></span><input id="tSweep" type="text" placeholder="450-470, 150-162" title="Band-sweep: one empty-window stop per rotation hunts for activity inside these ranges" /></label>
         </div>
-        <div class="formActions"><button id="tSave" class="primary">Save scanner settings</button><span id="tErr" class="err"></span></div>
-      </section>
-      <section class="weather collapsible" data-key="weather" data-page="scan">
-        <h2>Weather</h2>
-        <p class="sectionHelp">Choose the local NOAA channel used by weather-only mode.</p>
-        <label>Channel <select id="wxFreq">${NOAA_CHANNELS.map((c) => `<option value="${c.mhz}">${c.label} — ${c.mhz} MHz</option>`).join("")}</select></label>
-        <label>Name <input id="wxTag" type="text" placeholder="NOAA WX" /></label>
-        <label>Mode <select id="wxMode"><option value="nfm">NFM</option><option value="fm">FM</option><option value="am">AM</option></select></label>
-        <button id="wxSave" class="primary">Save weather channel</button>
-        <span id="wxErr" class="err"></span>
-      </section>
+        <div class="formActions"><button id="tSave" class="primary">Save scanning</button><span id="tErr" class="err"></span></div>
+        </div>
+      </details>
+      <details class="settingsCard alertsCard">
+        <summary><h2>Alerts</h2><span class="cardHint">Cooldowns, notifications, SAME scope</span></summary>
+        <div class="cardBody">
+        <div class="settingGroups">
+          <label><span>Alert cooldown <small>Minimum time before repeating an alert</small></span><span class="inputUnit"><input id="tAlertCool" type="number" min="1" step="1" placeholder="15" /><b>min</b></span></label>
+          <label><span>Alert hold <small>How long an alert remains visible</small></span><span class="inputUnit"><input id="tAlertHold" type="number" min="5" step="5" placeholder="30" /><b>sec</b></span></label>
+          <label><span>Push notification URL <small>Optional ntfy topic URL</small></span><input id="tAlertNtfy" type="text" placeholder="https://ntfy.sh/your-topic" /></label>
+          <label><span>SAME county codes <small>Comma-separated FIPS codes; empty allows all</small></span><input id="tSameFips" type="text" placeholder="029047, 029095" title="County FIPS codes for SAME/EAS scoping — 5-digit SSCCC or 6-digit PSSCCC" /></label>
+          <label class="switchRow"><span>Show SAME tests <small>Include weekly and monthly test banners</small></span><input id="tSameTests" type="checkbox" /></label>
+        </div>
+        <div class="formActions"><button id="alSave" class="primary">Save alerts</button><span id="alErr" class="err"></span></div>
+        </div>
+      </details>
+      <details class="settingsCard weather">
+        <summary><h2>Weather channel</h2><span class="cardHint">NOAA channel for weather-only mode</span></summary>
+        <div class="cardBody">
+        <div class="settingGroups">
+          <label><span>Channel <small>Local NOAA transmitter</small></span><select id="wxFreq">${NOAA_CHANNELS.map((c) => `<option value="${c.mhz}">${c.label} — ${c.mhz} MHz</option>`).join("")}</select></label>
+          <label><span>Name</span><input id="wxTag" type="text" placeholder="NOAA WX" /></label>
+          <label><span>Mode</span><select id="wxMode"><option value="nfm">NFM</option><option value="fm">FM</option><option value="am">AM</option></select></label>
+        </div>
+        <div class="formActions"><button id="wxSave" class="primary">Save weather channel</button><span id="wxErr" class="err"></span></div>
+        </div>
+      </details>
+      <details class="settingsCard integrations">
+        <summary><h2>Integrations</h2><span class="cardHint">Google Maps for the activity map</span></summary>
+        <div class="cardBody">
+        <div class="settingGroups">
+          <label><span>Google Maps key</span><input id="tMapsKey" type="text" placeholder="AIza…" /></label>
+          <label><span>Google Maps Map ID</span><input id="tMapsMapId" type="text" placeholder="Optional vector map ID" /></label>
+        </div>
+        <div class="formActions"><button id="igSave" class="primary">Save integrations</button><span id="igErr" class="err"></span></div>
+        </div>
+      </details>
       </div>
       <div class="pageIntro" data-page="system">
         <div><span class="eyebrow">System</span><h1>Appliance</h1><p>Machine health, kiosk screen controls, and Close Call lockouts.</p></div>
@@ -1687,17 +1694,20 @@ export function renderAdmin(root: HTMLElement): void {
       .map((r) => `${r.loHz / 1e6}-${r.hiHz / 1e6}`).join(", ");
   });
 
+  // Per-card saves (spec 2026-07-16 admin IA): each card patches only its
+  // slice of config. Field semantics unchanged: empty = default/clear.
+  const numOrU = (el: HTMLInputElement): number | undefined =>
+    el.value.trim() === "" ? undefined : Number(el.value);
+
   root.querySelector<HTMLButtonElement>("#tSave")!.addEventListener("click", async () => {
     tErr.textContent = "";
     try {
       const cfg = await api.getConfig();
-      const num = (el: HTMLInputElement): number | undefined =>
-        el.value.trim() === "" ? undefined : Number(el.value);
-      cfg.scan.groupDwellMs = num(tGroupDwell);
-      cfg.scan.openAboveFloorDb = num(tOpenDb);
-      cfg.scan.noiseQuietDb = num(tQuietDb);
+      cfg.scan.groupDwellMs = numOrU(tGroupDwell);
+      cfg.scan.openAboveFloorDb = numOrU(tOpenDb);
+      cfg.scan.noiseQuietDb = numOrU(tQuietDb);
       cfg.scan.closeCall = tCloseCall.checked;
-      cfg.scan.closeCallDb = num(tCloseCallDb);
+      cfg.scan.closeCallDb = numOrU(tCloseCallDb);
       const sweeps = tSweep.value.split(",").map((x) => x.trim()).filter(Boolean)
         .map((x) => {
           const m = /^([\d.]+)\s*-\s*([\d.]+)$/.exec(x);
@@ -1706,6 +1716,40 @@ export function renderAdmin(root: HTMLElement): void {
         });
       if (sweeps.length) cfg.scan.sweepRanges = sweeps;
       else delete cfg.scan.sweepRanges;
+      const hang = numOrU(tHang);
+      if (hang !== undefined) cfg.scan.dwellMs = hang;
+      await api.putConfig(cfg);
+      tErr.textContent = "saved";
+    } catch (e) { tErr.textContent = (e as Error).message; }
+  });
+
+  const alErr = root.querySelector<HTMLElement>("#alErr")!;
+  root.querySelector<HTMLButtonElement>("#alSave")!.addEventListener("click", async () => {
+    alErr.textContent = "";
+    try {
+      const cfg = await api.getConfig();
+      // Alert knobs: empty fields fall back to defaults (15 min / 30 s).
+      const ntfy = tAlertNtfy.value.trim();
+      const fips = tSameFips.value.split(",").map((x) => x.trim()).filter(Boolean);
+      const alerts = {
+        ...(numOrU(tAlertCool) !== undefined ? { cooldownMinutes: numOrU(tAlertCool) } : {}),
+        ...(numOrU(tAlertHold) !== undefined ? { holdSeconds: numOrU(tAlertHold) } : {}),
+        ...(ntfy ? { ntfyUrl: ntfy } : {}),
+        ...(fips.length ? { sameFips: fips } : {}),
+        ...(tSameTests.checked ? { sameTests: true } : {}),
+      };
+      if (Object.keys(alerts).length) cfg.alerts = alerts;
+      else delete cfg.alerts;
+      await api.putConfig(cfg);
+      alErr.textContent = "saved";
+    } catch (e) { alErr.textContent = (e as Error).message; }
+  });
+
+  const igErr = root.querySelector<HTMLElement>("#igErr")!;
+  root.querySelector<HTMLButtonElement>("#igSave")!.addEventListener("click", async () => {
+    igErr.textContent = "";
+    try {
+      const cfg = await api.getConfig();
       const mapsKey = tMapsKey.value.trim();
       const mapId = tMapsMapId.value.trim();
       if (cfg.display) {
@@ -1719,27 +1763,24 @@ export function renderAdmin(root: HTMLElement): void {
         // No display block (no weather location yet) means no place to store
         // these AND no map without coordinates — say so instead of a silent
         // "saved" that drops the key.
-        tErr.textContent = "set a weather location first — the map needs coordinates";
+        igErr.textContent = "set a weather location first — the map needs coordinates";
         return;
       }
-      // Alert knobs: empty fields fall back to defaults (15 min / 30 s).
-      const ntfy = tAlertNtfy.value.trim();
-      const fips = tSameFips.value.split(",").map((x) => x.trim()).filter(Boolean);
-      const alerts = {
-        ...(num(tAlertCool) !== undefined ? { cooldownMinutes: num(tAlertCool) } : {}),
-        ...(num(tAlertHold) !== undefined ? { holdSeconds: num(tAlertHold) } : {}),
-        ...(ntfy ? { ntfyUrl: ntfy } : {}),
-        ...(fips.length ? { sameFips: fips } : {}),
-        ...(tSameTests.checked ? { sameTests: true } : {}),
-      };
-      if (Object.keys(alerts).length) cfg.alerts = alerts;
-      else delete cfg.alerts;
-      const hang = num(tHang);
-      if (hang !== undefined) cfg.scan.dwellMs = hang;
       await api.putConfig(cfg);
-      tErr.textContent = "saved";
-    } catch (e) { tErr.textContent = (e as Error).message; }
+      igErr.textContent = "saved";
+    } catch (e) { igErr.textContent = (e as Error).message; }
   });
+
+  // Settings cards: desktop shows all four open; phones get an accordion
+  // (one open at a time — the toggle handler closes the siblings).
+  const settingsCards = [...root.querySelectorAll<HTMLDetailsElement>(".settingsCard")];
+  if (window.matchMedia("(min-width: 700px)").matches) {
+    settingsCards.forEach((d) => { d.open = true; });
+  } else {
+    settingsCards.forEach((d) => d.addEventListener("toggle", () => {
+      if (d.open) settingsCards.forEach((o) => { if (o !== d) o.open = false; });
+    }));
+  }
 
   refresh().catch((e) => { chErr.textContent = (e as Error).message; });
 

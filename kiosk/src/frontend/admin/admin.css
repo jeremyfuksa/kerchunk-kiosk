@@ -220,12 +220,6 @@ body {
 .admin li.empty { color: var(--dim); font-style: italic; border: none; }
 .admin .unlock { font-size: 0.75rem; padding: 0.18rem 0.5rem; }
 
-/* Tuning + weather: stacked label rows */
-.admin .tuning label, .admin .weather label {
-  display: inline-flex; align-items: center; gap: 0.45rem;
-  margin: 0.25rem 0.8rem 0.25rem 0;
-}
-.admin .tuning input[type="number"] { width: 6rem; }
 
 /* Phone ergonomics */
 @media (max-width: 560px) {
@@ -275,18 +269,9 @@ body {
   .admin input[type="range"]::-webkit-slider-thumb { width: 22px; height: 30px; }
 }
 
-/* Tablet (≥700px): wider canvas; small modules pair up side-by-side */
+/* Tablet (≥700px): wider canvas */
 @media (min-width: 700px) {
-  /* (legacy mid-width bump removed — the IA workspace handles width) */
   .admin .tableWrap { max-height: 52vh; }
-  .admin .moduleRow {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 1.8rem;
-    align-items: start;
-    margin: 1.8rem 0;
-  }
-  .admin .moduleRow section { margin: 0; }
 }
 
 /* (pre-IA two-pane grid removed 2026-06-06: the nav-rail workspace owns
@@ -1018,29 +1003,40 @@ body { font-family: var(--font-sans, sans-serif); }
 .admin .bankAdd input, .admin .bankAdd select { box-sizing: border-box; width: 100% !important; margin: 0; }
 .admin .bankAdd .err { grid-column: 1 / -1; }
 
-.admin .moduleRow { grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 0; }
-.admin .settingsPanel { grid-column: 1 / -1; margin: 0; padding: 1.35rem; }
-.admin .settingsPanel > h2,
-.admin .settingsPanel > .sectionHelp {
-  position: static;
-  margin: 0;
-  padding: 0;
-  background: transparent;
-  text-transform: none;
-  letter-spacing: 0;
-}
-.admin .settingsPanel > h2 { color: var(--ink); font-size: 1.15rem; }
-.admin .sectionHelp { margin-top: 0.25rem !important; color: var(--label); font-size: 0.82rem; line-height: 1.5; }
-.settingGroups { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1.1rem; }
-.settingGroups fieldset {
-  min-width: 0;
-  margin: 0;
-  padding: 0.8rem;
-  border: 1px solid var(--etch);
+/* ── Settings cards (spec 2026-07-16 admin IA): four save-scoped cards.
+   Desktop: two-column grid, all open (summary is a plain header).
+   Phone: single column accordion — one card open at a time (JS closes
+   siblings), chevron shows state. */
+.settingsCards { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; align-items: start; }
+.settingsCard {
+  background: var(--panel);
+  border: 1px solid var(--panel-edge);
   border-radius: 8px;
 }
-.settingGroups legend { padding: 0 0.35rem; color: var(--ink); font-size: 0.8rem; font-weight: 700; }
-.admin .tuning .settingGroups label {
+.settingsCard summary {
+  display: flex; align-items: baseline; gap: 0.6rem;
+  padding: 0.9rem 1.1rem;
+  min-height: 2.75rem; box-sizing: border-box;
+  cursor: pointer; list-style: none;
+}
+.settingsCard summary::-webkit-details-marker { display: none; }
+.settingsCard summary h2 { margin: 0; color: var(--ink); font-family: var(--cond); font-size: 1rem; }
+.settingsCard .cardHint { color: var(--dim); font-size: 0.78rem; }
+.settingsCard .cardBody { padding: 0 1.1rem 1.1rem; }
+@media (min-width: 700px) {
+  .settingsCard summary { pointer-events: none; }
+}
+@media (max-width: 699.9px) {
+  .settingsCards { grid-template-columns: 1fr; }
+  .settingsCard summary::after {
+    content: "›";
+    margin-left: auto; align-self: center;
+    color: var(--dim);
+    transform: rotate(90deg);
+  }
+  .settingsCard[open] summary::after { transform: rotate(-90deg); }
+}
+.settingsCard .settingGroups label {
   display: grid;
   grid-template-columns: minmax(12rem, 1fr) minmax(8rem, 1fr);
   align-items: center;
@@ -1049,18 +1045,16 @@ body { font-family: var(--font-sans, sans-serif); }
   padding: 0.55rem 0;
   border-bottom: 1px solid var(--etch);
 }
-.admin .tuning .settingGroups label:last-child { border-bottom: 0; }
+.settingsCard .settingGroups label:last-child { border-bottom: 0; }
 .settingGroups label > span:first-child { display: grid; gap: 0.15rem; color: var(--ink); }
 .settingGroups label small { color: var(--dim); font-size: 0.68rem; line-height: 1.35; }
-.settingGroups input { box-sizing: border-box; width: 100%; margin: 0; }
+.settingGroups input, .settingGroups select { box-sizing: border-box; width: 100%; margin: 0; }
 .settingGroups .inputUnit { display: flex; align-items: center; gap: 0.4rem; }
 .settingGroups .inputUnit b { min-width: 2rem; color: var(--dim); font-size: 0.68rem; font-weight: 500; }
-.admin .tuning .settingGroups .switchRow { grid-template-columns: 1fr auto; }
+.settingsCard .settingGroups .switchRow { grid-template-columns: 1fr auto; }
 .settingGroups .switchRow input { width: auto; }
 .formActions { display: flex; align-items: center; gap: 0.75rem; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--etch); }
 
-.admin .weather label { margin: 0.25rem 0; }
-.admin .weather .switchRow { display: flex; justify-content: space-between; width: 100%; margin-top: 1rem; padding-top: 0.8rem; border-top: 1px solid var(--etch); }
 
 @media (max-width: 1100px) {
   .admin .bankAdd { grid-template-columns: repeat(2, 1fr); }
@@ -1071,7 +1065,6 @@ body { font-family: var(--font-sans, sans-serif); }
   .adminNav { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 0.35rem; }
   .adminNav a { flex: 1 0 auto; min-height: 2.7rem; }
   .adminNav .navCopy small { display: none; }
-  .settingGroups { grid-template-columns: 1fr; }
 }
 @media (max-width: 700px) {
   .adminHead .brandSub { display: none; }
@@ -1080,14 +1073,11 @@ body { font-family: var(--font-sans, sans-serif); }
   .pageIntro > button { align-self: start; }
   .admin .nowCard .npControls { grid-template-columns: 1fr; }
   .admin .transmissionControls { justify-content: flex-start; }
-  .admin .systemActionsLabel { width: 100%; margin-right: 0; }
   .admin .systemActions .hint { width: 100%; text-align: left; }
-  .admin .moduleRow { grid-template-columns: 1fr; }
-  .admin .settingsPanel { grid-column: auto; }
   .admin .bankAdd { grid-template-columns: 1fr; }
   .bankBuilder summary span { display: block; margin: 0.25rem 0 0 1rem; }
-  .admin .tuning .settingGroups label { grid-template-columns: 1fr; gap: 0.4rem; }
-  .admin .tuning .settingGroups .switchRow { grid-template-columns: 1fr auto; }
+  .settingsCard .settingGroups label { grid-template-columns: 1fr; gap: 0.4rem; }
+  .settingsCard .settingGroups .switchRow { grid-template-columns: 1fr auto; }
   .healthAlert, .suppressedRow, .archiveRec { align-items: stretch; flex-direction: column; }
   .healthAlert a { margin-left: 0; }
   .drawer { width: min(100vw, 100%) !important; }
