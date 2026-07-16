@@ -754,6 +754,25 @@ describe("review fixes: engine lifecycle", () => {
     expect((engine as { knownHzUpdates?: number[][] }).knownHzUpdates?.length).toBe(1);
   });
 
+  it("PUT /api/config with only a lockout change does NOT restart the engine", async () => {
+    // A lockout edit only moves knownHz (the engine's own lockoutHz field is a
+    // fallback it never reads when the server supplies knownHz) — so the admin
+    // "unlock"/"lock out" buttons must take the live-push path, not bounce
+    // audio with a full stop/start.
+    const { server, engine } = makeApp();
+    let starts = 0;
+    const realStart = engine.start.bind(engine);
+    engine.start = async (sc) => { starts++; return realStart(sc); };
+    const cfg = (await request(server).get("/api/config")).body;
+    cfg.scan.lockoutHz = [464_550_000]; // lockout-only edit
+    const res = await request(server).put("/api/config").send(cfg);
+    expect(res.status).toBe(200);
+    expect(starts).toBe(0);
+    const updates = (engine as { knownHzUpdates?: number[][] }).knownHzUpdates ?? [];
+    expect(updates.length).toBe(1);
+    expect(updates[0]).toContain(464_550_000); // lockout reached the helper live
+  });
+
   it("PUT /api/config with scan-relevant changes still restarts", async () => {
     const { server, engine } = makeApp();
     let starts = 0;
@@ -1277,5 +1296,38 @@ describe("current-label resolution (rename propagation)", () => {
     history.record({ ts: 2000, kind: "active", channelId: "x", freq: 999000000, alphaTag: "Retired Latest" });
     const stats = (await request(server).get("/api/stats?since=0")).body;
     expect(stats.topChannels.find((t: { freq: number }) => t.freq === 999000000)?.alphaTag).toBe("Retired Latest");
+  });
+});
+
+describe("thermal self-protect restart", () => {
+  it("contains an engine failure during the shed restart (no unhandled rejection)", async () => {
+    // This path fires from the SystemStats sampler — outside any request
+    // handler — while the box is hot and under load, exactly when an engine
+    // stop/start is most likely to reject. An uncontained rejection there
+    // kills the backend (Node >=15 default), turning the self-protect
+    // mechanism into a crash. The sibling switchMode chains already .catch.
+    dir = mkdtempSync(join(tmpdir(), "ksrv-"));
+    const configStore = new ConfigStore(join(dir, "config.json"));
+    const engine = new FakeEngine();
+    engine.stop = async () => { throw new Error("device wedged at 95C"); };
+    const rejections: unknown[] = [];
+    const onRej = (r: unknown): void => { rejections.push(r); };
+    process.on("unhandledRejection", onRej);
+    try {
+      const { server } = createServer({
+        configStore, engine, activityLog: new ActivityLog(100), wsHub: new WsHub(),
+        staticDir: dir, selfProtect: true,
+        // Every thermal zone reads 95°C; all other stats degrade to null.
+        statsReadFile: (p) => { if (p.endsWith("/temp")) return "95000"; throw new Error("not faked"); },
+      });
+      // createServer's synchronous first sample saw 95°C and entered the shed
+      // restart, whose engine.stop() rejects. Give the chain a beat to settle.
+      await new Promise((r) => setTimeout(r, 30));
+      expect(rejections).toEqual([]);
+      const res = await request(server).get("/api/config"); // backend still alive
+      expect(res.status).toBe(200);
+    } finally {
+      process.off("unhandledRejection", onRej);
+    }
   });
 });

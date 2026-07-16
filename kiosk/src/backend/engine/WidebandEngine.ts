@@ -393,6 +393,11 @@ export class WidebandEngine implements ScannerEngine {
       if (trimmed.length > 0) this.lastStderrLine = trimmed;
     });
     err.on("error", () => { /* non-fatal */ });
+    // stdin writes (tune/known/skip/quit) are guarded on .writable, but the
+    // pipe can break before the stream object knows — the write's async EPIPE
+    // then lands as an 'error' event here. Uncaught, it kills the backend; the
+    // child 'close' handler already owns recovery.
+    child.stdin?.on("error", () => {});
 
     child.on("error", (e) => {
       if (this.child !== child) return;

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formToChannel, mhzToHz, weatherFormToChannel, restoreDiscovery } from "../src/frontend/admin/admin.js";
+import { formToChannel, mhzToHz, weatherFormToChannel, restoreDiscovery, readStoredStringSet } from "../src/frontend/admin/admin.js";
 
 describe("admin form helpers", () => {
   it("mhzToHz converts MHz string to integer Hz", () => {
@@ -51,5 +51,26 @@ describe("restoreDiscovery", () => {
     expect(restored.lastSeenAt).toBeUndefined();
     expect(restored.id).toBe("cc_1"); // identity + other fields preserved
     expect(restored.freq).toBe(462887500);
+  });
+});
+
+describe("readStoredStringSet", () => {
+  it("parses a stored JSON string array", () => {
+    expect(readStoredStringSet('["tuning","weather"]', [])).toEqual(new Set(["tuning", "weather"]));
+  });
+
+  it("falls back on corrupt JSON instead of throwing (a throw bricks the whole admin page)", () => {
+    expect(readStoredStringSet("{", ["tuning"])).toEqual(new Set(["tuning"]));
+    expect(readStoredStringSet("undefined", ["a"])).toEqual(new Set(["a"]));
+  });
+
+  it("falls back on valid JSON that isn't a string array", () => {
+    expect(readStoredStringSet("{}", ["x"])).toEqual(new Set(["x"]));       // not iterable
+    expect(readStoredStringSet('"abc"', ["x"])).toEqual(new Set(["x"]));    // iterable, wrong shape
+    expect(readStoredStringSet("[1,2]", ["x"])).toEqual(new Set(["x"]));    // wrong element type
+  });
+
+  it("uses the fallback when nothing is stored (localStorage returns null)", () => {
+    expect(readStoredStringSet(null, ["a", "b"])).toEqual(new Set(["a", "b"]));
   });
 });

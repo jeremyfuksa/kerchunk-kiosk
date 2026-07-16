@@ -113,3 +113,35 @@ describe("planFits (re-point vs respawn decision)", () => {
     expect(planFits(amSpawn, [group(ch(118e6, "am"), ch(146e6, "nfm"))], 12)).toBe(true);
   });
 });
+
+// ── Background (SAME/weather) channel compaction ────────────────────────────
+// The helper's tune() does NOT assign channels to lanes by frequency-sorted
+// position when a background channel is present: it pins the background
+// channel to the last built lane and compacts the remaining regular channels
+// into the earlier slots. The plan must mirror that assignment, or an AM
+// channel grouped with the injected wx_same can land on an FM-only lane —
+// open, detect, and produce silence.
+describe("lane planning with a background channel", () => {
+  const bg = (freq: number): Channel & { background: true } =>
+    ({ ...ch(freq, "nfm"), background: true });
+
+  it("plans modes by the helper's compacted assignment, not sorted position", () => {
+    // freq-sorted: [nfm 161.5, wx_same(bg) 162.45, am 162.9]
+    // helper: regs compacted -> slot0=nfm, slot1=AM; bg -> last lane (2).
+    const plan = computeLanePlan([group(ch(161.5e6, "nfm"), bg(162.45e6), ch(162.9e6, "am"))], 12);
+    expect(plan.laneCount).toBe(3);
+    expect(plan.perLane[0]).toEqual({ fm: true, am: false });
+    expect(plan.perLane[1]).toEqual({ fm: false, am: true }); // the AM channel really lands here
+    expect(plan.perLane[2]).toEqual({ fm: true, am: true });  // SAME lane
+  });
+
+  it("planFits judges slots by the compacted assignment too", () => {
+    const groups = [group(ch(161.5e6, "nfm"), bg(162.45e6), ch(162.9e6, "am"))];
+    // A helper spawned from the OLD (mis-indexed) plan: slot 1 FM-only.
+    const spawned = { laneCount: 3, perLane: [
+      { fm: true, am: false }, { fm: true, am: false }, { fm: true, am: true },
+    ]};
+    // The AM channel actually runs on slot 1, which lacks an AM path.
+    expect(planFits(spawned, groups, 12)).toBe(false);
+  });
+});
