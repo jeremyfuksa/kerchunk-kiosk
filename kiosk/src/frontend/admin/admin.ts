@@ -605,7 +605,6 @@ export function renderAdmin(root: HTMLElement): void {
   // ── System health (Idea 16): gauges + sparklines off /api/system.
   const sysBody = root.querySelector<HTMLElement>("#sysBody")!;
   const healthBanner = root.querySelector<HTMLElement>("#healthBanner")!;
-  let lastVerdict: string | null = null;
   function spark(values: Array<number | null>, max: number, warn: number): string {
     const W = 120; const H = 28;
     const pts = values.map((v, i) => {
@@ -653,28 +652,14 @@ export function renderAdmin(root: HTMLElement): void {
       + cell("Open channels", String(now.openCount), spark(num("openCount"), 12, 11))
       + cell("Disk free", now.diskFreeMb === null ? "n/a" : `${((now.diskFreeMb as number) / 1024).toFixed(1)} GB`,
           "", (now.diskFreeMb as number | null ?? 1e9) < 2048);
-    const verdictClass = health.verdict;
-    const verdictLabel = health.verdict.toUpperCase();
-    // Preserve the user's manual open/collapse across the 3s polls. The verdict-
-    // derived default (open unless healthy) is only re-asserted on first render
-    // or when the verdict actually changes.
-    const prevDetails = sysBody.querySelector<HTMLDetailsElement>(".sysDetails");
-    const userOpen = prevDetails ? prevDetails.open : null; // null = no panel yet
-    const verdictDefaultOpen = health.verdict !== "healthy";
-    const shouldOpen = health.verdict !== lastVerdict
-      ? verdictDefaultOpen
-      : (userOpen ?? verdictDefaultOpen);
-    lastVerdict = health.verdict;
+    // Always open: health has its own page now — no disclosure to manage.
     sysBody.innerHTML =
-      `<div class="healthVerdict ${verdictClass}">
+      `<div class="healthVerdict ${health.verdict}">
          <span class="verdictDot"></span>
-         <span class="verdictLabel">${verdictLabel}</span>
+         <span class="verdictLabel">${health.verdict.toUpperCase()}</span>
          <span class="verdictReason">${esc(health.reason)}</span>
        </div>
-       <details class="sysDetails"${shouldOpen ? " open" : ""}>
-         <summary>Details</summary>
-         <div class="sysGrid">${cells}</div>
-       </details>`;
+       <div class="sysGrid">${cells}</div>`;
   }
   void renderSystem().catch(() => {});
   setInterval(() => { renderSystem().catch(() => {}); }, 3000);

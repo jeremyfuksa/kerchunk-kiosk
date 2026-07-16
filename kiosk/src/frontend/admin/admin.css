@@ -599,7 +599,6 @@ body {
 .healthVerdict.stressed .verdictDot { background: var(--golden-amber); }
 .healthVerdict.trouble { background: color-mix(in srgb, var(--red) 9%, var(--bg-subtle)); }
 .healthVerdict.trouble .verdictDot { background: var(--red); }
-.sysDetails > summary { cursor: pointer; font-size: 12px; color: var(--text-secondary, #9299a5); margin-bottom: 6px; }
 .spark polyline { stroke: var(--pine, #75acaf); stroke-width: 1.5; }
 .spark.hot polyline { stroke: var(--flamingo, #f08080); }
 .healthBanner {
