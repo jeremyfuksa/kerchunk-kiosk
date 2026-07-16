@@ -384,6 +384,13 @@ export function renderAdmin(root: HTMLElement): void {
     });
   });
 
+  // Any click/tap outside an open bank menu closes it.
+  document.addEventListener("click", (ev) => {
+    root.querySelectorAll<HTMLDetailsElement>(".bankMenu[open]").forEach((menu) => {
+      if (!menu.contains(ev.target as Node)) menu.open = false;
+    });
+  });
+
   const vol = root.querySelector<HTMLInputElement>("#vol")!;
   const mute = root.querySelector<HTMLInputElement>("#mute")!;
   const chRows = root.querySelector<HTMLElement>("#chRows")!;
@@ -702,9 +709,9 @@ export function renderAdmin(root: HTMLElement): void {
   function bankHeaderRow(g: BankGroup): string {
     if (!g.bank) {
       return `<tr class="bankRow" data-bank="unbanked">
-        <td colspan="3"><span class="bkCaret">${collapsedBanks.has("unbanked") ? "▸" : "▾"}</span>
+        <td colspan="3"><div class="bkRowInner"><span class="bkCaret">${collapsedBanks.has("unbanked") ? "▸" : "▾"}</span>
         <span class="bkName">UNBANKED</span> <span class="bankCount">${g.channels.length}</span>
-        <span class="hint">matches no bank — tag these or add a bank that covers them</span></td>
+        <span class="hint">matches no bank — tag these or add a bank that covers them</span></div></td>
       </tr>`;
     }
     const b = g.bank;
@@ -712,18 +719,23 @@ export function renderAdmin(root: HTMLElement): void {
     const archivedCount = g.channels.filter((c) => !c.enabled).length;
     const summary = profileSummary(b);
     return `<tr class="bankRow" data-bank="${esc(b.id)}">
-      <td colspan="3">
+      <td colspan="3"><div class="bkRowInner">
         <span class="bkCaret">${collapsedBanks.has(b.id) ? "▸" : "▾"}</span>
         <span class="bkName">${esc(b.name)}</span>
         <span class="bankCount">${g.channels.length}</span>
-        <button class="bkBulkAudible" title="Make every channel in this collection audible">Make audible</button>
-        <button class="bkBulkSilent" title="Keep tracking every channel but silence them">Make silent</button>
-        <button class="bkBulkArchive" title="Stop tracking every channel in this collection">Archive</button>
         <span class="bkSummary">${audibleCount} audible · ${archivedCount} archived${summary ? ` · ${summary}` : ""}</span>
-        ${iconBtn("bkGear", "gear", "Scan profile (squelch/dwell overrides)")}
-        ${iconBtn("bkAddCh", "add", `Add a channel into ${esc(b.name)}`)}
-        ${iconBtn("bkDel", "del", "Delete bank — its channels keep scanning")}
-      </td>
+        <details class="bankMenu">
+          <summary aria-label="Actions for ${esc(b.name)}" title="Bank actions">⋯</summary>
+          <div class="bankMenuList">
+            <button class="bkBulkAudible" title="Make every channel in this collection audible">Make audible</button>
+            <button class="bkBulkSilent" title="Keep tracking every channel but silence them">Make silent</button>
+            <button class="bkBulkArchive" title="Stop tracking every channel in this collection">Archive all</button>
+            <button class="bkAddCh" title="Add a channel into ${esc(b.name)}">Add channel here</button>
+            <button class="bkGear" title="Squelch/dwell overrides for this bank">Scan profile</button>
+            <button class="bkDel danger" title="Delete bank — its channels keep scanning">Delete bank</button>
+          </div>
+        </details>
+      </div></td>
     </tr>`;
   }
 
@@ -777,6 +789,15 @@ export function renderAdmin(root: HTMLElement): void {
   function wireBankRows(): void {
     chRows.querySelectorAll<HTMLElement>("tr.bankRow").forEach((tr) => {
       const id = tr.dataset.bank!;
+      const menu = tr.querySelector<HTMLDetailsElement>(".bankMenu");
+      // One menu open at a time across the table.
+      menu?.addEventListener("toggle", () => {
+        if (!menu.open) return;
+        chRows.querySelectorAll<HTMLDetailsElement>(".bankMenu[open]").forEach((o) => {
+          if (o !== menu) o.open = false;
+        });
+      });
+      const closeMenu = () => { if (menu) menu.open = false; };
       tr.querySelector<HTMLElement>(".bkCaret")?.addEventListener("click", () => {
         if (collapsedBanks.has(id)) collapsedBanks.delete(id);
         else collapsedBanks.add(id);
@@ -792,9 +813,10 @@ export function renderAdmin(root: HTMLElement): void {
         await api.putConfig(cfg);
         await refresh();
       };
-      tr.querySelector<HTMLButtonElement>(".bkBulkAudible")?.addEventListener("click", () => bulk({ enabled: true, audible: true }));
-      tr.querySelector<HTMLButtonElement>(".bkBulkSilent")?.addEventListener("click", () => bulk({ enabled: true, audible: false }));
+      tr.querySelector<HTMLButtonElement>(".bkBulkAudible")?.addEventListener("click", () => { closeMenu(); void bulk({ enabled: true, audible: true }); });
+      tr.querySelector<HTMLButtonElement>(".bkBulkSilent")?.addEventListener("click", () => { closeMenu(); void bulk({ enabled: true, audible: false }); });
       tr.querySelector<HTMLButtonElement>(".bkBulkArchive")?.addEventListener("click", async () => {
+        closeMenu();
         const b = banksCache.find((x) => x.id === id);
         if (!b || !await confirmAdminAction({
           title: `Archive every channel in ${b.name}?`,
@@ -803,16 +825,18 @@ export function renderAdmin(root: HTMLElement): void {
         })) return;
         await bulk({ enabled: false });
       });
-      tr.querySelector<HTMLButtonElement>(".bkGear")?.addEventListener("click", () =>
-        {
-          const b = banksCache.find((x) => x.id === id);
-          if (b) openBankProfile(b);
-        });
+      tr.querySelector<HTMLButtonElement>(".bkGear")?.addEventListener("click", () => {
+        closeMenu();
+        const b = banksCache.find((x) => x.id === id);
+        if (b) openBankProfile(b);
+      });
       tr.querySelector<HTMLButtonElement>(".bkAddCh")?.addEventListener("click", () => {
+        closeMenu();
         const b = banksCache.find((x) => x.id === id);
         openChannelEditor(undefined, b?.tags?.length ? [b.tags[0]!] : []);
       });
       tr.querySelector<HTMLButtonElement>(".bkDel")?.addEventListener("click", async () => {
+        closeMenu();
         const b = banksCache.find((x) => x.id === id);
         if (!b || !await confirmAdminAction({
           title: `Delete bank ${b.name}?`,

@@ -810,22 +810,46 @@ tr.bankRow .bkName {
 }
 tr.bankRow.bk-see .bkName { color: var(--pine, #75acaf); }
 tr.bankRow.bk-off .bkName { color: var(--text-disabled, #5e6371); text-decoration: line-through; }
-tr.bankRow .bkCycle {
-  font-size: 0.7rem; font-weight: 700; letter-spacing: 0.02em;
-  padding: 0.15rem 0.6rem; margin: 0 0.45rem;
-}
 tr.bankRow .bkSummary { font-size: 0.72rem; color: var(--text-secondary, #9299a5); margin-left: 0.6rem; }
-tr.bankRow .bkBulkAudible,
-tr.bankRow .bkBulkSilent,
-tr.bankRow .bkBulkArchive {
-  min-height: 1.7rem;
-  margin-left: 0.35rem;
-  padding: 0.15rem 0.5rem;
-  font-size: 0.68rem;
+
+/* Bank header layout + overflow menu (spec 2026-07-16 admin IA): the six
+   bank actions live behind one ⋯ menu; the header stays a calm summary. */
+tr.bankRow .bkRowInner { display: flex; align-items: center; gap: 0.5rem; }
+tr.bankRow .bkSummary { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bankMenu { position: relative; margin-left: auto; flex: none; }
+.bankMenu summary {
+  list-style: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 2.35rem; min-height: 2.35rem; box-sizing: border-box;
+  padding: 0.2rem 0.6rem;
+  border-radius: 4px;
+  color: var(--label);
+  font-size: 1.1rem; line-height: 1;
+  cursor: pointer;
 }
-tr.bankRow .bkBulkAudible { color: var(--green); }
-tr.bankRow .bkBulkSilent { color: var(--blue); }
-tr.bankRow .bkBulkArchive { color: var(--dim); }
+.bankMenu summary::-webkit-details-marker { display: none; }
+.bankMenu summary:hover, .bankMenu[open] summary { background: var(--etch); color: var(--ink); }
+.bankMenuList {
+  position: absolute; right: 0; top: calc(100% + 4px); z-index: 30;
+  display: grid; gap: 0.1rem;
+  min-width: 12rem;
+  padding: 0.35rem;
+  background: var(--panel);
+  border: 1px solid var(--panel-edge);
+  border-radius: 8px;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5);
+}
+.bankMenuList button {
+  margin: 0;
+  border: none; background: none;
+  text-align: left; justify-content: flex-start;
+  min-height: 2.35rem;
+}
+.bankMenuList button:hover:not(:disabled) { background: var(--etch); border: none; }
+.bankMenuList .bkDel { color: var(--red); }
+@media (pointer: coarse) {
+  .bankMenu summary, .bankMenuList button { min-height: 2.75rem; }
+}
 .memChip {
   text-transform: uppercase;
   color: var(--text-tertiary, #747b8a);
