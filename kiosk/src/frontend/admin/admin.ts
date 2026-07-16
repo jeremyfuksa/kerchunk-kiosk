@@ -782,7 +782,7 @@ export function renderAdmin(root: HTMLElement): void {
   function displayRow(c: Channel): string {
     return `<tr data-id="${esc(c.id)}">
       <td class="rowOpen">${fmtFreq(c.freq)}</td>
-      <td class="rowOpen">${esc(c.alphaTag)}${c.alert ? `<span class="bellChip" title="Alerts on a hit">${ICONS.bell}</span>` : ""}${membershipChips(c)}${locChip(c.location)}</td>
+      <td class="rowOpen">${esc(c.alphaTag)}${c.alert ? `<span class="bellChip" title="Alerts on a hit">${ICONS.bell}</span>` : ""}${membershipChips(c)}${locChip(c.location)}<span class="rowChev" aria-hidden="true">›</span></td>
       <td class="rowOpen">${esc(c.mode.toUpperCase())}</td>
       <td><input type="checkbox" class="prio" ${c.priority ? "checked" : ""} /></td>
       <td><input type="checkbox" class="audible" ${c.audible !== false ? "checked" : ""} /></td>
@@ -1348,7 +1348,7 @@ export function renderAdmin(root: HTMLElement): void {
       : ds.map((d) => `<tr data-id="${esc(d.id)}" class="dcRow">
           <td><input type="checkbox" class="dSel" ${dcSelected.has(d.id) ? "checked" : ""} /></td>
           <td class="rowOpen">${fmtFreq(d.freq)}<span class="dcSvc${serviceFor(d.freq) ? "" : " outband"}">${esc(serviceFor(d.freq) ?? "OUTBAND")}</span></td>
-          <td class="rowOpen">${esc(d.alphaTag)}${d.audible === false ? '<span class="dcSee" title="Identified as data/paging — filed seen-not-heard; promotes as SEE">SEE</span>' : d.audible === true ? '<span class="dcHear" title="Identified as analog voice — hearable">HEAR</span>' : ""}${locChip(d.location)}</td>
+          <td class="rowOpen">${esc(d.alphaTag)}${d.audible === false ? '<span class="dcSee" title="Identified as data/paging — filed seen-not-heard; promotes as SEE">SEE</span>' : d.audible === true ? '<span class="dcHear" title="Identified as analog voice — hearable">HEAR</span>' : ""}${locChip(d.location)}<span class="rowChev" aria-hidden="true">›</span></td>
           <td class="rowOpen dMode${d.mode && DIGITAL.some((x) => d.mode!.toUpperCase().includes(x)) ? " digital" : ""}">${d.mode ? esc(d.mode.toUpperCase()) : "—"}</td>
           <td class="actions">${iconBtn("dListen", "listen", "Listen — audition this discovery")}${iconBtn("dAdd", "add", "Add as an enabled channel")}${iconBtn("dLock", "lockout", "Lockout — never Close-Call this frequency again")}${iconBtn("dDismiss", "dismiss", "Dismiss (may be rediscovered later)")}</td>
         </tr>`).join("");

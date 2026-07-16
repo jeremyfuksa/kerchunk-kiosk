@@ -264,11 +264,15 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-/* Touch devices: comfortable tap targets on the icon buttons */
+/* Touch floor (spec 2026-07-16): every target ≥44px on coarse pointers. */
 @media (pointer: coarse) {
-  .admin .iconBtn { padding: 0.5rem; }
-  .admin .iconBtn svg { width: 17px; height: 17px; }
+  .admin button { min-height: 2.75rem; }
+  .admin .iconBtn { min-width: 2.75rem; min-height: 2.75rem; padding: 0.5rem; }
+  .admin .iconBtn svg { width: 18px; height: 18px; margin: auto; }
   .admin .chTable td { padding: 0.55rem 0.5rem; }
+  .admin input[type="checkbox"] { width: 1.35rem; height: 1.35rem; }
+  .admin input[type="range"] { height: 8px; }
+  .admin input[type="range"]::-webkit-slider-thumb { width: 22px; height: 30px; }
 }
 
 /* Tablet (≥700px): wider canvas; small modules pair up side-by-side */
@@ -448,6 +452,9 @@ body {
 
 /* The identifying cells are now click targets — show it */
 .admin .chTable td.rowOpen { cursor: pointer; }
+/* Rows open the dossier drawer — say so without hover. */
+.admin .chTable .rowChev { float: right; color: var(--dim); padding-left: 0.5em; }
+.admin .chTable tbody tr:hover .rowChev { color: var(--ink); }
 .admin .chTable tbody tr:hover td.rowOpen { color: var(--ink); }
 
 /* ── Banks rail ── */
