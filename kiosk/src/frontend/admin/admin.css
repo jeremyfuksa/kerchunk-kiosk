@@ -183,11 +183,7 @@ body {
 }
 .admin .chTable td:first-child { color: var(--ink); }
 .admin .chTable tbody tr:hover td { background: rgba(255, 255, 255, 0.015); }
-.admin .channels .chTable td:nth-child(4), .admin .channels .chTable td:nth-child(5), .admin .channels .chTable td:nth-child(6),
-.admin .channels .chTable th:nth-child(4), .admin .channels .chTable th:nth-child(5), .admin .channels .chTable th:nth-child(6) { text-align: center; }
-.admin .chTable tr.editing td { background: color-mix(in srgb, var(--spark) 4%, transparent); }
-.admin .chTable input.fMhz { width: 6.5rem; }
-.admin .chTable input.fTag { width: 100%; box-sizing: border-box; }
+.admin .chTable .chAudible { text-align: center; }
 .admin .chTable .empty {
   color: var(--dim); font-style: italic; text-align: center;
   padding: 1rem; font-size: 0.85rem;
@@ -331,11 +327,6 @@ body {
 }
 .admin tr.dcDetail .dl:first-child { margin-left: 0; }
 
-/* Mobile: shed the Mode column (it's in edit view); keep live toggles */
-@media (max-width: 560px) {
-  .admin .channels .chTable th:nth-child(3),
-  .admin .channels .chTable td:nth-child(3) { display: none; }
-}
 
 /* One chip recipe (spec 2026-07-16): size/shape identical, color varies. */
 .admin .count, .admin .modeChip, .dcSee, .dcHear, .dcSvc, .memChip {

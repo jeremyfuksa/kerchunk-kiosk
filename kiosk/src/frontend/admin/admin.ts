@@ -188,7 +188,7 @@ export function renderAdmin(root: HTMLElement): void {
         <div class="tableWrap">
           <table class="chTable">
             <thead><tr>
-              <th>Freq (MHz)</th><th>Name</th><th>Mode</th><th>Priority</th><th>Audible</th><th>Archived</th><th></th>
+              <th>Freq (MHz)</th><th>Name</th><th class="chAudible">Audible</th>
             </tr></thead>
             <tbody id="chRows"></tbody>
           </table>
@@ -675,21 +675,13 @@ export function renderAdmin(root: HTMLElement): void {
     if (drawerKind === "analytics" && analyticsFreq !== null) void renderAnalyticsDrawer(analyticsFreq);
   }, 5000);
 
-  // Inline-editable CRUD table. One row at a time is editable: editingId is a
-  // channel id, "new" (blank row pending creation), or null. Checkboxes on
-  // display rows act immediately (PUT patch); text/mode edits go through
-  // edit -> save / cancel, with Enter/Escape shortcuts.
+  // Channel table: read-only rows (freq · name · audible toggle); all other
+  // edits happen in the drawer, the single editor (spec 2026-07-16 admin IA).
   let channels: Channel[] = [];
   let banksCache: Bank[] = [];
-  // Per-group add: the new-channel row renders inside this bank's section
-  // and the saved channel carries the bank's first tag, so a channel added
-  // "into Rail" actually matches Rail.
-  let pendingTags: string[] = [];
-  let pendingGroup: string | null = null;
   // Collapsed bank groups (persisted like the collapsible modules).
   const GROUPS_KEY = "kerchunk.admin.banksCollapsed";
   const collapsedBanks = readStoredStringSet(localStorage.getItem(GROUPS_KEY), []);
-  let editingId: string | null = null;
 
   const MODES: Channel["mode"][] = ["nfm", "fm", "am"];
 
@@ -710,7 +702,7 @@ export function renderAdmin(root: HTMLElement): void {
   function bankHeaderRow(g: BankGroup): string {
     if (!g.bank) {
       return `<tr class="bankRow" data-bank="unbanked">
-        <td colspan="7"><span class="bkCaret">${collapsedBanks.has("unbanked") ? "▸" : "▾"}</span>
+        <td colspan="3"><span class="bkCaret">${collapsedBanks.has("unbanked") ? "▸" : "▾"}</span>
         <span class="bkName">UNBANKED</span> <span class="bankCount">${g.channels.length}</span>
         <span class="hint">matches no bank — tag these or add a bank that covers them</span></td>
       </tr>`;
@@ -720,7 +712,7 @@ export function renderAdmin(root: HTMLElement): void {
     const archivedCount = g.channels.filter((c) => !c.enabled).length;
     const summary = profileSummary(b);
     return `<tr class="bankRow" data-bank="${esc(b.id)}">
-      <td colspan="7">
+      <td colspan="3">
         <span class="bkCaret">${collapsedBanks.has(b.id) ? "▸" : "▾"}</span>
         <span class="bkName">${esc(b.name)}</span>
         <span class="bankCount">${g.channels.length}</span>
@@ -749,80 +741,24 @@ export function renderAdmin(root: HTMLElement): void {
     return `<tr data-id="${esc(c.id)}">
       <td class="rowOpen">${fmtFreq(c.freq)}</td>
       <td class="rowOpen">${esc(c.alphaTag)}${c.alert ? `<span class="bellChip" title="Alerts on a hit">${ICONS.bell}</span>` : ""}${membershipChips(c)}${locChip(c.location)}<span class="rowChev" aria-hidden="true">›</span></td>
-      <td class="rowOpen">${esc(c.mode.toUpperCase())}</td>
-      <td><input type="checkbox" class="prio" ${c.priority ? "checked" : ""} /></td>
-      <td><input type="checkbox" class="audible" ${c.audible !== false ? "checked" : ""} /></td>
-      <td><input type="checkbox" class="archived" ${!c.enabled ? "checked" : ""} /></td>
-      <td class="actions">${iconBtn("listen", "listen", "Listen — park the radio on this channel (unsquelched)")}${iconBtn("lock", "lockout", "Lock out — remove and never Close-Call this frequency again")}</td>
-    </tr>`;
-  }
-
-  function editRow(c?: Channel): string {
-    return `<tr data-id="${c ? esc(c.id) : "new"}" class="editing">
-      <td><input class="fMhz" value="${c ? fmtFreq(c.freq) : ""}" placeholder="145.130" /></td>
-      <td><input class="fTag" value="${c ? esc(c.alphaTag) : ""}" placeholder="KC0KW — Gibbs Rd" /></td>
-      <td><select class="fMode">${modeOptions(c?.mode ?? "nfm")}</select></td>
-      <td><input type="checkbox" class="fPrio" ${c?.priority ? "checked" : ""} /></td>
-      <td><input type="checkbox" class="fAudible" ${c ? (c.audible !== false ? "checked" : "") : ""} /></td>
-      <td><input type="checkbox" class="fArchived" ${c && !c.enabled ? "checked" : ""} /></td>
-      <td class="actions">${iconBtn("save", "save", "Save")}${iconBtn("cancel", "cancel", "Cancel")}</td>
+      <td class="chAudible"><input type="checkbox" class="audible" ${c.audible !== false ? "checked" : ""} title="Audible — play this channel through the speaker" /></td>
     </tr>`;
   }
 
   function renderRows(): void {
     const groups = groupChannelsByBank(channels, banksCache);
-    // Where does the new-channel editor render? A per-group add (pendingGroup
-    // set) renders inside ITS bank's group; the global + Add renders at the
-    // very top (index 0). Either way the saved channel re-homes by its own
-    // predicate match on the post-save refresh.
-    const editorGroup = pendingGroup === null
-      ? 0
-      : Math.max(0, groups.findIndex((g) => (g.bank?.id ?? "unbanked") === pendingGroup));
     chRows.innerHTML =
-      groups.map((g, i) => {
+      groups.map((g) => {
         const key = g.bank?.id ?? "unbanked";
         const body = collapsedBanks.has(key)
           ? ""
-          : (editingId === "new" && i === editorGroup ? editRow() : "")
-            + g.channels.map((c) => (editingId === c.id ? editRow(c) : displayRow(c))).join("");
+          : g.channels.map(displayRow).join("");
         return bankHeaderRow(g) + body;
       }).join("") +
-      (channels.length === 0 && editingId !== "new"
-        ? `<tr><td colspan="7" class="empty">No channels yet — use Add channel above.</td></tr>` : "");
-    addBtn.disabled = editingId !== null;
+      (channels.length === 0
+        ? `<tr><td colspan="3" class="empty">No channels yet — use Add channel above.</td></tr>` : "");
     wireRows();
     wireBankRows();
-  }
-
-  function rowPatch(tr: HTMLElement): Omit<Channel, "id"> {
-    // formToChannel throws on a bad frequency — surfaced in chErr by saveRow.
-    // priority/enabled are set explicitly: a PUT patch needs `priority: false`
-    // (not an absent key) to UNSET the flag on an existing channel.
-    const base = formToChannel({
-      mhz: tr.querySelector<HTMLInputElement>(".fMhz")!.value,
-      alphaTag: tr.querySelector<HTMLInputElement>(".fTag")!.value,
-      mode: tr.querySelector<HTMLSelectElement>(".fMode")!.value,
-    });
-    return {
-      ...base,
-      priority: tr.querySelector<HTMLInputElement>(".fPrio")!.checked,
-      audible: tr.querySelector<HTMLInputElement>(".fAudible")!.checked,
-      enabled: !tr.querySelector<HTMLInputElement>(".fArchived")!.checked,
-      ...(tr.dataset.id === "new" && pendingTags.length ? { tags: pendingTags } : {}),
-    };
-  }
-
-  async function saveRow(tr: HTMLElement): Promise<void> {
-    chErr.textContent = "";
-    try {
-      const payload = rowPatch(tr);
-      if (tr.dataset.id === "new") await api.addChannel(payload);
-      else await api.updateChannel(tr.dataset.id!, payload);
-      editingId = null;
-      pendingTags = [];
-      pendingGroup = null;
-      await refresh();
-    } catch (e) { chErr.textContent = (e as Error).message; }
   }
 
   function wireRows(): void {
@@ -831,36 +767,10 @@ export function renderAdmin(root: HTMLElement): void {
       if (!id) return;
       tr.querySelectorAll<HTMLElement>(".rowOpen").forEach((cell) =>
         cell.addEventListener("click", () => openDrawer("channel", id)));
-      tr.querySelector<HTMLButtonElement>(".listen")?.addEventListener("click", () => {
-        const c = channels.find((x) => x.id === id);
-        if (c) api.monitor(c.freq, c.alphaTag || fmtFreq(c.freq));
-      });
-      tr.querySelector<HTMLButtonElement>(".lock")?.addEventListener("click", () => {
-        const c = channels.find((x) => x.id === id);
-        if (c) void lockoutFreq(c.freq, c.alphaTag || fmtFreq(c.freq));
-      });
-      tr.querySelector<HTMLInputElement>(".prio")?.addEventListener("change", async (ev) => {
-        await api.updateChannel(id, { priority: (ev.target as HTMLInputElement).checked });
-        await refresh();
-      });
       tr.querySelector<HTMLInputElement>(".audible")?.addEventListener("change", async (ev) => {
         await api.updateChannel(id, { audible: (ev.target as HTMLInputElement).checked });
         await refresh();
       });
-      tr.querySelector<HTMLInputElement>(".archived")?.addEventListener("change", async (ev) => {
-        await api.updateChannel(id, { enabled: !(ev.target as HTMLInputElement).checked });
-        await refresh();
-      });
-      tr.querySelector<HTMLButtonElement>(".save")?.addEventListener("click", () => saveRow(tr));
-      tr.querySelector<HTMLButtonElement>(".cancel")?.addEventListener("click", () => {
-        editingId = null; pendingTags = []; pendingGroup = null; chErr.textContent = ""; renderRows();
-      });
-      if (tr.classList.contains("editing")) {
-        tr.addEventListener("keydown", (ev) => {
-          if (ev.key === "Enter") { ev.preventDefault(); saveRow(tr); }
-          if (ev.key === "Escape") { editingId = null; pendingTags = []; pendingGroup = null; chErr.textContent = ""; renderRows(); }
-        });
-      }
     });
   }
 
@@ -900,11 +810,7 @@ export function renderAdmin(root: HTMLElement): void {
         });
       tr.querySelector<HTMLButtonElement>(".bkAddCh")?.addEventListener("click", () => {
         const b = banksCache.find((x) => x.id === id);
-        pendingTags = b?.tags?.length ? [b.tags[0]!] : [];
-        pendingGroup = id;
-        editingId = "new";
-        collapsedBanks.delete(id);
-        renderRows();
+        openChannelEditor(undefined, b?.tags?.length ? [b.tags[0]!] : []);
       });
       tr.querySelector<HTMLButtonElement>(".bkDel")?.addEventListener("click", async () => {
         const b = banksCache.find((x) => x.id === id);
@@ -920,10 +826,6 @@ export function renderAdmin(root: HTMLElement): void {
         await refresh();
       });
     });
-  }
-
-  function tr0Focus(): void {
-    chRows.querySelector<HTMLInputElement>("tr.editing .fMhz")?.focus();
   }
 
   const chCount = root.querySelector<HTMLElement>("#chCount")!;
@@ -1496,7 +1398,8 @@ export function renderAdmin(root: HTMLElement): void {
   renderLockouts();
 
   addBtn.addEventListener("click", () => {
-    pendingTags = []; pendingGroup = null; editingId = "new"; chErr.textContent = ""; renderRows(); tr0Focus();
+    chErr.textContent = "";
+    openChannelEditor();
   });
 
   // ---- Now Playing card ----
