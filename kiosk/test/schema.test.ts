@@ -65,9 +65,31 @@ describe("configSchema", () => {
       radiusKm: 75,
       pollIntervalMs: 5000,
       maxTargets: 60,
-      url: "http://api.airplanes.live/v2/point",
+      url: "https://api.airplanes.live/v2/point",
       trails: false,
     });
+  });
+
+  // The endpoint 301s http -> https, so a cleartext base cost every poll an
+  // extra request/connection against a 1 req/s-limited feed. The old default
+  // is persisted in deployed configs, where it shadows the new one — migrate
+  // that exact value on load.
+  it("migrates the legacy cleartext aircraft url to https", () => {
+    const cfg = configSchema.parse({
+      ...defaultConfig(),
+      aircraft: { url: "http://api.airplanes.live/v2/point" },
+    });
+    expect(cfg.aircraft?.url).toBe("https://api.airplanes.live/v2/point");
+  });
+
+  // A self-hosted receiver (the reserved dump1090 sidecar) is plain http on
+  // the LAN and must not be forced to https — only the known-bad default moves.
+  it("leaves a custom http aircraft url alone", () => {
+    const cfg = configSchema.parse({
+      ...defaultConfig(),
+      aircraft: { url: "http://192.168.1.50:8080/data" },
+    });
+    expect(cfg.aircraft?.url).toBe("http://192.168.1.50:8080/data");
   });
 
   it("accepts an enabled aircraft block with overrides", () => {
