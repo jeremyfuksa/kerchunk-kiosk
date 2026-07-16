@@ -1107,14 +1107,85 @@ body { font-family: var(--font-sans, sans-serif); }
   .adminNav a { flex: 1 0 auto; min-height: 2.7rem; }
   .adminNav .navCopy small { display: none; }
 }
+/* ── Phone layout (spec 2026-07-16 mobile): designed for the phone, not
+   shrunk from the desktop. Bottom tab bar in the thumb zone, compact
+   headers, reflowed hero, tables that never scroll sideways. This block
+   sits late in the file on purpose — it outranks the 560/900px rules. */
 @media (max-width: 700px) {
+  .adminHead { min-height: 2.75rem; margin-bottom: 0.9rem; padding-block: 0.5rem; }
   .adminHead .brandSub { display: none; }
   .adminHead .headActions a { padding-inline: 0.4rem; }
-  .pageIntro { align-items: stretch; flex-direction: column; }
+
+  /* Bottom tab bar: five equal tabs, icon over label, safe-area aware. */
+  .adminNav {
+    /* Below the drawer scrim (z40): an open drawer covers the tab bar. */
+    position: fixed; inset: auto 0 0 0; z-index: 35;
+    display: flex; flex-direction: row; gap: 0;
+    margin: 0;
+    padding: 0.25rem 0.25rem calc(0.25rem + env(safe-area-inset-bottom));
+    background: var(--panel);
+    border-top: 1px solid var(--panel-edge);
+    overflow: visible;
+    min-width: 0; width: auto;
+  }
+  .adminNav a {
+    flex: 1 1 0; min-width: 0; min-height: 3.1rem;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 0.15rem;
+    padding: 0.3rem 0.1rem;
+    position: relative;
+    border: none; border-radius: 4px;
+    text-align: center;
+  }
+  .adminNav a.active { background: transparent; border: none; }
+  .adminNav .navCopy { display: block; min-width: 0; max-width: 100%; }
+  .adminNav .navCopy b {
+    display: block;
+    font-size: 0.62rem; letter-spacing: 0;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .adminNav .navCopy small { display: none; }
+  .adminNav .navIco svg { width: 1.3rem; height: 1.3rem; }
+  .adminNav a.active .navIco { color: var(--spark, #ff6b35); }
+  .adminNav .navBadge:not(:empty) {
+    position: absolute; top: 0.1rem; right: 50%;
+    transform: translateX(1.3rem);
+    margin: 0;
+  }
+  /* Content clears the fixed bar. */
+  .admin { padding-bottom: calc(5.5rem + env(safe-area-inset-bottom)); }
+
+  /* Compact page headers: the tab bar already names the page. */
+  .pageIntro { align-items: stretch; flex-direction: column; margin-bottom: 0.8rem; }
   .pageIntro > button { align-self: start; }
+  .pageIntro p, .pageIntro .eyebrow { display: none; }
+  .pageIntro h1 { font-size: 1.35rem; margin: 0; }
+
+  /* Hero: full-width rows, flexing volume, two-up transmission buttons. */
   .admin .nowCard .npControls { grid-template-columns: 1fr; }
-  .admin .transmissionControls { justify-content: flex-start; }
+  .admin .audioControls { display: flex; flex-wrap: wrap; gap: 0.6rem; }
+  .admin .audioControls #streamBtn { flex: 1 1 100%; }
+  .admin .audioControls label:not(.checkLabel) {
+    flex: 1 1 100%;
+    display: flex; align-items: center; gap: 0.6rem;
+  }
+  .admin .audioControls input[type="range"] { flex: 1; width: auto; }
+  .admin .transmissionControls {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;
+  }
+  .admin .transmissionControls button { margin: 0; width: 100%; }
+  .admin .transmissionControls #resumeBtn { grid-column: 1 / -1; }
   .admin .systemActions .hint { width: 100%; text-align: left; }
+
+  /* Channels table fits the screen — no sideways scroll. */
+  .admin .channels .chTable { display: table; table-layout: fixed; width: 100%; }
+  .admin .channels .chTable th:nth-child(1) { width: 6.2rem; }
+  .admin .channels .chTable .chAudible { width: 4rem; }
+  .admin .channels .chTable td.rowOpen:nth-child(2) {
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  tr.bankRow .bkSummary { display: none; }
+
   .admin .bankAdd { grid-template-columns: 1fr; }
   .bankBuilder summary span { display: block; margin: 0.25rem 0 0 1rem; }
   .settingsCard .settingGroups label { grid-template-columns: 1fr; gap: 0.4rem; }
