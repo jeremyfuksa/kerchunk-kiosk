@@ -78,5 +78,14 @@ export class ConfigStore {
     fsyncSync(fd);
     closeSync(fd);
     renameSync(tmp, this.path);
+    // POSIX: the rename itself lives in the directory, and isn't durable
+    // until the directory is fsynced. Without this, an unclean power loss
+    // can revert to the previous config (valid, but the operator's last
+    // save silently vanishes). Best-effort: not every FS accepts dir fsync.
+    try {
+      const dirFd = openSync(dirname(this.path), "r");
+      fsyncSync(dirFd);
+      closeSync(dirFd);
+    } catch { /* non-fatal: durability best-effort on exotic filesystems */ }
   }
 }
