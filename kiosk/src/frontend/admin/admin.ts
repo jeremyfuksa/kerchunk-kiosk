@@ -147,6 +147,11 @@ export function renderAdmin(root: HTMLElement): void {
           </div>
         </div>
       </section>
+      <section class="alertFeed" data-page="home">
+        <h2>Alerts <span class="hint">what fired while you were away — flag channels with the bell</span></h2>
+        <ul id="alertRows" class="alertList"></ul>
+        <div class="alertFeedFoot"><button id="clearAlerts" class="alertClearAll" type="button" hidden>Clear all</button></div>
+      </section>
       <section class="discoveries" data-page="triage">
         <div class="pageIntro sectionIntro">
           <div><span class="eyebrow">Triage</span><h1>Review discoveries <span class="count" id="dcCount"></span></h1><p>Close Call found these frequencies. Listen, then add useful signals or dismiss the rest.</p></div>
@@ -206,13 +211,6 @@ export function renderAdmin(root: HTMLElement): void {
         </div>
         <div id="inBody" class="inBody"></div>
       </section>
-      <div class="feedsRow" data-page="home">
-      <section class="alertFeed collapsible" data-key="alerts" data-page="home">
-        <h2>Alerts <span class="hint">what fired while you were away — flag channels with the bell</span></h2>
-        <ul id="alertRows" class="alertList"></ul>
-        <div class="alertFeedFoot"><button id="clearAlerts" class="alertClearAll" type="button" hidden>Clear all</button></div>
-      </section>
-      </div>
       <div class="pageIntro" data-page="scan">
         <div><span class="eyebrow">Settings</span><h1>Scanner settings</h1><p>Tune scanning, alerts, the weather channel, and integrations. Each card saves on its own.</p></div>
       </div>
@@ -564,7 +562,7 @@ export function renderAdmin(root: HTMLElement): void {
       tile("Hits · 24h", String(stats.totalHits), `${stats.topChannels[0] ? esc(stats.topChannels[0].alphaTag) + " leads" : "quiet band"}`)
       + tile("Airtime", fmtAirShort(stats.totalAirtimeMs), `${stats.discoveries} close call${stats.discoveries === 1 ? "" : "s"} heard`)
       + tile("Triage queue", String(pending), pending > 0 ? "discoveries await review" : "inbox zero", "#/triage")
-      + tile("Alerts · 24h", String((alerts as unknown[]).length), "bell + SAME, feed below")
+      + tile("Alerts · 24h", String((alerts as unknown[]).length), "bell + SAME, feed above")
       + `<div class="statTile clockTile">
           <div class="stLabel">Activity by hour</div>
           <div class="hourClock" role="img" aria-label="${total === 0 ? "No traffic yet today" : `${total} hits today, busiest around ${String(peak).padStart(2, "0")}:00`}">${clock}</div>
