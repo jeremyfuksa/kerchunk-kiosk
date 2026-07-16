@@ -25,6 +25,14 @@
   --cond: var(--font-sans);
 }
 
+/* Inter throughout — see dashboard.css note; scoped so map/wall/art keep
+   Campfire faces. */
+html[data-page="admin"] {
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-body: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
 body {
   margin: 0;
   font-family: var(--mono);
