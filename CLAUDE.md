@@ -5,6 +5,21 @@ to run it — read [`README.md`](README.md) and [`kiosk/README.md`](kiosk/README
 first. This file is the *how to change it* layer: the conventions and gotchas
 that are easy to get wrong.
 
+## What you're standing on
+
+Kerchunk is an SDR scanner **appliance**: a lid-closed Ubuntu 26.04 laptop
+(i7-4770HQ MacBook Pro), RTL-SDR dongles, and a persistent GNU Radio flowgraph
+that demodulates every channel in a ~2 MHz window at once. Stack: TypeScript
+(Node ≥24, ESM) backend + vanilla-TS/Vite frontends, a Python DSP helper under
+GNU Radio, zod-validated config, systemd. **No frontend framework — vanilla TS
+only.** Icons are `lucide-static` only, never hand-rolled SVG (operator
+mandate).
+
+**The dev machine is usually the appliance itself** (`/home/kiosk`). It is a
+live radio the operator listens to, and it runs ~1 °C under its 90 °C thermal
+safety trip — treat restarts and CPU spikes as real costs, not free actions
+(see "Deploy & restart discipline").
+
 ## Git workflow
 
 **Every change ships through a pull request — never commit directly to `main`.**
@@ -24,21 +39,59 @@ branch → push → PR → merge and prove it after it lands. If a change has al
 landed on local `main` by mistake, move it onto a branch and reset `main` to
 `origin/main` before opening the PR.
 
+**Clean up after every merge, without being asked.** Merge with
+`gh pr merge <n> --merge --delete-branch`, then
+`git checkout main && git pull --ff-only && git fetch --prune` and
+`git branch -d <branch>`.
+
 ## Where the code is
 
 All application code, tests, and commands live under **`kiosk/`** — `cd kiosk`
-before running anything. The repo root holds only docs, bench notes, and this file.
+before running anything. The repo root holds only docs, bench notes, and this
+file.
+
+- `kiosk/src/backend/` — server, engines (`engine/`), config (`config/`),
+  lookup/identification providers, SAME/weather, aircraft feed.
+- `kiosk/src/frontend/` — four surfaces: `dashboard/` (the HDMI kiosk view —
+  the fullscreen map *is* the dashboard), `admin/` (web admin from any
+  device), `wall/` and `art/` (ambient canvas skins), plus `map/` (shared map
+  layers) and `lib/`.
+- `kiosk/test/` — vitest suite; `test/fakes/` has the fake engine + helper.
+- `kiosk/systemd/`, `kiosk/scripts/` — appliance units and setup scripts.
 
 ## Commands (from `kiosk/`)
 
 ```sh
 npm test                 # vitest, no hardware needed (FakeEngine + fake helper)
-npm run build            # build:frontend (vite) + build:backend (tsc + copy helper)
+npm run test:py          # DSP-math tests — runs /usr/bin/python3 (system python)
+npm run build            # build:frontend (vite) + build:backend (tsc + copy helpers)
+npx tsc -p tsconfig.json --noEmit   # typecheck; vite does NOT typecheck (see below)
 npm run dev:frontend     # vite dev server, proxies /api + /ws to :8080
 USE_FAKE_ENGINE=1 KERCHUNK_CONFIG=/tmp/kc.json npm run dev:backend
 ```
 
-Deploy on the appliance: `git pull && (cd kiosk && npm run build) && sudo systemctl restart kerchunk-kiosk`.
+## Deploy & restart discipline
+
+Full deploy on the appliance:
+`git pull && (cd kiosk && npm run build) && sudo systemctl restart kerchunk-kiosk`
+(`sudo` is passwordless here). But **only restart the service for backend
+changes** — every restart respawns the GNU Radio helper (~2.7 cores of
+flowgraph rebuild), spikes thermals, and interrupts live audio.
+
+- **Frontend-only change:** `npm run build` (or at least `build:frontend` +
+  `npx tsc --noEmit` — vite/esbuild does no type checking, and a type error
+  once shipped silently and killed the kiosk map), then
+  `curl -X POST localhost:8080/api/kiosk/reload` to refresh the wall page. A
+  reload POST right after a backend restart can race the WS reconnect — wait
+  a beat or re-send.
+- **Two services.** `kerchunk-kiosk` is the backend; `kerchunk-display` is the
+  chromium wall session. If the wall page wedges/goes stale (it can after
+  repeated restarts or a thermal spike), `sudo systemctl restart
+  kerchunk-display` — don't bounce the backend for a frozen page.
+- **Hand-editing `config.json`:** stop `kerchunk-kiosk` first, or the running
+  server will clobber your edit on its next persist.
+- Config-only changes via `PUT /api/config` — non-scan fields (e.g. `alerts`)
+  apply live with no engine restart.
 
 ## Conventions that bite
 
@@ -48,11 +101,74 @@ Deploy on the appliance: `git pull && (cd kiosk && npm run build) && sudo system
 - **`tsconfig` is `strict` + `noUncheckedIndexedAccess`.** Indexed access
   (`arr[i]`, `map[key]`) is typed `T | undefined`; handle the undefined case.
 - **`build:backend` is more than `tsc`.** It also copies
-  `src/backend/engine/wideband_helper.py` into `dist/`. The DSP helper is not
-  TypeScript and won't be emitted by the compiler — run the npm script, not bare `tsc`.
+  `src/backend/engine/wideband_helper.py` *and* `wideband_dsp_math.py` into
+  `dist/`. The DSP helpers are not TypeScript and won't be emitted by the
+  compiler — run the npm script, not bare `tsc`.
 - **GNU Radio needs the system python** (`/usr/bin/python3`), not a
   pyenv/mise interpreter — the bindings aren't visible elsewhere. Squelch
   tuning knobs live at the top of `wideband_helper.py`.
+- **ALSA is addressed by name** (`plughw:CARD=PCH,DEV=0`) — card indices swap
+  across boots. The sink is exclusive (no dmix): exactly one process owns
+  audio.
+- **SDRs are addressed by EEPROM serial** (`radios[].serial`, e.g. KIOSK01 =
+  scan, KIOSK03 = weather; `port` is the fallback). Don't resurrect
+  devnum/index addressing — it enumerated non-deterministically.
+
+## Do-not-undo invariants
+
+Hard-won fixes that look like cleanup targets. Each one broke in production;
+do not "simplify" them away:
+
+- **Boot goes through `toScanConfig`.** Boot must start the engine through the
+  *same* `toScanConfig` path the API uses — a hand-built boot payload once
+  dropped `knownHz` and made every reboot re-discover all filed frequencies.
+- **SAME break-in is a `retune()`, never `stop()+start()`.** The weather
+  break-in re-points the live flowgraph; a restart replays the warm-up
+  overlay, chops audio, and wipes the alert banner.
+- **The `breakIn` guard in `server.ts` stays.** While a break-in holds the
+  scanner on NWR, safetyMode logs temperature but must not bounce the engine —
+  the restart cold-start spikes *caused* the overheating oscillation it tried
+  to cure.
+- **The weather helper runs at `niceness: 19`.** At equal priority its ~300 GR
+  threads starve the scanner's audio thread and the live repeater sounds
+  choppy. Any additional radio helper gets niced down too.
+- **The engine must always drain the helper's fd-3 audio tee** (feeds
+  `/api/stream.wav`) or the helper blocks.
+- **Wideband hold-through is capped** (PR #194) so a stuck-open lane can't
+  park the scanner on one window forever.
+- **No `backdrop-filter` blur or full-screen overlays above the animating
+  map** — measured +6 °C.
+
+## Verifying changes
+
+- **Logic:** `npm test` (and `npm run test:py` when touching the DSP math).
+  Unit-test pure accumulator/loop logic headless-safe.
+- **Anything audible/RF:** prove it on the live appliance by ear; the operator
+  verifies within minutes.
+- **Anything visual:** headless chromium verification is a dead end on this
+  box (snap confinement blocks CDP; `--virtual-time-budget` stalls `fetch`).
+  Instead screenshot the **live** wall:
+  `XDG_RUNTIME_DIR=/run/user/1000 WAYLAND_DISPLAY=wayland-0 grim /tmp/claude-1000/kiosk.png`
+  then Read the PNG. After a new build, restart `kerchunk-display` and wait
+  ~12–15 s before capturing.
+- **Previewing wall states:** the wall is a passive display — no mouse or
+  keyboard. Drive states server-side (e.g. `POST /api/test/alert
+  {alphaTag}`; `{clear:true}` dismisses) and cycle variants from a script so
+  the operator just watches. Warning-banner styling is scoped under
+  `.dash.mapStage` — it only applies when a Google Maps key is configured.
+
+## Definition of done
+
+A change is finished when all of these hold — report each honestly:
+
+1. `npm test` passes (and `test:py` if DSP math changed).
+2. `npx tsc -p tsconfig.json --noEmit` is clean (vite won't catch it).
+3. Full `npm run build` succeeds.
+4. Proven on hardware per "Verifying changes" (or explicitly flagged as
+   awaiting on-hardware proof, in the off-machine flow).
+5. Behavior knobs are exposed in config, not hardcoded, and their location is
+   stated.
+6. PR opened from a branch; after merge, the branch is deleted and pruned.
 
 ## Architecture notes
 
@@ -69,13 +185,28 @@ Deploy on the appliance: `git pull && (cd kiosk && npm run build) && sudo system
 - **Config is the single source of truth.** `ConfigStore` persists a zod-
   validated shape (`src/backend/config/schema.ts`). The server owns the
   derived `knownHz`/lockout lists (channels + discoveries + lockouts) and
-  Close Call suppression. Boot must start the engine through the *same*
-  `toScanConfig` path the API uses — a hand-built boot payload once dropped
-  `knownHz` and made every reboot re-discover all filed frequencies.
+  Close Call suppression.
+- **Two engine instances can run at once:** the scanner (serial KIOSK01) and a
+  low-rate (240 kHz) decode-only weather monitor (KIOSK03) watching NWR for
+  SAME. Both share one antenna via a splitter; only the scanner owns audio.
+- **Identification chain** for naming discoveries: RepeaterBook (dormant,
+  token pending) → MyGMRS → RadioReference → FccProx; later providers merge in
+  missing location data.
+
+## Product direction
+
+- **Backlog and design decisions live in [`docs/ROADMAP.md`](docs/ROADMAP.md)**
+  — the single source of truth for what to build; specs in
+  `docs/superpowers/specs/`. Consult it before proposing anything.
+- The operator's style is **tighten-before-expand**: don't pitch new features
+  or re-pitch explicitly tabled ideas (e.g. more SDR hardware) unprompted.
+  Small PRs, merged fast, tested by ear within minutes.
+- UI structure/visual work must be *designed, not rearranged* — use the design
+  skills and a brainstorm → mockups → pick flow for new surfaces.
 
 ## Other
 
 - Env vars: `PORT` (8080), `KERCHUNK_CONFIG`, `KERCHUNK_STATIC`,
   `KERCHUNK_ENGINE`, `USE_FAKE_ENGINE`.
-- Backlog and design decisions: [`docs/ROADMAP.md`](docs/ROADMAP.md); specs in
-  `docs/superpowers/specs/`.
+- `docs/DEPLOY.md` describes the older SSH-to-Pi deploy flow; on this
+  appliance the local deploy in "Deploy & restart discipline" is the real one.
