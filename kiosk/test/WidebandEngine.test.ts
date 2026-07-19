@@ -161,6 +161,27 @@ describe("WidebandEngine", () => {
     expect(hopped).toBe(true);
   });
 
+  it("max-hold cap: forces a hop past a lane stuck open past maxHoldMs", async () => {
+    const tunes = tmpFile("tunes");
+    const logs: string[] = [];
+    const { engine, events } = makeEngine(
+      {
+        FAKE_WB_TUNES_FILE: tunes,
+        FAKE_WB_SCRIPT: `{"ev":"open","id":"${VHF_A.id}","db":-10}`, // opens, never closes (dropped close)
+      },
+      { maxHoldMs: 300, log: (m: string) => logs.push(m) },
+    );
+    await engine.start(cfg([VHF_A, VHF_B, UHF]));
+    const sawOpen = await waitFor(() => events.some((e) => e.type === "signal"), 1000);
+    expect(sawOpen).toBe(true);
+    const tunesAtHold = lines(tunes).length;
+    // Past the cap: hold-through must give up on the stuck lane so the sweep resumes.
+    const resumed = await waitFor(() => lines(tunes).length > tunesAtHold, 2000);
+    await engine.stop();
+    expect(resumed).toBe(true);
+    expect(logs.some((m) => m.includes("max-hold"))).toBe(true);
+  });
+
   it("a single group never hops", async () => {
     const tunes = tmpFile("tunes");
     const { engine } = makeEngine({ FAKE_WB_TUNES_FILE: tunes });
