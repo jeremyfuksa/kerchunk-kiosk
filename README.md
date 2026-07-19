@@ -75,7 +75,7 @@ restart kerchunk-kiosk`.
 ```sh
 cd kiosk
 npm install
-npm test                 # 179 tests, no hardware needed (fake engine/helper)
+npm test                 # vitest, no hardware needed (fake engine/helper)
 USE_FAKE_ENGINE=1 KERCHUNK_CONFIG=/tmp/kc.json npm run dev:backend
 npm run dev:frontend     # vite dev server, proxies /api + /ws
 ```
@@ -87,6 +87,10 @@ bindings are not visible to pyenv/mise interpreters.
 
 ## Post-MVP backlog
 
-Identification API approvals (RepeaterBook UA, RadioReference key), Close
-Call band-sweep mode, second SDR (eliminates group-hop), polyphase
-channelizer, AM/CB, trunking (P25).
+Much of the original backlog has shipped: Close Call band-sweep
+(`scan.sweepRanges`), AM demod, multi-SDR (a dedicated low-rate NOAA/SAME
+weather receiver), remote audio streaming, opt-in transcription. The
+polyphase channelizer was evaluated and declined (DSP-rewrite risk with no
+driving need). Still open: RepeaterBook API token (pending approval), ADS-B
+on a third SDR, further ambient/art skins, per-bank gain, trunking (P25).
+The live backlog is [`docs/ROADMAP.md`](docs/ROADMAP.md).

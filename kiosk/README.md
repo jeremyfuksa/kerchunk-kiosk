@@ -29,25 +29,17 @@ Open the Vite URL; `/` is the dashboard, `/admin` is the admin.
 cd kiosk && npm test
 ```
 
-## Deploy to a Pi 4
+## Deploy
 
-```sh
-git clone <repo> && cd kerchunk-kiosk/kiosk
-./scripts/setup-kiosk.sh   # installs deps, builds, installs services
-```
+The appliance is set up once with `sudo bash scripts/setup-kiosk-ubuntu.sh`
+(see the [root README](../README.md)). After that, deploying a change is
+`git pull && npm run build && sudo systemctl restart kerchunk-kiosk` — but
+only restart for backend changes; see [../docs/DEPLOY.md](../docs/DEPLOY.md)
+for the frontend-only reload path and the restart-cost caveats.
 
-Then browse to `http://<pi-ip>:8080/admin` to add channels.
+## Squelch tuning
 
-## Known v1 limitations
-
-- **Audio device is hardwired.** `aplay` plays to the default PCM device and
-  `amixer` controls card 0 / `Master`. The `audio.sink` config field is recorded
-  but not yet routed to a specific device. On a Pi where HDMI is not card 0,
-  set the default ALSA device system-wide (e.g. via `/etc/asound.conf`) for now.
-- **All channels are demodulated as wide FM** (`rtl_fm -M fm`). The per-channel
-  `mode` (`nfm`/`am`) is stored but not yet applied — `nfm`/`am` channels will
-  sound wrong until per-mode demodulation lands.
-- **Squelch is energy-based, not rtl_fm's squelch.** `scan.squelchLevel` is the
-  RMS open-threshold and `scan.dwellMs` is the silence hang-time before hopping;
-  both are applied at startup. If the dashboard never shows ACTIVE on a channel
-  you can hear, lower `squelchLevel`; if noise falsely triggers, raise it.
+Squelch is per-channel power over an adaptive group noise floor **and** FM
+quieting detection, with fade ramps, a hard limiter, and a per-channel
+loudness leveler. The tuning knobs (thresholds, hang times, fade/level
+constants) live at the top of `src/backend/engine/wideband_helper.py`.
