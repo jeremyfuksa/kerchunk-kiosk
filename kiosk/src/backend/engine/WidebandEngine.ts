@@ -50,6 +50,17 @@ export interface WidebandEngineOptions {
   restartDelayMs?: number;
   /** Per-group dwell override; otherwise config.groupDwellMs, else 3000. */
   groupDwellMs?: number;
+  /** Max continuous hold-through before the sweep force-hops off a window even
+   *  while a lane reads open. Bounds the "stuck-open lane" failure: a dropped
+   *  helper "close" leaves an id in openIds forever, and unbounded hold-through
+   *  then parks the scanner on that one window until a reboot (the 28h airband
+   *  wedge). Default 3 min — far longer than any real transmission, short enough
+   *  to self-heal. */
+  maxHoldMs?: number;
+  /** Diagnostic sink for rare operational notices (e.g. a forced hop off a
+   *  stuck lane). Injected so tests can assert without console noise; defaults
+   *  to console.warn so the breadcrumb lands in the journal on the appliance. */
+  log?: (msg: string) => void;
   now?: () => number;
 }
 
@@ -117,6 +128,10 @@ export class WidebandEngine implements ScannerEngine {
   private lastSignalTs = 0;
 
   private groupStartedAt = 0;
+  // When the current continuous hold-through began (0 = not holding). Distinct
+  // from groupStartedAt, which the hold path re-arms every tick; this one is
+  // NOT re-armed, so it measures true continuous hold against the max-hold cap.
+  private holdStartedAt = 0;
   private dwellTimer: NodeJS.Timeout | null = null;
   private restartTimer: NodeJS.Timeout | null = null;
 
@@ -141,6 +156,8 @@ export class WidebandEngine implements ScannerEngine {
   private readonly sampleRateHz: number | undefined;
   private readonly centerOffsetHz: number;
   private readonly niceness: number | undefined;
+  private readonly maxHoldMs: number;
+  private readonly log: (msg: string) => void;
 
   constructor(opts: WidebandEngineOptions = {}) {
     this.rtlIndexResolver = opts.rtlIndex;
@@ -155,6 +172,8 @@ export class WidebandEngine implements ScannerEngine {
     // pass a smaller explicit value (honored, like RtlFmEngine.hopIntervalMs).
     this.restartDelayMs = opts.restartDelayMs ?? 1000;
     this.groupDwellOverride = opts.groupDwellMs;
+    this.maxHoldMs = opts.maxHoldMs ?? 180_000;
+    this.log = opts.log ?? ((m) => console.warn(m));
     this.now = opts.now ?? Date.now;
   }
 
@@ -373,6 +392,7 @@ export class WidebandEngine implements ScannerEngine {
     this.child = child;
     this.openIds.clear();
     this.audibleId = null;
+    this.holdStartedAt = 0;
     this.lastStderrLine = "";
 
     const out = createInterface({ input: child.stdout! });
@@ -438,6 +458,7 @@ export class WidebandEngine implements ScannerEngine {
         this.openIds.delete(ev.id);
         this.emit({ type: "release", channelId: ev.id, ts: this.now() });
         if (this.openIds.size === 0) {
+          this.holdStartedAt = 0; // hold ended cleanly; next hold clocks fresh
           this.emit({ type: "idle", ts: this.now() });
           // Idle again: dwell restarts from now, so a long hold doesn't cause
           // an instant hop the moment the channel closes.
@@ -507,6 +528,7 @@ export class WidebandEngine implements ScannerEngine {
     if (!this.child?.stdin?.writable) return;
     this.openIds.clear();
     this.audibleId = null;
+    this.holdStartedAt = 0;
     this.groupStartedAt = this.now();
     this.child.stdin.write(JSON.stringify({
       cmd: "tune", centerHz, channels: [],
@@ -525,6 +547,7 @@ export class WidebandEngine implements ScannerEngine {
     if (!group || !this.child?.stdin?.writable) return;
     this.openIds.clear();
     this.audibleId = null;
+    this.holdStartedAt = 0;
     this.groupStartedAt = this.now();
     const cmd = {
       cmd: "tune",
@@ -570,9 +593,23 @@ export class WidebandEngine implements ScannerEngine {
     const dwell = this.groupDwellMs();
     this.dwellTimer = setInterval(() => {
       if (this.openIds.size > 0) {
-        // Hold-through: a channel is active — never tune away from it.
-        this.groupStartedAt = this.now();
-        return;
+        if (this.holdStartedAt === 0) this.holdStartedAt = this.now();
+        if (this.now() - this.holdStartedAt < this.maxHoldMs) {
+          // Hold-through: a channel is active — never tune away from it.
+          this.groupStartedAt = this.now();
+          return;
+        }
+        // Cap breached: a lane has read open continuously past maxHoldMs —
+        // almost certainly a stuck-open lane (a dropped helper "close"). Abandon
+        // it so one wedged window can't silence the whole scanner for hours.
+        this.log(
+          `[wideband] max-hold ${this.maxHoldMs}ms exceeded on group ${this.groupIndex} ` +
+          `(${this.openIds.size} open); forcing hop`,
+        );
+        this.openIds.clear();
+        this.audibleId = null;
+        this.holdStartedAt = 0;
+        this.groupStartedAt = 0; // fall through and let the advance below fire now
       }
       // Weighted dwell (ROADMAP Idea 7): a window's park time scales by
       // the max dwellWeight among its channels — the busiest bank in a
@@ -737,6 +774,7 @@ export class WidebandEngine implements ScannerEngine {
     this.killChild();
     this.openIds.clear();
     this.audibleId = null;
+    this.holdStartedAt = 0;
     this.setState("stopped");
   }
 
