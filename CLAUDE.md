@@ -208,5 +208,4 @@ A change is finished when all of these hold — report each honestly:
 
 - Env vars: `PORT` (8080), `KERCHUNK_CONFIG`, `KERCHUNK_STATIC`,
   `KERCHUNK_ENGINE`, `USE_FAKE_ENGINE`.
-- `docs/DEPLOY.md` describes the older SSH-to-Pi deploy flow; on this
-  appliance the local deploy in "Deploy & restart discipline" is the real one.
+- Deploy details (incl. the legacy SSH-to-Pi flow): [`docs/DEPLOY.md`](docs/DEPLOY.md).
