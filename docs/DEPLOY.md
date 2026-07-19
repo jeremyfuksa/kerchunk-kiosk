@@ -1,64 +1,39 @@
 # Deploying Kerchunk Kiosk
 
-## What deploys where
+## CI
 
-- **CI** (`.github/workflows/ci.yml`) runs typecheck + tests + build on every
-  pull request and every push to `main`, on GitHub-hosted Linux. It does not
-  touch the Pi.
-- **Deploy** is a local action. `kiosk/scripts/deploy.sh` SSHes from your Mac to
-  the Pi (`admin@192.168.1.54`), resets the Pi's clone to `origin/main`, builds,
-  installs to `/opt/kerchunk-kiosk`, and restarts the systemd services.
+`.github/workflows/ci.yml` runs typecheck + tests + build on every pull
+request and every push to `main`, on GitHub-hosted Linux. It never touches the
+appliance.
 
-## Deploy manually
+## Deploy on the appliance (the real flow)
 
-```bash
-./kiosk/scripts/deploy.sh
+The appliance runs the backend straight from this repo checkout, so a deploy
+is a pull + build + service restart:
+
+```sh
+git pull && (cd kiosk && npm run build) && sudo systemctl restart kerchunk-kiosk
 ```
 
-Target a different host (e.g. by mDNS name) with an env var:
+**Only restart the service for backend changes** — every restart respawns the
+GNU Radio helper (~2.7 cores of flowgraph rebuild), spikes thermals, and
+interrupts live audio. For a frontend-only change:
 
-```bash
-KERCHUNK_PI_HOST=admin@kerchunk-kiosk.local ./kiosk/scripts/deploy.sh
+```sh
+cd kiosk
+npm run build                     # vite does NOT typecheck; the full build does
+curl -X POST localhost:8080/api/kiosk/reload
 ```
 
-The script prints the deployed commit and the post-restart status of both
-units (`kerchunk-kiosk.service` and `kerchunk-display.service`), and exits
-non-zero if either service fails to come back up. Requires: SSH key access to
-the Pi (already set up) and that `origin/main` is what you want live — it
-deploys `origin/main`, not your local working tree.
+Two services: `kerchunk-kiosk` (backend) and `kerchunk-display` (the chromium
+wall session). A wedged/stale wall page is fixed with
+`sudo systemctl restart kerchunk-display` — don't bounce the backend for it.
 
-Check the live services independently at any time:
+## Legacy: remote Pi deploy
 
-```bash
-ssh admin@192.168.1.54 'systemctl is-active kerchunk-kiosk.service kerchunk-display.service'
-```
-
-## Auto-deploy on pull
-
-A repo-scoped `post-merge` hook (`.githooks/post-merge`) runs the deploy in the
-background whenever a `git pull` advances your local `main`. It also chains the
-global branch-prune hook so that keeps working.
-
-**Enable it once per clone** (it's local git config, not committed):
-
-```bash
-git config core.hooksPath .githooks
-```
-
-**Disable auto-deploy** without removing the hook:
-
-```bash
-git config hook.kerchunk-deploy false
-```
-
-The hook never blocks `git pull`: it launches the deploy detached and logs to a
-temp file (path printed when it fires; `tail -f` to watch).
-
-## Prerequisites (already satisfied)
-
-- SSH key auth to `admin@192.168.1.54`.
-- `admin` has passwordless sudo on the Pi (the deploy uses `sudo` for the `/opt`
-  install and `systemctl restart`).
-- `/home/admin/kerchunk-kiosk` is a clone of this repo on `main`;
-  `/opt/kerchunk-kiosk` is the live install (`dist`, `node_modules`,
-  `package.json`).
+`kiosk/scripts/deploy.sh` and the `.githooks/post-merge` auto-deploy hook are
+from the earlier remote-Pi era: they SSH to a Pi (`KERCHUNK_PI_HOST`, default
+`admin@192.168.1.54`), reset its clone to `origin/main`, build, install to
+`/opt/kerchunk-kiosk`, and restart the services. Neither is active on the
+appliance (`core.hooksPath` is unset), and no Pi target currently exists —
+they're kept for a possible future Pi-class install.
