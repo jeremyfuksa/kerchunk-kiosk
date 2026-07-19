@@ -34,6 +34,7 @@ wall session). A wedged/stale wall page is fixed with
 `kiosk/scripts/deploy.sh` and the `.githooks/post-merge` auto-deploy hook are
 from the earlier remote-Pi era: they SSH to a Pi (`KERCHUNK_PI_HOST`, default
 `admin@192.168.1.54`), reset its clone to `origin/main`, build, install to
-`/opt/kerchunk-kiosk`, and restart the services. Neither is active on the
-appliance (`core.hooksPath` is unset), and no Pi target currently exists —
+`/opt/kerchunk-kiosk`, and restart the services. `scripts/setup-pi.sh` at the
+repo root is the matching Pi-era bench bootstrap. None of these are active on
+the appliance (`core.hooksPath` is unset), and no Pi target currently exists —
 they're kept for a possible future Pi-class install.

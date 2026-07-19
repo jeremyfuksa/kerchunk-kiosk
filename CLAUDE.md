@@ -20,6 +20,16 @@ live radio the operator listens to, and it runs ~1 °C under its 90 °C thermal
 safety trip — treat restarts and CPU spikes as real costs, not free actions
 (see "Deploy & restart discipline").
 
+## The API has an external consumer
+
+**jeremyfuksa.com polls `/api/status`, `/api/logs`, and `/api/weather` over
+the Tailscale tailnet (`http://kiosk:8080`)** — changing those response
+shapes breaks a live external site, not just the local frontends. It polls
+**sequentially, never in parallel**, because the appliance has been observed
+to deadlock on 2+ concurrent requests; don't "optimize" that on either side.
+The full HTTP/WS surface is documented in [`docs/API.md`](docs/API.md) —
+update it when routes change.
+
 ## Git workflow
 
 **Every change ships through a pull request — never commit directly to `main`.**
@@ -42,13 +52,18 @@ landed on local `main` by mistake, move it onto a branch and reset `main` to
 **Clean up after every merge, without being asked.** Merge with
 `gh pr merge <n> --merge --delete-branch`, then
 `git checkout main && git pull --ff-only && git fetch --prune` and
-`git branch -d <branch>`.
+`git branch -d <branch>`. A repo-local hook (`.claude/settings.json`,
+PostToolUse on `gh pr merge`) also auto-deletes local branches already merged
+to `main` — a branch vanishing right after a merge is the hook working, not
+data loss.
 
 ## Where the code is
 
 All application code, tests, and commands live under **`kiosk/`** — `cd kiosk`
-before running anything. The repo root holds only docs, bench notes, and this
-file.
+before running anything. The repo root holds docs, bench notes, this file, and
+`scripts/setup-pi.sh` — a legacy Pi-era bootstrap that is not used on the
+appliance (kept, like `kiosk/scripts/deploy.sh`, for a possible future
+Pi-class install; see [`docs/DEPLOY.md`](docs/DEPLOY.md)).
 
 - `kiosk/src/backend/` — server, engines (`engine/`), config (`config/`),
   lookup/identification providers, SAME/weather, aircraft feed.
@@ -170,6 +185,13 @@ A change is finished when all of these hold — report each honestly:
    stated.
 6. PR opened from a branch; after merge, the branch is deleted and pruned.
 
+What CI actually runs (`.github/workflows/ci.yml`, every PR and push to
+`main`, GitHub-hosted Linux): `npm ci`, `npm run build:backend` (this is the
+typecheck — `tsc` plus the helper copies), `npm test` (vitest), and
+`npm run build:frontend`. It does **not** run `test:py` (needs numpy on the
+system python) and never touches hardware — so 1's `test:py` and 4 remain on
+you even with green checks.
+
 ## Architecture notes
 
 - **Engine abstraction.** Everything runs behind the `ScannerEngine` interface
@@ -186,12 +208,28 @@ A change is finished when all of these hold — report each honestly:
   validated shape (`src/backend/config/schema.ts`). The server owns the
   derived `knownHz`/lockout lists (channels + discoveries + lockouts) and
   Close Call suppression.
+- **Lane-fit DSP.** The helper sizes its channelizer to the config and builds
+  only each lane's needed demod path (`engine/lanePlan.ts` — assignment is
+  positional, background channels pin to the last lane). Power detection is
+  switchable via `config.scan.detectVia: "lane" | "fft"` (default lane;
+  passed to the helper as `--detect-via`).
 - **Two engine instances can run at once:** the scanner (serial KIOSK01) and a
   low-rate (240 kHz) decode-only weather monitor (KIOSK03) watching NWR for
   SAME. Both share one antenna via a splitter; only the scanner owns audio.
+  Roles bind in `config.radios` (`scan`/`weather`/`adsb`). During a SAME
+  break-in, EOM (`NNNN`) resumes scanning after an 8 s grace window
+  (`server.ts`), ending the alert hold early when the broadcast stops.
+- **Remote listening is a gate, not just a route.** `/api/stream.wav` 404s
+  unless `config.audio.remoteListening` is true, and the helper only builds
+  its `--audio-fd` PCM tee when it's on — flipping the flag is an engine
+  restart, not just an API change.
 - **Identification chain** for naming discoveries: RepeaterBook (dormant,
-  token pending) → MyGMRS → RadioReference → FccProx; later providers merge in
-  missing location data.
+  token pending) → MyGMRS → RadioReference → FccProx → BusinessGuess (Google
+  Places, deliberately last — it only guesses when the authoritative
+  providers come up empty); later providers merge in missing location data. Every
+  lookup secret — `config.lookup.apiToken`, `radioReference` credentials,
+  `config.display.placesApiKey` — lives in the appliance's config file
+  (`config/schema.ts`), **not** env vars and never the repo.
 
 ## Product direction
 
