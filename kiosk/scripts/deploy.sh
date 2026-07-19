@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 #
+# LEGACY (remote-Pi era) — not the live deploy path. The appliance deploys
+# on-machine: see docs/DEPLOY.md and CLAUDE.md. Kept for a possible future
+# Pi-class install.
+#
 # Deploy the current origin/main to the Kerchunk Kiosk Pi.
 #
 # Run from the dev Mac (same LAN as the Pi). SSHes in, resets the Pi's repo

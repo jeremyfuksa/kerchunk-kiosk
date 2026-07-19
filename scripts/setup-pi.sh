@@ -2,6 +2,10 @@
 #
 # scripts/setup-pi.sh
 #
+# LEGACY (Pi-era bootstrap) — not used on the appliance, which is set up with
+# kiosk/scripts/setup-kiosk-ubuntu.sh. Kept for a possible future Pi-class
+# install; see docs/DEPLOY.md.
+#
 # Foundation setup for a fresh Raspberry Pi Zero 2 W running Raspberry Pi OS Lite.
 # Prepares the Pi for Milestone 1 (feasibility) bench work.
 #
