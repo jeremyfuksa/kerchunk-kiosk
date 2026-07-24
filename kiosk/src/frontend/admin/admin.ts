@@ -18,6 +18,7 @@ import icoInbox from "lucide-static/icons/inbox.svg?raw";
 import icoList from "lucide-static/icons/list.svg?raw";
 import icoSliders from "lucide-static/icons/sliders-horizontal.svg?raw";
 import icoGear from "lucide-static/icons/settings-2.svg?raw";
+import icoWrench from "lucide-static/icons/wrench.svg?raw";
 import type { Bank } from "../../backend/config/schema.js";
 import { ReconnectingWs } from "../lib/wsClient.js";
 import type { EngineEvent } from "../../backend/engine/ScannerEngine.js";
@@ -119,7 +120,8 @@ export function renderAdmin(root: HTMLElement): void {
         <a href="#/" data-route="home"><span class="navIco" data-ico="home"></span><span class="navCopy"><b>Overview</b><small>Live status and activity</small></span></a>
         <a href="#/triage" data-route="triage"><span class="navIco" data-ico="triage"></span><span class="navCopy"><b>Triage</b><small>Review new discoveries</small></span><span id="navDcCount" class="navBadge"></span></a>
         <a href="#/channels" data-route="channels"><span class="navIco" data-ico="channels"></span><span class="navCopy"><b>Channels</b><small>Organize what you scan</small></span></a>
-        <a href="#/scan" data-route="scan"><span class="navIco" data-ico="scan"></span><span class="navCopy"><b>Settings</b><small>Scanning and integrations</small></span></a>
+        <a href="#/scan" data-route="scan"><span class="navIco" data-ico="scan"></span><span class="navCopy"><b>Settings</b><small>Scanning, alerts, weather</small></span></a>
+        <a href="#/system" data-route="system"><span class="navIco" data-ico="system"></span><span class="navCopy"><b>System</b><small>Appliance health and controls</small></span></a>
       </nav>
       <div class="pages">
       <div id="healthBanner" class="healthBanner healthClear" data-page="home" role="alert"></div>
@@ -143,19 +145,12 @@ export function renderAdmin(root: HTMLElement): void {
             <button id="tlockBtn" title="Suppress this channel for 30 minutes (clears on restart)" disabled>Pause 30 min</button>
             <button id="lockBtn" class="danger" title="Remove this channel and never Close-Call its frequency again" disabled>Lock out channel</button>
           </div>
-          <div class="systemActions">
-            <span class="systemActionsLabel">System controls</span>
-            <button id="kioskReload" title="Refresh the display page and reload its map and frontend assets">Refresh kiosk screen</button>
-            <button id="testAlert" title="Show a sample weather-alert banner on the kiosk (for design + verifying alerts work)">Test weather alert</button>
-            <button id="testAlertClear" title="Clear the test weather-alert banner from the kiosk">Clear alert</button>
-            <button id="backendRestart" class="danger" title="Restart the radio backend and scanner helpers">Restart radio backend</button>
-            <span id="systemActionStatus" class="hint" role="status"></span>
-          </div>
         </div>
       </section>
-      <section class="sysHealth collapsible" data-key="system" data-page="home">
-        <h2>System health <span class="hint">the machine under the radio — helper CPU is the usual suspect</span></h2>
-        <div id="sysBody"></div>
+      <section class="alertFeed" data-page="home">
+        <h2>Alerts <span class="hint">what fired while you were away — flag channels with the bell</span></h2>
+        <ul id="alertRows" class="alertList"></ul>
+        <div class="alertFeedFoot"><button id="clearAlerts" class="alertClearAll" type="button" hidden>Clear all</button></div>
       </section>
       <section class="discoveries" data-page="triage">
         <div class="pageIntro sectionIntro">
@@ -194,12 +189,11 @@ export function renderAdmin(root: HTMLElement): void {
             <span id="bkErr" class="err"></span>
           </div>
         </details>
-        <div id="bankProfile" class="bankProfile"></div>
         <div id="dupPanel" class="dupPanel" hidden></div>
         <div class="tableWrap">
           <table class="chTable">
             <thead><tr>
-              <th>Freq (MHz)</th><th>Name</th><th>Mode</th><th>Priority</th><th>Audible</th><th>Archived</th><th></th>
+              <th>Freq (MHz)</th><th>Name</th><th class="chAudible">Audible</th>
             </tr></thead>
             <tbody id="chRows"></tbody>
           </table>
@@ -208,7 +202,7 @@ export function renderAdmin(root: HTMLElement): void {
         <div id="archiveRecommendations" class="archiveRecommendations"></div>
       </section>
       <div class="statRow" data-page="home" id="statRow"></div>
-      <section class="insights collapsible" data-key="insights" data-page="home">
+      <section class="insights" data-page="home">
         <h2>Insights <span class="hint" id="inPeriodHint"></span></h2>
         <div class="inToolbar">
           <button class="inPeriod" data-h="24">24 h</button>
@@ -217,64 +211,84 @@ export function renderAdmin(root: HTMLElement): void {
         </div>
         <div id="inBody" class="inBody"></div>
       </section>
-      <div class="feedsRow" data-page="home">
-      <section class="alertFeed collapsible" data-key="alerts" data-page="home">
-        <h2>Alerts <span class="hint">what fired while you were away — flag channels with the bell</span></h2>
-        <ul id="alertRows" class="alertList"></ul>
-        <div class="alertFeedFoot"><button id="clearAlerts" class="alertClearAll" type="button" hidden>Clear all</button></div>
-      </section>
-      </div>
       <div class="pageIntro" data-page="scan">
-        <div><span class="eyebrow">Settings</span><h1>Scanner settings</h1><p>Adjust scan behavior and optional services. Changes apply when you save each section.</p></div>
+        <div><span class="eyebrow">Settings</span><h1>Scanner settings</h1><p>Tune scanning, alerts, the weather channel, and integrations. Each card saves on its own.</p></div>
       </div>
-      <div class="moduleRow" data-page="scan">
-      <section class="tuning settingsPanel">
-        <h2>Scan behavior</h2>
-        <p class="sectionHelp">These defaults control how quickly the scanner moves and when a signal opens.</p>
+      <div class="settingsCards" data-page="scan">
+      <details class="settingsCard tuning" open>
+        <summary><h2>Scanning</h2><span class="cardHint">Dwell, squelch, and discovery</span></summary>
+        <div class="cardBody">
         <div class="settingGroups">
-          <fieldset>
-            <legend>Timing and squelch</legend>
-            <label><span>Group dwell <small>Time spent on each frequency group</small></span><span class="inputUnit"><input id="tGroupDwell" type="number" min="500" step="100" placeholder="3000" /><b>ms</b></span></label>
-            <label><span>Hang time <small>Wait after a transmission ends</small></span><span class="inputUnit"><input id="tHang" type="number" min="100" step="100" placeholder="2000" /><b>ms</b></span></label>
-            <label><span>Squelch open <small>Signal level above the noise floor</small></span><span class="inputUnit"><input id="tOpenDb" type="number" min="1" step="0.5" placeholder="9" /><b>dB</b></span></label>
-            <label><span>Quieting threshold <small>Absolute noise threshold</small></span><span class="inputUnit"><input id="tQuietDb" type="number" max="-1" step="0.5" placeholder="-86" /><b>dB</b></span></label>
-          </fieldset>
-          <fieldset>
-            <legend>Discovery</legend>
-            <label class="switchRow"><span>Close Call <small>Find strong nearby signals outside your channel list</small></span><input id="tCloseCall" type="checkbox" /></label>
-            <label><span>Close Call threshold <small>Higher values reduce false discoveries</small></span><span class="inputUnit"><input id="tCloseCallDb" type="number" min="5" step="1" placeholder="15" /><b>dB</b></span></label>
-            <label><span>Sweep ranges <small>Comma-separated MHz ranges; empty disables sweeping</small></span><input id="tSweep" type="text" placeholder="450-470, 150-162" title="Band-sweep: one empty-window stop per rotation hunts for activity inside these ranges" /></label>
-          </fieldset>
-          <fieldset>
-            <legend>Alerts</legend>
-            <label><span>Alert cooldown <small>Minimum time before repeating an alert</small></span><span class="inputUnit"><input id="tAlertCool" type="number" min="1" step="1" placeholder="15" /><b>min</b></span></label>
-            <label><span>Alert hold <small>How long an alert remains visible</small></span><span class="inputUnit"><input id="tAlertHold" type="number" min="5" step="5" placeholder="30" /><b>sec</b></span></label>
-            <label><span>Push notification URL <small>Optional ntfy topic URL</small></span><input id="tAlertNtfy" type="text" placeholder="https://ntfy.sh/your-topic" /></label>
-            <label><span>SAME county codes <small>Comma-separated FIPS codes; empty allows all</small></span><input id="tSameFips" type="text" placeholder="029047, 029095" title="County FIPS codes for SAME/EAS scoping — 5-digit SSCCC or 6-digit PSSCCC" /></label>
-            <label class="switchRow"><span>Show SAME tests <small>Include weekly and monthly test banners</small></span><input id="tSameTests" type="checkbox" /></label>
-          </fieldset>
-          <fieldset>
-            <legend>Map integration</legend>
-            <label><span>Google Maps key</span><input id="tMapsKey" type="text" placeholder="AIza…" /></label>
-            <label><span>Google Maps Map ID</span><input id="tMapsMapId" type="text" placeholder="Optional vector map ID" /></label>
-          </fieldset>
+          <label><span>Group dwell <small>Time spent on each frequency group</small></span><span class="inputUnit"><input id="tGroupDwell" type="number" min="500" step="100" placeholder="3000" /><b>ms</b></span></label>
+          <label><span>Hang time <small>Wait after a transmission ends</small></span><span class="inputUnit"><input id="tHang" type="number" min="100" step="100" placeholder="2000" /><b>ms</b></span></label>
+          <label><span>Squelch open <small>Signal level above the noise floor</small></span><span class="inputUnit"><input id="tOpenDb" type="number" min="1" step="0.5" placeholder="9" /><b>dB</b></span></label>
+          <label><span>Quieting threshold <small>Absolute noise threshold</small></span><span class="inputUnit"><input id="tQuietDb" type="number" max="-1" step="0.5" placeholder="-86" /><b>dB</b></span></label>
+          <label class="switchRow"><span>Close Call <small>Find strong nearby signals outside your channel list</small></span><input id="tCloseCall" type="checkbox" /></label>
+          <label><span>Close Call threshold <small>Higher values reduce false discoveries</small></span><span class="inputUnit"><input id="tCloseCallDb" type="number" min="5" step="1" placeholder="15" /><b>dB</b></span></label>
+          <label><span>Sweep ranges <small>Comma-separated MHz ranges; empty disables sweeping</small></span><input id="tSweep" type="text" placeholder="450-470, 150-162" title="Band-sweep: one empty-window stop per rotation hunts for activity inside these ranges" /></label>
         </div>
-        <div class="formActions"><button id="tSave" class="primary">Save scanner settings</button><span id="tErr" class="err"></span></div>
-      </section>
-      <section class="lockouts collapsible" data-key="lockouts">
-        <h2>Close Call lockouts</h2>
-        <ul id="loList"></ul>
-      </section>
-      <section class="weather collapsible" data-key="weather" data-page="scan">
-        <h2>Weather</h2>
-        <p class="sectionHelp">Choose the local NOAA channel used by weather-only mode.</p>
-        <label>Channel <select id="wxFreq">${NOAA_CHANNELS.map((c) => `<option value="${c.mhz}">${c.label} — ${c.mhz} MHz</option>`).join("")}</select></label>
-        <label>Name <input id="wxTag" type="text" placeholder="NOAA WX" /></label>
-        <label>Mode <select id="wxMode"><option value="nfm">NFM</option><option value="fm">FM</option><option value="am">AM</option></select></label>
-        <button id="wxSave" class="primary">Save weather channel</button>
-        <span id="wxErr" class="err"></span>
-      </section>
+        <div class="formActions"><button id="tSave" class="primary">Save scanning</button><span id="tErr" class="err"></span></div>
+        </div>
+      </details>
+      <details class="settingsCard alertsCard">
+        <summary><h2>Alerts</h2><span class="cardHint">Cooldowns, notifications, SAME scope</span></summary>
+        <div class="cardBody">
+        <div class="settingGroups">
+          <label><span>Alert cooldown <small>Minimum time before repeating an alert</small></span><span class="inputUnit"><input id="tAlertCool" type="number" min="1" step="1" placeholder="15" /><b>min</b></span></label>
+          <label><span>Alert hold <small>How long an alert remains visible</small></span><span class="inputUnit"><input id="tAlertHold" type="number" min="5" step="5" placeholder="30" /><b>sec</b></span></label>
+          <label><span>Push notification URL <small>Optional ntfy topic URL</small></span><input id="tAlertNtfy" type="text" placeholder="https://ntfy.sh/your-topic" /></label>
+          <label><span>SAME county codes <small>Comma-separated FIPS codes; empty allows all</small></span><input id="tSameFips" type="text" placeholder="029047, 029095" title="County FIPS codes for SAME/EAS scoping — 5-digit SSCCC or 6-digit PSSCCC" /></label>
+          <label class="switchRow"><span>Show SAME tests <small>Include weekly and monthly test banners</small></span><input id="tSameTests" type="checkbox" /></label>
+        </div>
+        <div class="formActions"><button id="alSave" class="primary">Save alerts</button><span id="alErr" class="err"></span></div>
+        </div>
+      </details>
+      <details class="settingsCard weather">
+        <summary><h2>Weather channel</h2><span class="cardHint">NOAA channel for weather-only mode</span></summary>
+        <div class="cardBody">
+        <div class="settingGroups">
+          <label><span>Channel <small>Local NOAA transmitter</small></span><select id="wxFreq">${NOAA_CHANNELS.map((c) => `<option value="${c.mhz}">${c.label} — ${c.mhz} MHz</option>`).join("")}</select></label>
+          <label><span>Name</span><input id="wxTag" type="text" placeholder="NOAA WX" /></label>
+          <label><span>Mode</span><select id="wxMode"><option value="nfm">NFM</option><option value="fm">FM</option><option value="am">AM</option></select></label>
+        </div>
+        <div class="formActions"><button id="wxSave" class="primary">Save weather channel</button><span id="wxErr" class="err"></span></div>
+        </div>
+      </details>
+      <details class="settingsCard integrations">
+        <summary><h2>Integrations</h2><span class="cardHint">Google Maps for the activity map</span></summary>
+        <div class="cardBody">
+        <div class="settingGroups">
+          <label><span>Google Maps key</span><input id="tMapsKey" type="text" placeholder="AIza…" /></label>
+          <label><span>Google Maps Map ID</span><input id="tMapsMapId" type="text" placeholder="Optional vector map ID" /></label>
+        </div>
+        <div class="formActions"><button id="igSave" class="primary">Save integrations</button><span id="igErr" class="err"></span></div>
+        </div>
+      </details>
       </div>
+      <div class="pageIntro" data-page="system">
+        <div><span class="eyebrow">System</span><h1>Appliance</h1><p>Machine health, kiosk screen controls, and Close Call lockouts.</p></div>
+      </div>
+      <section class="sysHealth" data-page="system">
+        <h2>System health <span class="hint">the machine under the radio — helper CPU is the usual suspect</span></h2>
+        <div id="sysBody"></div>
+      </section>
+      <section class="systemCard" data-page="system">
+        <h2>Kiosk &amp; radio actions</h2>
+        <div class="systemActions">
+          <button id="kioskReload" title="Refresh the display page and reload its map and frontend assets">Refresh kiosk screen</button>
+          <button id="testAlert" title="Show a sample weather-alert banner on the kiosk (for design + verifying alerts work)">Test weather alert</button>
+          <button id="testAlertClear" title="Clear the test weather-alert banner from the kiosk">Clear alert</button>
+          <button id="backendRestart" class="danger" title="Restart the radio backend and scanner helpers">Restart radio backend</button>
+          <span id="systemActionStatus" class="hint" role="status"></span>
+        </div>
+      </section>
+      <section class="lockouts" data-page="system">
+        <h2>Close Call lockouts</h2>
+        <details class="lockoutsBox">
+          <summary>Locked-out frequencies <span id="loCount" class="count"></span></summary>
+          <div id="loList" class="loChips"></div>
+        </details>
+      </section>
     </main>
       </div>
       </div>
@@ -315,17 +329,12 @@ export function renderAdmin(root: HTMLElement): void {
     });
   }
 
-  // Progressive disclosure: minor modules collapse behind their legends.
-  // State persists per device (an operator who tunes often keeps it open).
-  const COLLAPSE_KEY = "kerchunk.admin.collapsed";
-  const collapsed = readStoredStringSet(
-    localStorage.getItem(COLLAPSE_KEY), ["tuning", "lockouts", "weather", "insights"]);
   // ── Admin IA (ROADMAP Idea 15): config is a destination, monitoring is
   // the landing. Pure re-layout — all sections stay wired as before; the
   // route only decides which data-page group is visible. Unknown = home.
-  const ROUTES = new Set(["home", "triage", "channels", "scan"]);
+  const ROUTES = new Set(["home", "triage", "channels", "scan", "system"]);
   const NAV_ICONS: Record<string, string> = {
-    home: icoGauge, triage: icoInbox, channels: icoList, scan: icoSliders,
+    home: icoGauge, triage: icoInbox, channels: icoList, scan: icoSliders, system: icoWrench,
   };
   root.querySelectorAll<HTMLElement>(".navIco").forEach((el) => {
     el.innerHTML = NAV_ICONS[el.dataset.ico!] ?? "";
@@ -337,7 +346,7 @@ export function renderAdmin(root: HTMLElement): void {
   }
   function applyRoute(): void {
     const route = currentRoute();
-    const titles: Record<string, string> = { home: "Overview", triage: "Triage", channels: "Channels", scan: "Settings" };
+    const titles: Record<string, string> = { home: "Overview", triage: "Triage", channels: "Channels", scan: "Settings", system: "System" };
     document.title = `${titles[route]} · Kerchunk Admin`;
     root.querySelectorAll<HTMLElement>("[data-page]").forEach((el) => {
       el.classList.toggle("pageHidden", el.dataset.page !== route);
@@ -352,22 +361,10 @@ export function renderAdmin(root: HTMLElement): void {
   window.addEventListener("hashchange", applyRoute);
   applyRoute();
 
-  root.querySelectorAll<HTMLElement>("section.collapsible").forEach((sec) => {
-    const key = sec.dataset.key!;
-    if (collapsed.has(key)) sec.classList.add("collapsed");
-    const heading = sec.querySelector<HTMLElement>("h2")!;
-    heading.tabIndex = 0;
-    heading.setAttribute("role", "button");
-    heading.setAttribute("aria-expanded", String(!sec.classList.contains("collapsed")));
-    const toggle = () => {
-      sec.classList.toggle("collapsed");
-      heading.setAttribute("aria-expanded", String(!sec.classList.contains("collapsed")));
-      if (sec.classList.contains("collapsed")) collapsed.add(key); else collapsed.delete(key);
-      localStorage.setItem(COLLAPSE_KEY, JSON.stringify([...collapsed]));
-    };
-    heading.addEventListener("click", toggle);
-    heading.addEventListener("keydown", (ev) => {
-      if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); toggle(); }
+  // Any click/tap outside an open bank menu closes it.
+  document.addEventListener("click", (ev) => {
+    root.querySelectorAll<HTMLDetailsElement>(".bankMenu[open]").forEach((menu) => {
+      if (!menu.contains(ev.target as Node)) menu.open = false;
     });
   });
 
@@ -414,57 +411,10 @@ export function renderAdmin(root: HTMLElement): void {
   // ── Banks: toggleable predicates over band/tags (ROADMAP Idea 1) ──
   const bkErr = root.querySelector<HTMLElement>("#bkErr")!;
 
-  // ── Per-bank scan profile editor (ROADMAP Idea 7): squelch trio applies
-  // to the bank's channels; dwell weight scales its windows' park time.
-  // Empty field = inherit the global Scan tuning value.
-  const bankProfBox = root.querySelector<HTMLElement>("#bankProfile")!;
-  function openProfileEditor(b: Bank | undefined): void {
-    if (!b) return;
-    const num = (v: number | undefined) => (v !== undefined ? String(v) : "");
-    bankProfBox.innerHTML = `
-      <h3>${esc(b.name)} — scan profile <span class="hint">empty = global default</span></h3>
-      <label>Squelch open (dB over floor) <input id="bpOpen" type="number" min="1" step="0.5" value="${num(b.openAboveFloorDb)}" placeholder="global" /></label>
-      <label>Quieting threshold (dB) <input id="bpQuiet" type="number" max="-1" step="0.5" value="${num(b.noiseQuietDb)}" placeholder="global" /></label>
-      <label>Hang time (ms) <input id="bpHang" type="number" min="100" step="100" value="${num(b.hangMs)}" placeholder="global" /></label>
-      <label>Dwell weight <input id="bpDwell" type="number" min="0.1" step="0.1" value="${num(b.dwellWeight)}" placeholder="1" title="2 = this bank's windows get twice the park time; 0.5 = half" /></label>
-      <button id="bpSave">Save profile</button>
-      <button id="bpCancel">Cancel</button>
-      <span id="bpErr" class="err"></span>`;
-    bankProfBox.classList.add("open");
-    const val = (sel: string): number | undefined => {
-      const raw = bankProfBox.querySelector<HTMLInputElement>(sel)!.value.trim();
-      return raw === "" ? undefined : Number(raw);
-    };
-    bankProfBox.querySelector<HTMLButtonElement>("#bpCancel")!
-      .addEventListener("click", () => { bankProfBox.classList.remove("open"); bankProfBox.innerHTML = ""; });
-    bankProfBox.querySelector<HTMLButtonElement>("#bpSave")!.addEventListener("click", async () => {
-      const err = bankProfBox.querySelector<HTMLElement>("#bpErr")!;
-      err.textContent = "";
-      try {
-        const cfg = await api.getConfig();
-        cfg.banks = (cfg.banks ?? []).map((x) => {
-          if (x.id !== b.id) return x;
-          const { openAboveFloorDb: _o, noiseQuietDb: _q, hangMs: _h, dwellWeight: _d, ...rest } = x;
-          return {
-            ...rest,
-            ...(val("#bpOpen") !== undefined ? { openAboveFloorDb: val("#bpOpen") } : {}),
-            ...(val("#bpQuiet") !== undefined ? { noiseQuietDb: val("#bpQuiet") } : {}),
-            ...(val("#bpHang") !== undefined ? { hangMs: val("#bpHang") } : {}),
-            ...(val("#bpDwell") !== undefined ? { dwellWeight: val("#bpDwell") } : {}),
-          };
-        });
-        await api.putConfig(cfg);
-        bankProfBox.classList.remove("open");
-        bankProfBox.innerHTML = "";
-        await refresh();
-      } catch (e) { err.textContent = (e as Error).message; }
-    });
-  }
-
   root.querySelector<HTMLButtonElement>("#bkAdd")!.addEventListener("click", async () => {
     bkErr.textContent = "";
     const name = root.querySelector<HTMLInputElement>("#bkName")!.value.trim();
-    if (!name) { bkErr.textContent = "name required"; return; }
+    if (!name) { bkErr.textContent = "Enter a bank name"; return; }
     const band = root.querySelector<HTMLSelectElement>("#bkBand")!.value;
     const tags = root.querySelector<HTMLInputElement>("#bkTags")!.value
       .split(",").map((t) => t.trim()).filter(Boolean);
@@ -503,7 +453,7 @@ export function renderAdmin(root: HTMLElement): void {
   async function renderInsights(): Promise<void> {
     const since = Date.now() - inHours * 3_600_000;
     const r = await fetch(`/api/stats?since=${since}`);
-    if (!r.ok) { inBody.innerHTML = `<div class="empty">history store unavailable</div>`; return; }
+    if (!r.ok) { inBody.innerHTML = `<div class="empty">History store unavailable — restart the radio backend if this persists.</div>`; return; }
     const st: {
       totalHits: number; totalAirtimeMs: number; discoveries: number;
       topChannels: Array<{ alphaTag: string; freq: number; hits: number; airtimeMs: number }>;
@@ -516,27 +466,35 @@ export function renderAdmin(root: HTMLElement): void {
     const maxHour = Math.max(1, ...st.byHour);
     const nowHour = new Date().getHours();
 
+    // Glance first (spec 2026-07-16 polish): a headline and the hour clock
+    // are the take-away; the full table lives behind one disclosure.
+    const busiest = st.topChannels[0];
+    const wasOpen = inBody.querySelector<HTMLDetailsElement>(".inBreakdown")?.open ?? false;
     inBody.innerHTML = `
       <div class="inTotals">
         <span><b>${st.totalHits}</b> hits</span>
         <span><b>${fmtAir(st.totalAirtimeMs)}</b> airtime</span>
         <span><b>${st.discoveries}</b> close calls</span>
+        <span class="inBusiest">${busiest ? `busiest <b>${esc(busiest.alphaTag) || fmtFreq(busiest.freq)}</b>` : "quiet band"}</span>
       </div>
       <div class="inClock" title="activity by hour of day">
         ${st.byHour.map((n, h) => `<div class="inHr${h === nowHour ? " now" : ""}" style="height:${(4 + 26 * n / maxHour).toFixed(0)}px" title="${String(h).padStart(2, "0")}:00 — ${n}"></div>`).join("")}
       </div>
-      <table class="inTop">
-        ${st.topChannels.slice(0, 8).map((c) => `<tr class="inChannel" data-freq="${c.freq}" tabindex="0" title="Open channel analytics">
-          <td class="inName">${esc(c.alphaTag) || fmtFreq(c.freq)}</td>
-          <td class="inBar"><div style="width:${(100 * c.hits / maxHits).toFixed(0)}%"></div></td>
-          <td class="inN">${c.hits}</td>
-          <td class="inAir">${fmtAir(c.airtimeMs)}</td>
-        </tr>`).join("")}
-      </table>
-      <div class="inSplit">
-        ${st.byBand.map((b) => `<span class="inChip">${esc(b.band.toUpperCase())} ${b.hits}</span>`).join("")}
-        ${st.byTag.map((t) => `<span class="inChip tag">${esc(t.tag)} ${t.hits}</span>`).join("")}
-      </div>`;
+      <details class="inBreakdown"${wasOpen ? " open" : ""}>
+        <summary>Show breakdown</summary>
+        <table class="inTop">
+          ${st.topChannels.slice(0, 8).map((c) => `<tr class="inChannel" data-freq="${c.freq}" tabindex="0" title="Open channel analytics">
+            <td class="inName">${esc(c.alphaTag) || fmtFreq(c.freq)}</td>
+            <td class="inBar"><div style="width:${(100 * c.hits / maxHits).toFixed(0)}%"></div></td>
+            <td class="inN">${c.hits}</td>
+            <td class="inAir">${fmtAir(c.airtimeMs)}</td>
+          </tr>`).join("")}
+        </table>
+        <div class="inSplit">
+          ${st.byBand.map((b) => `<span class="inChip">${esc(b.band.toUpperCase())} ${b.hits}</span>`).join("")}
+          ${st.byTag.map((t) => `<span class="inChip tag">${esc(t.tag)} ${t.hits}</span>`).join("")}
+        </div>
+      </details>`;
     root.querySelector<HTMLElement>("#inPeriodHint")!.textContent =
       inHours === 24 ? "last 24 hours" : inHours === 168 ? "last 7 days" : "last 30 days";
     root.querySelectorAll<HTMLButtonElement>(".inPeriod").forEach((b) =>
@@ -588,7 +546,7 @@ export function renderAdmin(root: HTMLElement): void {
       tile("Hits · 24h", String(stats.totalHits), `${stats.topChannels[0] ? esc(stats.topChannels[0].alphaTag) + " leads" : "quiet band"}`)
       + tile("Airtime", fmtAirShort(stats.totalAirtimeMs), `${stats.discoveries} close call${stats.discoveries === 1 ? "" : "s"} heard`)
       + tile("Triage queue", String(pending), pending > 0 ? "discoveries await review" : "inbox zero", "#/triage")
-      + tile("Alerts · 24h", String((alerts as unknown[]).length), "bell + SAME, feed below")
+      + tile("Alerts · 24h", String((alerts as unknown[]).length), "bell + SAME, feed above")
       + `<div class="statTile clockTile">
           <div class="stLabel">Activity by hour</div>
           <div class="hourClock" role="img" aria-label="${total === 0 ? "No traffic yet today" : `${total} hits today, busiest around ${String(peak).padStart(2, "0")}:00`}">${clock}</div>
@@ -632,7 +590,6 @@ export function renderAdmin(root: HTMLElement): void {
   // ── System health (Idea 16): gauges + sparklines off /api/system.
   const sysBody = root.querySelector<HTMLElement>("#sysBody")!;
   const healthBanner = root.querySelector<HTMLElement>("#healthBanner")!;
-  let lastVerdict: string | null = null;
   function spark(values: Array<number | null>, max: number, warn: number): string {
     const W = 120; const H = 28;
     const pts = values.map((v, i) => {
@@ -653,7 +610,7 @@ export function renderAdmin(root: HTMLElement): void {
       health: { verdict: "healthy" | "stressed" | "trouble"; reason: string };
       coreCount: number;
     };
-    if (!now) { sysBody.textContent = "no samples yet"; return; }
+    if (!now) { sysBody.textContent = "No readings yet — data appears within a minute."; return; }
     healthBanner.classList.toggle("healthClear", alerts.length === 0);
     healthBanner.classList.toggle("severe", alerts.some((a) => a.severity === "severe"));
     healthBanner.innerHTML = alerts.length ? `${safetyMode ? `<div class="safetyMode"><strong>Protection active:</strong> Close Call and sweep ranges are paused until temperature recovers.</div>` : ""}${alerts.map((a) => `<div class="healthAlert">
@@ -680,28 +637,14 @@ export function renderAdmin(root: HTMLElement): void {
       + cell("Open channels", String(now.openCount), spark(num("openCount"), 12, 11))
       + cell("Disk free", now.diskFreeMb === null ? "n/a" : `${((now.diskFreeMb as number) / 1024).toFixed(1)} GB`,
           "", (now.diskFreeMb as number | null ?? 1e9) < 2048);
-    const verdictClass = health.verdict;
-    const verdictLabel = health.verdict.toUpperCase();
-    // Preserve the user's manual open/collapse across the 3s polls. The verdict-
-    // derived default (open unless healthy) is only re-asserted on first render
-    // or when the verdict actually changes.
-    const prevDetails = sysBody.querySelector<HTMLDetailsElement>(".sysDetails");
-    const userOpen = prevDetails ? prevDetails.open : null; // null = no panel yet
-    const verdictDefaultOpen = health.verdict !== "healthy";
-    const shouldOpen = health.verdict !== lastVerdict
-      ? verdictDefaultOpen
-      : (userOpen ?? verdictDefaultOpen);
-    lastVerdict = health.verdict;
+    // Always open: health has its own page now — no disclosure to manage.
     sysBody.innerHTML =
-      `<div class="healthVerdict ${verdictClass}">
+      `<div class="healthVerdict ${health.verdict}">
          <span class="verdictDot"></span>
-         <span class="verdictLabel">${verdictLabel}</span>
+         <span class="verdictLabel">${health.verdict.toUpperCase()}</span>
          <span class="verdictReason">${esc(health.reason)}</span>
        </div>
-       <details class="sysDetails"${shouldOpen ? " open" : ""}>
-         <summary>Details</summary>
-         <div class="sysGrid">${cells}</div>
-       </details>`;
+       <div class="sysGrid">${cells}</div>`;
   }
   void renderSystem().catch(() => {});
   setInterval(() => { renderSystem().catch(() => {}); }, 3000);
@@ -709,21 +652,13 @@ export function renderAdmin(root: HTMLElement): void {
     if (drawerKind === "analytics" && analyticsFreq !== null) void renderAnalyticsDrawer(analyticsFreq);
   }, 5000);
 
-  // Inline-editable CRUD table. One row at a time is editable: editingId is a
-  // channel id, "new" (blank row pending creation), or null. Checkboxes on
-  // display rows act immediately (PUT patch); text/mode edits go through
-  // edit -> save / cancel, with Enter/Escape shortcuts.
+  // Channel table: read-only rows (freq · name · audible toggle); all other
+  // edits happen in the drawer, the single editor (spec 2026-07-16 admin IA).
   let channels: Channel[] = [];
   let banksCache: Bank[] = [];
-  // Per-group add: the new-channel row renders inside this bank's section
-  // and the saved channel carries the bank's first tag, so a channel added
-  // "into Rail" actually matches Rail.
-  let pendingTags: string[] = [];
-  let pendingGroup: string | null = null;
   // Collapsed bank groups (persisted like the collapsible modules).
   const GROUPS_KEY = "kerchunk.admin.banksCollapsed";
   const collapsedBanks = readStoredStringSet(localStorage.getItem(GROUPS_KEY), []);
-  let editingId: string | null = null;
 
   const MODES: Channel["mode"][] = ["nfm", "fm", "am"];
 
@@ -744,9 +679,9 @@ export function renderAdmin(root: HTMLElement): void {
   function bankHeaderRow(g: BankGroup): string {
     if (!g.bank) {
       return `<tr class="bankRow" data-bank="unbanked">
-        <td colspan="7"><span class="bkCaret">${collapsedBanks.has("unbanked") ? "▸" : "▾"}</span>
+        <td colspan="3"><div class="bkRowInner"><span class="bkCaret">${collapsedBanks.has("unbanked") ? "▸" : "▾"}</span>
         <span class="bkName">UNBANKED</span> <span class="bankCount">${g.channels.length}</span>
-        <span class="hint">matches no bank — tag these or add a bank that covers them</span></td>
+        <span class="hint">matches no bank — tag these or add a bank that covers them</span></div></td>
       </tr>`;
     }
     const b = g.bank;
@@ -754,18 +689,23 @@ export function renderAdmin(root: HTMLElement): void {
     const archivedCount = g.channels.filter((c) => !c.enabled).length;
     const summary = profileSummary(b);
     return `<tr class="bankRow" data-bank="${esc(b.id)}">
-      <td colspan="7">
+      <td colspan="3"><div class="bkRowInner">
         <span class="bkCaret">${collapsedBanks.has(b.id) ? "▸" : "▾"}</span>
         <span class="bkName">${esc(b.name)}</span>
         <span class="bankCount">${g.channels.length}</span>
-        <button class="bkBulkAudible" title="Make every channel in this collection audible">Make audible</button>
-        <button class="bkBulkSilent" title="Keep tracking every channel but silence them">Make silent</button>
-        <button class="bkBulkArchive" title="Stop tracking every channel in this collection">Archive</button>
         <span class="bkSummary">${audibleCount} audible · ${archivedCount} archived${summary ? ` · ${summary}` : ""}</span>
-        ${iconBtn("bkGear", "gear", "Scan profile (squelch/dwell overrides)")}
-        ${iconBtn("bkAddCh", "add", `Add a channel into ${esc(b.name)}`)}
-        ${iconBtn("bkDel", "del", "Delete bank — its channels keep scanning")}
-      </td>
+        <details class="bankMenu">
+          <summary aria-label="Actions for ${esc(b.name)}" title="Bank actions">⋯</summary>
+          <div class="bankMenuList">
+            <button class="bkBulkAudible" title="Make every channel in this collection audible">Make audible</button>
+            <button class="bkBulkSilent" title="Keep tracking every channel but silence them">Make silent</button>
+            <button class="bkBulkArchive" title="Stop tracking every channel in this collection">Archive all</button>
+            <button class="bkAddCh" title="Add a channel into ${esc(b.name)}">Add channel here</button>
+            <button class="bkGear" title="Squelch/dwell overrides for this bank">Scan profile</button>
+            <button class="bkDel danger" title="Delete bank — its channels keep scanning">Delete bank</button>
+          </div>
+        </details>
+      </div></td>
     </tr>`;
   }
 
@@ -782,81 +722,25 @@ export function renderAdmin(root: HTMLElement): void {
   function displayRow(c: Channel): string {
     return `<tr data-id="${esc(c.id)}">
       <td class="rowOpen">${fmtFreq(c.freq)}</td>
-      <td class="rowOpen">${esc(c.alphaTag)}${c.alert ? `<span class="bellChip" title="Alerts on a hit">${ICONS.bell}</span>` : ""}${membershipChips(c)}${locChip(c.location)}</td>
-      <td class="rowOpen">${esc(c.mode.toUpperCase())}</td>
-      <td><input type="checkbox" class="prio" ${c.priority ? "checked" : ""} /></td>
-      <td><input type="checkbox" class="audible" ${c.audible !== false ? "checked" : ""} /></td>
-      <td><input type="checkbox" class="archived" ${!c.enabled ? "checked" : ""} /></td>
-      <td class="actions">${iconBtn("listen", "listen", "Listen — park the radio on this channel (unsquelched)")}${iconBtn("lock", "lockout", "Lockout — remove and never Close-Call this frequency again")}</td>
-    </tr>`;
-  }
-
-  function editRow(c?: Channel): string {
-    return `<tr data-id="${c ? esc(c.id) : "new"}" class="editing">
-      <td><input class="fMhz" value="${c ? fmtFreq(c.freq) : ""}" placeholder="145.130" /></td>
-      <td><input class="fTag" value="${c ? esc(c.alphaTag) : ""}" placeholder="KC0KW — Gibbs Rd" /></td>
-      <td><select class="fMode">${modeOptions(c?.mode ?? "nfm")}</select></td>
-      <td><input type="checkbox" class="fPrio" ${c?.priority ? "checked" : ""} /></td>
-      <td><input type="checkbox" class="fAudible" ${c ? (c.audible !== false ? "checked" : "") : ""} /></td>
-      <td><input type="checkbox" class="fArchived" ${c && !c.enabled ? "checked" : ""} /></td>
-      <td class="actions">${iconBtn("save", "save", "Save")}${iconBtn("cancel", "cancel", "Cancel")}</td>
+      <td class="rowOpen">${esc(c.alphaTag)}${c.alert ? `<span class="bellChip" title="Alerts on a hit">${ICONS.bell}</span>` : ""}${membershipChips(c)}${locChip(c.location)}<span class="rowChev" aria-hidden="true">›</span></td>
+      <td class="chAudible"><input type="checkbox" class="audible" ${c.audible !== false ? "checked" : ""} title="Audible — play this channel through the speaker" /></td>
     </tr>`;
   }
 
   function renderRows(): void {
     const groups = groupChannelsByBank(channels, banksCache);
-    // Where does the new-channel editor render? A per-group add (pendingGroup
-    // set) renders inside ITS bank's group; the global + Add renders at the
-    // very top (index 0). Either way the saved channel re-homes by its own
-    // predicate match on the post-save refresh.
-    const editorGroup = pendingGroup === null
-      ? 0
-      : Math.max(0, groups.findIndex((g) => (g.bank?.id ?? "unbanked") === pendingGroup));
     chRows.innerHTML =
-      groups.map((g, i) => {
+      groups.map((g) => {
         const key = g.bank?.id ?? "unbanked";
         const body = collapsedBanks.has(key)
           ? ""
-          : (editingId === "new" && i === editorGroup ? editRow() : "")
-            + g.channels.map((c) => (editingId === c.id ? editRow(c) : displayRow(c))).join("");
+          : g.channels.map(displayRow).join("");
         return bankHeaderRow(g) + body;
       }).join("") +
-      (channels.length === 0 && editingId !== "new"
-        ? `<tr><td colspan="7" class="empty">no channels — hit + Add</td></tr>` : "");
-    addBtn.disabled = editingId !== null;
+      (channels.length === 0
+        ? `<tr><td colspan="3" class="empty">No channels yet — use Add channel above.</td></tr>` : "");
     wireRows();
     wireBankRows();
-  }
-
-  function rowPatch(tr: HTMLElement): Omit<Channel, "id"> {
-    // formToChannel throws on a bad frequency — surfaced in chErr by saveRow.
-    // priority/enabled are set explicitly: a PUT patch needs `priority: false`
-    // (not an absent key) to UNSET the flag on an existing channel.
-    const base = formToChannel({
-      mhz: tr.querySelector<HTMLInputElement>(".fMhz")!.value,
-      alphaTag: tr.querySelector<HTMLInputElement>(".fTag")!.value,
-      mode: tr.querySelector<HTMLSelectElement>(".fMode")!.value,
-    });
-    return {
-      ...base,
-      priority: tr.querySelector<HTMLInputElement>(".fPrio")!.checked,
-      audible: tr.querySelector<HTMLInputElement>(".fAudible")!.checked,
-      enabled: !tr.querySelector<HTMLInputElement>(".fArchived")!.checked,
-      ...(tr.dataset.id === "new" && pendingTags.length ? { tags: pendingTags } : {}),
-    };
-  }
-
-  async function saveRow(tr: HTMLElement): Promise<void> {
-    chErr.textContent = "";
-    try {
-      const payload = rowPatch(tr);
-      if (tr.dataset.id === "new") await api.addChannel(payload);
-      else await api.updateChannel(tr.dataset.id!, payload);
-      editingId = null;
-      pendingTags = [];
-      pendingGroup = null;
-      await refresh();
-    } catch (e) { chErr.textContent = (e as Error).message; }
   }
 
   function wireRows(): void {
@@ -865,42 +749,25 @@ export function renderAdmin(root: HTMLElement): void {
       if (!id) return;
       tr.querySelectorAll<HTMLElement>(".rowOpen").forEach((cell) =>
         cell.addEventListener("click", () => openDrawer("channel", id)));
-      tr.querySelector<HTMLButtonElement>(".listen")?.addEventListener("click", () => {
-        const c = channels.find((x) => x.id === id);
-        if (c) api.monitor(c.freq, c.alphaTag || fmtFreq(c.freq));
-      });
-      tr.querySelector<HTMLButtonElement>(".lock")?.addEventListener("click", () => {
-        const c = channels.find((x) => x.id === id);
-        if (c) void lockoutFreq(c.freq, c.alphaTag || fmtFreq(c.freq));
-      });
-      tr.querySelector<HTMLInputElement>(".prio")?.addEventListener("change", async (ev) => {
-        await api.updateChannel(id, { priority: (ev.target as HTMLInputElement).checked });
-        await refresh();
-      });
       tr.querySelector<HTMLInputElement>(".audible")?.addEventListener("change", async (ev) => {
         await api.updateChannel(id, { audible: (ev.target as HTMLInputElement).checked });
         await refresh();
       });
-      tr.querySelector<HTMLInputElement>(".archived")?.addEventListener("change", async (ev) => {
-        await api.updateChannel(id, { enabled: !(ev.target as HTMLInputElement).checked });
-        await refresh();
-      });
-      tr.querySelector<HTMLButtonElement>(".save")?.addEventListener("click", () => saveRow(tr));
-      tr.querySelector<HTMLButtonElement>(".cancel")?.addEventListener("click", () => {
-        editingId = null; pendingTags = []; pendingGroup = null; chErr.textContent = ""; renderRows();
-      });
-      if (tr.classList.contains("editing")) {
-        tr.addEventListener("keydown", (ev) => {
-          if (ev.key === "Enter") { ev.preventDefault(); saveRow(tr); }
-          if (ev.key === "Escape") { editingId = null; pendingTags = []; pendingGroup = null; chErr.textContent = ""; renderRows(); }
-        });
-      }
     });
   }
 
   function wireBankRows(): void {
     chRows.querySelectorAll<HTMLElement>("tr.bankRow").forEach((tr) => {
       const id = tr.dataset.bank!;
+      const menu = tr.querySelector<HTMLDetailsElement>(".bankMenu");
+      // One menu open at a time across the table.
+      menu?.addEventListener("toggle", () => {
+        if (!menu.open) return;
+        chRows.querySelectorAll<HTMLDetailsElement>(".bankMenu[open]").forEach((o) => {
+          if (o !== menu) o.open = false;
+        });
+      });
+      const closeMenu = () => { if (menu) menu.open = false; };
       tr.querySelector<HTMLElement>(".bkCaret")?.addEventListener("click", () => {
         if (collapsedBanks.has(id)) collapsedBanks.delete(id);
         else collapsedBanks.add(id);
@@ -916,9 +783,10 @@ export function renderAdmin(root: HTMLElement): void {
         await api.putConfig(cfg);
         await refresh();
       };
-      tr.querySelector<HTMLButtonElement>(".bkBulkAudible")?.addEventListener("click", () => bulk({ enabled: true, audible: true }));
-      tr.querySelector<HTMLButtonElement>(".bkBulkSilent")?.addEventListener("click", () => bulk({ enabled: true, audible: false }));
+      tr.querySelector<HTMLButtonElement>(".bkBulkAudible")?.addEventListener("click", () => { closeMenu(); void bulk({ enabled: true, audible: true }); });
+      tr.querySelector<HTMLButtonElement>(".bkBulkSilent")?.addEventListener("click", () => { closeMenu(); void bulk({ enabled: true, audible: false }); });
       tr.querySelector<HTMLButtonElement>(".bkBulkArchive")?.addEventListener("click", async () => {
+        closeMenu();
         const b = banksCache.find((x) => x.id === id);
         if (!b || !await confirmAdminAction({
           title: `Archive every channel in ${b.name}?`,
@@ -927,17 +795,18 @@ export function renderAdmin(root: HTMLElement): void {
         })) return;
         await bulk({ enabled: false });
       });
-      tr.querySelector<HTMLButtonElement>(".bkGear")?.addEventListener("click", () =>
-        openProfileEditor(banksCache.find((x) => x.id === id)));
-      tr.querySelector<HTMLButtonElement>(".bkAddCh")?.addEventListener("click", () => {
+      tr.querySelector<HTMLButtonElement>(".bkGear")?.addEventListener("click", () => {
+        closeMenu();
         const b = banksCache.find((x) => x.id === id);
-        pendingTags = b?.tags?.length ? [b.tags[0]!] : [];
-        pendingGroup = id;
-        editingId = "new";
-        collapsedBanks.delete(id);
-        renderRows();
+        if (b) openBankProfile(b);
+      });
+      tr.querySelector<HTMLButtonElement>(".bkAddCh")?.addEventListener("click", () => {
+        closeMenu();
+        const b = banksCache.find((x) => x.id === id);
+        openChannelEditor(undefined, b?.tags?.length ? [b.tags[0]!] : []);
       });
       tr.querySelector<HTMLButtonElement>(".bkDel")?.addEventListener("click", async () => {
+        closeMenu();
         const b = banksCache.find((x) => x.id === id);
         if (!b || !await confirmAdminAction({
           title: `Delete bank ${b.name}?`,
@@ -953,17 +822,15 @@ export function renderAdmin(root: HTMLElement): void {
     });
   }
 
-  function tr0Focus(): void {
-    chRows.querySelector<HTMLInputElement>("tr.editing .fMhz")?.focus();
-  }
-
   const chCount = root.querySelector<HTMLElement>("#chCount")!;
   // ── Channel drawer: full dossier + the editor (edit left the table rows).
   const drawer = root.querySelector<HTMLElement>("#chDrawer")!;
   const scrim = root.querySelector<HTMLElement>("#drawerScrim")!;
   let drawerId: string | null = null;
-  let drawerKind: "channel" | "discovery" | "analytics" = "channel";
+  let drawerKind: "channel" | "discovery" | "analytics" | "bank" = "channel";
   let analyticsFreq: number | null = null;
+  // New-channel mode: tags preset by the bank whose menu opened the editor.
+  let drawerPresetTags: string[] = [];
 
   function closeDrawer(): void {
     drawerId = null;
@@ -984,6 +851,26 @@ export function renderAdmin(root: HTMLElement): void {
     scrim.classList.add("open");
   }
 
+  // The drawer is the ONLY channel editor (spec 2026-07-16 admin IA).
+  // No argument = new channel; presetTags seed the Tags field so a channel
+  // added from a bank's menu actually matches that bank.
+  function openChannelEditor(c?: Channel, presetTags: string[] = []): void {
+    drawerPresetTags = presetTags;
+    drawerKind = "channel";
+    drawerId = c?.id ?? "new";
+    renderDrawer();
+    drawer.classList.add("open");
+    scrim.classList.add("open");
+  }
+
+  function openBankProfile(b: Bank): void {
+    drawerKind = "bank";
+    drawerId = b.id;
+    renderDrawer();
+    drawer.classList.add("open");
+    scrim.classList.add("open");
+  }
+
   function openAnalytics(freq: number): void {
     drawerKind = "analytics";
     analyticsFreq = freq;
@@ -996,28 +883,42 @@ export function renderAdmin(root: HTMLElement): void {
   function renderDrawer(): void {
     if (drawerKind === "discovery") { renderDiscoveryDrawer(); return; }
     if (drawerKind === "analytics") { if (analyticsFreq) void renderAnalyticsDrawer(analyticsFreq); return; }
-    const c = channels.find((x) => x.id === drawerId);
-    if (!c) { closeDrawer(); return; }
-    const loc = c.location;
+    if (drawerKind === "bank") { renderBankProfileDrawer(); return; }
+    const c = drawerId === "new" ? undefined : channels.find((x) => x.id === drawerId);
+    if (drawerId !== "new" && !c) { closeDrawer(); return; }
+    renderChannelDrawer(c);
+  }
+
+  // One form for edit and create: `c` undefined = new channel. The dossier
+  // (freq hero, info list, Listen/Lock out) only renders for existing rows.
+  function renderChannelDrawer(c?: Channel): void {
+    const loc = c?.location;
     drawer.innerHTML = `
       <header class="dwHead">
-        <h3>${esc(c.alphaTag) || fmtFreq(c.freq)}</h3>
+        <h3>${c ? esc(c.alphaTag) || fmtFreq(c.freq) : "New channel"}</h3>
         ${iconBtn("dwClose", "dismiss", "Close")}
       </header>
-      <div class="dwFreq">${fmtFreq(c.freq)}<span class="dwUnit">MHz</span></div>
+      ${c ? `<div class="dwFreq">${fmtFreq(c.freq)}<span class="dwUnit">MHz</span></div>` : ""}
       <div class="dwForm">
-        <label>Freq (MHz) <input id="dwMhz" value="${fmtFreq(c.freq)}" /></label>
-        <label>Name <input id="dwTag" value="${esc(c.alphaTag)}" /></label>
-        <label>Mode <select id="dwMode">${modeOptions(c.mode)}</select></label>
-        <label>Tags <input id="dwTags" value="${esc((c.tags ?? []).join(", "))}" placeholder="air, rail, ham" /></label>
-        <label>Site lat, lon <input id="dwLoc" value="${c.location?.lat != null ? `${c.location.lat}, ${c.location.lon}` : ""}" placeholder="39.1755, -94.4861" title="Transmitter site — drives the map blip" /></label>
-        <label><input id="dwPrio" type="checkbox" ${c.priority ? "checked" : ""} /> Priority</label>
-        <label title="A hit flashes the kiosk, lands in the alert feed, and temporarily plays a silent tracked channel through the speaker. The channel must not be archived."><input id="dwAlert" type="checkbox" ${c.alert ? "checked" : ""} /> Alert on hit</label>
-        <label><input id="dwAudible" type="checkbox" ${c.audible !== false ? "checked" : ""} /> Audible</label>
-        <label title="Archived channels keep their identity and location but stop consuming scanner capacity."><input id="dwArchived" type="checkbox" ${!c.enabled ? "checked" : ""} /> Archived</label>
-        <div><button id="dwSave" class="save">Save</button> <span id="dwErr" class="err"></span></div>
+        <div class="dwSection">Identity</div>
+        <label class="dwRow"><span>Freq <small>MHz</small></span><input id="dwMhz" value="${c ? fmtFreq(c.freq) : ""}" placeholder="145.130" /></label>
+        <label class="dwRow"><span>Name</span><input id="dwTag" value="${c ? esc(c.alphaTag) : ""}" placeholder="KC0KW — Gibbs Rd" /></label>
+        <label class="dwRow"><span>Mode</span><select id="dwMode">${modeOptions(c?.mode ?? "nfm")}</select></label>
+        <label class="dwRow"><span>Tags <small>Comma-separated — banks match on these</small></span><input id="dwTags" value="${esc((c ? c.tags ?? [] : drawerPresetTags).join(", "))}" placeholder="air, rail, ham" /></label>
+        <label class="dwRow"><span>Site <small>Transmitter lat, lon — drives the map blip</small></span><input id="dwLoc" value="${c?.location?.lat != null ? `${c.location.lat}, ${c.location.lon}` : ""}" placeholder="39.1755, -94.4861" /></label>
+        <div class="dwSection">Behavior</div>
+        <label class="dwRow switchRow"><span>Audible <small>Play through the speaker</small></span><input id="dwAudible" type="checkbox" ${!c || c.audible !== false ? "checked" : ""} /></label>
+        <label class="dwRow switchRow"><span>Priority <small>Preempts other channels in its group</small></span><input id="dwPrio" type="checkbox" ${c?.priority ? "checked" : ""} /></label>
+        <label class="dwRow switchRow"><span>Alert on hit <small>Flashes the kiosk and lands in the alert feed</small></span><input id="dwAlert" type="checkbox" ${c?.alert ? "checked" : ""} /></label>
+        <label class="dwRow switchRow"><span>Archived <small>Keep identity and location, stop scanning</small></span><input id="dwArchived" type="checkbox" ${c && !c.enabled ? "checked" : ""} /></label>
+        <div class="dwFooter">
+          <button id="dwSave" class="primary">${c ? "Save" : "Add channel"}</button>
+          ${c ? `<button id="dwListen" class="listen">Listen</button>
+          <button id="dwLock" class="lock">Lock out</button>` : ""}
+        </div>
+        <span id="dwErr" class="err"></span>
       </div>
-      <dl class="dwInfo">
+      ${c ? `<dl class="dwInfo">
         <dt>band</dt><dd>${bandFor(c.freq).toUpperCase()}</dd>
         <dt>exact</dt><dd>${c.freq.toLocaleString()} Hz</dd>
         <dt>location</dt><dd>${loc
@@ -1029,11 +930,7 @@ export function renderAdmin(root: HTMLElement): void {
         <dt>level trim</dt><dd>${c.levelTrimDb != null ? `${c.levelTrimDb > 0 ? "+" : ""}${c.levelTrimDb} dB` : "learning"}</dd>
         <dt>looked up</dt><dd>${c.lookedUpAt ? new Date(c.lookedUpAt).toLocaleString() : "never"}</dd>
         <dt>id</dt><dd>${esc(c.id)}</dd>
-      </dl>
-      <div class="dwActions">
-        <button id="dwListen" class="listen">Listen</button>
-        <button id="dwLock" class="lock">Lockout</button>
-      </div>`;
+      </dl>` : ""}`;
     drawer.querySelector<HTMLButtonElement>(".dwClose")!.addEventListener("click", closeDrawer);
     drawer.querySelector<HTMLButtonElement>("#dwSave")!.addEventListener("click", async () => {
       const err = drawer.querySelector<HTMLElement>("#dwErr")!;
@@ -1045,18 +942,18 @@ export function renderAdmin(root: HTMLElement): void {
           mode: drawer.querySelector<HTMLSelectElement>("#dwMode")!.value,
         });
         const locRaw = drawer.querySelector<HTMLInputElement>("#dwLoc")!.value.trim();
-        let location = c.location;
+        let location = c?.location;
         if (locRaw === "") {
           location = undefined;
         } else {
           const m = locRaw.split(",").map((x) => Number(x.trim()));
           if (m.length === 2 && m.every(Number.isFinite)) {
-            location = { ...(c.location ?? {}), lat: m[0]!, lon: m[1]!, source: "operator" };
+            location = { ...(c?.location ?? {}), lat: m[0]!, lon: m[1]!, source: "operator" };
           } else {
             throw new Error("site must be 'lat, lon'");
           }
         }
-        await api.updateChannel(c.id, {
+        const patch = {
           location,
           ...base,
           tags: drawer.querySelector<HTMLInputElement>("#dwTags")!.value
@@ -1065,16 +962,74 @@ export function renderAdmin(root: HTMLElement): void {
           alert: drawer.querySelector<HTMLInputElement>("#dwAlert")!.checked,
           enabled: !drawer.querySelector<HTMLInputElement>("#dwArchived")!.checked,
           audible: drawer.querySelector<HTMLInputElement>("#dwAudible")!.checked,
-        });
-        await refresh();
-        err.textContent = "saved";
+        };
+        if (c) {
+          await api.updateChannel(c.id, patch);
+          await refresh();
+          err.textContent = "saved";
+        } else {
+          await api.addChannel(patch);
+          closeDrawer();
+          await refresh();
+        }
       } catch (e) { err.textContent = (e as Error).message; }
     });
-    drawer.querySelector<HTMLButtonElement>("#dwListen")!.addEventListener("click", () =>
-      api.monitor(c.freq, c.alphaTag || fmtFreq(c.freq)));
-    drawer.querySelector<HTMLButtonElement>("#dwLock")!.addEventListener("click", async () => {
-      await lockoutFreq(c.freq, c.alphaTag || fmtFreq(c.freq));
-      closeDrawer();
+    if (c) {
+      drawer.querySelector<HTMLButtonElement>("#dwListen")!.addEventListener("click", () =>
+        api.monitor(c.freq, c.alphaTag || fmtFreq(c.freq)));
+      drawer.querySelector<HTMLButtonElement>("#dwLock")!.addEventListener("click", async () => {
+        await lockoutFreq(c.freq, c.alphaTag || fmtFreq(c.freq));
+        closeDrawer();
+      });
+    }
+  }
+
+  // Bank scan profile in the drawer — the same side-panel pattern channels
+  // use, replacing the box that used to inject at the top of the page.
+  function renderBankProfileDrawer(): void {
+    const b = banksCache.find((x) => x.id === drawerId);
+    if (!b) { closeDrawer(); return; }
+    const num = (v: number | undefined) => (v !== undefined ? String(v) : "");
+    drawer.innerHTML = `
+      <header class="dwHead">
+        <h3>${esc(b.name)} — scan profile</h3>
+        ${iconBtn("dwClose", "dismiss", "Close")}
+      </header>
+      <div class="dwForm">
+        <div class="dwSection">Scan profile</div>
+        <p class="dwHelp">Overrides for this bank's channels. Empty fields inherit the global scanning settings.</p>
+        <label class="dwRow"><span>Squelch open <small>dB over the noise floor</small></span><input id="bpOpen" type="number" min="1" step="0.5" value="${num(b.openAboveFloorDb)}" placeholder="global" /></label>
+        <label class="dwRow"><span>Quieting threshold <small>dB</small></span><input id="bpQuiet" type="number" max="-1" step="0.5" value="${num(b.noiseQuietDb)}" placeholder="global" /></label>
+        <label class="dwRow"><span>Hang time <small>ms after a transmission ends</small></span><input id="bpHang" type="number" min="100" step="100" value="${num(b.hangMs)}" placeholder="global" /></label>
+        <label class="dwRow"><span>Dwell weight <small>2 = twice the park time, 0.5 = half</small></span><input id="bpDwell" type="number" min="0.1" step="0.1" value="${num(b.dwellWeight)}" placeholder="1" /></label>
+        <div class="dwFooter"><button id="bpSave" class="primary">Save profile</button></div>
+        <span id="bpErr" class="err"></span>
+      </div>`;
+    drawer.querySelector<HTMLButtonElement>(".dwClose")!.addEventListener("click", closeDrawer);
+    const val = (sel: string): number | undefined => {
+      const raw = drawer.querySelector<HTMLInputElement>(sel)!.value.trim();
+      return raw === "" ? undefined : Number(raw);
+    };
+    drawer.querySelector<HTMLButtonElement>("#bpSave")!.addEventListener("click", async () => {
+      const err = drawer.querySelector<HTMLElement>("#bpErr")!;
+      err.textContent = "";
+      try {
+        const cfg = await api.getConfig();
+        cfg.banks = (cfg.banks ?? []).map((x) => {
+          if (x.id !== b.id) return x;
+          const { openAboveFloorDb: _o, noiseQuietDb: _q, hangMs: _h, dwellWeight: _d, ...rest } = x;
+          return {
+            ...rest,
+            ...(val("#bpOpen") !== undefined ? { openAboveFloorDb: val("#bpOpen") } : {}),
+            ...(val("#bpQuiet") !== undefined ? { noiseQuietDb: val("#bpQuiet") } : {}),
+            ...(val("#bpHang") !== undefined ? { hangMs: val("#bpHang") } : {}),
+            ...(val("#bpDwell") !== undefined ? { dwellWeight: val("#bpDwell") } : {}),
+          };
+        });
+        await api.putConfig(cfg);
+        closeDrawer();
+        await refresh();
+      } catch (e) { err.textContent = (e as Error).message; }
     });
   }
 
@@ -1140,9 +1095,9 @@ export function renderAdmin(root: HTMLElement): void {
       </section>
       <div class="dwActions">
         <button id="dwListen" class="listen">Listen</button>
-        <button id="dwAdd" class="dAdd">Add</button>
+        <button id="dwAdd" class="dAdd">Add channel</button>
         <button id="dwSuppress">Suppress likely noise</button>
-        <button id="dwLock" class="lock">Lockout</button>
+        <button id="dwLock" class="lock">Lock out</button>
         <button id="dwDismiss" class="dDismiss">Dismiss</button>
       </div>`;
     drawer.querySelector<HTMLButtonElement>(".dwClose")!.addEventListener("click", closeDrawer);
@@ -1344,13 +1299,13 @@ export function renderAdmin(root: HTMLElement): void {
     const present = new Set(ds.map((d) => d.id));
     for (const id of dcSelected) if (!present.has(id)) dcSelected.delete(id);
     dcRows.innerHTML = ds.length === 0
-      ? `<tr><td colspan="5" class="empty">nothing pending — Close Call is hunting</td></tr>`
+      ? `<tr><td colspan="5" class="empty">Nothing pending — Close Call is hunting. New discoveries land here.</td></tr>`
       : ds.map((d) => `<tr data-id="${esc(d.id)}" class="dcRow">
           <td><input type="checkbox" class="dSel" ${dcSelected.has(d.id) ? "checked" : ""} /></td>
           <td class="rowOpen">${fmtFreq(d.freq)}<span class="dcSvc${serviceFor(d.freq) ? "" : " outband"}">${esc(serviceFor(d.freq) ?? "OUTBAND")}</span></td>
-          <td class="rowOpen">${esc(d.alphaTag)}${d.audible === false ? '<span class="dcSee" title="Identified as data/paging — filed seen-not-heard; promotes as SEE">SEE</span>' : d.audible === true ? '<span class="dcHear" title="Identified as analog voice — hearable">HEAR</span>' : ""}${locChip(d.location)}</td>
+          <td class="rowOpen">${esc(d.alphaTag)}${d.audible === false ? '<span class="dcSee" title="Identified as data/paging — filed seen-not-heard; promotes as SEE">SEE</span>' : d.audible === true ? '<span class="dcHear" title="Identified as analog voice — hearable">HEAR</span>' : ""}${locChip(d.location)}<span class="rowChev" aria-hidden="true">›</span></td>
           <td class="rowOpen dMode${d.mode && DIGITAL.some((x) => d.mode!.toUpperCase().includes(x)) ? " digital" : ""}">${d.mode ? esc(d.mode.toUpperCase()) : "—"}</td>
-          <td class="actions">${iconBtn("dListen", "listen", "Listen — audition this discovery")}${iconBtn("dAdd", "add", "Add as an enabled channel")}${iconBtn("dLock", "lockout", "Lockout — never Close-Call this frequency again")}${iconBtn("dDismiss", "dismiss", "Dismiss (may be rediscovered later)")}</td>
+          <td class="actions">${iconBtn("dListen", "listen", "Listen — audition this discovery")}${iconBtn("dAdd", "add", "Add as an enabled channel")}${iconBtn("dLock", "lockout", "Lock out — never Close-Call this frequency again")}${iconBtn("dDismiss", "dismiss", "Dismiss (may be rediscovered later)")}</td>
         </tr>`).join("");
     dcAll.checked = ds.length > 0 && dcSelected.size === ds.length;
     paintDcToolbar();
@@ -1428,9 +1383,11 @@ export function renderAdmin(root: HTMLElement): void {
   async function renderLockouts(): Promise<void> {
     const cfg = await api.getConfig();
     const lo = cfg.scan.lockoutHz ?? [];
+    const loCount = root.querySelector<HTMLElement>("#loCount");
+    if (loCount) loCount.textContent = String(lo.length);
     loList.innerHTML = lo.length === 0
-      ? `<li class="empty">none</li>`
-      : lo.map((f) => `<li>${fmtFreq(f)} ${iconBtn("unlock", "unlock", "Remove lockout", `data-hz="${f}"`)}</li>`).join("");
+      ? `<span class="empty">No locked-out frequencies.</span>`
+      : lo.map((f) => `<span class="loChip">${fmtFreq(f)}${iconBtn("unlock", "unlock", `Remove lockout ${fmtFreq(f)}`, `data-hz="${f}"`)}</span>`).join("");
     loList.querySelectorAll<HTMLButtonElement>(".unlock").forEach((b) =>
       b.addEventListener("click", async () => {
         const cfg2 = await api.getConfig();
@@ -1442,7 +1399,8 @@ export function renderAdmin(root: HTMLElement): void {
   renderLockouts();
 
   addBtn.addEventListener("click", () => {
-    pendingTags = []; pendingGroup = null; editingId = "new"; chErr.textContent = ""; renderRows(); tr0Focus();
+    chErr.textContent = "";
+    openChannelEditor();
   });
 
   // ---- Now Playing card ----
@@ -1680,17 +1638,20 @@ export function renderAdmin(root: HTMLElement): void {
       .map((r) => `${r.loHz / 1e6}-${r.hiHz / 1e6}`).join(", ");
   });
 
+  // Per-card saves (spec 2026-07-16 admin IA): each card patches only its
+  // slice of config. Field semantics unchanged: empty = default/clear.
+  const numOrU = (el: HTMLInputElement): number | undefined =>
+    el.value.trim() === "" ? undefined : Number(el.value);
+
   root.querySelector<HTMLButtonElement>("#tSave")!.addEventListener("click", async () => {
     tErr.textContent = "";
     try {
       const cfg = await api.getConfig();
-      const num = (el: HTMLInputElement): number | undefined =>
-        el.value.trim() === "" ? undefined : Number(el.value);
-      cfg.scan.groupDwellMs = num(tGroupDwell);
-      cfg.scan.openAboveFloorDb = num(tOpenDb);
-      cfg.scan.noiseQuietDb = num(tQuietDb);
+      cfg.scan.groupDwellMs = numOrU(tGroupDwell);
+      cfg.scan.openAboveFloorDb = numOrU(tOpenDb);
+      cfg.scan.noiseQuietDb = numOrU(tQuietDb);
       cfg.scan.closeCall = tCloseCall.checked;
-      cfg.scan.closeCallDb = num(tCloseCallDb);
+      cfg.scan.closeCallDb = numOrU(tCloseCallDb);
       const sweeps = tSweep.value.split(",").map((x) => x.trim()).filter(Boolean)
         .map((x) => {
           const m = /^([\d.]+)\s*-\s*([\d.]+)$/.exec(x);
@@ -1699,6 +1660,40 @@ export function renderAdmin(root: HTMLElement): void {
         });
       if (sweeps.length) cfg.scan.sweepRanges = sweeps;
       else delete cfg.scan.sweepRanges;
+      const hang = numOrU(tHang);
+      if (hang !== undefined) cfg.scan.dwellMs = hang;
+      await api.putConfig(cfg);
+      tErr.textContent = "saved";
+    } catch (e) { tErr.textContent = (e as Error).message; }
+  });
+
+  const alErr = root.querySelector<HTMLElement>("#alErr")!;
+  root.querySelector<HTMLButtonElement>("#alSave")!.addEventListener("click", async () => {
+    alErr.textContent = "";
+    try {
+      const cfg = await api.getConfig();
+      // Alert knobs: empty fields fall back to defaults (15 min / 30 s).
+      const ntfy = tAlertNtfy.value.trim();
+      const fips = tSameFips.value.split(",").map((x) => x.trim()).filter(Boolean);
+      const alerts = {
+        ...(numOrU(tAlertCool) !== undefined ? { cooldownMinutes: numOrU(tAlertCool) } : {}),
+        ...(numOrU(tAlertHold) !== undefined ? { holdSeconds: numOrU(tAlertHold) } : {}),
+        ...(ntfy ? { ntfyUrl: ntfy } : {}),
+        ...(fips.length ? { sameFips: fips } : {}),
+        ...(tSameTests.checked ? { sameTests: true } : {}),
+      };
+      if (Object.keys(alerts).length) cfg.alerts = alerts;
+      else delete cfg.alerts;
+      await api.putConfig(cfg);
+      alErr.textContent = "saved";
+    } catch (e) { alErr.textContent = (e as Error).message; }
+  });
+
+  const igErr = root.querySelector<HTMLElement>("#igErr")!;
+  root.querySelector<HTMLButtonElement>("#igSave")!.addEventListener("click", async () => {
+    igErr.textContent = "";
+    try {
+      const cfg = await api.getConfig();
       const mapsKey = tMapsKey.value.trim();
       const mapId = tMapsMapId.value.trim();
       if (cfg.display) {
@@ -1712,27 +1707,24 @@ export function renderAdmin(root: HTMLElement): void {
         // No display block (no weather location yet) means no place to store
         // these AND no map without coordinates — say so instead of a silent
         // "saved" that drops the key.
-        tErr.textContent = "set a weather location first — the map needs coordinates";
+        igErr.textContent = "set a weather location first — the map needs coordinates";
         return;
       }
-      // Alert knobs: empty fields fall back to defaults (15 min / 30 s).
-      const ntfy = tAlertNtfy.value.trim();
-      const fips = tSameFips.value.split(",").map((x) => x.trim()).filter(Boolean);
-      const alerts = {
-        ...(num(tAlertCool) !== undefined ? { cooldownMinutes: num(tAlertCool) } : {}),
-        ...(num(tAlertHold) !== undefined ? { holdSeconds: num(tAlertHold) } : {}),
-        ...(ntfy ? { ntfyUrl: ntfy } : {}),
-        ...(fips.length ? { sameFips: fips } : {}),
-        ...(tSameTests.checked ? { sameTests: true } : {}),
-      };
-      if (Object.keys(alerts).length) cfg.alerts = alerts;
-      else delete cfg.alerts;
-      const hang = num(tHang);
-      if (hang !== undefined) cfg.scan.dwellMs = hang;
       await api.putConfig(cfg);
-      tErr.textContent = "saved";
-    } catch (e) { tErr.textContent = (e as Error).message; }
+      igErr.textContent = "saved";
+    } catch (e) { igErr.textContent = (e as Error).message; }
   });
+
+  // Settings cards: desktop shows all four open; phones get an accordion
+  // (one open at a time — the toggle handler closes the siblings).
+  const settingsCards = [...root.querySelectorAll<HTMLDetailsElement>(".settingsCard")];
+  if (window.matchMedia("(min-width: 700px)").matches) {
+    settingsCards.forEach((d) => { d.open = true; });
+  } else {
+    settingsCards.forEach((d) => d.addEventListener("toggle", () => {
+      if (d.open) settingsCards.forEach((o) => { if (o !== d) o.open = false; });
+    }));
+  }
 
   refresh().catch((e) => { chErr.textContent = (e as Error).message; });
 
