@@ -28,7 +28,7 @@ export const api = {
     fetch("/api/audio/volume", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ percent }) }),
   setMuted: (muted: boolean) =>
     fetch("/api/audio/mute", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ muted }) }),
-  getStatus: () => fetch("/api/status").then(j<{ state: string; mode: "scan" | "weather" | "monitor"; monitor: Channel | null; scanCount: number; muted?: boolean; warmed?: boolean }>),
+  getStatus: () => fetch("/api/status").then(j<{ state: string; mode: "scan" | "weather" | "monitor"; monitor: Channel | null; scanCount: number; muted?: boolean; warmed?: boolean; breakIn?: boolean }>),
   monitor: (freq: number, alphaTag?: string) =>
     fetch("/api/monitor", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ freq, alphaTag }) }).then(j<{ mode: string }>),
   monitorStop: () =>
@@ -46,5 +46,7 @@ export const api = {
   clearAlerts: () => fetch("/api/history/alerts", { method: "DELETE" }).then(j<{ removed: number }>),
   reloadKiosk: () => fetch("/api/kiosk/reload", { method: "POST" }).then(j<{ ok: boolean }>),
   restartBackend: () => fetch("/api/backend/restart", { method: "POST" }).then(j<{ ok: boolean }>),
+  powerAction: (action: "reboot" | "poweroff") =>
+    fetch("/api/system/power", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action }) }).then(j<{ ok: boolean; action: string }>),
   getLogs: () => fetch("/api/logs").then(j<{ freq: number; alphaTag: string; ts: number }[]>),
 };
