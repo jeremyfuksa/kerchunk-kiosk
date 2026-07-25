@@ -147,6 +147,13 @@ do not "simplify" them away:
 - **The weather helper runs at `niceness: 19`.** At equal priority its ~300 GR
   threads starve the scanner's audio thread and the live repeater sounds
   choppy. Any additional radio helper gets niced down too.
+- **WirePlumber is disabled on the scanner's audio card.**
+  `kiosk/systemd/wireplumber-kerchunk-scanner-card.conf` (installed to
+  `/etc/wireplumber/wireplumber.conf.d/`) sets `device.disabled` on the PCH
+  card. Without it PipeWire claims the card at login — winning the boot race
+  while the helper is still building its flowgraph — and writes its default
+  route volume (0.064 → −23.5 dB) over the ALSA `Master` control the backend
+  owns, so the admin volume slider and the hardware disagree after every boot.
 - **The engine must always drain the helper's fd-3 audio tee** (feeds
   `/api/stream.wav`) or the helper blocks.
 - **Wideband hold-through is capped** (PR #194) so a stuck-open lane can't

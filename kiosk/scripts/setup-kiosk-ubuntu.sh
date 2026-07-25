@@ -26,7 +26,10 @@ REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # the kiosk/ dir
 STATE_DIR=/var/lib/kerchunk-kiosk
 # Built-in analog out (CS4208), addressed by card NAME: indices swap across
 # boots when the PCH and HDMI controllers race (bit us on first appliance boot).
-AUDIO_SINK="plughw:CARD=PCH,DEV=0"
+# AUDIO_CARD is the single knob: it names the sink, the amixer target, and the
+# card WirePlumber is told to keep its hands off (see the audio-ownership step).
+AUDIO_CARD="${AUDIO_CARD:-PCH}"
+AUDIO_SINK="plughw:CARD=${AUDIO_CARD},DEV=0"
 
 echo "[setup] Installing SDR toolchain packages..."
 sudo apt-get update
@@ -94,6 +97,17 @@ EOF
 # The dashboard must never go away: no suspend/hibernate, ever.
 sudo systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target >/dev/null
 
+echo "[setup] Audio ownership: keeping WirePlumber off the scanner card ($AUDIO_CARD)..."
+# Exactly one process owns the scanner's audio card. WirePlumber otherwise
+# claims it at login and writes its own route volume onto the ALSA Master
+# control the backend owns — desyncing the admin volume slider from the
+# hardware on every boot. See the drop-in's header for the full mechanism.
+sudo mkdir -p /etc/wireplumber/wireplumber.conf.d
+sed 's#\\\\bPCH\$#\\\\b'"${AUDIO_CARD}"'$#' \
+  "$REPO_DIR/systemd/wireplumber-kerchunk-scanner-card.conf" \
+  | sudo tee /etc/wireplumber/wireplumber.conf.d/50-kerchunk-scanner-card.conf >/dev/null
+systemctl --user restart wireplumber 2>/dev/null || true
+
 echo "[setup] Pinning OS maintenance to an overnight window (off the air during the day)..."
 # apt + snap default to daytime/boot-relative schedules. On this old, thermally
 # saturated box an apt-get dist-upgrade or snap refresh mid-afternoon spikes CPU
@@ -147,7 +161,7 @@ if ! sudo test -f "$STATE_DIR/config.json"; then
 {
   "version": 1,
   "scan": { "sampleRate": 12000, "squelchLevel": 1800, "gain": "auto", "dwellMs": 2000 },
-  "audio": { "sink": "$AUDIO_SINK", "volume": 70, "muted": false, "mixerCard": "PCH", "mixerControl": "Master" },
+  "audio": { "sink": "$AUDIO_SINK", "volume": 70, "muted": false, "mixerCard": "$AUDIO_CARD", "mixerControl": "Master" },
   "channels": [
     { "id": "wx2", "freq": 162400000, "alphaTag": "WX2", "mode": "nfm", "enabled": true },
     { "id": "wx4", "freq": 162425000, "alphaTag": "WX4", "mode": "nfm", "enabled": true },
