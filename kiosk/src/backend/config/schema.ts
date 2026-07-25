@@ -75,6 +75,11 @@ export const configSchema = z.object({
     windowBandwidthHz: z.number().int().positive().optional(),
     // Dwell per group before hopping to the next (hold-through overrides).
     groupDwellMs: z.number().int().positive().optional(),
+    // Ceiling on ONE continuous hold-through (default 180 s). A lane that
+    // reads open past this is treated as stuck and abandoned so it can't park
+    // the scanner. Applied at engine construction — changing it needs a
+    // backend restart, not just a config PUT.
+    maxHoldMs: z.number().int().positive().optional(),
     // Squelch: open when channel power exceeds its learned noise floor by
     // this many dB (close threshold sits 3 dB lower for hysteresis).
     openAboveFloorDb: z.number().positive().optional(),
