@@ -123,6 +123,15 @@ describe("HTTP API", () => {
     expect(res.body.state).toBeTruthy();
   });
 
+  it("GET /api/status reports when this backend process started", async () => {
+    // The admin watches this across a restart/reboot: a changed value proves a
+    // different process is answering, which is what un-sticks its status line.
+    const { server } = makeApp();
+    const res = await request(server).get("/api/status");
+    expect(typeof res.body.startedAt).toBe("number");
+    expect(res.body.startedAt).toBeLessThanOrEqual(Date.now());
+  });
+
   it("GET /api/status includes the current mode (defaults to scan)", async () => {
     const { server } = makeApp();
     const res = await request(server).get("/api/status");

@@ -56,6 +56,11 @@ const MIME: Record<string, string> = {
   ".json": "application/json", ".svg": "image/svg+xml",
 };
 
+// Identity of this backend process, reported on /api/status. The admin records
+// it before a restart/reboot and watches for it to change — the only signal
+// that survives a restart which completes between two polls.
+const STARTED_AT = Date.now();
+
 export function toScanConfig(
   cfg: Config,
   mode: "scan" | "weather" | "monitor",
@@ -1103,6 +1108,9 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
         // warns before a reboot. `mode === "weather"` can't tell a break-in
         // from an operator-selected weather mode.
         breakIn,
+        // When this backend process started. The admin's system-action watcher
+        // compares it across a restart/reboot to know a *new* process is up.
+        startedAt: STARTED_AT,
       });
     }
     if (method === "GET" && path === "/api/logs") return json(res, 200, activityLog.entries());
