@@ -83,6 +83,42 @@ export function weatherFormToChannel(form: { mhz: string; alphaTag: string; mode
   return formToChannel(form);
 }
 
+/** Config shape the lockout pair mutates — the slice both need, so these stay
+ *  callable from tests without standing up a whole config fixture. */
+type LockoutCfg = {
+  channels: Channel[];
+  discoveries?: Array<{ freq: number }>;
+  scan: { lockoutHz?: number[] };
+};
+
+/** Lock out a frequency: ARCHIVE its channel (enabled:false), drop any pending
+ *  discovery, and add it to the Close Call suppression list.
+ *
+ *  Archiving, not deleting: schema.ts already defines enabled:false as
+ *  "identity/location remain, but the channel stops consuming scanner
+ *  capacity" — exactly what a lockout wants. Deleting threw away the alphaTag,
+ *  location, rfDb and learned levelTrimDb the lookup chain paid API calls to
+ *  build, and left `unlockFreq` with nothing to restore. */
+export function lockoutFreqIn<T extends LockoutCfg>(cfg: T, freq: number): T {
+  return {
+    ...cfg,
+    channels: cfg.channels.map((c) => (c.freq === freq ? { ...c, enabled: false } : c)),
+    discoveries: (cfg.discoveries ?? []).filter((d) => d.freq !== freq),
+    scan: { ...cfg.scan, lockoutHz: [...new Set([...(cfg.scan.lockoutHz ?? []), freq])] },
+  };
+}
+
+/** The true inverse: clear the suppression AND un-archive the channel lockout
+ *  archived. Clearing suppression alone left the operator with an unlocked
+ *  frequency that still never scanned, and no hint why. */
+export function unlockFreqIn<T extends LockoutCfg>(cfg: T, freq: number): T {
+  return {
+    ...cfg,
+    channels: cfg.channels.map((c) => (c.freq === freq ? { ...c, enabled: true } : c)),
+    scan: { ...cfg.scan, lockoutHz: (cfg.scan.lockoutHz ?? []).filter((f) => f !== freq) },
+  };
+}
+
 
 
 // Icons come from Lucide (lucide-static raw SVGs, stroke = currentColor, so
@@ -391,18 +427,14 @@ export function renderAdmin(root: HTMLElement): void {
   async function lockoutFreq(freq: number, label: string): Promise<void> {
     const confirmed = await confirmAdminAction({
       title: `Lock out ${label}?`,
-      message: "This removes the channel and permanently prevents this frequency from triggering Close Call.",
-      confirmLabel: "Lock out permanently",
+      message: "This stops the frequency being scanned or Close-Called. "
+        + "The channel is archived, not deleted — unlock restores it.",
+      confirmLabel: "Lock out",
       danger: true,
     });
     if (!confirmed) return;
     const cfg = await api.getConfig();
-    // Locking out a frequency removes it EVERYWHERE: channel(s), pending
-    // discoveries, and into the suppression list.
-    cfg.channels = cfg.channels.filter((c) => c.freq !== freq);
-    cfg.discoveries = (cfg.discoveries ?? []).filter((d) => d.freq !== freq);
-    cfg.scan.lockoutHz = [...new Set([...(cfg.scan.lockoutHz ?? []), freq])];
-    await api.putConfig(cfg);
+    await api.putConfig(lockoutFreqIn(cfg, freq));
     await refresh();
     renderDiscoveries();
     renderLockouts();
@@ -1387,12 +1419,13 @@ export function renderAdmin(root: HTMLElement): void {
     if (loCount) loCount.textContent = String(lo.length);
     loList.innerHTML = lo.length === 0
       ? `<span class="empty">No locked-out frequencies.</span>`
-      : lo.map((f) => `<span class="loChip">${fmtFreq(f)}${iconBtn("unlock", "unlock", `Remove lockout ${fmtFreq(f)}`, `data-hz="${f}"`)}</span>`).join("");
+      : lo.map((f) => `<span class="loChip">${fmtFreq(f)}${iconBtn("unlock", "unlock", `Unlock ${fmtFreq(f)} — scan it again`, `data-hz="${f}"`)}</span>`).join("");
     loList.querySelectorAll<HTMLButtonElement>(".unlock").forEach((b) =>
       b.addEventListener("click", async () => {
+        const hz = Number(b.dataset.hz);
         const cfg2 = await api.getConfig();
-        cfg2.scan.lockoutHz = (cfg2.scan.lockoutHz ?? []).filter((f) => f !== Number(b.dataset.hz));
-        await api.putConfig(cfg2);
+        await api.putConfig(unlockFreqIn(cfg2, hz));
+        await refresh();
         renderLockouts();
       }));
   }
