@@ -303,6 +303,49 @@ describe("WidebandEngine", () => {
     expect(err && err.type === "error" && err.code).toBe("NO_DEVICE");
   });
 
+  it("backs off exponentially between failed respawns", async () => {
+    // A helper that can't open its device died and respawned ~1.4x/sec for two
+    // and a half minutes on the appliance (weather SDR absent at boot). Each
+    // spawn builds a GNU Radio flowgraph; on a box running 1 C under its
+    // thermal trip, a 1 Hz respawn loop is a real hazard, not just log spam.
+    const logs: string[] = [];
+    const { engine } = makeEngine(
+      { FAKE_WB_MODE: "nodevice" },
+      { restartDelayMs: 20, maxRestartDelayMs: 500, log: (m: string) => logs.push(m) },
+    );
+    await engine.start(cfg([VHF_A]));
+    const delays = () => logs
+      .map((m) => /respawn in (\d+)ms/.exec(m))
+      .filter((m): m is RegExpExecArray => m !== null)
+      .map((m) => Number(m[1]));
+    await waitFor(() => delays().length >= 4, 3000);
+    await engine.stop();
+    const d = delays();
+    expect(d.length).toBeGreaterThanOrEqual(4);
+    // Strictly increasing until the cap — 20, 40, 80, 160...
+    expect(d[1]).toBeGreaterThan(d[0]!);
+    expect(d[2]).toBeGreaterThan(d[1]!);
+    expect(d[3]).toBeGreaterThan(d[2]!);
+  });
+
+  it("caps the backoff so a long-absent device still gets retried", async () => {
+    // Backoff must not grow unbounded: an SDR the operator replugs an hour
+    // later has to be picked up without a manual service restart.
+    const logs: string[] = [];
+    const { engine } = makeEngine(
+      { FAKE_WB_MODE: "nodevice" },
+      { restartDelayMs: 20, maxRestartDelayMs: 60, log: (m: string) => logs.push(m) },
+    );
+    await engine.start(cfg([VHF_A]));
+    const delays = () => logs
+      .map((m) => /respawn in (\d+)ms/.exec(m))
+      .filter((m): m is RegExpExecArray => m !== null)
+      .map((m) => Number(m[1]));
+    await waitFor(() => delays().length >= 5, 3000);
+    await engine.stop();
+    expect(Math.max(...delays())).toBeLessThanOrEqual(60);
+  });
+
   it("a crash during warm-up cancels the settle timer — no stale warmup:ready", async () => {
     // The helper says 'ready' (arming the 1.5s warm-up settle timer) then dies
     // 100ms later. The timer must be cancelled on teardown, or it fires a false

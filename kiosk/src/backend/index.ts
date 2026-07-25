@@ -55,10 +55,19 @@ function deviceOpts(radio: { serial?: string; port?: string } | undefined): {
   if (radio?.port) { const port = radio.port; return { rtlIndex: () => rtlIndexForPort(port) }; }
   return {};
 }
+// Respawn-backoff ceiling, shared by BOTH helpers. The weather lane is the one
+// that ran away (KIOSK03 absent at boot = ~1.4 failed spawns/sec for 2.5 min),
+// so it must carry the same cap as the scanner. Operator knob:
+// config.scan.maxRestartDelayMs; omitted = the engine's 30 s.
+const restartBackoffOpts = config.scan.maxRestartDelayMs !== undefined
+  ? { maxRestartDelayMs: config.scan.maxRestartDelayMs }
+  : {};
+
 const engine =
   engineKind === "fake" ? new FakeEngine()
   : engineKind === "wideband" ? new WidebandEngine({
       ...deviceOpts(scanRadio),
+      ...restartBackoffOpts,
       // Operator knob: config.scan.maxHoldMs (omitted = the engine's 180 s).
       ...(config.scan.maxHoldMs !== undefined ? { maxHoldMs: config.scan.maxHoldMs } : {}),
     })
@@ -81,6 +90,7 @@ const WEATHER_CENTER_OFFSET_HZ = 60_000;
 const weatherEngine = engineKind === "wideband" && weatherRadio && config.weatherChannel
   ? new WidebandEngine({
       ...deviceOpts(weatherRadio),
+      ...restartBackoffOpts,
       sampleRateHz: WEATHER_RATE_HZ,
       centerOffsetHz: WEATHER_CENTER_OFFSET_HZ,
       // Decode-only and latency-tolerant: run it at the lowest priority so its

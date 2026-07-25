@@ -80,6 +80,11 @@ export const configSchema = z.object({
     // the scanner. Applied at engine construction — changing it needs a
     // backend restart, not just a config PUT.
     maxHoldMs: z.number().int().positive().optional(),
+    // Ceiling on the DSP helper's respawn backoff (default 30 s). Consecutive
+    // failed spawns double the delay up to this; a helper whose SDR is absent
+    // must not rebuild its flowgraph every second. Also engine-construction
+    // time — needs a backend restart.
+    maxRestartDelayMs: z.number().int().positive().optional(),
     // Squelch: open when channel power exceeds its learned noise floor by
     // this many dB (close threshold sits 3 dB lower for hysteresis).
     openAboveFloorDb: z.number().positive().optional(),

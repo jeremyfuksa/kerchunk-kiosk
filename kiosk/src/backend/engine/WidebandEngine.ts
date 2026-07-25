@@ -47,7 +47,16 @@ export interface WidebandEngineOptions {
    *  null = first. Ignored when rtlSerial is set. */
   rtlIndex?: () => number | null;
   autoRestart?: boolean;
+  /** Delay before the FIRST respawn after an unexpected exit. Each consecutive
+   *  failure doubles it, up to maxRestartDelayMs. */
   restartDelayMs?: number;
+  /** Ceiling on the respawn backoff (default 30 s). Every spawn rebuilds a GNU
+   *  Radio flowgraph, so a helper that can't open its device must not respawn at
+   *  a fixed 1 Hz — the weather SDR being absent at boot did exactly that for
+   *  2.5 minutes, ~2.7 cores of repeated graph construction on a box that runs
+   *  1 C under its thermal trip. Capped rather than given up on: an SDR the
+   *  operator replugs later has to be picked up without a service restart. */
+  maxRestartDelayMs?: number;
   /** Per-group dwell override; otherwise config.groupDwellMs, else 3000. */
   groupDwellMs?: number;
   /** Max continuous hold-through before the sweep force-hops off a window even
@@ -99,6 +108,7 @@ export class WidebandEngine implements ScannerEngine {
   private readonly helperEnv: Record<string, string>;
   private readonly autoRestart: boolean;
   private readonly restartDelayMs: number;
+  private readonly maxRestartDelayMs: number;
   private readonly groupDwellOverride: number | undefined;
   private readonly now: () => number;
 
@@ -171,6 +181,7 @@ export class WidebandEngine implements ScannerEngine {
     // The thrash lesson: the DEFAULT restart delay must be >=1s. Tests may
     // pass a smaller explicit value (honored, like RtlFmEngine.hopIntervalMs).
     this.restartDelayMs = opts.restartDelayMs ?? 1000;
+    this.maxRestartDelayMs = opts.maxRestartDelayMs ?? 30_000;
     this.groupDwellOverride = opts.groupDwellMs;
     this.maxHoldMs = opts.maxHoldMs ?? 180_000;
     this.log = opts.log ?? ((m) => console.warn(m));
@@ -735,11 +746,22 @@ export class WidebandEngine implements ScannerEngine {
       // still false, so the respawn emits a real "ready" once it settles.)
       this.firstTunedSeen = false;
       this.clearRestartTimer();
+      // Exponential backoff on CONSECUTIVE failures (exitFailures resets once a
+      // spawn proves healthy). Without it a helper that cannot open its device
+      // respawned at a flat 1 Hz forever, rebuilding a GNU Radio flowgraph every
+      // second — pure thermal load with no chance of a different outcome.
+      const delay = Math.min(
+        this.restartDelayMs * 2 ** Math.max(0, this.exitFailures - 1),
+        this.maxRestartDelayMs,
+      );
+      if (this.exitFailures > 1) {
+        this.log(`[wideband] respawn in ${delay}ms (consecutive failure #${this.exitFailures})`);
+      }
       this.restartTimer = setTimeout(() => {
         this.restartTimer = null;
         if (this.stopping) return;
         this.spawnHelper(); // retunes to the current group on its "ready"
-      }, this.restartDelayMs);
+      }, delay);
     } else {
       this.setState("stopped");
     }
