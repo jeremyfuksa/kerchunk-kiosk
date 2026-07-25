@@ -39,6 +39,10 @@ export interface ServerDeps {
   staticDir: string;
   /** Request a supervised backend-process restart after the response is sent. */
   restartBackend?: () => void;
+  /** Halt or reboot the whole appliance after the response is sent. Absent
+   *  (tests, non-appliance hosts) makes the power route 503 rather than
+   *  spawning anything. */
+  powerAction?: (action: "reboot" | "poweroff") => void;
   /** Enable temporary thermal load-shedding on the appliance process. */
   selfProtect?: boolean;
   /** Injectable file reader for SystemStats (tests fake /sys thermal reads). */
@@ -1010,6 +1014,20 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
       return;
     }
 
+    // Whole-machine power control. Deliberately one route with an action
+    // field: reboot and poweroff differ only in the word handed to systemd.
+    if (method === "POST" && path === "/api/system/power") {
+      if (!deps.powerAction) return json(res, 503, { error: "power control unavailable" });
+      const body = await readBody(req).catch(() => undefined);
+      const action = body?.action;
+      if (action !== "reboot" && action !== "poweroff") {
+        return json(res, 400, { error: "action must be \"reboot\" or \"poweroff\"" });
+      }
+      json(res, 202, { ok: true, action });
+      setTimeout(() => deps.powerAction?.(action), 100).unref?.();
+      return;
+    }
+
     if (method === "GET" && path === "/api/history") {
       if (!deps.history) return json(res, 404, { error: "no history store" });
       const sp = new URL(req.url ?? "/", "http://localhost").searchParams;
@@ -1081,6 +1099,10 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
         // Cold-start readiness: false until the engine completes its first warm
         // sweep. Lets a late-loading kiosk page skip the WARMING UP overlay.
         warmed,
+        // True only while a SAME break-in holds the scanner on NWR — the admin
+        // warns before a reboot. `mode === "weather"` can't tell a break-in
+        // from an operator-selected weather mode.
+        breakIn,
       });
     }
     if (method === "GET" && path === "/api/logs") return json(res, 200, activityLog.entries());

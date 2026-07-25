@@ -36,7 +36,8 @@ What the scanner is doing right now.
   "monitor": null,           // Channel object when mode is "monitor", else null
   "scanCount": 42,           // channels the current mode actually scans (0 = standby)
   "muted": false,            // speaker mute (doesn't restart the engine, so it's polled)
-  "warmed": true             // false until the engine's first warm sweep completes
+  "warmed": true,            // false until the engine's first warm sweep completes
+  "breakIn": false           // true only while a SAME break-in holds the scanner on NWR
 }
 ```
 
@@ -126,6 +127,7 @@ at a time (mutation chain); GETs — including the long-lived `/api/stream.wav`
 | --- | --- | --- |
 | POST | `/api/kiosk/reload` | Broadcast `{ type: "reload" }` over WS — the wall page reloads itself (fresh bundle, no systemd). |
 | POST | `/api/backend/restart` | `202`, then the backend exits for systemd to respawn (`503` when unavailable, e.g. tests). |
+| POST | `/api/system/power` | `{ "action": "reboot" \| "poweroff" }` → `202`, then the helpers stop and `sudo systemctl <action>` runs (`400` unknown action, `503` when unavailable, e.g. tests). |
 | POST | `/api/test/alert` | Fire a canned SAME alert banner for design/verification (`{ alphaTag }`; `{ "clear": true }` dismisses). |
 
 ### WebSocket `/ws`

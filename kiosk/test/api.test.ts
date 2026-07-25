@@ -1131,6 +1131,44 @@ describe("backend restart", () => {
   });
 });
 
+describe("appliance power control", () => {
+  function makePowerApp(): { server: import("node:http").Server; calls: string[] } {
+    dir = mkdtempSync(join(tmpdir(), "ksrv-"));
+    const calls: string[] = [];
+    const { server } = createServer({
+      configStore: new ConfigStore(join(dir, "config.json")),
+      engine: new FakeEngine(),
+      activityLog: new ActivityLog(10),
+      wsHub: new WsHub(),
+      staticDir: dir,
+      powerAction: (action) => { calls.push(action); },
+    });
+    return { server, calls };
+  }
+
+  for (const action of ["reboot", "poweroff"] as const) {
+    it(`POST /api/system/power performs a ${action}`, async () => {
+      const { server, calls } = makePowerApp();
+      await request(server).post("/api/system/power").send({ action }).expect(202);
+      await new Promise((resolve) => setTimeout(resolve, 120));
+      expect(calls).toEqual([action]);
+    });
+  }
+
+  it("rejects an unknown action without powering anything down", async () => {
+    const { server, calls } = makePowerApp();
+    await request(server).post("/api/system/power").send({ action: "halt" }).expect(400);
+    await request(server).post("/api/system/power").send({}).expect(400);
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    expect(calls).toEqual([]);
+  });
+
+  it("returns unavailable when no power hook is configured", async () => {
+    const { server } = makeApp();
+    await request(server).post("/api/system/power").send({ action: "reboot" }).expect(503);
+  });
+});
+
 describe("Close Call persistence-before-filing", () => {
   it("first hit files nothing; the second files the discovery", async () => {
     const { server, engine } = makeApp();

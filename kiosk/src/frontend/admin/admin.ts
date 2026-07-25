@@ -315,6 +315,8 @@ export function renderAdmin(root: HTMLElement): void {
           <button id="testAlert" title="Show a sample weather-alert banner on the kiosk (for design + verifying alerts work)">Test weather alert</button>
           <button id="testAlertClear" title="Clear the test weather-alert banner from the kiosk">Clear alert</button>
           <button id="backendRestart" class="danger" title="Restart the radio backend and scanner helpers">Restart radio backend</button>
+          <button id="systemReboot" class="danger" title="Reboot the whole appliance">Reboot appliance</button>
+          <button id="systemShutdown" class="danger" title="Power the appliance off — it stays off until someone presses its power button">Shut down appliance</button>
           <span id="systemActionStatus" class="hint" role="status"></span>
         </div>
       </section>
@@ -1597,6 +1599,50 @@ export function renderAdmin(root: HTMLElement): void {
       systemActionStatus.textContent = (e as Error).message;
     }
   });
+  // Whole-machine power. Unlike the reload/restart buttons there is no useful
+  // recovery once confirmed, so both buttons stay disabled afterwards. The
+  // break-in check is a warning, not a block — the operator keeps final say.
+  const rebootBtn = root.querySelector<HTMLButtonElement>("#systemReboot")!;
+  const shutdownBtn = root.querySelector<HTMLButtonElement>("#systemShutdown")!;
+  const POWER_COPY = {
+    reboot: {
+      title: "Reboot appliance?",
+      message: "The whole machine restarts. Radio, audio and the kiosk screen go down for about a minute.",
+      confirmLabel: "Reboot",
+      pending: "Rebooting appliance…",
+    },
+    poweroff: {
+      title: "Shut down appliance?",
+      message: "The machine powers off. It will not come back on until someone presses the power button on the laptop.",
+      confirmLabel: "Shut down",
+      pending: "Shutting down…",
+    },
+  } as const;
+
+  async function requestPower(action: "reboot" | "poweroff"): Promise<void> {
+    const copy = POWER_COPY[action];
+    const breakIn = await api.getStatus().then((s) => s.breakIn === true).catch(() => false);
+    const confirmed = await confirmAdminAction({
+      title: copy.title,
+      message: breakIn ? `A weather alert is on air right now. ${copy.message}` : copy.message,
+      confirmLabel: copy.confirmLabel,
+      danger: true,
+    });
+    if (!confirmed) return;
+    systemActionStatus.textContent = copy.pending;
+    rebootBtn.disabled = true;
+    shutdownBtn.disabled = true;
+    try {
+      await api.powerAction(action);
+    } catch (e) {
+      systemActionStatus.textContent = (e as Error).message;
+      rebootBtn.disabled = false;
+      shutdownBtn.disabled = false;
+    }
+  }
+  rebootBtn.addEventListener("click", () => { void requestPower("reboot"); });
+  shutdownBtn.addEventListener("click", () => { void requestPower("poweroff"); });
+
   tlockBtn.addEventListener("click", () => api.skip(1800));
   lockBtn.addEventListener("click", () => {
     if (!nowPlaying) return;

@@ -1,4 +1,5 @@
 import { WebSocketServer } from "ws";
+import { spawn } from "node:child_process";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createServer, toScanConfig } from "./server.js";
@@ -241,6 +242,19 @@ const { server, getConfig } = createServer({
   restartBackend: () => {
     void Promise.all([engine.stop(), weatherEngine?.stop() ?? Promise.resolve()])
       .finally(() => process.exit(1));
+  },
+  // Whole-machine power. Stop the helpers first so the SDRs and the exclusive
+  // ALSA sink are released cleanly, then hand off to systemd and detach — the
+  // spawned systemctl must outlive this process, which the halt itself kills.
+  powerAction: (action) => {
+    void Promise.all([engine.stop(), weatherEngine?.stop() ?? Promise.resolve()])
+      .finally(() => {
+        const child = spawn("sudo", ["-n", "systemctl", action], {
+          detached: true, stdio: "ignore",
+        });
+        child.on("error", (e) => console.error(`[power] ${action} failed: ${e.message}`));
+        child.unref();
+      });
   },
 });
 
