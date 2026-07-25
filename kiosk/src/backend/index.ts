@@ -57,7 +57,11 @@ function deviceOpts(radio: { serial?: string; port?: string } | undefined): {
 }
 const engine =
   engineKind === "fake" ? new FakeEngine()
-  : engineKind === "wideband" ? new WidebandEngine(deviceOpts(scanRadio))
+  : engineKind === "wideband" ? new WidebandEngine({
+      ...deviceOpts(scanRadio),
+      // Operator knob: config.scan.maxHoldMs (omitted = the engine's 180 s).
+      ...(config.scan.maxHoldMs !== undefined ? { maxHoldMs: config.scan.maxHoldMs } : {}),
+    })
   : new RtlFmEngine({
       openThreshold: config.scan.squelchLevel,
       hangMs: config.scan.dwellMs,

@@ -510,6 +510,17 @@ export class WidebandEngine implements ScannerEngine {
     }
   }
 
+  // Is any currently-open lane one the operator can actually hear? Unknown ids
+  // count as audible: Close Call lanes (cc_*) aren't in any group and DO speak,
+  // so a CC hit must still hold the window.
+  private hasAudibleOpen(): boolean {
+    for (const id of this.openIds) {
+      const channel = this.findChannel(id);
+      if (!channel || channel.audible !== false) return true;
+    }
+    return false;
+  }
+
   private findChannel(id: string): Channel | null {
     // Close Call lanes aren't in any group: synthesize a channel so the
     // dashboard banner / Recent log / activity all work unchanged.
@@ -592,7 +603,11 @@ export class WidebandEngine implements ScannerEngine {
     if (this.groups.length <= 1 && this.sweeps.length === 0) return; // single group: park forever
     const dwell = this.groupDwellMs();
     this.dwellTimer = setInterval(() => {
-      if (this.openIds.size > 0) {
+      // Only an AUDIBLE open has a claim on the radio. A muted channel reading
+      // open — a continuously-keyed business carrier, say — would otherwise
+      // park the scanner in SILENCE for the whole max-hold cap, which sounds
+      // exactly like a lockup (463.5625 held group 14 for 180s a time).
+      if (this.hasAudibleOpen()) {
         if (this.holdStartedAt === 0) this.holdStartedAt = this.now();
         if (this.now() - this.holdStartedAt < this.maxHoldMs) {
           // Hold-through: a channel is active — never tune away from it.
@@ -610,6 +625,9 @@ export class WidebandEngine implements ScannerEngine {
         this.audibleId = null;
         this.holdStartedAt = 0;
         this.groupStartedAt = 0; // fall through and let the advance below fire now
+      } else {
+        // Nothing audible is open: the window gets its plain dwell, no hold.
+        this.holdStartedAt = 0;
       }
       // Weighted dwell (ROADMAP Idea 7): a window's park time scales by
       // the max dwellWeight among its channels — the busiest bank in a

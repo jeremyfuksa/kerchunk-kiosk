@@ -145,6 +145,62 @@ describe("WidebandEngine", () => {
     expect(lines(tunes)).toHaveLength(tunesAtHold); // held: no further hop while open
   });
 
+  it("an open on an INAUDIBLE channel does not hold the rotation", async () => {
+    // The muted-business-channel wedge: a 463 MHz lane the operator has muted
+    // read open continuously and parked the scanner for the whole max-hold cap,
+    // producing minutes of silence that sound like a lockup. A channel nobody
+    // can hear has no claim on the radio.
+    const tunes = tmpFile("tunes");
+    const muted = ch(146_790_000, { audible: false });
+    const { engine, events } = makeEngine({
+      FAKE_WB_TUNES_FILE: tunes,
+      FAKE_WB_SCRIPT: `{"ev":"open","id":"${muted.id}","db":-10}`, // opens, never closes
+    });
+    await engine.start(cfg([muted, VHF_B, UHF]));
+    const sawOpen = await waitFor(() => events.some((e) => e.type === "signal"), 1000);
+    expect(sawOpen).toBe(true);
+    const tunesAtOpen = lines(tunes).length;
+    // Default maxHoldMs is 180 s — if the mute is ignored, nothing hops here.
+    const hopped = await waitFor(() => lines(tunes).length > tunesAtOpen, 2000);
+    await engine.stop();
+    expect(hopped).toBe(true);
+  });
+
+  it("holds when an audible channel is open alongside a muted one", async () => {
+    const tunes = tmpFile("tunes");
+    const muted = ch(146_790_000, { audible: false });
+    const { engine, events } = makeEngine({
+      FAKE_WB_TUNES_FILE: tunes,
+      FAKE_WB_SCRIPT: [
+        `{"ev":"open","id":"${muted.id}","db":-10}`,
+        `{"ev":"open","id":"${VHF_B.id}","db":-10}`,
+      ].join("\n"),
+    });
+    await engine.start(cfg([muted, VHF_B, UHF]));
+    const sawBoth = await waitFor(
+      () => events.filter((e) => e.type === "signal").length >= 2, 1000);
+    expect(sawBoth).toBe(true);
+    const tunesAtHold = lines(tunes).length;
+    await new Promise((r) => setTimeout(r, 400)); // 4x the dwell
+    await engine.stop();
+    expect(lines(tunes)).toHaveLength(tunesAtHold); // the audible open still holds
+  });
+
+  it("an unknown (Close Call) open still holds — CC hits are audible", async () => {
+    const tunes = tmpFile("tunes");
+    const { engine, events } = makeEngine({
+      FAKE_WB_TUNES_FILE: tunes,
+      FAKE_WB_SCRIPT: `{"ev":"open","id":"cc_463562500","db":-10}`,
+    });
+    await engine.start(cfg([VHF_A, VHF_B, UHF]));
+    const sawOpen = await waitFor(() => events.some((e) => e.type === "signal"), 1000);
+    expect(sawOpen).toBe(true);
+    const tunesAtHold = lines(tunes).length;
+    await new Promise((r) => setTimeout(r, 400));
+    await engine.stop();
+    expect(lines(tunes)).toHaveLength(tunesAtHold);
+  });
+
   it("resumes hopping after the held channel closes", async () => {
     const tunes = tmpFile("tunes");
     const { engine } = makeEngine({
