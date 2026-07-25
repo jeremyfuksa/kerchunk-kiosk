@@ -21,6 +21,7 @@ import icoGear from "lucide-static/icons/settings-2.svg?raw";
 import icoWrench from "lucide-static/icons/wrench.svg?raw";
 import type { Bank } from "../../backend/config/schema.js";
 import { ReconnectingWs } from "../lib/wsClient.js";
+import { SystemActionWatcher } from "../lib/systemActionWatcher.js";
 import type { EngineEvent } from "../../backend/engine/ScannerEngine.js";
 import "./admin.css";
 
@@ -1584,64 +1585,129 @@ export function renderAdmin(root: HTMLElement): void {
       button.disabled = false;
     }
   });
-  root.querySelector<HTMLButtonElement>("#backendRestart")!.addEventListener("click", async () => {
-    const confirmed = await confirmAdminAction({
+  // ── Actions that take the backend away: restart, reboot, shut down.
+  //
+  // All three routes answer 202 and *then* exit, so the fetch resolving proves
+  // nothing about the outcome. Without a watcher the status line sat on
+  // "Restarting backend…" for the life of the page and the power buttons never
+  // came back. `SystemActionWatcher` polls /api/status until a *different*
+  // backend process answers (or until it's clear nothing happened) and puts the
+  // card back to normal. The break-in warning is advice, not a block — the
+  // operator keeps final say.
+  const restartBtn = root.querySelector<HTMLButtonElement>("#backendRestart")!;
+  const rebootBtn = root.querySelector<HTMLButtonElement>("#systemReboot")!;
+  const shutdownBtn = root.querySelector<HTMLButtonElement>("#systemShutdown")!;
+  const SYSTEM_ACTION_BUTTONS = [restartBtn, rebootBtn, shutdownBtn];
+
+  // Knobs for how patiently the admin waits out a system action.
+  const WATCH_POLL_MS = 2000;        // while the backend is still answering
+  const WATCH_DOWN_POLL_MS = 5000;   // once it has gone away (reboot ≈ a minute)
+  const WATCH_TIMEOUT_MS = 20_000;   // same process still up ⇒ the action never took
+  const WATCH_PROBE_TIMEOUT_MS = 4000; // a rebooting host swallows connections
+  const BACK_MESSAGE_MS = 8000;      // how long "…is back" lingers before clearing
+
+  type SystemAction = "restart" | "reboot" | "poweroff";
+  const SYSTEM_ACTION_COPY: Record<SystemAction, {
+    title: string; message: string; confirmLabel: string;
+    pending: string; down: string; back: string; unchanged: string;
+  }> = {
+    restart: {
       title: "Restart radio backend?",
       message: "Audio and scanning will stop briefly while the backend and radio helpers restart.",
       confirmLabel: "Restart backend",
-      danger: true,
-    });
-    if (!confirmed) return;
-    systemActionStatus.textContent = "Restarting backend…";
-    try {
-      await api.restartBackend();
-    } catch (e) {
-      systemActionStatus.textContent = (e as Error).message;
-    }
-  });
-  // Whole-machine power. Unlike the reload/restart buttons there is no useful
-  // recovery once confirmed, so both buttons stay disabled afterwards. The
-  // break-in check is a warning, not a block — the operator keeps final say.
-  const rebootBtn = root.querySelector<HTMLButtonElement>("#systemReboot")!;
-  const shutdownBtn = root.querySelector<HTMLButtonElement>("#systemShutdown")!;
-  const POWER_COPY = {
+      pending: "Restarting backend…",
+      down: "Backend is down — waiting for it to come back…",
+      back: "Backend is back",
+      unchanged: "Backend did not restart — try again.",
+    },
     reboot: {
       title: "Reboot appliance?",
       message: "The whole machine restarts. Radio, audio and the kiosk screen go down for about a minute.",
       confirmLabel: "Reboot",
       pending: "Rebooting appliance…",
+      down: "Appliance is rebooting — waiting for it to come back…",
+      back: "Appliance is back online",
+      unchanged: "Reboot did not start — try again.",
     },
     poweroff: {
       title: "Shut down appliance?",
       message: "The machine powers off. It will not come back on until someone presses the power button on the laptop.",
       confirmLabel: "Shut down",
       pending: "Shutting down…",
+      down: "Appliance is off — press its power button to start it again.",
+      back: "Appliance is back online",
+      unchanged: "Shut down did not start — try again.",
     },
-  } as const;
+  };
 
-  async function requestPower(action: "reboot" | "poweroff"): Promise<void> {
-    const copy = POWER_COPY[action];
-    const breakIn = await api.getStatus().then((s) => s.breakIn === true).catch(() => false);
+  let statusClearTimer: ReturnType<typeof setTimeout> | undefined;
+  function setSystemActionStatus(text: string, clearAfterMs?: number): void {
+    if (statusClearTimer !== undefined) clearTimeout(statusClearTimer);
+    statusClearTimer = undefined;
+    systemActionStatus.textContent = text;
+    if (clearAfterMs !== undefined) {
+      statusClearTimer = setTimeout(() => { systemActionStatus.textContent = ""; }, clearAfterMs);
+    }
+  }
+
+  let systemActionWatcher: SystemActionWatcher | undefined;
+  function watchSystemAction(action: SystemAction, baselineStartedAt: number | undefined): void {
+    const copy = SYSTEM_ACTION_COPY[action];
+    systemActionWatcher?.stop();
+    systemActionWatcher = new SystemActionWatcher({
+      probe: (signal) => api.getStatus(signal),
+      baselineStartedAt,
+      pollMs: WATCH_POLL_MS,
+      downPollMs: WATCH_DOWN_POLL_MS,
+      timeoutMs: WATCH_TIMEOUT_MS,
+      probeTimeoutMs: WATCH_PROBE_TIMEOUT_MS,
+      onPhase: (phase) => {
+        switch (phase) {
+          case "pending": setSystemActionStatus(copy.pending); break;
+          case "down": setSystemActionStatus(copy.down); break;
+          case "back":
+            setSystemActionStatus(copy.back, BACK_MESSAGE_MS);
+            for (const b of SYSTEM_ACTION_BUTTONS) b.disabled = false;
+            break;
+          case "unchanged":
+            setSystemActionStatus(copy.unchanged);
+            for (const b of SYSTEM_ACTION_BUTTONS) b.disabled = false;
+            break;
+        }
+      },
+    });
+    systemActionWatcher.start();
+  }
+
+  async function runSystemAction(action: SystemAction): Promise<void> {
+    const copy = SYSTEM_ACTION_COPY[action];
+    // One status read does double duty: the break-in warning for the confirm
+    // dialog, and the identity of the process we're about to take down.
+    const before = await api.getStatus().catch(() => null);
     const confirmed = await confirmAdminAction({
       title: copy.title,
-      message: breakIn ? `A weather alert is on air right now. ${copy.message}` : copy.message,
+      message: before?.breakIn ? `A weather alert is on air right now. ${copy.message}` : copy.message,
       confirmLabel: copy.confirmLabel,
       danger: true,
     });
     if (!confirmed) return;
-    systemActionStatus.textContent = copy.pending;
-    rebootBtn.disabled = true;
-    shutdownBtn.disabled = true;
+    for (const b of SYSTEM_ACTION_BUTTONS) b.disabled = true;
+    setSystemActionStatus(copy.pending);
     try {
-      await api.powerAction(action);
+      if (action === "restart") await api.restartBackend();
+      else await api.powerAction(action);
     } catch (e) {
-      systemActionStatus.textContent = (e as Error).message;
-      rebootBtn.disabled = false;
-      shutdownBtn.disabled = false;
+      // The request itself failed, so nothing is going down — recover now
+      // rather than wait out a watch that would only ever say "unchanged".
+      setSystemActionStatus((e as Error).message);
+      for (const b of SYSTEM_ACTION_BUTTONS) b.disabled = false;
+      return;
     }
+    watchSystemAction(action, before?.startedAt);
   }
-  rebootBtn.addEventListener("click", () => { void requestPower("reboot"); });
-  shutdownBtn.addEventListener("click", () => { void requestPower("poweroff"); });
+  restartBtn.addEventListener("click", () => { void runSystemAction("restart"); });
+  rebootBtn.addEventListener("click", () => { void runSystemAction("reboot"); });
+  shutdownBtn.addEventListener("click", () => { void runSystemAction("poweroff"); });
 
   tlockBtn.addEventListener("click", () => api.skip(1800));
   lockBtn.addEventListener("click", () => {

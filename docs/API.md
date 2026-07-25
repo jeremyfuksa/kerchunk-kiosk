@@ -37,9 +37,16 @@ What the scanner is doing right now.
   "scanCount": 42,           // channels the current mode actually scans (0 = standby)
   "muted": false,            // speaker mute (doesn't restart the engine, so it's polled)
   "warmed": true,            // false until the engine's first warm sweep completes
-  "breakIn": false           // true only while a SAME break-in holds the scanner on NWR
+  "breakIn": false,          // true only while a SAME break-in holds the scanner on NWR
+  "startedAt": 1753480000000 // epoch ms this backend *process* started
 }
 ```
+
+`startedAt` is the identity of the running backend process: it changes on every
+backend restart and every reboot, and is constant otherwise. The admin's
+system-action watcher (`src/frontend/lib/systemActionWatcher.ts`) records it
+before a restart/reboot and polls until a different value comes back — that is
+how the "Restarting backend…" status clears itself once the appliance is back.
 
 ### `GET /api/logs`
 
