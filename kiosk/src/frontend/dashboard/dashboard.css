@@ -44,8 +44,10 @@ html[data-page="dashboard"] {
   position: relative;
   z-index: 8;
   padding: 0.65rem 1rem;
-  background: #8d2222;
-  color: #fff5e8;
+  /* Campfire's danger ramp, not a one-off red: danger-800 is the solid-fill
+     step and danger-50 its paired on-colour (13.6:1). */
+  background: var(--danger-800);
+  color: var(--danger-50);
   text-align: center;
   letter-spacing: 0.02em;
 }
