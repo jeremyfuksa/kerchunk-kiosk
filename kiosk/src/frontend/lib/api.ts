@@ -23,18 +23,41 @@ async function j<T>(res: Response): Promise<T> {
 // settles, so a later caller always re-reads. And every caller gets its own
 // clone, because most of them are read-modify-write (`cfg.banks = …` then
 // `putConfig`) and sharing one object would let two edits stomp each other.
-let configInFlight: Promise<Config> | null = null;
+let configInFlight: Promise<{ cfg: Config; etag: string | null }> | null = null;
+
+/** The revision the caller's copy was read at, carried on the object itself so
+ *  the ~24 `getConfig()` → mutate → `putConfig()` call sites need no changes.
+ *  A Symbol is invisible to JSON.stringify, so the request body stays clean. */
+const CONFIG_REV = Symbol("configRev");
 
 function fetchConfigShared(): Promise<Config> {
-  configInFlight ??= fetch("/api/config").then(j<Config>)
+  configInFlight ??= fetch("/api/config")
+    .then(async (r) => ({ cfg: await j<Config>(r), etag: r.headers.get("ETag") }))
     .finally(() => { configInFlight = null; });
-  return configInFlight.then((cfg) => structuredClone(cfg));
+  return configInFlight.then(({ cfg, etag }) => {
+    // structuredClone drops Symbols, so stamp the copy, not the original.
+    const copy = structuredClone(cfg) as Config & { [CONFIG_REV]?: string | null };
+    copy[CONFIG_REV] = etag;
+    return copy;
+  });
 }
 
 export const api = {
   getConfig: fetchConfigShared,
-  putConfig: (cfg: Config) =>
-    fetch("/api/config", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(cfg) }).then(j<Config>),
+  putConfig: (cfg: Config) => {
+    // Send back the revision this copy was read at. The server refuses a write
+    // built from a stale read (409) instead of silently erasing whatever it
+    // wrote in between — a discovery landing, a lookup filling in a location.
+    const rev = (cfg as Config & { [CONFIG_REV]?: string | null })[CONFIG_REV];
+    return fetch("/api/config", {
+      method: "PUT",
+      headers: {
+        "content-type": "application/json",
+        ...(rev ? { "if-match": rev } : {}),
+      },
+      body: JSON.stringify(cfg),
+    }).then(j<Config>);
+  },
   getChannels: () => fetch("/api/channels").then(j<Channel[]>),
   addChannel: (c: Omit<Channel, "id">) =>
     fetch("/api/channels", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(c) }).then(j<Channel>),

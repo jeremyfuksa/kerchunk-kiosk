@@ -146,15 +146,27 @@ async function readBody(req: IncomingMessage): Promise<any> {
   return JSON.parse(Buffer.concat(chunks).toString("utf8"));
 }
 
-function json(res: ServerResponse, status: number, body: unknown): void {
+function json(res: ServerResponse, status: number, body: unknown, headers: Record<string, string> = {}): void {
   const data = JSON.stringify(body);
-  res.writeHead(status, { "content-type": "application/json" });
+  res.writeHead(status, { "content-type": "application/json", ...headers });
   res.end(data);
 }
 
 export function createServer(deps: ServerDeps): { server: Server; getConfig: () => Config } {
   const { configStore, engine, activityLog, staticDir } = deps;
   let config = configStore.load();
+  // Config revision. PUT /api/config replaces the document wholesale, and
+  // thirteen other code paths in this file also write it — a discovery
+  // arriving, the lookup chain filling in a location, an RF estimate landing.
+  // A client that GETs, edits, then PUTs was therefore able to erase anything
+  // the server wrote in between, silently. Every persist bumps this; a PUT may
+  // carry the revision it read (If-Match) and is rejected if it is stale.
+  let configRev = 0;
+  const configEtag = (): string => `W/"cfg-${configRev}"`;
+  function saveConfig(cfg: Config, opts: { telemetry?: boolean } = {}): void {
+    configRev++;
+    configStore.save(cfg, opts);
+  }
   // Runtime mode. Deliberately not read from or written to config: the kiosk
   // always boots into scan mode. "monitor" = direct tune (review a discovery
   // or any channel); its target lives only in memory.
@@ -179,7 +191,7 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
           })),
         ],
       };
-      configStore.save(config);
+      saveConfig(config);
     }
   }
 
@@ -209,7 +221,7 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
                 ? { ...c, lookedUpAt: Date.now(), ...(hit?.location ? { location: hit.location } : {}) }
                 : c),
           };
-          configStore.save(config);
+          saveConfig(config);
         } catch { /* provider failure: try again next boot */ }
         await new Promise((r) => setTimeout(r, spacingMs));
       }
@@ -233,7 +245,7 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
                   }
                 : d),
           };
-          configStore.save(config);
+          saveConfig(config);
         } catch { /* next boot */ }
         await new Promise((r) => setTimeout(r, spacingMs));
       }
@@ -368,7 +380,7 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
     if (levelSaveTimer) clearTimeout(levelSaveTimer);
     levelSaveTimer = setTimeout(() => {
       levelSaveTimer = null;
-      configStore.save(config, { telemetry: true });
+      saveConfig(config, { telemetry: true });
     }, 10_000);
     levelSaveTimer.unref?.();
   });
@@ -389,7 +401,7 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
         c.id === ev.channelId ? { ...c, rfDb: Math.round(next * 10) / 10 } : c),
     };
     if (rfSaveTimer) clearTimeout(rfSaveTimer);
-    rfSaveTimer = setTimeout(() => { rfSaveTimer = null; configStore.save(config, { telemetry: true }); }, 30_000);
+    rfSaveTimer = setTimeout(() => { rfSaveTimer = null; saveConfig(config, { telemetry: true }); }, 30_000);
     rfSaveTimer.unref?.();
   });
 
@@ -429,7 +441,7 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
         return { ...c, location: { ...c.location, powerWatts: watts, powerEstimated: true } };
       }),
     };
-    if (estimated.length > 0) configStore.save(config);
+    if (estimated.length > 0) saveConfig(config);
     return { anchors: anchors.length, estimated };
   }
   // try/catch: this runs unattended every 12 h — an exception here (e.g. a
@@ -619,7 +631,7 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
             ? { suppressedAt: ev.ts, suppressionReason: "Repeated unidentified carrier" } : {}),
         } : d),
       };
-      configStore.save(config);
+      saveConfig(config);
       return;
     }
     const seen = (ccSeen.get(ev.freqHz) ?? 0) + 1;
@@ -634,7 +646,7 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
       lastSeenAt: ev.ts,
     };
     config = { ...config, discoveries: [...(config.discoveries ?? []), discovery] };
-    configStore.save(config);
+    saveConfig(config);
     // Best-effort identification — a miss or API failure keeps the plain name.
     if (deps.lookup) {
       void deps.lookup.lookup(ev.freqHz).then((hit) => {
@@ -653,7 +665,7 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
                 }
               : d),
         };
-        configStore.save(config);
+        saveConfig(config);
       }).catch(() => { /* enrichment is optional */ });
     }
   });
@@ -678,7 +690,7 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
   }
 
   async function persistAndReload(): Promise<void> {
-    configStore.save(config);
+    saveConfig(config);
     await switchMode(scanConfigFor(mode, monitorChannel));
   }
 
@@ -722,15 +734,25 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
   });
 
   async function handleApi(method: string, path: string, req: IncomingMessage, res: ServerResponse): Promise<void> {
-    if (method === "GET" && path === "/api/config") return json(res, 200, config);
+    if (method === "GET" && path === "/api/config") return json(res, 200, config, { ETag: configEtag() });
 
     if (method === "PUT" && path === "/api/config") {
       const body = await readBody(req);
+      // Optimistic concurrency. Absent If-Match keeps older clients working
+      // exactly as before; a stale one is refused rather than allowed to
+      // overwrite a newer server-side write.
+      const ifMatch = req.headers["if-match"];
+      if (typeof ifMatch === "string" && ifMatch !== configEtag()) {
+        return json(res, 409, {
+          error: "The configuration changed on the appliance while you were editing. "
+            + "Your view has been refreshed — please redo that change.",
+        }, { ETag: configEtag() });
+      }
       const parsed = configSchema.safeParse(body);
       if (!parsed.success) return json(res, 400, { error: "invalid config", issues: parsed.error.issues });
       const prev = config;
       config = parsed.data;
-      configStore.save(config);
+      saveConfig(config);
       // Monitor orphan cleanup: if the monitored frequency was removed from
       // every list by this update, fall back to scanning instead of sitting
       // on a frequency that no longer exists anywhere.
@@ -869,7 +891,7 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
       }
       config = { ...config, audio: { ...config.audio, volume: percent } };
       await amixerVolume(percent, mixerOpts());
-      configStore.save(config);
+      saveConfig(config);
       return json(res, 200, { volume: config.audio.volume });
     }
     if (method === "POST" && path === "/api/audio/mute") {
@@ -877,7 +899,7 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
       const muted = Boolean(body?.muted);
       config = { ...config, audio: { ...config.audio, muted } };
       await amixerMuted(muted, mixerOpts());
-      configStore.save(config);
+      saveConfig(config);
       return json(res, 200, { muted: config.audio.muted });
     }
 
