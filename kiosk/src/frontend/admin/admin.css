@@ -38,12 +38,21 @@
   --dim: var(--text-secondary);
   --mark: var(--text-tertiary);
 
-  --amber: var(--spark);
+  /* Consequence colours. These deliberately do NOT alias Campfire's named
+     expressive tokens (--flamingo, --sage, --pine, --golden-amber): those
+     carry a *second*, much darker value under `.dark`, which is the theme
+     this app always runs in. As rendered they measured 2.8–3.6:1 on --panel,
+     below AA. The numbered ramps are theme-independent, so the steps below
+     are picked for this ground and stay honest:
+       --red 5.0:1   --green 6.5:1   --caution 8.4:1   --blue 5.1:1
+     Pine has no numbered ramp, so it is lifted toward --ink to keep its teal
+     hue rather than swapped for a blue-gray. */
+  --amber: var(--spark);            /* #ff6b35 under .dark — 4.7:1, the one loud colour */
   --amber-soft: color-mix(in srgb, var(--spark) 55%, transparent); /* edges/glow, never text */
-  --caution: var(--golden-amber);
-  --green: var(--sage);
-  --red: var(--flamingo);
-  --blue: var(--pine);
+  --caution: var(--warning-500);
+  --green: var(--success-400);
+  --red: var(--danger-400);
+  --blue: color-mix(in srgb, var(--pine) 65%, var(--text-primary));
 }
 
 /* One face for display, body and data (spec 2026-07-16). Scoped, so
@@ -291,14 +300,14 @@ body {
 /* Each mix is set so the edge clears 3:1 against --panel, like the neutral
    --control-edge does. At a flat 55% the red and blue edges landed at 2.5 and
    2.6 — which also meant a plain button out-shouted a destructive one. */
-.admin .save, .admin .dAdd { color: var(--green); border-color: color-mix(in srgb, var(--sage) 60%, transparent); }
-.admin .del, .admin .danger, .admin #lockBtn { color: var(--red); border-color: color-mix(in srgb, var(--flamingo) 70%, transparent); }
-.admin .lock, .admin .dLock, .admin .dDismiss, .admin #tlockBtn { color: var(--caution); border-color: color-mix(in srgb, var(--golden-amber) 60%, transparent); }
-.admin .listen, .admin .dListen, .admin .weatherAction { color: var(--blue); border-color: color-mix(in srgb, var(--pine) 70%, transparent); }
+.admin .save, .admin .dAdd { color: var(--green); border-color: color-mix(in srgb, var(--green) 60%, transparent); }
+.admin .del, .admin .danger, .admin #lockBtn { color: var(--red); border-color: color-mix(in srgb, var(--red) 70%, transparent); }
+.admin .lock, .admin .dLock, .admin .dDismiss, .admin #tlockBtn { color: var(--caution); border-color: color-mix(in srgb, var(--caution) 60%, transparent); }
+.admin .listen, .admin .dListen, .admin .weatherAction { color: var(--blue); border-color: color-mix(in srgb, var(--blue) 70%, transparent); }
 .admin .resume {
   color: var(--blue);
-  background: color-mix(in srgb, var(--pine) 12%, var(--etch));
-  border-color: color-mix(in srgb, var(--pine) 70%, transparent);
+  background: color-mix(in srgb, var(--blue) 12%, var(--etch));
+  border-color: color-mix(in srgb, var(--blue) 70%, transparent);
 }
 .admin .err { color: var(--red); font-size: 0.85rem; }
 .admin .err:not(:empty) { margin-left: 0.5rem; }
@@ -693,8 +702,8 @@ tr.bankRow .bkSummary {
   vertical-align: 0.1em;
   white-space: nowrap;
 }
-.admin .modeChip { color: var(--green); border-color: color-mix(in srgb, var(--sage) 55%, transparent); }
-.admin .modeChip.digital { color: var(--caution); border-color: color-mix(in srgb, var(--golden-amber) 55%, transparent); }
+.admin .modeChip { color: var(--green); border-color: color-mix(in srgb, var(--green) 55%, transparent); }
+.admin .modeChip.digital { color: var(--caution); border-color: color-mix(in srgb, var(--caution) 55%, transparent); }
 .memChip { color: var(--dim); text-transform: uppercase; }
 
 /* Close Call triage verdicts */
@@ -765,7 +774,7 @@ tr.bankRow .bkSummary {
   letter-spacing: 0.06em;
   opacity: 0.55;
 }
-.admin .bankChip.on { opacity: 1; border-color: color-mix(in srgb, var(--sage) 55%, transparent); }
+.admin .bankChip.on { opacity: 1; border-color: color-mix(in srgb, var(--green) 55%, transparent); }
 .admin .bankChip .bankState { width: 0.55em; height: 0.55em; background: var(--mark); border-radius: 50%; }
 .admin .bankChip.on .bankState { background: var(--green); }
 .admin .bankChip .bankCount {
@@ -885,7 +894,7 @@ tr.bankRow .bkSummary {
 }
 .admin .inChip.tag { color: var(--blue); }
 .inChannel { cursor: pointer; }
-.inChannel:hover td, .inChannel:focus td { background: color-mix(in srgb, var(--pine) 12%, transparent); }
+.inChannel:hover td, .inChannel:focus td { background: color-mix(in srgb, var(--blue) 12%, transparent); }
 
 
 /* ── Alert feed ─────────────────────────────────────────────────────────── */
@@ -914,12 +923,12 @@ tr.bankRow .bkSummary {
   padding: 0.3rem 0.7rem;
   color: var(--red);
   background: none;
-  border-color: color-mix(in srgb, var(--flamingo) 70%, transparent);
+  border-color: color-mix(in srgb, var(--red) 70%, transparent);
   font-size: 0.72rem;
   letter-spacing: 0.02em;
   text-transform: uppercase;
 }
-.admin .alertClearAll:hover { background: color-mix(in srgb, var(--flamingo) 12%, transparent); }
+.admin .alertClearAll:hover { background: color-mix(in srgb, var(--red) 12%, transparent); }
 
 
 /* ── System health ──────────────────────────────────────────────────────── */
@@ -953,7 +962,7 @@ tr.bankRow .bkSummary {
 .healthVerdict .verdictReason { color: var(--label); }
 .healthVerdict.healthy { background: color-mix(in srgb, var(--green) 9%, var(--etch)); }
 .healthVerdict.healthy .verdictDot { background: var(--green); }
-.healthVerdict.stressed { background: color-mix(in srgb, var(--golden-amber) 9%, var(--etch)); }
+.healthVerdict.stressed { background: color-mix(in srgb, var(--caution) 9%, var(--etch)); }
 .healthVerdict.stressed .verdictDot { background: var(--caution); }
 .healthVerdict.trouble { background: color-mix(in srgb, var(--red) 9%, var(--etch)); }
 .healthVerdict.trouble .verdictDot { background: var(--red); }
@@ -963,13 +972,13 @@ tr.bankRow .bkSummary {
    callout is the one card decoration this project does not need. */
 .healthBanner {
   margin: 0 0 1rem;
-  background: color-mix(in srgb, var(--golden-amber) 9%, var(--panel));
+  background: color-mix(in srgb, var(--caution) 9%, var(--panel));
   border: 1px solid var(--caution);
   border-radius: 8px;
 }
 .healthBanner.healthClear { display: none; }
 .healthBanner.severe {
-  background: color-mix(in srgb, var(--flamingo) 12%, var(--panel));
+  background: color-mix(in srgb, var(--red) 12%, var(--panel));
   border-color: var(--red);
 }
 .healthAlert { display: flex; align-items: center; gap: 1rem; padding: 0.8rem 1rem; }
@@ -1017,7 +1026,7 @@ tr.bankRow .bkSummary {
 .dupPanel {
   margin: 0 0 14px;
   padding: 12px 14px;
-  background: color-mix(in srgb, var(--golden-amber) 9%, var(--panel));
+  background: color-mix(in srgb, var(--caution) 9%, var(--panel));
   border: 1px solid var(--caution);
   border-radius: 8px;
 }

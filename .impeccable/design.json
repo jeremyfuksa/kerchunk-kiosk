@@ -1,0 +1,267 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-07-28T16:20:00Z",
+  "title": "Design System: Kerchunk",
+  "extensions": {
+    "colorMeta": {
+      "signal-amber": {
+        "role": "primary",
+        "displayName": "Signal Amber",
+        "canonical": "#ff6b35",
+        "note": "Campfire --spark under .dark. The system's entire emphasis budget; marks live state only.",
+        "tonalRamp": ["#3d1405", "#5c1e08", "#7d2a0c", "#a13a12", "#c74e1c", "#ff6b35", "#ff9straight", "#ffc9b0"]
+      },
+      "caution-hay": {
+        "role": "secondary",
+        "displayName": "Caution Hay",
+        "canonical": "#f9c574",
+        "note": "Campfire --warning-500. Reversible-but-consequential actions, and every focus ring. 8.4:1 on slate-panel.",
+        "tonalRamp": ["#3a2a0c", "#573f12", "#75551a", "#946c23", "#b5852f", "#d9a244", "#f9c574", "#fde4b8"]
+      },
+      "adopt-moss": {
+        "role": "secondary",
+        "displayName": "Adopt Moss",
+        "canonical": "#9ac35d",
+        "note": "Campfire --success-400. Additive and confirming actions. 6.5:1 on slate-panel.",
+        "tonalRamp": ["#1d2a0c", "#2d4013", "#3e561b", "#506e24", "#63872e", "#7ba43e", "#9ac35d", "#c4dc9b"]
+      },
+      "destroy-coral": {
+        "role": "secondary",
+        "displayName": "Destroy Coral",
+        "canonical": "#f17d7b",
+        "note": "Campfire --danger-400. Irreversible or service-affecting actions, and error text. 5.0:1 on slate-panel.",
+        "tonalRamp": ["#3a1211", "#571b1a", "#762523", "#96302e", "#b73f3c", "#d75a57", "#f17d7b", "#f8b3b1"]
+      },
+      "listen-pine": {
+        "role": "secondary",
+        "displayName": "Lifted Pine",
+        "canonical": "#87a7a9",
+        "note": "Campfire --pine lifted 35% toward --ink; pine has no numbered ramp and its .dark value is 2.8:1. Passive/observational: auditioning, location, sparklines.",
+        "tonalRamp": ["#162223", "#213436", "#2d4749", "#3a5b5d", "#4a7c7e", "#679496", "#87a7a9", "#b4c8c9"]
+      },
+      "night-ground": {
+        "role": "neutral",
+        "displayName": "Night Ground",
+        "canonical": "#1c1f26",
+        "note": "Campfire --neutral-950. The page field AND the recessed fill inside controls — the same value doing both is what makes an input read as cut into a panel.",
+        "tonalRamp": ["#0e1013", "#1c1f26", "#2b303b", "#42454e", "#4d515c", "#5e6371", "#747b8a", "#9299a5"]
+      },
+      "slate-panel": {
+        "role": "neutral",
+        "displayName": "Slate Panel",
+        "canonical": "#2b303b",
+        "note": "Campfire --neutral-900. Every card, table body, drawer and menu.",
+        "tonalRamp": ["#0e1013", "#1c1f26", "#2b303b", "#42454e", "#4d515c", "#5e6371", "#747b8a", "#9299a5"]
+      },
+      "hairline": {
+        "role": "neutral",
+        "displayName": "Hairline",
+        "canonical": "#4d515c",
+        "note": "Campfire --neutral-700. Row separators and field dividers. Replaced an earlier token that resolved to the panel colour itself (1.00:1).",
+        "tonalRamp": ["#0e1013", "#1c1f26", "#2b303b", "#42454e", "#4d515c", "#5e6371", "#747b8a", "#9299a5"]
+      },
+      "steel": {
+        "role": "neutral",
+        "displayName": "Steel",
+        "canonical": "#747b8a",
+        "note": "Campfire --neutral-500. Two non-text jobs: the resting edge of every interactive control (3.1:1, clears WCAG 1.4.11), and decorative glyphs — carets, chevrons, the fader groove.",
+        "tonalRamp": ["#0e1013", "#1c1f26", "#2b303b", "#42454e", "#4d515c", "#5e6371", "#747b8a", "#9299a5"]
+      },
+      "bright-ink": {
+        "role": "neutral",
+        "displayName": "Bright Ink",
+        "canonical": "#f7f8f9",
+        "note": "Campfire --neutral-50. Primary text and data. 12.4:1 on slate-panel.",
+        "tonalRamp": ["#2b303b", "#42454e", "#5e6371", "#747b8a", "#9299a5", "#b8bcc5", "#edeef1", "#f7f8f9"]
+      },
+      "cool-label": {
+        "role": "neutral",
+        "displayName": "Cool Label",
+        "canonical": "#b8bcc5",
+        "note": "Campfire --neutral-300, reached past the semantic scale on purpose: the dark theme has no third text tier above 4.5:1, so labels and hints would otherwise be the same gray. 6.9:1.",
+        "tonalRamp": ["#2b303b", "#42454e", "#5e6371", "#747b8a", "#9299a5", "#b8bcc5", "#edeef1", "#f7f8f9"]
+      },
+      "quiet-hint": {
+        "role": "neutral",
+        "displayName": "Quiet Hint",
+        "canonical": "#9299a5",
+        "note": "Campfire --neutral-400. Helper text, units, column headers, empty states. 4.6:1 — the dimmest tier that is still text.",
+        "tonalRamp": ["#2b303b", "#42454e", "#5e6371", "#747b8a", "#9299a5", "#b8bcc5", "#edeef1", "#f7f8f9"]
+      },
+      "service-air": { "role": "tertiary", "displayName": "Air Blue", "canonical": "#3478f5", "note": "Map only. Categorical, not semantic." },
+      "service-rail": { "role": "tertiary", "displayName": "Rail Rust", "canonical": "#8b5034", "note": "Map only." },
+      "service-ham": { "role": "tertiary", "displayName": "Ham Pink", "canonical": "#ec4e89", "note": "Map only." },
+      "service-gmrs": { "role": "tertiary", "displayName": "GMRS Green", "canonical": "#1fa84c", "note": "Map only." },
+      "service-business": { "role": "tertiary", "displayName": "Business Violet", "canonical": "#6d28d9", "note": "Map only." },
+      "service-marine": { "role": "tertiary", "displayName": "Marine Cyan", "canonical": "#0faec0", "note": "Map only." },
+      "service-weather": { "role": "tertiary", "displayName": "Weather Gold", "canonical": "#f4b315", "note": "Map only." },
+      "service-publicsafety": { "role": "tertiary", "displayName": "Public Safety Red", "canonical": "#e5383b", "note": "Map only." },
+      "position-unknown": { "role": "tertiary", "displayName": "Position Unknown", "canonical": "#4a7c7e", "note": "A hit with no honest map position. Deliberately distinct from every service colour — uncertain geography must never look located." }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "The kiosk's live channel name. One per screen, kiosk only." },
+      "headline": { "displayName": "Headline", "purpose": "Admin page titles. One per page." },
+      "title": { "displayName": "Title", "purpose": "Card headers, paired with an optional trailing hint." },
+      "body": { "displayName": "Body", "purpose": "Prose, table cells, form values. Descriptive paragraphs cap at 48rem." },
+      "label": { "displayName": "Label", "purpose": "Instrument legends: column headers, stat captions, eyebrows. Tracked uppercase, never used for sentences." },
+      "data": { "displayName": "Data", "purpose": "Frequencies, temperatures, counts, clocks. Always tabular-nums." }
+    },
+    "shadows": [
+      { "name": "floating-panel", "value": "-18px 0 50px rgb(0 0 0 / 0.5)", "purpose": "The channel drawer sliding over the page." },
+      { "name": "menu", "value": "0 12px 36px rgb(0 0 0 / 0.5)", "purpose": "The bank overflow menu." },
+      { "name": "modal", "value": "0 24px 80px rgb(0 0 0 / 0.65)", "purpose": "The confirm dialog." },
+      { "name": "over-map-card", "value": "0 8px 28px rgb(0 0 0 / 0.45)", "purpose": "Kiosk cards floating on the live map, where the background is arbitrary and the shadow is what keeps the card edge findable." },
+      { "name": "live-tag-glow", "value": "0 0 18px color-mix(in srgb, #ff6b35 25%, transparent)", "purpose": "The system's only glow: the kiosk's live channel name. A glowing thing reads as 'on' from further away than a bright thing does." }
+    ],
+    "motion": [
+      { "name": "drawer-slide", "value": "transform 0.22s cubic-bezier(0.2, 0.8, 0.3, 1)", "purpose": "The channel drawer entering from the right. Quieted to 1ms under prefers-reduced-motion." },
+      { "name": "control-state", "value": "160ms ease", "purpose": "Button border/colour/background feedback. Colour is information, so it survives prefers-reduced-motion." },
+      { "name": "meter-glide", "value": "width 0.25s linear", "purpose": "Signal meter fill tracking dB." },
+      { "name": "breathe", "value": "1.6s ease-in-out infinite", "purpose": "The ACTIVE dot on the kiosk — the radio is receiving right now." },
+      { "name": "sweep", "value": "2.4s ease-in-out infinite", "purpose": "Idle scanning bar — the radio is working, not stuck." },
+      { "name": "alert-pulse", "value": "1.6s ease-in-out infinite", "purpose": "Weather alert card. Watch and warning tiers only; statement tier never pulses." }
+    ],
+    "breakpoints": [
+      { "name": "phone", "value": "699.98px", "purpose": "Bottom tab bar, single-column forms, compact headers, triage actions move into the drawer." },
+      { "name": "tablet", "value": "900px", "purpose": "Nav rail becomes a horizontal strip." },
+      { "name": "laptop", "value": "1100px", "purpose": "Stat tiles collapse from 4+1 to two columns." }
+    ],
+    "surfaces": [
+      { "name": "admin", "mode": "operate", "note": "Web admin from any device. Five hash routes behind a nav rail. Phone-first ergonomics; the operator uses it standing next to the radio." },
+      { "name": "dashboard", "mode": "experience", "note": "The HDMI kiosk view. Output-only — no mouse, no keyboard, cursor hidden. The fullscreen map IS the dashboard when a Maps key is configured." },
+      { "name": "map", "mode": "experience", "note": "Shared map layers; service-coloured pins and transient blips." },
+      { "name": "wall", "mode": "experience", "note": "Ambient canvas skin, system-ui text only, no web fonts." },
+      { "name": "art", "mode": "experience", "note": "Ambient canvas skin, no web fonts." }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one filled button on a screen. Save, add, confirm.",
+      "html": "<button class=\"ds-btn-primary\">Save scanning</button>",
+      "css": ".ds-btn-primary { min-height: 2.35rem; padding: 0.45rem 0.75rem; font-family: Inter, sans-serif; font-size: 0.78rem; font-weight: 700; letter-spacing: 0.02em; color: #1c1f26; background: #ff6b35; border: 1px solid #ff6b35; border-radius: 4px; cursor: pointer; transition: border-color 160ms ease, color 160ms ease, background 160ms ease; } .ds-btn-primary:hover { background: #f9c574; border-color: #f9c574; } .ds-btn-primary:focus-visible { outline: 2px solid #f9c574; outline-offset: 2px; } .ds-btn-primary:active { transform: translateY(1px); }"
+    },
+    {
+      "name": "Default Button",
+      "kind": "button",
+      "refersTo": "button-default",
+      "description": "The neutral action. Recessed fill, Steel edge at 3:1 so it is findable at rest.",
+      "html": "<button class=\"ds-btn-default\">Skip transmission</button>",
+      "css": ".ds-btn-default { min-height: 2.35rem; padding: 0.45rem 0.75rem; font-family: Inter, sans-serif; font-size: 0.78rem; font-weight: 600; letter-spacing: 0.02em; color: #f7f8f9; background: #1c1f26; border: 1px solid #747b8a; border-radius: 4px; cursor: pointer; transition: border-color 160ms ease, background 160ms ease; } .ds-btn-default:hover { border-color: #b8bcc5; background: color-mix(in srgb, #f7f8f9 8%, #1c1f26); } .ds-btn-default:focus-visible { outline: 2px solid #f9c574; outline-offset: 2px; }"
+    },
+    {
+      "name": "Danger Button",
+      "kind": "button",
+      "refersTo": "button-danger",
+      "description": "Irreversible or service-affecting: reboot, shut down, delete, lock out.",
+      "html": "<button class=\"ds-btn-danger\">Reboot appliance</button>",
+      "css": ".ds-btn-danger { min-height: 2.35rem; padding: 0.45rem 0.75rem; font-family: Inter, sans-serif; font-size: 0.78rem; font-weight: 600; letter-spacing: 0.02em; color: #f17d7b; background: #1c1f26; border: 1px solid color-mix(in srgb, #f17d7b 70%, transparent); border-radius: 4px; cursor: pointer; transition: border-color 160ms ease, background 160ms ease; } .ds-btn-danger:hover { background: color-mix(in srgb, #f17d7b 12%, #1c1f26); } .ds-btn-danger:focus-visible { outline: 2px solid #f9c574; outline-offset: 2px; }"
+    },
+    {
+      "name": "Icon Button",
+      "kind": "button",
+      "refersTo": "button-default",
+      "description": "No resting border or fill — the recognisable glyph in its consequence colour identifies the control. Edge appears on hover and focus.",
+      "html": "<button class=\"ds-icon-btn\" aria-label=\"Listen — audition this discovery\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M3 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a9 9 0 0 1 18 0v7a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3\"/></svg></button>",
+      "css": ".ds-icon-btn { padding: 0.28rem; margin: 0 0.12rem; line-height: 0; color: #87a7a9; background: none; border: 1px solid transparent; border-radius: 4px; cursor: pointer; transition: border-color 160ms ease, background 160ms ease; } .ds-icon-btn svg { width: 15px; height: 15px; display: block; } .ds-icon-btn:hover { background: color-mix(in srgb, #f7f8f9 8%, transparent); border-color: #747b8a; } .ds-icon-btn:focus-visible { outline: 2px solid #f9c574; outline-offset: 2px; }"
+    },
+    {
+      "name": "Settings Field Row",
+      "kind": "input",
+      "refersTo": "input-field",
+      "description": "Label left, control right, helper text under the label. The recessed fill plus Steel edge is what makes a twenty-field form readable at rest.",
+      "html": "<label class=\"ds-field\"><span><b>Squelch open</b><small>Signal level above the noise floor</small></span><span class=\"ds-field-unit\"><input type=\"number\" value=\"9\"><b>dB</b></span></label>",
+      "css": ".ds-field { display: grid; grid-template-columns: minmax(12rem, 1fr) minmax(8rem, 1fr); align-items: center; gap: 1rem; padding: 0.55rem 0; border-bottom: 1px solid #4d515c; font-family: Inter, sans-serif; } .ds-field > span:first-child { display: grid; gap: 0.15rem; color: #f7f8f9; } .ds-field b { font-size: 0.88rem; font-weight: 400; } .ds-field small { color: #9299a5; font-size: 0.68rem; line-height: 1.35; } .ds-field-unit { display: flex; align-items: center; gap: 0.4rem; } .ds-field-unit b { min-width: 2rem; color: #9299a5; font-size: 0.68rem; font-weight: 500; } .ds-field input { box-sizing: border-box; width: 100%; padding: 0.38rem 0.55rem; font-family: inherit; font-size: 0.92rem; color: #f7f8f9; background: #1c1f26; border: 1px solid #747b8a; border-radius: 4px; } .ds-field input:focus { border-color: #ff6b35; outline: none; } .ds-field input:focus-visible { outline: 2px solid #f9c574; outline-offset: 2px; }"
+    },
+    {
+      "name": "Nav Rail Item",
+      "kind": "nav",
+      "refersTo": "nav-item-active",
+      "description": "Icon plus a two-line label/description. Active takes panel fill, a panel edge and Signal Amber text.",
+      "html": "<a class=\"ds-nav-item ds-nav-active\" href=\"#/system\" aria-current=\"page\"><span class=\"ds-nav-ico\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z\"/></svg></span><span class=\"ds-nav-copy\"><b>System</b><small>Appliance health and controls</small></span></a>",
+      "css": ".ds-nav-item { display: flex; align-items: center; gap: 0.65rem; min-height: 3.35rem; padding: 0.6rem 0.75rem; font-family: Inter, sans-serif; font-weight: 600; font-size: 0.8rem; color: #9299a5; text-decoration: none; border: 1px solid transparent; border-radius: 8px; } .ds-nav-item:hover { color: #f7f8f9; background: #2b303b; } .ds-nav-active { color: #ff6b35; background: #2b303b; border-color: #42454e; } .ds-nav-ico { color: #b8bcc5; } .ds-nav-ico svg { width: 1.15rem; height: 1.15rem; display: block; } .ds-nav-copy { display: grid; gap: 0.1rem; } .ds-nav-copy b { color: inherit; font-size: 0.86rem; letter-spacing: 0.02em; } .ds-nav-copy small { color: #9299a5; font-size: 0.68rem; font-weight: 400; } .ds-nav-active .ds-nav-copy small { color: #b8bcc5; } .ds-nav-item:focus-visible { outline: 2px solid #f9c574; outline-offset: 2px; }"
+    },
+    {
+      "name": "Verdict Chip",
+      "kind": "chip",
+      "refersTo": "chip",
+      "description": "One chip recipe: size and shape identical everywhere, only colour varies. OUTBAND — a frequency matching no known allocation — is the loud case.",
+      "html": "<span class=\"ds-chip\">97</span> <span class=\"ds-chip ds-chip-hear\">HEAR</span> <span class=\"ds-chip ds-chip-outband\">OUTBAND</span>",
+      "css": ".ds-chip { display: inline-block; padding: 0.08em 0.45em; margin-left: 0.45em; font-family: Inter, sans-serif; font-size: 0.7rem; font-weight: 600; letter-spacing: 0.04em; white-space: nowrap; color: #b8bcc5; border: 1px solid #42454e; border-radius: 4px; } .ds-chip-hear { color: #9ac35d; border-color: #9ac35d; } .ds-chip-outband { color: #f17d7b; border-color: #f17d7b; font-weight: 700; }"
+    },
+    {
+      "name": "Stat Tile",
+      "kind": "card",
+      "refersTo": "card-panel",
+      "description": "The glance numbers on Overview. Flat plate, hairline edge, Signal Amber value.",
+      "html": "<a class=\"ds-stat-tile\" href=\"#/triage\"><div class=\"ds-stat-label\">Triage queue</div><div class=\"ds-stat-value\">0</div><div class=\"ds-stat-sub\">inbox zero</div></a>",
+      "css": ".ds-stat-tile { display: block; padding: 0.8rem 1rem; font-family: Inter, sans-serif; background: #2b303b; border: 1px solid #42454e; border-radius: 8px; text-decoration: none; } .ds-stat-tile:hover { border-color: #f9c574; } .ds-stat-label { color: #9299a5; font-weight: 600; font-size: 0.68rem; letter-spacing: 0.06em; text-transform: uppercase; } .ds-stat-value { margin: 0.15rem 0; color: #ff6b35; font-size: 1.9rem; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1.2; } .ds-stat-sub { color: #b8bcc5; font-size: 0.75rem; } .ds-stat-tile:focus-visible { outline: 2px solid #f9c574; outline-offset: 2px; }"
+    },
+    {
+      "name": "Signal Meter",
+      "kind": "custom",
+      "refersTo": null,
+      "description": "Signature component. An LED-segment bar: green→amber→red gradient masked by hard stops to punch segment gaps. The boot progress bar uses the same treatment so warm-up and signal read as one instrument.",
+      "html": "<div class=\"ds-meter\"><div class=\"ds-meter-fill\" style=\"width:68%\"></div></div><div class=\"ds-meter-db\">-42.0 dB</div>",
+      "css": ".ds-meter { width: 100%; max-width: 340px; height: 16px; padding: 2px; background: #1c1f26; border: 1px solid #42454e; border-radius: 4px; overflow: hidden; } .ds-meter-fill { height: 100%; background: linear-gradient(90deg, #9ac35d 0 55%, #ff6b35 55% 80%, #f17d7b 80%); transition: width 0.25s linear; -webkit-mask-image: repeating-linear-gradient(90deg, #000 0 8px, transparent 8px 11px); mask-image: repeating-linear-gradient(90deg, #000 0 8px, transparent 8px 11px); } .ds-meter-db { margin-top: 0.45rem; font-family: Inter, sans-serif; font-size: 0.95rem; font-variant-numeric: tabular-nums; letter-spacing: 0.02em; color: #9299a5; }"
+    },
+    {
+      "name": "Live Channel Card",
+      "kind": "custom",
+      "refersTo": null,
+      "description": "Signature component. The kiosk's now-playing card floating over the live map — and the only place the system's one glow appears.",
+      "html": "<div class=\"ds-now\"><div class=\"ds-now-active\"><span class=\"ds-now-dot\"></span>ACTIVE</div><div class=\"ds-now-tag\">Worlds of Fun Maintenance</div><div class=\"ds-now-freq\">464.2750<span class=\"ds-now-unit\">MHz</span></div></div>",
+      "css": ".ds-now { display: inline-flex; flex-direction: column; align-items: flex-start; min-width: 22rem; max-width: 40rem; padding: 0.95rem 1.35rem 1.1rem; font-family: Inter, sans-serif; background: color-mix(in srgb, #1c1f26 90%, transparent); border: 1px solid #42454e; border-radius: 8px; box-shadow: 0 8px 28px rgb(0 0 0 / 0.45); } .ds-now-active { display: flex; align-items: center; gap: 0.6rem; font-weight: 700; font-size: 1.12rem; letter-spacing: 0.06em; color: #9ac35d; } .ds-now-dot { width: 0.7em; height: 0.7em; border-radius: 50%; background: #9ac35d; animation: ds-breathe 1.6s ease-in-out infinite; } @keyframes ds-breathe { 50% { opacity: 0.45; } } .ds-now-tag { margin-top: 0.42rem; font-size: 2.6rem; font-weight: 600; line-height: 1.08; letter-spacing: 0.01em; color: #ff6b35; text-shadow: 0 0 18px color-mix(in srgb, #ff6b35 25%, transparent); text-wrap: balance; } .ds-now-freq { margin-top: 0.4rem; font-size: 1.8rem; font-weight: 500; font-variant-numeric: tabular-nums; letter-spacing: 0.02em; color: #b8bcc5; } .ds-now-unit { margin-left: 0.4em; font-size: 0.5em; font-weight: 600; letter-spacing: 0.06em; vertical-align: 0.18em; color: #9299a5; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Night Watch",
+    "overview": "Kerchunk is a radio that never sleeps, watched by one person who is usually doing something else. Every surface is built for that: a dark room, a glance from across it, and exactly one thing lit. At rest the whole interface is quiet gray on near-black — panels, rules, labels, and data all sit in a narrow neutral band. Emphasis is not distributed; it is spent.\n\nThat restraint is what makes the appliance readable at speed. The operator is not reading the screen — they are checking it, from a doorway, while the radio talks. So hierarchy is carried by size and by liveness, not by decoration. Cards are flat plates with hairline borders. Numbers are tabular so columns line up and a changing digit doesn't shift its neighbours. Labels are small, uppercase and tracked so they read as instrument legends rather than as prose.\n\nThe system takes its palette and its ramps from Campfire, the operator's own design system, and its type from a single face. It does not take its personality from hardware nostalgia: there are no bevels, no brushed metal, no fake screws. Instrument logic — legends, meters, consequence colour, tabular data — without instrument cosplay.",
+    "keyCharacteristics": [
+      "Dark-only. There is no light theme and no theme switch; the use scene is a dim room and a wall-mounted panel.",
+      "One loud colour, spent on live state.",
+      "Flat plates, hairline rules, tonal layering; shadow only where something genuinely floats.",
+      "Tabular numerals everywhere a number can change.",
+      "Small tracked uppercase labels; large unadorned data.",
+      "Every surface legible from across a room or from a phone held at arm's length — never optimised for only one."
+    ],
+    "rules": [
+      { "name": "The One Lit Thing Rule", "body": "Signal Amber marks live state and nothing else. If two things on a screen are amber, one of them is wrong. Brand presence comes from restraint, not from coverage.", "section": "colors" },
+      { "name": "The Dark-Value Rule", "body": "Campfire's named expressive tokens (--flamingo, --sage, --pine, --golden-amber) carry a second, much darker value under .dark — the theme this app always runs in. Aliasing them for text or edges silently lands at 2.8–3.6:1. Take consequence colours from the numbered ramps (--danger-400, --success-400, --warning-500), which are theme-independent, and lift Pine toward --ink because it has no ramp.", "section": "colors" },
+      { "name": "The Three-Tier Rule", "body": "Text uses exactly three tiers — Bright Ink, Cool Label, Quiet Hint — and all three clear 4.5:1 on Slate Panel (12.4 / 6.9 / 4.6). There is no fourth, dimmer tier, because the dark ground does not have room for one. Anything dimmer than Quiet Hint is a glyph, not text.", "section": "colors" },
+      { "name": "The Tabular Rule", "body": "Any number that can change while being looked at — frequency, temperature, CPU, hit count, clock, dB — is font-variant-numeric: tabular-nums. A digit that changes width makes an instrument look unreliable.", "section": "typography" },
+      { "name": "The Legend Rule", "body": "Uppercase is for legends, never for reading. Tracked uppercase marks a label naming a value; it is never used for a sentence, a button that isn't a legend, or body copy.", "section": "typography" },
+      { "name": "The Four-Decimal Rule", "body": "Frequencies always render to four decimals (145.1300), never three. Scanner frequencies sit on a 12.5 kHz raster and three decimals misrepresents them.", "section": "typography" },
+      { "name": "The One Scroll Rule", "body": "A page has exactly one vertical scroll region. Tables are table-layout: fixed with declared column widths at every width, so they never scroll sideways and never need an inner scroll box. Sticky table headers stick against the page, not against a nested container.", "section": "layout" },
+      { "name": "The Thumb Rule", "body": "On coarse pointers every target is ≥44px (2.75rem). The only exemptions are glyphs whose surrounding cell or row is itself the larger target.", "section": "layout" },
+      { "name": "The No-Glass Rule", "body": "No backdrop-filter, no blur, no translucent-frosted surfaces. This is a thermal constraint first — blur over the animating WebGL map measured +6 °C on this hardware — and a visual one second. Where a card must sit over the map, raise the background opacity to 90–96% instead.", "section": "elevation" },
+      { "name": "The One Glow Rule", "body": "Exactly one glow exists in the system: the amber text-shadow on the kiosk's live channel name. It is what makes the tag read as on rather than merely bright. Do not add a second.", "section": "elevation" },
+      { "name": "The Hairline Rule", "body": "Borders are 1px. A thicker coloured border on a card, list item, callout or alert is not part of this system — emphasis comes from ground tint, type size, or the accent colour of the text itself.", "section": "shapes" }
+    ],
+    "dos": [
+      "Do spend Signal Amber on live state only — one lit thing per screen.",
+      "Do take consequence colours from Campfire's numbered ramps (--danger-400, --success-400, --warning-500), never from the named expressive tokens, which are darker under .dark.",
+      "Do give every interactive edge ≥3:1 against both its card and its own fill, and every text tier ≥4.5:1.",
+      "Do use font-variant-numeric: tabular-nums on any number that can change while being watched.",
+      "Do keep frequencies at four decimals.",
+      "Do declare table column widths and use table-layout: fixed, so nothing scrolls sideways.",
+      "Do raise background opacity to 90–96% when a card must sit over the live map.",
+      "Do hit 44px targets on coarse pointers, exempting only glyphs whose row or cell is already the target.",
+      "Do edit the rule that already exists rather than restating it further down the stylesheet."
+    ],
+    "donts": [
+      "Don't use backdrop-filter, blur, or frosted glass anywhere. It is a measured thermal cost (+6 °C) and a visual anti-goal.",
+      "Don't add a coloured border-left/border-right thicker than 1px to a card, alert, list item or callout.",
+      "Don't add a second glow. The live channel tag owns the only one.",
+      "Don't drift toward a generic dark SaaS dashboard: purple-blue gradients, soft glow cards, decorative sparklines standing in for data.",
+      "Don't reach for skeuomorphic hardware texture — bevels, brushed metal, fake screws, drop-shadowed knobs.",
+      "Don't adopt a consumer scanner-app look: bright chrome, playful colour, phone-only layouts that lose the across-the-room read.",
+      "Don't introduce a fourth text tier dimmer than Quiet Hint; make it a glyph or make it brighter.",
+      "Don't use monospace as a signal of 'technical'. One face, tabular figures.",
+      "Don't invent a second card-header grammar, or a radius between 4px and 8px.",
+      "Don't repeat a Campfire token's hex as a var(--token, #hex) fallback; the token layer is always loaded, and a duplicated hex drifts silently."
+    ]
+  }
+}
