@@ -665,7 +665,7 @@
       },
       {
         "name": "The Hairline Rule",
-        "body": "Borders are 1px. A thicker coloured border on a card, list item, callout or alert is not part of this system — emphasis comes from ground tint, type size, or the accent colour of the text itself.",
+        "body": "Borders are 1px. A thicker coloured border on a card, list item, callout or alert is not part of this system — emphasis comes from ground tint, type size, or the accent colour of the text itself. One documented exception: the kiosk's weather alert card encodes NWS severity through border weight (4px spine = statement, 2px ring = watch, solid fill = warning). Border weight is semantic there, read at distance, on the component whose job is to be unmissable. Nothing else may borrow it.",
         "section": "shapes"
       },
       {

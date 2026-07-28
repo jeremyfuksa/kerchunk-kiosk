@@ -5,5 +5,20 @@
       "maxFindings": 5,
       "maxChars": 8000
     }
+  },
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "kiosk/src/frontend/dashboard/dashboard.css"
+        ],
+        "createdAt": "2026-07-28T19:10:52.179Z",
+        "reason": "NWS severity tiers encode urgency through border weight; documented exception to The Hairline Rule in DESIGN.md"
+      }
+    ]
   }
 }

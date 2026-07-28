@@ -331,8 +331,12 @@ body {
   background: color-mix(in srgb, var(--blue) 12%, var(--etch));
   border-color: color-mix(in srgb, var(--blue) 70%, transparent);
 }
+/* Status lines carry their own meaning. Success used to render in --red,
+   which made every save look like a failure. */
 .admin .err { color: var(--red); font-size: var(--t-dense); }
-.admin .err:not(:empty) { margin-left: 0.5rem; }
+.admin .ok { color: var(--green); font-size: var(--t-dense); }
+.admin .err:not(:empty),
+.admin .ok:not(:empty) { margin-left: 0.5rem; }
 
 /* Icon buttons: compact squares, glyph inherits the consequence color. No
    resting border — for an icon-only control the recognizable glyph is what
@@ -414,6 +418,20 @@ body {
   border: 1px solid var(--border-strong);
 }
 .admin .nowCard > h2 { color: var(--amber); }
+/* Nothing is reaching the speaker: the chip says which reason, and the channel
+   name drops out of ink so the card stops reading as "live". */
+.admin .silentChip {
+  padding: 0.08em 0.45em;
+  color: var(--caution);
+  border: 1px solid color-mix(in srgb, var(--caution) 60%, transparent);
+  border-radius: 4px;
+  font-size: var(--t-micro);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  vertical-align: 0.1em;
+}
+.admin .nowCard.isSilent .npName { color: var(--dim); }
+.admin .nowCard.isSilent .npFreq { color: var(--dim); }
 .admin .nowCard .npWhat { margin: 0.45rem 0 1.1rem; }
 .admin .nowCard .npName {
   font-weight: 600;
@@ -546,6 +564,10 @@ a.statTile:hover { border-color: var(--caution); }
 .admin .chTable td.actions { text-align: right; white-space: nowrap; }
 .admin .chTable td.actions .iconBtn { margin: 0; }
 .admin .chTable button { min-height: 0; padding: 0.22rem 0.5rem; font-size: var(--t-caption); }
+/* Empty-state links are a route out of the dead end, so they take the
+   listen/observe blue rather than the UA default. */
+.admin .empty a { color: var(--blue); }
+.admin .empty a:hover { color: var(--ink); }
 .admin .chTable .empty {
   padding: 1rem;
   color: var(--dim);
@@ -893,7 +915,7 @@ tr.bankRow .bkSummary {
 .admin .inBreakdown summary:hover { color: var(--ink); }
 .admin .inClock { display: flex; align-items: flex-end; gap: 2px; height: 32px; margin-bottom: 0.8rem; }
 .admin .inClock .inHr { flex: 1; background: color-mix(in srgb, var(--spark) 45%, transparent); min-height: 3px; }
-.admin .inClock .inHr.now { background: var(--green); }
+.admin .inClock .inHr.now { background: var(--amber); }  /* matches .clkBar.now — amber is 'now', green means adopt */
 .admin .inTop { width: 100%; border-collapse: collapse; margin-bottom: 0.6rem; }
 .admin .inTop td { padding: 0.18rem 0.4rem; border: none; font-size: var(--t-dense); }
 .admin .inTop .inName { max-width: 14rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

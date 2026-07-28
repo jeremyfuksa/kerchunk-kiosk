@@ -300,7 +300,7 @@ export function renderDashboard(root: HTMLElement): void {
     bootEl.classList.toggle("hidden", state.warmed);
     if (state.warmed) return;
     const pct = state.warmupOf > 0 ? Math.round((state.warmupStep / state.warmupOf) * 100) : 0;
-    bootFill.style.width = `${pct}%`;
+    bootFill.style.transform = `scaleX(${pct / 100})`;
     bootPhaseEl.textContent = state.warmupPhase ? (BOOT_LABELS[state.warmupPhase] ?? state.warmupPhase) : BOOT_LABELS.booting!;
   }
 
@@ -366,7 +366,7 @@ export function renderDashboard(root: HTMLElement): void {
     if (view === lastView && state.nowPlaying && meterFillEl && meterDbEl) {
       // Same active channel — surgical update, let the meter glide.
       const db = state.signalDb;
-      meterFillEl.style.width = `${meterPct(db)}%`;
+      meterFillEl.style.transform = `scaleX(${Number(meterPct(db)) / 100})`;
       meterDbEl.textContent = db === null ? "" : db.toFixed(1) + " dB";
     } else {
       lastView = view;
@@ -387,7 +387,7 @@ export function renderDashboard(root: HTMLElement): void {
         nowEl.innerHTML = `<div class="active"><span class="dot"></span>ACTIVE</div>
           <div class="tag">${esc(hero)}</div>
           ${freqLine}
-          <div class="meter"><div class="meterFill" style="width:${meterPct(db)}%"></div></div>
+          <div class="meter"><div class="meterFill" style="transform:scaleX(${Number(meterPct(db)) / 100})"></div></div>
           <div class="meterDb">${db === null ? "" : db.toFixed(1) + " dB"}</div>`;
         meterFillEl = nowEl.querySelector<HTMLElement>(".meterFill");
         meterDbEl = nowEl.querySelector<HTMLElement>(".meterDb");
