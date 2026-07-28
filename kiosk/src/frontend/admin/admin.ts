@@ -19,6 +19,11 @@ import icoList from "lucide-static/icons/list.svg?raw";
 import icoSliders from "lucide-static/icons/sliders-horizontal.svg?raw";
 import icoGear from "lucide-static/icons/settings-2.svg?raw";
 import icoWrench from "lucide-static/icons/wrench.svg?raw";
+import icoPlay from "lucide-static/icons/play.svg?raw";
+import icoStop from "lucide-static/icons/square.svg?raw";
+import icoEllipsis from "lucide-static/icons/ellipsis.svg?raw";
+import icoChevronRight from "lucide-static/icons/chevron-right.svg?raw";
+import icoExternal from "lucide-static/icons/arrow-up-right.svg?raw";
 import type { Bank } from "../../backend/config/schema.js";
 import { ReconnectingWs } from "../lib/wsClient.js";
 import { SystemActionWatcher } from "../lib/systemActionWatcher.js";
@@ -124,6 +129,11 @@ export function unlockFreqIn<T extends LockoutCfg>(cfg: T, freq: number): T {
 
 // Icons come from Lucide (lucide-static raw SVGs, stroke = currentColor, so
 // the consequence color-coding on button classes carries straight through).
+// Every glyph in this app comes from here — there is deliberately no second
+// vocabulary. Typed characters standing in for icons (▶ ⏹ ⋯ › ↗) used to sit
+// beside these: they carry no stroke weight, ignore currentColor sizing, and
+// resolve to whatever the fallback font happens to have — ▶/⏹ can even land in
+// emoji presentation and drag the button's line box with them.
 const ICONS: Record<string, string> = {
   listen: icoHeadphones,
   edit: icoPencil,
@@ -136,10 +146,24 @@ const ICONS: Record<string, string> = {
   unlock: icoUnlock,
   bell: icoBell,
   gear: icoGear,
+  play: icoPlay,
+  stop: icoStop,
+  more: icoEllipsis,
+  chevron: icoChevronRight,
+  external: icoExternal,
 };
 
 function iconBtn(cls: string, icon: string, label: string, attrs = ""): string {
   return `<button class="${cls} iconBtn" title="${label}" aria-label="${label}"${attrs ? " " + attrs : ""}>${ICONS[icon]}</button>`;
+}
+
+/** An icon that rides *inside* a label rather than replacing it. Sized in `em`
+ *  by `.btnIco`, so it tracks whatever type step its label uses. `where` sets
+ *  which side gets the gap — "solo" is an icon that IS the whole label, and
+ *  still needs an accessible name on the element wrapping it. */
+function btnIco(icon: string, where: "lead" | "trail" | "solo" = "lead"): string {
+  const mod = where === "solo" ? "" : ` btnIco--${where}`;
+  return ICONS[icon]!.replace("<svg", `<svg class="btnIco${mod}" aria-hidden="true" focusable="false"`);
 }
 
 export function renderAdmin(root: HTMLElement): void {
@@ -149,8 +173,8 @@ export function renderAdmin(root: HTMLElement): void {
       <header class="adminHead">
         <a class="brand" href="#/" aria-label="Kerchunk admin overview">KERCHUNK <span class="brandSub">admin</span></a>
         <div class="headActions">
-          <a href="/" target="_blank" title="Open the kiosk display">Kiosk ↗</a>
-          <a href="/map" target="_blank" title="Open the live activity map">Map ↗</a>
+          <a href="/" target="_blank" title="Open the kiosk display">Kiosk${btnIco("external", "trail")}</a>
+          <a href="/map" target="_blank" title="Open the live activity map">Map${btnIco("external", "trail")}</a>
         </div>
       </header>
       <div class="workspace">
@@ -164,20 +188,20 @@ export function renderAdmin(root: HTMLElement): void {
       <div class="pages" id="adminPages" tabindex="-1">
       <div id="healthBanner" class="healthBanner healthClear" data-page="home" role="status" aria-live="polite"></div>
       <div class="pageIntro" data-page="home">
-        <div><span class="eyebrow">Overview</span><h1>Radio status</h1><p>Monitor what is playing, check system health, and review recent activity.</p></div>
+        <div><h1>Radio status</h1></div>
       </div>
       <section class="nowCard hero" data-page="home">
         <h2>Now playing <span id="npSilent" class="silentChip" hidden></span></h2>
         <div class="npWhat"><span id="npName" class="npName">scanning…</span> <span id="npFreq" class="npFreq"></span></div>
         <div class="npControls">
           <div class="controlGroup audioControls">
-            <button id="streamBtn" class="primary" disabled title="Enable remote listening to stream the feed">▶ Listen here</button>
+            <button id="streamBtn" class="primary" disabled title="Enable remote listening to stream the feed">${btnIco("play")}Listen here</button>
             <label>Volume <input id="vol" type="range" min="0" max="100" /></label>
             <label class="checkLabel"><input id="mute" type="checkbox" /> Mute</label>
             <label class="checkLabel"><input id="remoteListen" type="checkbox" /> Remote listening</label>
           </div>
           <div class="controlGroup transmissionControls">
-            <button id="resumeBtn" class="resume" style="display:none">⏹ Resume scan</button>
+            <button id="resumeBtn" class="resume" style="display:none">${btnIco("stop")}Resume scan</button>
             <button id="weatherBtn" class="weatherAction">Listen to weather</button>
             <button id="skipBtn" title="Force-close the current transmission">Skip transmission</button>
             <button id="tlockBtn" title="Suppress this channel for 30 minutes (clears on restart)" disabled>Pause 30 min</button>
@@ -186,13 +210,13 @@ export function renderAdmin(root: HTMLElement): void {
         </div>
       </section>
       <section class="alertFeed" data-page="home">
-        <h2>Alerts <span class="hint">what fired while you were away — flag channels with the bell</span></h2>
+        <h2>Alerts <span class="hint">last 25</span></h2>
         <ul id="alertRows" class="alertList"></ul>
         <div class="alertFeedFoot"><button id="clearAlerts" class="alertClearAll" type="button" hidden>Clear all</button></div>
       </section>
       <section class="discoveries" data-page="triage">
         <div class="pageIntro sectionIntro">
-          <div><span class="eyebrow">Triage</span><h1>Review discoveries <span class="count" id="dcCount"></span></h1><p>Close Call found these frequencies. Listen, then add useful signals or dismiss the rest.</p></div>
+          <div><h1>Review discoveries <span class="count" id="dcCount"></span></h1><p>Close Call found these frequencies. Listen, then add useful signals or dismiss the rest.</p></div>
         </div>
         <div class="dcToolbar">
           <button id="dcDismissSel" disabled>Dismiss selected</button>
@@ -212,8 +236,8 @@ export function renderAdmin(root: HTMLElement): void {
       </section>
       <section class="channels" data-page="channels">
         <div class="pageIntro sectionIntro">
-          <div><span class="eyebrow">Channels</span><h1>Channel library <span class="count" id="chCount"></span></h1><p>Add frequencies, choose what is audible, and organize related channels into banks.</p></div>
-          <button id="addBtn" class="primary">+ Add channel</button>
+          <div><h1>Channel library <span class="count" id="chCount"></span></h1></div>
+          <button id="addBtn" class="primary">${btnIco("add")}Add channel</button>
         </div>
         <div class="chFilterBar">
           <label class="chFilter">
@@ -257,7 +281,7 @@ export function renderAdmin(root: HTMLElement): void {
         <div id="inBody" class="inBody"></div>
       </section>
       <div class="pageIntro" data-page="scan">
-        <div><span class="eyebrow">Settings</span><h1>Scanner settings</h1><p>Tune scanning, alerts, the weather channel, and integrations. Each card saves on its own.</p></div>
+        <div><h1>Scanner settings</h1><p>Each card saves on its own.</p></div>
       </div>
       <div class="settingsCards" data-page="scan">
       <details class="settingsCard tuning" open>
@@ -311,10 +335,10 @@ export function renderAdmin(root: HTMLElement): void {
       </details>
       </div>
       <div class="pageIntro" data-page="system">
-        <div><span class="eyebrow">System</span><h1>Appliance</h1><p>Machine health, kiosk screen controls, and Close Call lockouts.</p></div>
+        <div><h1>Appliance</h1></div>
       </div>
       <section class="sysHealth" data-page="system">
-        <h2>System health <span class="hint">the machine under the radio — helper CPU is the usual suspect</span></h2>
+        <h2>System health</h2>
         <div id="sysBody"></div>
       </section>
       <section class="systemCard" data-page="system">
@@ -353,7 +377,6 @@ export function renderAdmin(root: HTMLElement): void {
     <aside id="chDrawer" class="drawer" role="dialog" aria-modal="true" aria-label="Channel details" aria-hidden="true" inert></aside>
     <dialog id="confirmDialog" class="confirmDialog" aria-labelledby="confirmTitle" aria-describedby="confirmMessage">
       <form method="dialog">
-        <span class="confirmEyebrow">Confirm action</span>
         <h2 id="confirmTitle"></h2>
         <p id="confirmMessage"></p>
         <div class="confirmActions">
@@ -713,7 +736,7 @@ export function renderAdmin(root: HTMLElement): void {
         <span class="inBusiest">${busiest ? `busiest <b>${esc(busiest.alphaTag) || fmtFreq(busiest.freq)}</b>` : "quiet band"}</span>
       </div>
       <div class="inClock" title="activity by hour of day">
-        ${st.byHour.map((n, h) => `<div class="inHr${h === nowHour ? " now" : ""}" style="height:${(4 + 26 * n / maxHour).toFixed(0)}px" title="${String(h).padStart(2, "0")}:00 — ${n}"></div>`).join("")}
+        ${st.byHour.map((n, h) => `<div class="inHr${h === nowHour ? " now" : ""}" style="height:${Math.max(4, (n / maxHour) * 100).toFixed(0)}%" title="${String(h).padStart(2, "0")}:00 — ${n}"></div>`).join("")}
       </div>
       <details class="inBreakdown"${wasOpen ? " open" : ""}>
         <summary>Show breakdown</summary>
@@ -775,8 +798,11 @@ export function renderAdmin(root: HTMLElement): void {
       ? `<div class="clkEmpty">no traffic yet today</div>`
       : byHour.map((n, h) =>
         `<div class="clkBar${h === nowHour ? " now" : ""}" style="height:${Math.max(4, (n / max) * 100)}%" title="${String(h).padStart(2, "0")}:00 — ${n} hits"></div>`).join("");
-    const tile = (label: string, value: string, sub: string, href?: string) =>
-      `<${href ? `a href="${href}"` : "div"} class="statTile">
+    // `attention` is the only tile colouring its number, and only when there is
+    // something to do. Everything else here is a 24-hour count — history, not
+    // live state — so it stays in ink and lets size carry the hierarchy.
+    const tile = (label: string, value: string, sub: string, href?: string, attention = false) =>
+      `<${href ? `a href="${href}"` : "div"} class="statTile${attention ? " needsAttention" : ""}">
         <div class="stLabel">${label}</div>
         <div class="stValue">${value}</div>
         <div class="stSub">${sub}</div>
@@ -784,8 +810,8 @@ export function renderAdmin(root: HTMLElement): void {
     statRow.innerHTML =
       tile("Hits · 24h", String(stats.totalHits), `${stats.topChannels[0] ? esc(stats.topChannels[0].alphaTag) + " leads" : "quiet band"}`)
       + tile("Airtime", fmtAirShort(stats.totalAirtimeMs), `${stats.discoveries} close call${stats.discoveries === 1 ? "" : "s"} heard`)
-      + tile("Triage queue", String(pending), pending > 0 ? "discoveries await review" : "inbox zero", "#/triage")
-      + tile("Alerts · 24h", String((alerts as unknown[]).length), "bell + SAME, feed above")
+      + tile("Triage queue", String(pending), pending > 0 ? `${pending} to review` : "nothing pending", "#/triage", pending > 0)
+      + tile("Alerts · 24h", String((alerts as unknown[]).length), "bell and SAME")
       + `<div class="statTile clockTile">
           <div class="stLabel">Activity by hour</div>
           <div class="hourClock" role="img" aria-label="${total === 0 ? "No traffic yet today" : `${total} hits today, busiest around ${String(peak).padStart(2, "0")}:00`}">${clock}</div>
@@ -932,7 +958,9 @@ export function renderAdmin(root: HTMLElement): void {
   // bank was mouse-only) and reports its state to assistive tech.
   function caret(key: string, label: string): string {
     const open = !collapsedBanks.has(key);
-    return `<button type="button" class="bkCaret" aria-expanded="${open}" aria-label="${open ? "Collapse" : "Expand"} ${label}">${open ? "▾" : "▸"}</button>`;
+    // The drawn `.chev` rotates off aria-expanded, so state lives in one place
+    // instead of in a pair of swapped characters.
+    return `<button type="button" class="bkCaret" aria-expanded="${open}" aria-label="${open ? "Collapse" : "Expand"} ${label}"><span class="chev"></span></button>`;
   }
 
   function bankHeaderRow(g: BankGroup): string {
@@ -954,7 +982,7 @@ export function renderAdmin(root: HTMLElement): void {
         <span class="bankCount">${g.channels.length}</span>
         <span class="bkSummary">${audibleCount} audible · ${archivedCount} archived${summary ? ` · ${summary}` : ""}</span>
         <details class="bankMenu">
-          <summary aria-label="Actions for ${esc(b.name)}" title="Bank actions">⋯</summary>
+          <summary aria-label="Actions for ${esc(b.name)}" title="Bank actions">${btnIco("more", "solo")}</summary>
           <div class="bankMenuList">
             <button class="bkBulkAudible" title="Make every channel in this collection audible">Make audible</button>
             <button class="bkBulkSilent" title="Keep tracking every channel but silence them">Make silent</button>
@@ -986,7 +1014,7 @@ export function renderAdmin(root: HTMLElement): void {
     const name = esc(c.alphaTag) || fmtFreq(c.freq);
     return `<tr data-id="${esc(c.id)}">
       <td class="rowOpen">${fmtFreq(c.freq)}</td>
-      <td class="rowOpen">${esc(c.alphaTag)}${c.alert ? `<span class="bellChip" title="Alerts on a hit">${ICONS.bell}</span>` : ""}${membershipChips(c)}${locChip(c.location)}<button type="button" class="rowChev" aria-label="Open ${name} details">›</button></td>
+      <td class="rowOpen">${esc(c.alphaTag)}${c.alert ? `<span class="bellChip" title="Alerts on a hit">${ICONS.bell}</span>` : ""}${membershipChips(c)}${locChip(c.location)}<button type="button" class="rowChev" aria-label="Open ${name} details">${btnIco("chevron", "solo")}</button></td>
       <td class="chAudible"><input type="checkbox" class="audible" ${c.audible !== false ? "checked" : ""} aria-label="Audible — play ${name} through the speaker" title="Audible — play this channel through the speaker" /></td>
     </tr>`;
   }
@@ -1703,13 +1731,13 @@ export function renderAdmin(root: HTMLElement): void {
     const hunting = cfg.scan.closeCall !== false;
     const emptyCopy = hunting
       ? "Nothing pending — Close Call is hunting. New discoveries land here."
-      : `Close Call is off, so no new discoveries will arrive. <a href="#/scan">Turn it on in Settings ›</a>`;
+      : `Close Call is off, so no new discoveries will arrive. <a href="#/scan">Turn it on in Settings</a>`;
     dcRows.innerHTML = ds.length === 0
       ? `<tr><td colspan="5" class="empty">${emptyCopy}</td></tr>`
       : ds.map((d) => `<tr data-id="${esc(d.id)}" class="dcRow">
           <td><input type="checkbox" class="dSel" ${dcSelected.has(d.id) ? "checked" : ""} aria-label="Select ${fmtFreq(d.freq)} ${esc(d.alphaTag)}" /></td>
           <td class="rowOpen">${fmtFreq(d.freq)}<span class="dcSvc${serviceFor(d.freq) ? "" : " outband"}">${esc(serviceFor(d.freq) ?? "OUTBAND")}</span></td>
-          <td class="rowOpen">${esc(d.alphaTag)}${d.audible === false ? '<span class="dcSee" title="Identified as data/paging — filed seen-not-heard; promotes as SEE">SEE</span>' : d.audible === true ? '<span class="dcHear" title="Identified as analog voice — hearable">HEAR</span>' : ""}${locChip(d.location)}<button type="button" class="rowChev" aria-label="Open ${esc(d.alphaTag)} details">›</button></td>
+          <td class="rowOpen">${esc(d.alphaTag)}${d.audible === false ? '<span class="dcSee" title="Identified as data/paging — filed seen-not-heard; promotes as SEE">SEE</span>' : d.audible === true ? '<span class="dcHear" title="Identified as analog voice — hearable">HEAR</span>' : ""}${locChip(d.location)}<button type="button" class="rowChev" aria-label="Open ${esc(d.alphaTag)} details">${btnIco("chevron", "solo")}</button></td>
           <td class="rowOpen dMode${d.mode && DIGITAL.some((x) => d.mode!.toUpperCase().includes(x)) ? " digital" : ""}">${d.mode ? esc(d.mode.toUpperCase()) : "—"}</td>
           <td class="actions">${iconBtn("dListen", "listen", "Listen — audition this discovery")}${iconBtn("dAdd", "add", "Add as an enabled channel")}${iconBtn("dLock", "lockout", "Lock out — never Close-Call this frequency again")}${iconBtn("dDismiss", "dismiss", "Dismiss (may be rediscovered later)")}</td>
         </tr>`).join("");
@@ -1932,14 +1960,16 @@ export function renderAdmin(root: HTMLElement): void {
   let streamEl: HTMLAudioElement | null = null;
   const streamBtn = root.querySelector<HTMLButtonElement>("#streamBtn")!;
   streamBtn.addEventListener("click", () => {
+    // innerHTML, not textContent: the label carries an inline Lucide glyph and
+    // assigning text would strip it, leaving this one button bare.
     if (streamEl) {
       streamEl.pause(); streamEl.src = ""; streamEl = null;
-      streamBtn.textContent = "▶ Listen here";
+      streamBtn.innerHTML = `${btnIco("play")}Listen here`;
       return;
     }
     streamEl = new Audio(`/api/stream.wav?t=${Date.now()}`);
     void streamEl.play().catch(() => { streamEl = null; });
-    streamBtn.textContent = "⏹ Stop listening";
+    streamBtn.innerHTML = `${btnIco("stop")}Stop listening`;
   });
   const systemActionStatus = root.querySelector<HTMLElement>("#systemActionStatus")!;
   const kioskActionStatus = root.querySelector<HTMLElement>("#kioskActionStatus")!;
