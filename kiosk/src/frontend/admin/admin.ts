@@ -328,11 +328,10 @@ export function renderAdmin(root: HTMLElement): void {
           <div id="loList" class="loChips"></div>
         </details>
       </section>
-    </main>
       </div>
       </div>
     <div id="drawerScrim" class="drawerScrim"></div>
-    <aside id="chDrawer" class="drawer" aria-label="Channel details"></aside>
+    <aside id="chDrawer" class="drawer" aria-label="Channel details" aria-hidden="true" inert></aside>
     <dialog id="confirmDialog" class="confirmDialog" aria-labelledby="confirmTitle" aria-describedby="confirmMessage">
       <form method="dialog">
         <span class="confirmEyebrow">Confirm action</span>
@@ -343,7 +342,8 @@ export function renderAdmin(root: HTMLElement): void {
           <button id="confirmAction" value="confirm">Confirm</button>
         </div>
       </form>
-    </dialog>`;
+    </dialog>
+    </main>`;
 
   const confirmDialog = root.querySelector<HTMLDialogElement>("#confirmDialog")!;
   const confirmTitle = root.querySelector<HTMLElement>("#confirmTitle")!;
@@ -383,6 +383,60 @@ export function renderAdmin(root: HTMLElement): void {
     if (r === "banks") r = "channels";   // pre-unification bookmarks survive
     return ROUTES.has(r) ? r : "home";
   }
+
+  // ── Polling budget ──────────────────────────────────────────────────────
+  // This box runs ~1 °C under its thermal trip and deadlocks on concurrent
+  // requests, so the admin polls politely: one request group in flight at a
+  // time, nothing while the tab is hidden, and nothing for a page the operator
+  // isn't looking at. Before this, /api/system alone rebuilt six sparklines
+  // every 3 s on all five routes — 1200 requests an hour, ~95% of them
+  // repainting `display:none`.
+  //
+  // These are the tuning knobs; each poll declares which routes it feeds.
+  const POLL_MS = {
+    systemGauges: 3_000,   // System page: live CPU/temp gauges
+    systemBanner: 30_000,  // Overview: just the health banner, no gauges
+    discoveries: 15_000,   // triage table + audio-control sync
+    analytics: 5_000,      // only while an analytics drawer is open
+    insights: 60_000,
+    statTiles: 60_000,
+    alertFeed: 60_000,
+  };
+  const POLL_TICK_MS = 1_000;
+
+  type Poll = {
+    run: () => Promise<void>;
+    everyMs: number;
+    pages?: string[];
+    when?: () => boolean;
+    lastAt: number;
+  };
+  const polls: Poll[] = [];
+  function poll(p: Omit<Poll, "lastAt">): void { polls.push({ ...p, lastAt: 0 }); }
+
+  let ticking = false;
+  async function tick(): Promise<void> {
+    if (ticking || document.hidden) return;
+    ticking = true;
+    try {
+      const route = currentRoute();
+      for (const p of polls) {
+        if (document.hidden) break;
+        if (p.pages && !p.pages.includes(route)) continue;
+        if (p.when && !p.when()) continue;
+        if (Date.now() - p.lastAt < p.everyMs) continue;
+        p.lastAt = Date.now();
+        // Sequential on purpose — see the deadlock note above.
+        await p.run().catch(() => {});
+      }
+    } finally { ticking = false; }
+  }
+  /** Make every poll feeding `route` due now, so a page is never stale on
+   *  arrival just because its cadence is 60 s. */
+  function refreshPollsFor(route: string): void {
+    for (const p of polls) if (!p.pages || p.pages.includes(route)) p.lastAt = 0;
+    void tick();
+  }
   function applyRoute(): void {
     const route = currentRoute();
     const titles: Record<string, string> = { home: "Overview", triage: "Triage", channels: "Channels", scan: "Settings", system: "System" };
@@ -396,9 +450,13 @@ export function renderAdmin(root: HTMLElement): void {
       if (active) a.setAttribute("aria-current", "page");
       else a.removeAttribute("aria-current");
     });
+    refreshPollsFor(route);
   }
   window.addEventListener("hashchange", applyRoute);
   applyRoute();
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) refreshPollsFor(currentRoute());
+  });
 
   // Any click/tap outside an open bank menu closes it.
   document.addEventListener("click", (ev) => {
@@ -542,8 +600,7 @@ export function renderAdmin(root: HTMLElement): void {
   }
   root.querySelectorAll<HTMLButtonElement>(".inPeriod").forEach((b) =>
     b.addEventListener("click", () => { inHours = Number(b.dataset.h); void renderInsights(); }));
-  void renderInsights();
-  setInterval(() => { renderInsights().catch(() => {}); }, 60_000);
+  poll({ run: renderInsights, everyMs: POLL_MS.insights, pages: ["home"] });
 
   // ── Home stat tiles (Idea 15): the glance numbers. One /api/stats(24h)
   // + config fetch feeds all four tiles and the hour clock.
@@ -554,11 +611,12 @@ export function renderAdmin(root: HTMLElement): void {
   }
   async function renderStatTiles(): Promise<void> {
     const since = Date.now() - 24 * 3600 * 1000;
-    const [stats, cfg, alerts] = await Promise.all([
-      fetch(`/api/stats?since=${since}`).then((r) => r.json()),
-      api.getConfig(),
-      fetch(`/api/history?kind=alert&since=${since}&limit=200`).then((r) => (r.ok ? r.json() : [])),
-    ]);
+    // Sequential, not Promise.all: three at once is exactly the concurrency
+    // the appliance has been observed to deadlock on.
+    const stats = await fetch(`/api/stats?since=${since}`).then((r) => r.json());
+    const cfg = await api.getConfig();
+    const alerts = await fetch(`/api/history?kind=alert&since=${since}&limit=200`)
+      .then((r) => (r.ok ? r.json() : []));
     const pending = (cfg.discoveries ?? []).length;
     const navBadge = root.querySelector<HTMLElement>("#navDcCount");
     if (navBadge) navBadge.textContent = pending > 0 ? String(pending) : "";
@@ -587,8 +645,7 @@ export function renderAdmin(root: HTMLElement): void {
           <div class="hourClock" role="img" aria-label="${total === 0 ? "No traffic yet today" : `${total} hits today, busiest around ${String(peak).padStart(2, "0")}:00`}">${clock}</div>
         </div>`;
   }
-  void renderStatTiles().catch(() => {});
-  setInterval(() => { renderStatTiles().catch(() => {}); }, 60_000);
+  poll({ run: renderStatTiles, everyMs: POLL_MS.statTiles, pages: ["home"] });
 
   // ── Alert feed (ROADMAP Idea 6): the durable "what fired while I was
   // away" review, straight off history rows with kind=alert.
@@ -619,8 +676,7 @@ export function renderAdmin(root: HTMLElement): void {
     await api.clearAlerts();
     renderAlertFeed().catch(() => {});
   });
-  void renderAlertFeed().catch(() => {});
-  setInterval(() => { renderAlertFeed().catch(() => {}); }, 60_000);
+  poll({ run: renderAlertFeed, everyMs: POLL_MS.alertFeed, pages: ["home"] });
 
   // ── System health (Idea 16): gauges + sparklines off /api/system.
   const sysBody = root.querySelector<HTMLElement>("#sysBody")!;
@@ -681,11 +737,16 @@ export function renderAdmin(root: HTMLElement): void {
        </div>
        <div class="sysGrid">${cells}</div>`;
   }
-  void renderSystem().catch(() => {});
-  setInterval(() => { renderSystem().catch(() => {}); }, 3000);
-  setInterval(() => {
-    if (drawerKind === "analytics" && analyticsFreq !== null) void renderAnalyticsDrawer(analyticsFreq);
-  }, 5000);
+  // renderSystem writes two things: the gauges on the System page and the
+  // health banner on Overview. The gauges want live cadence; the banner does
+  // not — so the same function runs at two rates depending on where you are.
+  poll({ run: renderSystem, everyMs: POLL_MS.systemGauges, pages: ["system"] });
+  poll({ run: renderSystem, everyMs: POLL_MS.systemBanner, pages: ["home"] });
+  poll({
+    run: () => renderAnalyticsDrawer(analyticsFreq!),
+    everyMs: POLL_MS.analytics,
+    when: () => drawerKind === "analytics" && analyticsFreq !== null,
+  });
 
   // Channel table: read-only rows (freq · name · audible toggle); all other
   // edits happen in the drawer, the single editor (spec 2026-07-16 admin IA).
@@ -711,10 +772,17 @@ export function renderAdmin(root: HTMLElement): void {
     return bits.join(" · ");
   }
 
+  // The caret is a real button (it was a click-wired <span>, so collapsing a
+  // bank was mouse-only) and reports its state to assistive tech.
+  function caret(key: string, label: string): string {
+    const open = !collapsedBanks.has(key);
+    return `<button type="button" class="bkCaret" aria-expanded="${open}" aria-label="${open ? "Collapse" : "Expand"} ${label}">${open ? "▾" : "▸"}</button>`;
+  }
+
   function bankHeaderRow(g: BankGroup): string {
     if (!g.bank) {
       return `<tr class="bankRow" data-bank="unbanked">
-        <td colspan="3"><div class="bkRowInner"><span class="bkCaret">${collapsedBanks.has("unbanked") ? "▸" : "▾"}</span>
+        <td colspan="3"><div class="bkRowInner">${caret("unbanked", "unbanked channels")}
         <span class="bkName">UNBANKED</span> <span class="bankCount">${g.channels.length}</span>
         <span class="hint">matches no bank — tag these or add a bank that covers them</span></div></td>
       </tr>`;
@@ -725,7 +793,7 @@ export function renderAdmin(root: HTMLElement): void {
     const summary = profileSummary(b);
     return `<tr class="bankRow" data-bank="${esc(b.id)}">
       <td colspan="3"><div class="bkRowInner">
-        <span class="bkCaret">${collapsedBanks.has(b.id) ? "▸" : "▾"}</span>
+        ${caret(b.id, esc(b.name))}
         <span class="bkName">${esc(b.name)}</span>
         <span class="bankCount">${g.channels.length}</span>
         <span class="bkSummary">${audibleCount} audible · ${archivedCount} archived${summary ? ` · ${summary}` : ""}</span>
@@ -755,10 +823,15 @@ export function renderAdmin(root: HTMLElement): void {
   }
 
   function displayRow(c: Channel): string {
+    // The chevron is the row's keyboard handle, not decoration: the drawer is
+    // the only channel editor, so a mouse-only `td` click left it unreachable.
+    // A real button gives one tab stop per row and its click bubbles to the
+    // same `td.rowOpen` handler — no second code path to keep in sync.
+    const name = esc(c.alphaTag) || fmtFreq(c.freq);
     return `<tr data-id="${esc(c.id)}">
       <td class="rowOpen">${fmtFreq(c.freq)}</td>
-      <td class="rowOpen">${esc(c.alphaTag)}${c.alert ? `<span class="bellChip" title="Alerts on a hit">${ICONS.bell}</span>` : ""}${membershipChips(c)}${locChip(c.location)}<span class="rowChev" aria-hidden="true">›</span></td>
-      <td class="chAudible"><input type="checkbox" class="audible" ${c.audible !== false ? "checked" : ""} title="Audible — play this channel through the speaker" /></td>
+      <td class="rowOpen">${esc(c.alphaTag)}${c.alert ? `<span class="bellChip" title="Alerts on a hit">${ICONS.bell}</span>` : ""}${membershipChips(c)}${locChip(c.location)}<button type="button" class="rowChev" aria-label="Open ${name} details">›</button></td>
+      <td class="chAudible"><input type="checkbox" class="audible" ${c.audible !== false ? "checked" : ""} aria-label="Audible — play ${name} through the speaker" title="Audible — play this channel through the speaker" /></td>
     </tr>`;
   }
 
@@ -867,6 +940,17 @@ export function renderAdmin(root: HTMLElement): void {
   // New-channel mode: tags preset by the bank whose menu opened the editor.
   let drawerPresetTags: string[] = [];
 
+  // The drawer is visually modal (a scrim covers the page), so it has to be
+  // modal to the keyboard too. Off-screen `transform` alone left every drawer
+  // control in the tab order after a close — focus landed on invisible Save /
+  // Lock out buttons. `inert` on the drawer when shut, and on the page behind
+  // it when open, keeps the tab ring where the eye is.
+  const inertWhileOpen = [
+    root.querySelector<HTMLElement>(".adminHead")!,
+    root.querySelector<HTMLElement>(".workspace")!,
+  ];
+  let drawerReturnFocus: HTMLElement | null = null;
+
   function closeDrawer(): void {
     drawerId = null;
     // Clear the analytics-poll state too: the 5 s interval keys off
@@ -876,14 +960,32 @@ export function renderAdmin(root: HTMLElement): void {
     analyticsFreq = null;
     drawer.classList.remove("open");
     scrim.classList.remove("open");
+    drawer.inert = true;
+    drawer.setAttribute("aria-hidden", "true");
+    for (const el of inertWhileOpen) el.inert = false;
+    drawer.innerHTML = "";
+    drawerReturnFocus?.focus();
+    drawerReturnFocus = null;
+  }
+
+  /** Reveal the drawer after its content is rendered: un-inert it, put the
+   *  page behind it out of reach, and move focus to the close button so the
+   *  panel is usable without a mouse. */
+  function showDrawer(): void {
+    drawerReturnFocus = document.activeElement as HTMLElement | null;
+    drawer.inert = false;
+    drawer.removeAttribute("aria-hidden");
+    drawer.classList.add("open");
+    scrim.classList.add("open");
+    for (const el of inertWhileOpen) el.inert = true;
+    drawer.querySelector<HTMLButtonElement>(".dwClose")?.focus();
   }
 
   function openDrawer(kind: "channel" | "discovery", id: string): void {
     drawerKind = kind;
     drawerId = id;
     renderDrawer();
-    drawer.classList.add("open");
-    scrim.classList.add("open");
+    showDrawer();
   }
 
   // The drawer is the ONLY channel editor (spec 2026-07-16 admin IA).
@@ -894,25 +996,25 @@ export function renderAdmin(root: HTMLElement): void {
     drawerKind = "channel";
     drawerId = c?.id ?? "new";
     renderDrawer();
-    drawer.classList.add("open");
-    scrim.classList.add("open");
+    showDrawer();
   }
 
   function openBankProfile(b: Bank): void {
     drawerKind = "bank";
     drawerId = b.id;
     renderDrawer();
-    drawer.classList.add("open");
-    scrim.classList.add("open");
+    showDrawer();
   }
 
   function openAnalytics(freq: number): void {
     drawerKind = "analytics";
     analyticsFreq = freq;
     drawerId = `analytics_${freq}`;
-    drawer.classList.add("open");
-    scrim.classList.add("open");
-    void renderAnalyticsDrawer(freq);
+    // Analytics renders async — reveal first so the panel doesn't pop in, then
+    // move focus once the close button actually exists.
+    showDrawer();
+    void renderAnalyticsDrawer(freq).then(() =>
+      drawer.querySelector<HTMLButtonElement>(".dwClose")?.focus());
   }
 
   function renderDrawer(): void {
@@ -1220,13 +1322,15 @@ export function renderAdmin(root: HTMLElement): void {
   });
 
   async function refresh(): Promise<void> {
-    const [chs, cfg] = await Promise.all([api.getChannels(), api.getConfig()]);
+    // Sequential: see the concurrency note on the polling budget.
+    const chs = await api.getChannels();
+    const cfg = await api.getConfig();
     channels = chs;
     banksCache = cfg.banks ?? [];
     chCount.textContent = String(channels.length);
     renderRows();
-    void renderArchiveRecommendations();
-    void renderDuplicates();
+    await renderArchiveRecommendations().catch(() => {});
+    await renderDuplicates().catch(() => {});
     if (drawerId) renderDrawer(); // keep an open dossier fresh after saves
   }
 
@@ -1248,7 +1352,12 @@ export function renderAdmin(root: HTMLElement): void {
         ).join("") + `</ul></div>`).join("") +
       `<button id="dupResolve" class="danger">Delete ${total} duplicate row${total === 1 ? "" : "s"}</button>`;
     panel.querySelector<HTMLButtonElement>("#dupResolve")?.addEventListener("click", async () => {
-      if (!confirm(`Delete ${total} duplicate row${total === 1 ? "" : "s"}? GMRS frequencies are never affected. This cannot be undone.`)) return;
+      if (!await confirmAdminAction({
+        title: `Delete ${total} duplicate row${total === 1 ? "" : "s"}?`,
+        message: "The most complete row for each frequency is kept. GMRS frequencies are never affected. This cannot be undone.",
+        confirmLabel: `Delete ${total === 1 ? "row" : "rows"}`,
+        danger: true,
+      })) return;
       await fetch("/api/channels/duplicates/resolve", { method: "POST" });
       await refresh();
     });
@@ -1336,9 +1445,9 @@ export function renderAdmin(root: HTMLElement): void {
     dcRows.innerHTML = ds.length === 0
       ? `<tr><td colspan="5" class="empty">Nothing pending — Close Call is hunting. New discoveries land here.</td></tr>`
       : ds.map((d) => `<tr data-id="${esc(d.id)}" class="dcRow">
-          <td><input type="checkbox" class="dSel" ${dcSelected.has(d.id) ? "checked" : ""} /></td>
+          <td><input type="checkbox" class="dSel" ${dcSelected.has(d.id) ? "checked" : ""} aria-label="Select ${fmtFreq(d.freq)} ${esc(d.alphaTag)}" /></td>
           <td class="rowOpen">${fmtFreq(d.freq)}<span class="dcSvc${serviceFor(d.freq) ? "" : " outband"}">${esc(serviceFor(d.freq) ?? "OUTBAND")}</span></td>
-          <td class="rowOpen">${esc(d.alphaTag)}${d.audible === false ? '<span class="dcSee" title="Identified as data/paging — filed seen-not-heard; promotes as SEE">SEE</span>' : d.audible === true ? '<span class="dcHear" title="Identified as analog voice — hearable">HEAR</span>' : ""}${locChip(d.location)}<span class="rowChev" aria-hidden="true">›</span></td>
+          <td class="rowOpen">${esc(d.alphaTag)}${d.audible === false ? '<span class="dcSee" title="Identified as data/paging — filed seen-not-heard; promotes as SEE">SEE</span>' : d.audible === true ? '<span class="dcHear" title="Identified as analog voice — hearable">HEAR</span>' : ""}${locChip(d.location)}<button type="button" class="rowChev" aria-label="Open ${esc(d.alphaTag)} details">›</button></td>
           <td class="rowOpen dMode${d.mode && DIGITAL.some((x) => d.mode!.toUpperCase().includes(x)) ? " digital" : ""}">${d.mode ? esc(d.mode.toUpperCase()) : "—"}</td>
           <td class="actions">${iconBtn("dListen", "listen", "Listen — audition this discovery")}${iconBtn("dAdd", "add", "Add as an enabled channel")}${iconBtn("dLock", "lockout", "Lock out — never Close-Call this frequency again")}${iconBtn("dDismiss", "dismiss", "Dismiss (may be rediscovered later)")}</td>
         </tr>`).join("");
@@ -1378,11 +1487,13 @@ export function renderAdmin(root: HTMLElement): void {
       if (b.classList.contains("dDismiss")) b.addEventListener("click", () => mutateDiscovery(id, () => {}));
     });
   }
-  dcAll.addEventListener("change", async () => {
-    const cfg = await api.getConfig();
+  // Select-all means the rows on screen. Reading the raw config here also
+  // swept up SUPPRESSED discoveries, which are deliberately not rendered — so
+  // "Lock out selected" could permanently kill frequencies never seen.
+  dcAll.addEventListener("change", () => {
     dcSelected.clear();
-    if (dcAll.checked) for (const d of cfg.discoveries ?? []) dcSelected.add(d.id);
-    renderDiscoveries();
+    if (dcAll.checked) for (const d of discoveries) dcSelected.add(d.id);
+    void renderDiscoveries();
   });
 
   async function bulkDiscoveries(lockout: boolean): Promise<void> {
@@ -1411,8 +1522,13 @@ export function renderAdmin(root: HTMLElement): void {
   dcDismissSel.addEventListener("click", () => bulkDiscoveries(false));
   dcLockSel.addEventListener("click", () => bulkDiscoveries(true));
 
-  renderDiscoveries();
-  setInterval(() => { renderDiscoveries({ refreshDrawer: false }).catch(() => {}); }, 15000);
+  // Feeds Triage's table and Overview's audio controls (one config read does
+  // both), so it runs on those two routes only.
+  poll({
+    run: () => renderDiscoveries({ refreshDrawer: false }),
+    everyMs: POLL_MS.discoveries,
+    pages: ["home", "triage"],
+  });
 
   const loList = root.querySelector<HTMLElement>("#loList")!;
   async function renderLockouts(): Promise<void> {
@@ -1861,15 +1977,29 @@ export function renderAdmin(root: HTMLElement): void {
   });
 
   // Settings cards: desktop shows all four open; phones get an accordion
-  // (one open at a time — the toggle handler closes the siblings).
+  // (one open at a time). Re-applied on every breakpoint crossing — read once
+  // at load, a rotate or window resize left the page in the other mode's
+  // state, with the accordion handler either missing or stuck on a card CSS
+  // had made un-tappable.
   const settingsCards = [...root.querySelectorAll<HTMLDetailsElement>(".settingsCard")];
-  if (window.matchMedia("(min-width: 700px)").matches) {
-    settingsCards.forEach((d) => { d.open = true; });
-  } else {
-    settingsCards.forEach((d) => d.addEventListener("toggle", () => {
-      if (d.open) settingsCards.forEach((o) => { if (o !== d) o.open = false; });
-    }));
+  const wide = window.matchMedia("(min-width: 700px)");
+  let accordionWired = false;
+  function applySettingsLayout(): void {
+    if (wide.matches) {
+      settingsCards.forEach((d) => { d.open = true; });
+      return;
+    }
+    if (!accordionWired) {
+      accordionWired = true;
+      settingsCards.forEach((d) => d.addEventListener("toggle", () => {
+        if (d.open && !wide.matches) settingsCards.forEach((o) => { if (o !== d) o.open = false; });
+      }));
+    }
+    // Collapse to a single open card so the phone doesn't inherit four.
+    settingsCards.forEach((d, i) => { d.open = i === 0; });
   }
+  wide.addEventListener("change", applySettingsLayout);
+  applySettingsLayout();
 
   refresh().catch((e) => { chErr.textContent = (e as Error).message; });
 
@@ -1896,4 +2026,9 @@ export function renderAdmin(root: HTMLElement): void {
       wxErr.textContent = (e as Error).message;
     }
   });
+
+  // Everything above only *registers* polls; this starts the single ticker
+  // that drives them. One timer, one request group at a time.
+  setInterval(() => { void tick(); }, POLL_TICK_MS);
+  void tick();
 }

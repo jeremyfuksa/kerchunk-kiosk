@@ -1,32 +1,55 @@
-/* ── Kerchunk admin: instrument faceplate ─────────────────────────────────
-   Same rack-gear family as the dashboard: silkscreen module labels, phosphor
-   amber for live data, color-coded industrial buttons. Operator ergonomics
-   first — this page gets used from a phone next to a radio. */
+/* ── Kerchunk admin ───────────────────────────────────────────────────────
+   The kiosk's instrument language carried into a working tool: one face,
+   condensed uppercase labels, tabular data, spark as the only loud color.
+   Operator ergonomics first — this page gets used from a phone next to a
+   radio, and from a laptop on the bench.
+
+   This file was four append-only layers deep (2026-06-06 IA, the ui-ux pass,
+   2026-07-16 admin IA, 2026-07-16 mobile), with `.adminNav a` declared four
+   times and a whole dead horizontal tab bar still in the file. It is now one
+   pass, ordered scaffolding → controls → components → responsive. Keep it
+   that way: edit the rule that exists rather than restating it lower down. */
 
 :root {
   color-scheme: dark;
-  /* Campfire design-system tokens (@jeremyfuksa/campfire/tokens.css, .dark
-     theme on <html>). Local names kept as a mapping layer so the layout CSS
-     reads the same; values are ALL Campfire. */
+
+  /* Campfire tokens (@jeremyfuksa/campfire/tokens.css, .dark theme on <html>)
+     behind local names, so layout CSS below reads in this page's own terms.
+     Values are ALL Campfire — never repeat a token's hex as a var() fallback:
+     main.ts imports tokens.css first, so the tokens always exist, and a
+     duplicated hex silently drifts when Campfire retunes its ramp.
+
+     Text tiers are chosen for contrast on --panel, the common card ground:
+       --ink   12.4:1   --label 6.9:1   --dim 4.6:1   (all clear AA)
+       --mark   3.1:1   non-text glyphs only — carets, chevrons, grooves.
+     --label reaches past the semantic scale to neutral-300 on purpose: the
+     dark theme has no third *text* tier above 4.5:1, so hint text (--dim)
+     and field labels (--label) would otherwise be the same gray. */
   --bg: var(--bg-base);
   --panel: var(--bg-subtle);
   --panel-edge: var(--border-default);
-  --etch: var(--bg-base);
+  --etch: var(--bg-base);           /* recessed control fill */
+  --rule: var(--neutral-700);       /* hairlines and row separators */
+  --control-edge: var(--neutral-500); /* interactive edges — WCAG 1.4.11, 3:1 */
+  --row-hover: color-mix(in srgb, var(--ink) 6%, transparent);
+
   --ink: var(--text-primary);
-  --dim: var(--text-tertiary);
-  --label: var(--text-secondary);
+  --label: var(--neutral-300);
+  --dim: var(--text-secondary);
+  --mark: var(--text-tertiary);
+
   --amber: var(--spark);
-  --amber-soft: color-mix(in srgb, var(--spark) 55%, transparent);
+  --amber-soft: color-mix(in srgb, var(--spark) 55%, transparent); /* edges/glow, never text */
   --caution: var(--golden-amber);
   --green: var(--sage);
   --red: var(--flamingo);
   --blue: var(--pine);
-  --mono: var(--font-mono);
-  --cond: var(--font-sans);
 }
 
-/* Inter throughout — see dashboard.css note; scoped so map/wall/art keep
-   Campfire faces. */
+/* One face for display, body and data (spec 2026-07-16). Scoped, so
+   map/wall/art keep the Campfire faces; there is deliberately no local
+   `--mono` alias — nothing here is monospaced, and data alignment comes from
+   font-variant-numeric instead. */
 html[data-page="admin"] {
   --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-body: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -35,893 +58,114 @@ html[data-page="admin"] {
 
 body {
   margin: 0;
-  font-family: var(--mono);
+  font-family: var(--font-sans);
   font-size: 0.92rem;
   background: var(--bg);
   color: var(--ink);
 }
 
-.admin { max-width: 1440px; margin: 0 auto; padding: 0 1.4rem 4rem; }
-
-.admin h1 {
-  font-family: var(--cond);
-  font-weight: 700; font-size: 1.5rem;
-  color: var(--amber);
-  text-align: center;
-  margin: 0.4rem 0 1.6rem;
+.admin {
+  max-width: 1500px;
+  margin: 0 auto;
+  padding: 0 1.4rem 5rem;
 }
 
-/* Module: each section is a faceplate panel with a silkscreen legend */
-.admin section {
-  position: relative;
-  margin: 1.8rem 0;
-  padding: 1.4rem 1.1rem 1.1rem;
-  background: var(--panel);
-  border: 1px solid var(--panel-edge);
-  border-radius: 8px;
-}
-.admin section h2 {
-  position: absolute; top: -0.72em; left: 0.9rem;
-  margin: 0;
-  padding: 0 0.6rem;
-  background: var(--bg);
-  font-family: var(--cond);
-  font-weight: 600; font-size: 0.92rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--label);
-}
-.admin .hint {
-  font-size: 0.72rem; font-weight: 500;
-  text-transform: none;
-  color: var(--dim);
-  margin-left: 0.5rem;
-}
+.pageHidden { display: none !important; }
 
-/* Controls */
-.admin input, .admin select, .admin button {
-  font-family: var(--mono);
-  font-size: 0.92rem;
-  padding: 0.38rem 0.55rem;
-  margin: 0.15rem;
-  background: var(--etch);
-  color: var(--ink);
-  border: 1px solid var(--panel-edge);
-  border-radius: 4px;
-}
-.admin input:focus, .admin select:focus {
-  outline: none;
-  border-color: var(--amber-soft);
-  box-shadow: 0 0 0 1px var(--amber-soft);
-}
-.admin label { color: var(--label); font-size: 0.88rem; }
 
-.admin button {
-  font-family: var(--cond);
-  font-weight: 600;
-  font-size: 0.88rem;
-  letter-spacing: 0.02em;
-  cursor: pointer;
-  transition: border-color 0.12s, background 0.12s, transform 0.06s;
-}
-.admin button:hover:not(:disabled) { border-color: var(--label); background: #161d25; }
-.admin button:active:not(:disabled) { transform: translateY(1px); }
-.admin button:disabled { opacity: 0.35; cursor: default; }
+/* ── Masthead ───────────────────────────────────────────────────────────── */
 
-/* Color-coded actions: green = adopt, amber = caution, red = destructive */
-.admin .save, .admin .dAdd { color: var(--green); border-color: color-mix(in srgb, var(--sage) 35%, transparent); }
-.admin .del, .admin #lockBtn { color: var(--red); border-color: color-mix(in srgb, var(--flamingo) 35%, transparent); }
-.admin .lock, .admin .dLock, .admin .dDismiss, .admin #tlockBtn { color: var(--caution); border-color: color-mix(in srgb, var(--golden-amber) 35%, transparent); }
-.admin .listen, .admin .dListen { color: var(--blue); border-color: color-mix(in srgb, var(--pine) 35%, transparent); }
-.admin .err { color: var(--red); margin-left: 0.5rem; font-size: 0.85rem; }
-
-/* ── Now Playing card: the hero module ── */
-.admin .nowCard {
-  border-color: color-mix(in srgb, var(--spark) 35%, transparent);
-  background: var(--panel);
-}
-.admin .nowCard h2 { color: var(--amber-soft); }
-.admin .nowCard .npWhat { margin: 0.3rem 0 0.9rem; }
-.admin .nowCard .npName {
-  font-family: var(--cond);
-  font-weight: 600; font-size: 1.55rem;
-  letter-spacing: 0.04em;
-  color: var(--ink);
-}
-.admin .nowCard .npFreq {
-  color: var(--amber);
-  font-variant-numeric: tabular-nums;
-  font-size: 1.05rem;
-  margin-left: 0.7rem;
-}
-.admin .nowCard .npControls {
-  display: flex; flex-wrap: wrap; gap: 0.55rem; align-items: center;
-  padding-top: 0.7rem;
-  border-top: 1px solid var(--etch);
-}
-.admin .nowCard .resume {
-  background: color-mix(in srgb, var(--pine) 12%, transparent);
-  color: var(--blue);
-  border-color: color-mix(in srgb, var(--pine) 50%, transparent);
-}
-
-/* Volume: amber fader */
-.admin input[type="range"] {
-  -webkit-appearance: none; appearance: none;
-  width: 150px; height: 4px;
-  padding: 0; margin: 0 0.4rem;
-  background: var(--etch);
-  border: none; border-radius: 4px;
-  vertical-align: middle;
-}
-.admin input[type="range"]::-webkit-slider-thumb {
-  -webkit-appearance: none; appearance: none;
-  width: 14px; height: 22px;
-  border-radius: 4px;
-  background: var(--amber);
-  border: 1px solid #c98a00;
-  cursor: pointer;
-}
-.admin input[type="checkbox"] { accent-color: var(--amber); }
-
-/* ── Tables (channels + discoveries) ── */
-.admin .chTable { width: 100%; border-collapse: collapse; margin-top: 0.4rem; }
-.admin .chTable th {
-  text-align: left;
-  font-family: var(--cond);
-  font-weight: 600; font-size: 0.78rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--dim);
-  padding: 0.3rem 0.5rem;
+.adminHead {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  min-height: 3.5rem;
+  padding: 0.9rem 0 0.7rem;
+  margin-bottom: 1.5rem;
   border-bottom: 1px solid var(--panel-edge);
 }
-.admin .chTable td {
-  padding: 0.45rem 0.5rem;
-  border-bottom: 1px solid var(--etch);
-  font-variant-numeric: tabular-nums;
-}
-.admin .chTable td:first-child { color: var(--ink); }
-.admin .chTable tbody tr:hover td { background: rgba(255, 255, 255, 0.015); }
-.admin .chTable .chAudible { text-align: center; }
-.admin .chTable .empty {
-  color: var(--dim); font-style: italic; text-align: center;
-  padding: 1rem; font-size: 0.85rem;
-}
-.admin .chTable button { padding: 0.22rem 0.5rem; font-size: 0.78rem; }
-.admin #addBtn { font-size: 0.8rem; margin-left: 0.75rem; vertical-align: middle; }
-
-/* Location chip: "Olathe, KS" */
-.admin .loc {
-  font-family: var(--cond);
-  font-size: 0.78rem; font-weight: 500;
-  letter-spacing: 0.05em;
-  color: var(--blue);
-  opacity: 0.85;
-  margin-left: 0.4rem;
-  white-space: nowrap;
-}
-
-/* Discoveries toolbar */
-.admin .dcToolbar { display: flex; gap: 0.6rem; align-items: center; margin: 0.2rem 0 0.5rem; }
-
-/* Lockouts: a graveyard — collapsed until the operator needs to undo a
-   mistake. Chips, not rows: 30 lockouts fit one screen. */
-.lockoutsBox summary {
-  cursor: pointer;
-  min-height: 2.75rem; box-sizing: border-box;
-  display: flex; align-items: center; gap: 0.4rem;
-  color: var(--label);
-}
-.lockoutsBox summary:hover { color: var(--ink); }
-.loChips { display: flex; flex-wrap: wrap; gap: 0.5rem; padding: 0.4rem 0 0.2rem; }
-.loChips .empty { color: var(--dim); font-style: italic; font-size: 0.85rem; }
-.loChip {
-  display: inline-flex; align-items: center; gap: 0.25rem;
-  padding: 0.15rem 0.3rem 0.15rem 0.6rem;
-  border: 1px solid var(--panel-edge);
-  border-radius: 4px;
-  font-variant-numeric: tabular-nums;
-  color: var(--label);
-}
-.loChip .unlock { margin: 0; }
-@media (pointer: coarse) { .loChip .iconBtn { min-width: 2.35rem; min-height: 2.35rem; } }
-
-.admin ul { list-style: none; padding: 0; margin: 0.2rem 0 0; }
-.admin li {
-  display: flex; align-items: center; gap: 0.8rem;
-  padding: 0.45rem 0.2rem;
-  border-bottom: 1px solid var(--etch);
-  font-variant-numeric: tabular-nums;
-}
-.admin li.empty { color: var(--dim); font-style: italic; border: none; }
-.admin .unlock { font-size: 0.75rem; padding: 0.18rem 0.5rem; }
-
-
-/* Phone ergonomics */
-@media (max-width: 560px) {
-  .admin { padding: 1.2rem 0.6rem 3rem; }
-  .admin section { padding: 1.3rem 0.7rem 0.9rem; }
-  .admin .chTable { display: block; overflow-x: auto; }
-  .admin .nowCard .npControls { gap: 0.4rem; }
-  .admin input[type="range"] { width: 110px; }
-}
-
-/* Icon buttons: compact squares, glyphs inherit the consequence colors */
-.admin .iconBtn {
-  padding: 0.28rem;
-  line-height: 0;
-  margin: 0 0.12rem;
-}
-.admin .iconBtn svg { width: 15px; height: 15px; display: block; }
-.admin .chTable td.actions { white-space: nowrap; text-align: right; }
-.admin .chTable th:last-child { text-align: right; }
-.admin .iconBtn:hover:not(:disabled) {
-  background: #161d25;
-}
-
-/* ── Responsive layout: mobile-first → tablet → desktop workspace ────────── */
-
-/* Base (mobile): single column, touch-sized targets, contained list scroll */
-.admin .tableWrap { overflow: auto; }
-.admin .tableWrap thead th {
-  position: sticky; top: 0; z-index: 2;
-  background: var(--panel);
-  box-shadow: 0 1px 0 var(--panel-edge);
-}
-.admin .chTable tbody tr:nth-child(even) td { background: rgba(255, 255, 255, 0.012); }
-.admin .count {
-  color: var(--label);
-  font-variant-numeric: tabular-nums;
-}
-
-/* Touch floor (spec 2026-07-16): every target ≥44px on coarse pointers. */
-@media (pointer: coarse) {
-  .admin button { min-height: 2.75rem; }
-  .admin .iconBtn { min-width: 2.75rem; min-height: 2.75rem; padding: 0.5rem; }
-  .admin .iconBtn svg { width: 18px; height: 18px; margin: auto; }
-  .admin .chTable td { padding: 0.55rem 0.5rem; }
-  .admin input[type="checkbox"] { width: 1.35rem; height: 1.35rem; }
-  .admin input[type="range"] { height: 8px; }
-  .admin input[type="range"]::-webkit-slider-thumb { width: 22px; height: 30px; }
-}
-
-/* Tablet (≥700px): wider canvas */
-@media (min-width: 700px) {
-  .admin .tableWrap { max-height: 52vh; }
-}
-
-/* (pre-IA two-pane grid removed 2026-06-06: the nav-rail workspace owns
-   layout now; its grid-areas targeted sections that moved into .pages and
-   the auto-placement crammed everything into the right column.) */
-@media (min-width: 1140px) {
-  .admin .tableWrap { max-height: 56vh; }
-}
-
-
-/* Discovery drill-in rows */
-.admin .dToggle {
-  padding: 0.15rem 0.3rem;
-  margin-right: 0.35rem;
-  border: none; background: none;
-  line-height: 0;
-}
-.admin .dToggle .chev {
-  display: inline-block;
-  width: 0.4em; height: 0.4em;
-  border-right: 2px solid var(--dim);
-  border-bottom: 2px solid var(--dim);
-  transform: rotate(-45deg);
-  transition: transform 0.15s;
-}
-.admin tr.open .dToggle .chev { transform: rotate(45deg); border-color: var(--amber); }
-.admin tr.dcDetail td {
-  background: color-mix(in srgb, var(--spark) 3%, transparent);
-  font-size: 0.82rem;
-  color: var(--label);
-  padding: 0.5rem 0.6rem 0.6rem;
-}
-.admin tr.dcDetail .dl {
-  font-family: var(--cond);
-  font-weight: 600; font-size: 0.7rem;
-  text-transform: uppercase; letter-spacing: 0.06em;
-  color: var(--dim);
-  margin: 0 0.3rem 0 0.9rem;
-}
-.admin tr.dcDetail .dl:first-child { margin-left: 0; }
-
-
-/* One chip recipe (spec 2026-07-16): size/shape identical, color varies. */
-.admin .count, .admin .modeChip, .dcSee, .dcHear, .dcSvc, .memChip {
-  font-family: var(--cond);
-  font-size: 0.7rem; font-weight: 600;
-  letter-spacing: 0.04em;
-  padding: 0.08em 0.45em;
-  margin-left: 0.45em;
-  border: 1px solid var(--panel-edge);
-  border-radius: 4px;
-  vertical-align: 0.1em;
-  white-space: nowrap;
-}
-
-/* Identified-modulation chips */
-.admin .modeChip {
-  color: var(--green);
-  border-color: color-mix(in srgb, var(--sage) 40%, transparent);
-}
-.admin .modeChip.digital {
-  color: var(--caution);
-  border-color: color-mix(in srgb, var(--golden-amber) 45%, transparent);
-}
-
-/* Discoveries Mode column — same plain-text treatment as the channels table,
-   caution color for digital (undecodable here), dim em-dash when unknown */
-.admin .dMode { color: var(--label); white-space: nowrap; }
-.admin .dMode.digital { color: var(--caution); }
-@media (max-width: 560px) {
-  .admin .discoveries .chTable th:nth-child(4),
-  .admin .discoveries .chTable td.dMode { display: none; } /* detail row keeps it */
-}
-
-/* ── Channel drawer: the dossier slides in from the right ── */
-.drawerScrim {
-  position: fixed; inset: 0; z-index: 40;
-  background: rgba(0, 0, 0, 0.55);
-  opacity: 0; pointer-events: none;
-  transition: opacity 0.2s;
-}
-.drawerScrim.open { opacity: 1; pointer-events: auto; }
-.drawer {
-  position: fixed; top: 0; right: 0; bottom: 0; z-index: 41;
-  width: min(420px, 100vw);
-  background: var(--panel);
-  border-left: 1px solid var(--panel-edge);
-  box-shadow: -18px 0 50px rgba(0, 0, 0, 0.5);
-  padding: 1.1rem 1.2rem 2rem;
-  overflow-y: auto;
-  transform: translateX(102%);
-  transition: transform 0.22s cubic-bezier(0.2, 0.8, 0.3, 1);
-}
-.drawer.open { transform: translateX(0); }
-.drawer .dwHead { display: flex; align-items: center; justify-content: space-between; }
-.drawer .dwHead h3 {
-  font-family: var(--cond);
-  font-weight: 600; font-size: 1.3rem;
-  letter-spacing: 0.04em;
-  margin: 0;
-}
-.drawer .dwFreq {
-  font-variant-numeric: tabular-nums;
-  font-size: 2.1rem; font-weight: 600;
-  color: var(--amber);
-  margin: 0.2rem 0 1rem;
-}
-.drawer .dwUnit {
-  font-family: var(--cond);
-  font-size: 0.45em; font-weight: 600;
-  letter-spacing: 0.06em;
-  color: var(--amber-soft);
-  margin-left: 0.4em;
-  vertical-align: 0.5em;
-}
-/* Drawer forms share the settings-card row grammar (spec 2026-07-16 polish):
-   section legends, label-left/input-right rows with visible hints, one
-   primary Save in a footer row. */
-.drawer .dwForm { border-top: 1px solid var(--etch); padding-top: 0.2rem; }
-.drawer .dwHelp { margin: 0.4rem 0 0.2rem; color: var(--label); font-size: 0.82rem; line-height: 1.5; }
-.drawer .dwSection {
-  margin-top: 0.9rem;
-  padding-bottom: 0.35rem;
-  font-family: var(--cond);
-  font-weight: 600; font-size: 0.72rem;
-  letter-spacing: 0.06em; text-transform: uppercase;
-  color: var(--label);
-}
-.drawer .dwRow {
-  display: grid;
-  grid-template-columns: minmax(9rem, 1fr) minmax(7rem, 1fr);
-  align-items: center;
-  gap: 0.8rem;
-  padding: 0.5rem 0;
-  border-bottom: 1px solid var(--etch);
-}
-.drawer .dwRow > span:first-child { display: grid; gap: 0.15rem; color: var(--ink); }
-.drawer .dwRow small { color: var(--dim); font-size: 0.68rem; line-height: 1.35; }
-.drawer .dwRow input, .drawer .dwRow select { box-sizing: border-box; width: 100%; margin: 0; }
-.drawer .dwRow.switchRow { grid-template-columns: 1fr auto; }
-.drawer .dwRow.switchRow input { width: auto; }
-.drawer .dwFooter {
-  display: flex; align-items: center; gap: 0.6rem;
-  margin-top: 1rem; padding-top: 1rem;
-  border-top: 1px solid var(--etch);
-}
-.drawer .dwFooter .listen { margin-left: auto; }
-.drawer .dwErr:not(:empty), .drawer .err:not(:empty) { display: inline-block; margin-top: 0.5rem; }
-.drawer .dwInfo {
-  border-top: 1px solid var(--etch);
-  margin: 1rem 0 0; padding-top: 0.8rem;
-  display: grid; grid-template-columns: auto 1fr;
-  gap: 0.35rem 0.9rem;
-  font-size: 0.84rem;
-}
-.drawer .dwInfo dt {
-  font-family: var(--cond);
-  font-weight: 600; font-size: 0.72rem;
-  text-transform: uppercase; letter-spacing: 0.06em;
-  color: var(--dim);
-  align-self: baseline;
-}
-.drawer .dwInfo dd { margin: 0; color: var(--label); overflow-wrap: anywhere; }
-.drawer .dwVia { color: var(--dim); font-size: 0.9em; }
-.drawer .dwActions {
-  display: flex; gap: 0.6rem;
-  border-top: 1px solid var(--etch);
-  margin-top: 1rem; padding-top: 1rem;
-}
-
-/* The identifying cells are now click targets — show it */
-.admin .chTable td.rowOpen { cursor: pointer; }
-/* Rows open the dossier drawer — say so without hover. */
-.admin .chTable .rowChev { float: right; color: var(--dim); padding-left: 0.5em; }
-.admin .chTable tbody tr:hover .rowChev { color: var(--ink); }
-.admin .chTable tbody tr:hover td.rowOpen { color: var(--ink); }
-
-/* ── Banks rail ── */
-.admin .bankChips { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.3rem 0 0.7rem; }
-.admin .bankChips .empty { color: var(--dim); font-style: italic; font-size: 0.85rem; }
-.admin .bankChip {
-  display: inline-flex; align-items: center; gap: 0.45rem;
-  padding: 0.35rem 0.7rem;
-  font-size: 0.95rem;
-  letter-spacing: 0.06em;
-  opacity: 0.55;
-}
-.admin .bankChip .bankState {
-  width: 0.55em; height: 0.55em; border-radius: 50%;
-  background: var(--dim);
-}
-.admin .bankChip.on { opacity: 1; border-color: color-mix(in srgb, var(--sage) 45%, transparent); }
-.admin .bankChip.on .bankState {
-  background: var(--green);
-  box-shadow: 0 0 6px color-mix(in srgb, var(--sage) 60%, transparent);
-}
-.admin .bankChip .bankCount {
-  font-family: var(--mono);
-  font-size: 0.72rem;
-  color: var(--label);
-  background: var(--etch);
-  border-radius: 4px;
-  padding: 0.05rem 0.4rem;
-}
-.admin .bankChip .bankDel { color: var(--dim); margin-left: 0.2rem; padding: 0 0.15rem; }
-.admin .bankChip .bankDel:hover { color: var(--red); }
-.admin .bankAdd { display: flex; flex-wrap: wrap; gap: 0.3rem; align-items: center; }
-.admin .bankAdd #bkName { width: 11rem; }
-.admin .bankAdd #bkTags { width: 13rem; }
-
-.admin h1 .mapLink {
-  font-size: 0.7em; letter-spacing: 0.02em;
-  color: var(--blue); text-decoration: none;
-  margin-left: 0.8rem; vertical-align: 2px;
-}
-
-/* ── Insights ── */
-.admin .inToolbar { display: flex; gap: 0.4rem; margin-bottom: 0.6rem; }
-.admin .inPeriod.active { color: var(--amber); border-color: color-mix(in srgb, var(--spark) 45%, transparent); }
-.admin .inTotals { display: flex; flex-wrap: wrap; gap: 1.4rem; margin-bottom: 0.7rem; font-size: 0.95rem; color: var(--label); }
-.admin .inTotals b { color: var(--amber); font-size: 1.15rem; }
-.admin .inBusiest b { font-size: 0.95rem; }
-/* The full table is a drill-in, not the default read. */
-.admin .inBreakdown summary {
-  cursor: pointer;
-  min-height: 2.75rem; box-sizing: border-box;
-  display: flex; align-items: center;
-  color: var(--label); font-size: 0.85rem;
-}
-.admin .inBreakdown summary:hover { color: var(--ink); }
-.admin .inClock { display: flex; align-items: flex-end; gap: 2px; height: 32px; margin-bottom: 0.8rem; }
-.admin .inClock .inHr { flex: 1; background: color-mix(in srgb, var(--spark) 45%, transparent); min-height: 3px; }
-.admin .inClock .inHr.now { background: var(--green); }
-.admin .inTop { width: 100%; border-collapse: collapse; margin-bottom: 0.6rem; }
-.admin .inTop td { padding: 0.18rem 0.4rem; font-size: 0.85rem; border: none; }
-.admin .inTop .inName { white-space: nowrap; max-width: 14rem; overflow: hidden; text-overflow: ellipsis; }
-.admin .inTop .inBar { width: 40%; }
-.admin .inTop .inBar div { height: 8px; background: color-mix(in srgb, var(--spark) 60%, transparent); border-radius: 2px; min-width: 2px; }
-.admin .inTop .inN { color: var(--amber); font-variant-numeric: tabular-nums; text-align: right; }
-.admin .inTop .inAir { color: var(--dim); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
-.admin .inSplit { display: flex; flex-wrap: wrap; gap: 0.35rem; }
-.admin .inChip { font-size: 0.75rem; color: var(--label); border: 1px solid var(--panel-edge); border-radius: 4px; padding: 0.06rem 0.5rem; }
-.admin .inChip.tag { color: var(--blue); }
-
-/* ── Alerts (ROADMAP Idea 6) */
-.bellChip svg {
-  width: 0.85em; height: 0.85em;
-  color: var(--flamingo, #f08080);
-  margin-left: 0.4em; vertical-align: -0.08em;
-}
-.alertList { list-style: none; margin: 0; padding: 0; }
-.alertList li {
-  display: flex; gap: 1rem; align-items: baseline;
-  padding: 0.35rem 0;
-  border-bottom: 1px solid var(--border-subtle, #2b303b);
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 0.85rem;
-}
-.alertList li:last-child { border-bottom: none; }
-.alertList .alertWhen { color: var(--text-tertiary, #747b8a); white-space: nowrap; }
-.alertList .alertWhat { color: var(--text-primary, #f7f8f9); }
-/* Per-row dismiss: pushed to the far right. Kept faint so the feed stays calm
-   to read, but always visible — the admin is touch-first, so a hover-only
-   affordance would be undiscoverable on the phone. */
-.alertList .alertDismiss { margin-left: auto; align-self: center; opacity: 0.45; transition: opacity 0.15s; }
-.alertList li:hover .alertDismiss,
-.alertList .alertDismiss:focus-visible { opacity: 1; }
-
-.alertFeedFoot { display: flex; justify-content: flex-end; margin-top: 0.6rem; }
-.alertClearAll {
-  font-family: var(--cond); font-size: 0.72rem;
-  letter-spacing: 0.02em; text-transform: uppercase;
-  padding: 0.3rem 0.7rem;
-  color: var(--red); background: none;
-  border: 1px solid color-mix(in srgb, var(--red) 35%, transparent);
-  border-radius: 4px; cursor: pointer;
-}
-.alertClearAll:hover { background: color-mix(in srgb, var(--red) 12%, transparent); }
-
-/* ── Per-bank scan profile editor (Idea 7) */
-.bankGear { opacity: 0.55; margin-left: 0.45em; cursor: pointer; }
-.bankGear:hover { opacity: 1; }
-.bankProf { color: var(--golden-amber, #ffc05c); }
-
-/* Close Call triage verdicts */
-.dcSee { color: var(--pine, #75acaf); border-color: var(--pine, #75acaf); }
-.dcHear { color: var(--sage, #a8c76f); border-color: var(--sage, #a8c76f); }
-
-/* Service allocation chip on discoveries: what KIND of hit this is.
-   OUTBAND = matches no known allocation — the genuinely interesting ones. */
-.dcSvc { color: var(--text-tertiary, #747b8a); }
-.dcSvc.outband {
-  color: var(--flamingo, #f08080);
-  border-color: var(--flamingo, #f08080);
-  font-weight: 700;
-}
-
-/* ── System health (Idea 16) */
-.sysGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 0.8rem; }
-.sysCell {
-  padding: 0.6rem 0.8rem;
-  border: 1px solid var(--border-default, #42454e);
-  border-radius: 8px;
-  background: var(--bg-subtle, #2b303b);
-}
-.sysCell.hot { border-color: var(--flamingo, #f08080); }
-.sysCell.hot .sysValue { color: var(--flamingo, #f08080); }
-.sysLabel { font-size: 0.7rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-tertiary, #747b8a); }
-.sysValue { font-family: var(--font-mono, monospace); font-size: 1.1rem; margin: 0.15rem 0 0.3rem; font-variant-numeric: tabular-nums; }
-.spark { width: 100%; height: 28px; }
-
-/* Mission-health verdict (spec 2026-06-09). */
-.healthVerdict { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; margin: 0 0 10px; font-size: 14px; }
-.healthVerdict .verdictDot { width: 12px; height: 12px; border-radius: 50%; flex: 0 0 auto; }
-.healthVerdict .verdictLabel { font-weight: 700; letter-spacing: 0.04em; }
-.healthVerdict .verdictReason { color: var(--text-secondary, #9299a5); }
-.healthVerdict.healthy { background: color-mix(in srgb, var(--green) 9%, var(--bg-subtle)); }
-.healthVerdict.healthy .verdictDot { background: var(--green); }
-.healthVerdict.stressed { background: color-mix(in srgb, var(--golden-amber) 9%, var(--bg-subtle)); }
-.healthVerdict.stressed .verdictDot { background: var(--golden-amber); }
-.healthVerdict.trouble { background: color-mix(in srgb, var(--red) 9%, var(--bg-subtle)); }
-.healthVerdict.trouble .verdictDot { background: var(--red); }
-.spark polyline { stroke: var(--pine, #75acaf); stroke-width: 1.5; }
-.spark.hot polyline { stroke: var(--flamingo, #f08080); }
-.healthBanner {
-  margin: 0 0 1rem;
-  border: 1px solid var(--golden-amber);
-  border-left: 4px solid var(--golden-amber);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--golden-amber) 9%, var(--bg-subtle));
-}
-.healthBanner.healthClear { display: none; }
-.healthBanner.severe { border-color: var(--flamingo); background: color-mix(in srgb, var(--flamingo) 12%, var(--bg-subtle)); }
-.healthAlert { display: flex; align-items: center; gap: 1rem; padding: 0.8rem 1rem; }
-.healthAlert + .healthAlert { border-top: 1px solid var(--border-default); }
-.healthAlert div { display: grid; gap: 0.2rem; }
-.healthAlert span, .healthAlert small { color: var(--text-secondary); }
-.healthAlert a { margin-left: auto; color: var(--golden-amber); white-space: nowrap; }
-.safetyMode { padding: 0.7rem 1rem; border-bottom: 1px solid var(--flamingo); color: var(--flamingo); }
-
-.inChannel { cursor: pointer; }
-.inChannel:hover td, .inChannel:focus td { background: color-mix(in srgb, var(--pine) 10%, transparent); }
-.analyticsSummary { display: flex; flex-wrap: wrap; gap: 0.6rem; margin: 1rem 0; }
-.analyticsSummary span { padding: 0.5rem 0.7rem; border: 1px solid var(--border-default); border-radius: 8px; }
-.signalChart { position: relative; padding: 0.8rem; border: 1px solid var(--border-default); border-radius: 8px; }
-.signalChart svg { width: 100%; height: 150px; overflow: visible; }
-.signalChart polyline { stroke: var(--pine); stroke-width: 2; vector-effect: non-scaling-stroke; }
-.chartLabel { margin-bottom: 0.5rem; color: var(--text-secondary); }
-.chartRange { position: absolute; inset: 2.5rem 0.4rem 0.4rem auto; display: flex; flex-direction: column; justify-content: space-between; color: var(--text-tertiary); font-size: 0.68rem; }
-.transmissionList { padding: 0; margin: 1rem 0; list-style: none; }
-.transmissionList li { display: grid; grid-template-columns: 1fr auto auto; gap: 1rem; padding: 0.45rem 0; border-bottom: 1px solid var(--etch); }
-.transmissionList b { color: var(--pine); }
-
-.locationEditor { margin: 1rem 0 !important; padding: 1rem !important; }
-.locationEditor h4 { margin: 0 0 0.7rem; }
-.locationEditor label { display: grid; gap: 0.25rem; margin-bottom: 0.5rem; }
-.locationSearch { display: flex; gap: 0.35rem; }
-.locationSearch input { flex: 1; min-width: 0; }
-.locationSuggestions { display: grid; gap: 0.25rem; margin: 0.35rem 0; }
-.locationSuggestions button { text-align: left; text-transform: none; letter-spacing: 0; }
-.locationMap { height: 230px; margin: 0.6rem 0; border: 1px solid var(--border-default); border-radius: 8px; background: var(--bg-base); display: grid; place-items: center; overflow: hidden; }
-
-.suppressedPanel, .archiveRecommendations { margin-top: 1rem; padding: 0.8rem; border: 1px solid var(--border-default); border-radius: 8px; }
-.suppressedPanel summary { cursor: pointer; color: var(--text-secondary); }
-.suppressedRow, .archiveRec { display: flex; align-items: center; gap: 0.7rem; padding: 0.5rem 0; border-top: 1px solid var(--etch); }
-.suppressedRow span, .archiveRec span { flex: 1; }
-.suppressedRow small { color: var(--text-tertiary); }
-.archiveRecommendations h3 { margin: 0; }
-.archiveRecommendations p { color: var(--text-secondary); }
-
-/* ── Admin IA (Idea 15): nav rail + page visibility. Pure re-layout. */
-.pageHidden { display: none !important; }
-.adminNav {
-  display: flex; gap: 0.4rem;
-  margin: 0 0 1.2rem;
-  border-bottom: 1px solid var(--border-default, #42454e);
-  padding-bottom: 0;
-}
-.adminNav a {
-  font-family: var(--font-sans, sans-serif);
-  font-weight: 600; font-size: 0.85rem;
-  letter-spacing: 0.06em; text-transform: uppercase;
-  text-decoration: none;
-  color: var(--text-tertiary, #747b8a);
-  padding: 0.5rem 1.1rem;
-  border: 1px solid transparent;
-  border-bottom: none;
-  border-radius: 8px 8px 0 0;
-}
-.adminNav a:hover { color: var(--text-secondary, #9299a5); }
-.adminNav a.active {
-  color: var(--spark, #ff6b35);
-  border-color: var(--border-default, #42454e);
-  background: var(--bg-subtle, #2b303b);
-  position: relative; top: 1px;
-}
-
-/* ── Admin IA, designed (Idea 15): mission-control workspace.
-   The kiosk's instrument language carried into the admin: condensed
-   uppercase labels, mono data, spark as the only loud color. */
-.adminHead {
-  display: flex; align-items: baseline; gap: 1rem;
-  padding: 0.9rem 0 0.7rem;
-  border-bottom: 1px solid var(--border-default, #42454e);
-  margin-bottom: 1.1rem;
-}
 .adminHead .brand {
-  font-family: var(--font-sans, sans-serif);
-  font-weight: 700; font-size: 1.05rem; letter-spacing: 0.06em;
-  color: var(--text-primary, #f7f8f9);
+  color: var(--ink);
+  font-weight: 700;
+  font-size: 1.05rem;
+  letter-spacing: 0.06em;
+  text-decoration: none;
 }
 .adminHead .brandSub {
-  font-weight: 600; font-size: 0.7rem; letter-spacing: 0.06em;
-  color: var(--text-tertiary, #747b8a); text-transform: uppercase;
   margin-left: 0.6rem;
-}
-.adminHead .mapLink { margin-left: auto; }
-
-.workspace { display: flex; gap: 1.4rem; align-items: flex-start; }
-.pages { flex: 1; min-width: 0; }
-
-/* Rail: vertical on desktop, horizontal strip on narrow screens. */
-.adminNav {
-  display: flex; flex-direction: column; gap: 0.15rem;
-  position: sticky; top: 0.8rem;
-  min-width: 10.5rem;
-  border: none; margin: 0; padding: 0;
-}
-.adminNav a {
-  display: flex; align-items: center; gap: 0.65rem;
-  font-family: var(--font-sans, sans-serif);
-  font-weight: 600; font-size: 0.8rem;
-  letter-spacing: 0.02em; text-transform: uppercase;
-  text-decoration: none;
-  color: var(--text-tertiary, #747b8a);
-  padding: 0.55rem 0.8rem;
-  border-radius: 8px;
-  border: 1px solid transparent;
-  position: static; top: auto; background: none;
-}
-.adminNav a:hover { color: var(--text-secondary, #9299a5); background: var(--bg-subtle, #2b303b); }
-.adminNav a.active {
-  color: var(--spark, #ff6b35);
-  background: var(--bg-subtle, #2b303b);
-  border-color: var(--border-default, #42454e);
-}
-.adminNav .navIco svg { width: 1rem; height: 1rem; display: block; }
-.adminNav .navBadge:not(:empty) {
-  margin-left: auto;
-  font-family: var(--font-mono, monospace);
+  color: var(--dim);
+  font-weight: 600;
   font-size: 0.7rem;
-  color: var(--bg-base, #1c1f26);
-  background: var(--golden-amber, #ffc05c);
-  border-radius: 4px;
-  padding: 0.05rem 0.45rem;
-}
-@media (max-width: 900px) {
-  .workspace { flex-direction: column; }
-  .adminNav { flex-direction: row; flex-wrap: wrap; position: static; min-width: 0; width: 100%; }
-}
-
-/* Stat tiles: the glance numbers. */
-.statRow {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr) 2fr;
-  gap: 0.8rem;
-  margin-bottom: 1.1rem;
-}
-@media (max-width: 1100px) { .statRow { grid-template-columns: repeat(2, 1fr); } .clockTile { grid-column: span 2; } }
-.statTile {
-  display: block; text-decoration: none;
-  padding: 0.8rem 1rem;
-  border: 1px solid var(--border-default, #42454e);
-  border-radius: 8px;
-  background: var(--bg-subtle, #2b303b);
-}
-a.statTile:hover { border-color: var(--golden-amber, #ffc05c); }
-.stLabel {
-  font-family: var(--font-sans, sans-serif);
-  font-weight: 600; font-size: 0.68rem;
-  letter-spacing: 0.06em; text-transform: uppercase;
-  color: var(--text-tertiary, #747b8a);
-}
-.stValue {
-  font-family: var(--font-mono, monospace);
-  font-size: 1.9rem; font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  color: var(--spark, #ff6b35);
-  line-height: 1.2; margin: 0.15rem 0;
-}
-.stSub { font-size: 0.75rem; color: var(--text-secondary, #9299a5); }
-
-/* Hour clock: 24 bars, current hour in spark. */
-.hourClock { display: flex; align-items: flex-end; gap: 2px; height: 3.1rem; margin-top: 0.4rem; }
-.clkBar { flex: 1; background: var(--pine, #75acaf); opacity: 0.65; min-height: 3px; }
-.clkBar.now { background: var(--spark, #ff6b35); opacity: 1; }
-
-
-/* ── ui-ux pass: hierarchy, contrast, focus, motion (skill-driven fixes) */
-
-/* Hero: Now Playing is THE thing — everything else is instrumentation. */
-.nowCard.hero {
-  border: 1px solid var(--border-strong, #4d515c);
-  border-left: 3px solid var(--spark, #ff6b35);
-  background: var(--bg-subtle, #2b303b);
-  border-radius: 8px;
-  padding: 1.1rem 1.4rem;
-}
-.nowCard.hero .npName { font-size: 1.5rem; }
-
-/* Contrast: small uppercase labels were neutral-500 on bg-subtle (~3.2:1,
-   fails AA for small text). neutral-400 clears 4.5:1. */
-.stLabel, .sysLabel { color: var(--text-secondary, #9299a5); }
-.admin .hint { color: var(--text-secondary, #9299a5); }
-
-/* Focus: keyboard travel gets the same affordance mouse hover gets. */
-.adminNav a:focus-visible,
-.admin button:focus-visible,
-a.statTile:focus-visible,
-.admin input:focus-visible,
-.admin select:focus-visible {
-  outline: 2px solid var(--golden-amber, #ffc05c);
-  outline-offset: 2px;
-}
-
-/* Touch + pointer: rows/chips read clickable and hit 44px comfortably. */
-.adminNav a { min-height: 2.6rem; }
-.rowOpen, .bankGear, .bankDel { cursor: pointer; }
-.admin button { cursor: pointer; transition: border-color 160ms ease, color 160ms ease, background 160ms ease; }
-
-/* Hour clock empty state */
-.clkEmpty {
-  font-size: 0.78rem; color: var(--text-secondary, #9299a5);
-  align-self: center; width: 100%; text-align: center;
-}
-
-/* Motion respect: every pulse/sweep/ring quiets down on request. */
-@media (prefers-reduced-motion: reduce) {
-  .admin *, .admin *::before, .admin *::after { animation: none !important; transition: none !important; }
-}
-
-/* ── Unified Channels page (spec 2026-06-06): banks as section headers. */
-tr.bankRow td {
-  background: var(--bg-subtle, #2b303b);
-  border-top: 1px solid var(--border-strong, #4d515c);
-  padding: 0.45rem 0.6rem;
-}
-tr.bankRow .bkCaret { cursor: pointer; padding: 0 0.4rem 0 0.1rem; color: var(--text-tertiary, #747b8a); }
-tr.bankRow .bkName {
-  font-family: var(--font-sans, sans-serif);
-  font-weight: 700; font-size: 0.8rem;
-  letter-spacing: 0.06em; text-transform: uppercase;
-  color: var(--text-primary, #f7f8f9);
-  margin-right: 0.5rem;
-}
-tr.bankRow.bk-see .bkName { color: var(--pine, #75acaf); }
-tr.bankRow.bk-off .bkName { color: var(--text-disabled, #5e6371); text-decoration: line-through; }
-tr.bankRow .bkSummary { font-size: 0.72rem; color: var(--text-secondary, #9299a5); margin-left: 0.6rem; }
-
-/* Bank header layout + overflow menu (spec 2026-07-16 admin IA): the six
-   bank actions live behind one ⋯ menu; the header stays a calm summary. */
-tr.bankRow .bkRowInner { display: flex; align-items: center; gap: 0.5rem; }
-tr.bankRow .bkSummary { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.bankMenu { position: relative; margin-left: auto; flex: none; }
-.bankMenu summary {
-  list-style: none;
-  display: inline-flex; align-items: center; justify-content: center;
-  min-width: 2.35rem; min-height: 2.35rem; box-sizing: border-box;
-  padding: 0.2rem 0.6rem;
-  border-radius: 4px;
-  color: var(--label);
-  font-size: 1.1rem; line-height: 1;
-  cursor: pointer;
-}
-.bankMenu summary::-webkit-details-marker { display: none; }
-.bankMenu summary:hover, .bankMenu[open] summary { background: var(--etch); color: var(--ink); }
-.bankMenuList {
-  position: absolute; right: 0; top: calc(100% + 4px); z-index: 30;
-  display: grid; gap: 0.1rem;
-  min-width: 12rem;
-  padding: 0.35rem;
-  background: var(--panel);
-  border: 1px solid var(--panel-edge);
-  border-radius: 8px;
-  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5);
-}
-.bankMenuList button {
-  margin: 0;
-  border: none; background: none;
-  text-align: left; justify-content: flex-start;
-  min-height: 2.35rem;
-}
-.bankMenuList button:hover:not(:disabled) { background: var(--etch); border: none; }
-.bankMenuList .bkDel { color: var(--red); }
-@media (pointer: coarse) {
-  .bankMenu summary, .bankMenuList button { min-height: 2.75rem; }
-}
-.memChip {
+  letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--text-tertiary, #747b8a);
 }
-
-/* ── Admin usability pass: task framing, action hierarchy, readable forms. */
-body { font-family: var(--font-sans, sans-serif); }
-.admin { max-width: 1500px; padding-bottom: 5rem; }
-
-.adminHead {
-  align-items: center;
-  min-height: 3.5rem;
-  margin-bottom: 1.5rem;
-}
-.adminHead .brand { color: var(--ink); text-decoration: none; }
 .adminHead .headActions { display: flex; gap: 0.35rem; margin-left: auto; }
 .adminHead .headActions a {
+  padding: 0.45rem 0.65rem;
   color: var(--label);
   border: 1px solid transparent;
   border-radius: 8px;
-  padding: 0.45rem 0.65rem;
   font-size: 0.78rem;
   font-weight: 600;
   text-decoration: none;
 }
-.adminHead .headActions a:hover { color: var(--ink); background: var(--panel); border-color: var(--panel-edge); }
+.adminHead .headActions a:hover {
+  color: var(--ink);
+  background: var(--panel);
+  border-color: var(--panel-edge);
+}
 
-.workspace { gap: 2rem; }
-.adminNav { min-width: 13.5rem; gap: 0.35rem; }
-.adminNav a { min-height: 3.35rem; padding: 0.6rem 0.75rem; letter-spacing: 0; text-transform: none; }
+
+/* ── Workspace + nav rail ───────────────────────────────────────────────── */
+
+.workspace { display: flex; gap: 2rem; align-items: flex-start; }
+.pages { flex: 1; min-width: 0; }
+
+.adminNav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  position: sticky;
+  top: 0.8rem;
+  min-width: 13.5rem;
+}
+.adminNav a {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-height: 3.35rem;
+  padding: 0.6rem 0.75rem;
+  color: var(--dim);
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.8rem;
+  text-decoration: none;
+}
+.adminNav a:hover { color: var(--ink); background: var(--panel); }
+.adminNav a.active {
+  color: var(--amber);
+  background: var(--panel);
+  border-color: var(--panel-edge);
+}
 .adminNav .navIco { color: var(--label); }
-.adminNav .navIco svg { width: 1.15rem; height: 1.15rem; }
+.adminNav .navIco svg { width: 1.15rem; height: 1.15rem; display: block; }
 .adminNav .navCopy { display: grid; gap: 0.1rem; }
 .adminNav .navCopy b { color: inherit; font-size: 0.86rem; letter-spacing: 0.02em; }
 .adminNav .navCopy small { color: var(--dim); font-size: 0.68rem; font-weight: 400; }
 .adminNav a.active .navCopy small { color: var(--label); }
+.adminNav .navBadge:not(:empty) {
+  margin-left: auto;
+  padding: 0.05rem 0.45rem;
+  color: var(--bg);
+  background: var(--caution);
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+}
+
+
+/* ── Page headers ───────────────────────────────────────────────────────── */
 
 .pageIntro {
   display: flex;
@@ -930,16 +174,6 @@ body { font-family: var(--font-sans, sans-serif); }
   gap: 1rem;
   margin: 0 0 1.2rem;
 }
-.pageIntro h1 {
-  margin: 0.1rem 0 0.25rem;
-  color: var(--ink);
-  font-family: var(--font-sans, sans-serif);
-  font-size: clamp(1.6rem, 3vw, 2.25rem);
-  line-height: 1.1;
-  letter-spacing: -0.035em;
-  text-align: left;
-}
-.pageIntro p { max-width: 48rem; margin: 0; color: var(--label); line-height: 1.55; }
 .eyebrow {
   color: var(--amber);
   font-size: 0.68rem;
@@ -947,50 +181,54 @@ body { font-family: var(--font-sans, sans-serif); }
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
+.pageIntro h1 {
+  margin: 0.1rem 0 0.25rem;
+  color: var(--ink);
+  font-size: clamp(1.6rem, 3vw, 2.25rem);
+  line-height: 1.1;
+  letter-spacing: -0.035em;
+}
+.pageIntro p { max-width: 48rem; margin: 0; color: var(--label); line-height: 1.55; }
+.admin .sectionIntro { margin-bottom: 1rem; }
 
-.admin button {
-  min-height: 2.35rem;
-  margin: 0;
-  padding: 0.45rem 0.75rem;
-  font-family: var(--font-sans, sans-serif);
-  font-size: 0.78rem;
-  letter-spacing: 0.02em;
+
+/* ── Cards ──────────────────────────────────────────────────────────────── */
+
+/* One card-header grammar across the app: an in-flow h2 with an optional
+   trailing hint. The old faceplate treatment (an absolutely-positioned legend
+   notched into the card's top border) survived on six cards while every
+   newer surface — stat tiles, system cells, settings cards — used this one.
+   Two grammars on the same page read as a half-finished migration. */
+.admin section {
+  margin: 1.8rem 0;
+  padding: 1.1rem 1.2rem;
+  background: var(--panel);
+  border: 1px solid var(--panel-edge);
+  border-radius: 8px;
+}
+.admin section > h2 {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0 0 0.9rem;
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 600;
+}
+.admin .hint {
+  color: var(--dim);
+  font-size: 0.72rem;
+  font-weight: 500;
   text-transform: none;
 }
-.admin button.primary {
-  color: #17191f;
-  background: var(--amber);
-  border-color: var(--amber);
-  font-weight: 700;
+.admin .count {
+  color: var(--label);
+  font-variant-numeric: tabular-nums;
 }
-.admin button.primary:hover:not(:disabled) { color: #17191f; background: var(--golden-amber); border-color: var(--golden-amber); }
-.admin button.danger { color: var(--red); border-color: color-mix(in srgb, var(--flamingo) 45%, transparent); }
 
-.admin .nowCard.hero { margin-top: 1.6rem; padding: 1.5rem; }
-.admin .nowCard .npWhat { margin: 0.45rem 0 1.1rem; }
-.admin .nowCard .npControls { display: grid; grid-template-columns: 1fr auto; gap: 0.75rem 1rem; }
-.admin .controlGroup { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
-.admin .audioControls { min-width: 0; }
-.admin .transmissionControls { justify-content: flex-end; }
-.admin .checkLabel { display: inline-flex; align-items: center; gap: 0.3rem; }
-.admin .weatherAction {
-  color: var(--blue);
-  border-color: color-mix(in srgb, var(--pine) 45%, transparent);
-}
-.admin .systemActions {
-  grid-column: 1 / -1;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem;
-  padding-top: 0.75rem;
-  border-top: 1px solid var(--etch);
-}
-.admin .systemActions .hint { min-width: 8rem; text-align: right; }
-/* On the System page the actions live in their own card, not the hero grid. */
-.systemCard .systemActions { grid-column: auto; padding-top: 0; border-top: 0; }
-.systemCard .systemActions .hint { margin-left: auto; }
-
+/* Triage and Channels are full pages, not cards — their <section> is just a
+   grouping element. */
 .admin .discoveries,
 .admin .channels {
   margin: 0;
@@ -998,8 +236,324 @@ body { font-family: var(--font-sans, sans-serif); }
   background: transparent;
   border: 0;
 }
-.admin .sectionIntro { margin-bottom: 1rem; }
+
+
+/* ── Controls ───────────────────────────────────────────────────────────── */
+
+/* Every interactive edge clears 3:1 against both the card it sits on and its
+   own recessed fill (WCAG 1.4.11). The previous border was --border-default
+   on --bg-subtle: 1.38:1, which left a settings page of twenty fields reading
+   as floating labels until something took focus. */
+.admin input,
+.admin select,
+.admin button {
+  font-family: inherit;
+  font-size: 0.92rem;
+  padding: 0.38rem 0.55rem;
+  color: var(--ink);
+  background: var(--etch);
+  border: 1px solid var(--control-edge);
+  border-radius: 4px;
+}
+.admin input::placeholder { color: var(--dim); }
+.admin label { color: var(--label); font-size: 0.88rem; }
+
+.admin button {
+  min-height: 2.35rem;
+  margin: 0;
+  padding: 0.45rem 0.75rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: border-color 160ms ease, color 160ms ease, background 160ms ease;
+}
+.admin button:hover:not(:disabled) {
+  border-color: var(--label);
+  background: color-mix(in srgb, var(--ink) 8%, var(--etch));
+}
+.admin button:active:not(:disabled) { transform: translateY(1px); }
+.admin button:disabled { opacity: 0.4; cursor: default; }
+
+/* Consequence colouring: green adopts, amber cautions, red destroys, blue
+   listens. The glyph in an icon button inherits it via currentColor. */
+.admin .primary {
+  color: var(--bg);
+  background: var(--amber);
+  border-color: var(--amber);
+  font-weight: 700;
+}
+.admin .primary:hover:not(:disabled) {
+  color: var(--bg);
+  background: var(--caution);
+  border-color: var(--caution);
+}
+/* Each mix is set so the edge clears 3:1 against --panel, like the neutral
+   --control-edge does. At a flat 55% the red and blue edges landed at 2.5 and
+   2.6 — which also meant a plain button out-shouted a destructive one. */
+.admin .save, .admin .dAdd { color: var(--green); border-color: color-mix(in srgb, var(--sage) 60%, transparent); }
+.admin .del, .admin .danger, .admin #lockBtn { color: var(--red); border-color: color-mix(in srgb, var(--flamingo) 70%, transparent); }
+.admin .lock, .admin .dLock, .admin .dDismiss, .admin #tlockBtn { color: var(--caution); border-color: color-mix(in srgb, var(--golden-amber) 60%, transparent); }
+.admin .listen, .admin .dListen, .admin .weatherAction { color: var(--blue); border-color: color-mix(in srgb, var(--pine) 70%, transparent); }
+.admin .resume {
+  color: var(--blue);
+  background: color-mix(in srgb, var(--pine) 12%, var(--etch));
+  border-color: color-mix(in srgb, var(--pine) 70%, transparent);
+}
+.admin .err { color: var(--red); font-size: 0.85rem; }
+.admin .err:not(:empty) { margin-left: 0.5rem; }
+
+/* Icon buttons: compact squares, glyph inherits the consequence color. No
+   resting border — for an icon-only control the recognizable glyph is what
+   identifies it, and each one clears 5:1, so 1.4.11 is met without ringing
+   four boxes around every table row. The edge appears on hover and focus. */
+.admin .iconBtn {
+  padding: 0.28rem;
+  margin: 0 0.12rem;
+  background: none;
+  border-color: transparent;
+  line-height: 0;
+}
+.admin .iconBtn svg { width: 15px; height: 15px; display: block; }
+.admin .iconBtn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+  border-color: var(--control-edge);
+}
+
+/* Keyboard travel gets the same affordance the mouse gets. */
+.admin a:focus-visible,
+.admin button:focus-visible,
+.admin summary:focus-visible,
+.admin input:focus-visible,
+.admin select:focus-visible {
+  outline: 2px solid var(--caution);
+  outline-offset: 2px;
+}
+.admin input:focus, .admin select:focus { border-color: var(--amber); }
+
+/* Volume fader */
+.admin input[type="range"] {
+  -webkit-appearance: none; appearance: none;
+  width: 150px; height: 4px;
+  padding: 0; margin: 0 0.4rem;
+  background: var(--mark);
+  border: none; border-radius: 4px;
+  vertical-align: middle;
+}
+.admin input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 14px; height: 22px;
+  background: var(--amber);
+  border: 1px solid var(--caution);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.admin input[type="range"]::-moz-range-thumb {
+  width: 14px; height: 22px;
+  background: var(--amber);
+  border: 1px solid var(--caution);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.admin input[type="checkbox"] { accent-color: var(--amber); }
+.admin .checkLabel { display: inline-flex; align-items: center; gap: 0.3rem; }
+
+/* Touch floor (spec 2026-07-16): every target ≥44px on coarse pointers. The
+   row chevron is exempt — its whole table cell is the tap target, so the
+   small glyph is only ever the *keyboard* handle. */
+@media (pointer: coarse) {
+  .admin button:not(.rowChev) { min-height: 2.75rem; }
+  .admin .iconBtn { min-width: 2.75rem; min-height: 2.75rem; padding: 0.5rem; }
+  .admin .iconBtn svg { width: 18px; height: 18px; margin: auto; }
+  .admin input[type="checkbox"] { width: 1.35rem; height: 1.35rem; }
+  .admin input[type="range"] { height: 8px; }
+  .admin input[type="range"]::-webkit-slider-thumb { width: 22px; height: 30px; }
+  .admin input[type="range"]::-moz-range-thumb { width: 22px; height: 30px; }
+}
+
+
+/* ── Now playing (the hero) ─────────────────────────────────────────────── */
+
+/* Lit rather than tabbed: a warm ground and a stronger edge carry the
+   emphasis, so the card does not need an accent bar down its left side. */
+.admin .nowCard {
+  margin-top: 1.6rem;
+  padding: 1.5rem;
+  background: color-mix(in srgb, var(--spark) 4%, var(--panel));
+  border: 1px solid var(--border-strong);
+}
+.admin .nowCard > h2 { color: var(--amber); }
+.admin .nowCard .npWhat { margin: 0.45rem 0 1.1rem; }
+.admin .nowCard .npName {
+  font-weight: 600;
+  font-size: 1.5rem;
+  letter-spacing: 0.02em;
+  color: var(--ink);
+}
+.admin .nowCard .npFreq {
+  margin-left: 0.7rem;
+  color: var(--amber);
+  font-size: 1.05rem;
+  font-variant-numeric: tabular-nums;
+}
+.admin .nowCard .npControls {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.75rem 1rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--rule);
+}
+.admin .controlGroup { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.admin .audioControls { min-width: 0; }
+.admin .transmissionControls { justify-content: flex-end; }
+
+.admin .systemActions {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--rule);
+}
+.admin .systemActions .hint { min-width: 8rem; text-align: right; }
+/* On the System page the actions live in their own card, not the hero grid. */
+.systemCard .systemActions { grid-column: auto; padding-top: 0; border-top: 0; }
+.systemCard .systemActions .hint { margin-left: auto; }
+
+
+/* ── Stat tiles ─────────────────────────────────────────────────────────── */
+
+.statRow {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr) 2fr;
+  gap: 0.8rem;
+  margin-bottom: 1.1rem;
+}
+.statTile {
+  display: block;
+  padding: 0.8rem 1rem;
+  background: var(--panel);
+  border: 1px solid var(--panel-edge);
+  border-radius: 8px;
+  text-decoration: none;
+}
+a.statTile:hover { border-color: var(--caution); }
+.stLabel {
+  color: var(--dim);
+  font-weight: 600;
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.stValue {
+  margin: 0.15rem 0;
+  color: var(--amber);
+  font-size: 1.9rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+.stSub { color: var(--label); font-size: 0.75rem; }
+
+.hourClock { display: flex; align-items: flex-end; gap: 2px; height: 3.1rem; margin-top: 0.4rem; }
+.clkBar { flex: 1; background: var(--blue); opacity: 0.65; min-height: 3px; }
+.clkBar.now { background: var(--amber); opacity: 1; }
+.clkEmpty {
+  align-self: center;
+  width: 100%;
+  color: var(--dim);
+  font-size: 0.78rem;
+  text-align: center;
+}
+
+
+/* ── Tables ─────────────────────────────────────────────────────────────── */
+
+/* Fixed layout at every width: both tables now fit their column budget, so
+   nothing scrolls sideways and .tableWrap needs no inner scroll region. That
+   also lets the sticky header stick against the *page*, instead of a 52vh box
+   nested inside the page scroll — two scroll regions on one axis. */
+.admin .tableWrap {
+  background: var(--panel);
+  border: 1px solid var(--panel-edge);
+  border-radius: 8px;
+}
+.admin .dcToolbar + .tableWrap { border-radius: 0 0 8px 8px; }
+
+.admin .chTable {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+}
+.admin .chTable th {
+  position: sticky; top: 0; z-index: 2;
+  height: 2rem;
+  padding: 0.3rem 0.5rem;
+  background: var(--panel);
+  box-shadow: 0 1px 0 var(--rule);
+  color: var(--label);
+  font-weight: 600;
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+  text-align: left;
+  text-transform: uppercase;
+}
+.admin .chTable td {
+  height: 2.2rem;
+  padding: 0.45rem 0.5rem;
+  border-bottom: 1px solid var(--rule);
+  font-variant-numeric: tabular-nums;
+  /* Deliberately no `overflow: hidden` here — the bank row's ⋯ menu is an
+     absolutely-positioned child of a cell and would be clipped by it. Fixed
+     table layout already prevents sideways overflow; long names wrap. */
+}
+.admin .chTable td:first-child { color: var(--ink); }
+.admin .chTable tbody tr:hover td { background: var(--row-hover); }
+.admin .chTable .chAudible { text-align: center; }
+.admin .chTable th:last-child { text-align: right; }
+.admin .chTable td.actions { text-align: right; white-space: nowrap; }
+.admin .chTable td.actions .iconBtn { margin: 0; }
+.admin .chTable button { min-height: 0; padding: 0.22rem 0.5rem; font-size: 0.78rem; }
+.admin .chTable .empty {
+  padding: 1rem;
+  color: var(--dim);
+  font-size: 0.85rem;
+  font-style: italic;
+  text-align: center;
+}
+
+/* Channel columns: freq and audible are fixed, the name takes the rest. */
+.admin .channels .chTable th:nth-child(1) { width: 7rem; }
+.admin .channels .chTable th:nth-child(3) { width: 5rem; }
+/* Discovery columns: select, freq+service, name, mode, actions. */
+.admin .discoveries .chTable th:nth-child(1) { width: 2.6rem; }
+.admin .discoveries .chTable th:nth-child(2) { width: 9.5rem; }
+.admin .discoveries .chTable th:nth-child(4) { width: 5.5rem; }
+.admin .discoveries .chTable th:nth-child(5) { width: 13rem; }
+
+/* Rows open the dossier drawer. The chevron is a real button — it is the
+   row's only keyboard route into the editor — but it is styled as the glyph
+   it replaced, not as a control. */
+.admin .chTable td.rowOpen { cursor: pointer; }
+.admin .chTable .rowChev {
+  float: right;
+  min-height: 0;
+  margin: 0;
+  padding: 0 0.1rem 0 0.5rem;
+  color: var(--mark);
+  background: none;
+  border: none;
+  font-size: 1rem;
+  line-height: 1.2;
+}
+.admin .chTable tbody tr:hover .rowChev,
+.admin .chTable tbody tr:hover td.rowOpen { color: var(--ink); }
+
 .admin .dcToolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
   min-height: 3rem;
   margin: 0;
   padding: 0.55rem 0.7rem;
@@ -1008,16 +562,170 @@ body { font-family: var(--font-sans, sans-serif); }
   border-bottom: 0;
   border-radius: 8px 8px 0 0;
 }
-.admin .discoveries .tableWrap,
-.admin .channels .tableWrap {
+
+/* Discovery drill-in detail row */
+.admin tr.dcDetail td {
+  padding: 0.5rem 0.6rem 0.6rem;
+  background: color-mix(in srgb, var(--spark) 3%, transparent);
+  color: var(--label);
+  font-size: 0.82rem;
+}
+.admin tr.dcDetail .dl {
+  margin: 0 0.3rem 0 0.9rem;
+  color: var(--dim);
+  font-weight: 600;
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.admin tr.dcDetail .dl:first-child { margin-left: 0; }
+.admin .dToggle {
+  min-height: 0;
+  margin-right: 0.35rem;
+  padding: 0.15rem 0.3rem;
+  background: none;
+  border: none;
+  line-height: 0;
+}
+.admin .dToggle .chev {
+  display: inline-block;
+  width: 0.4em; height: 0.4em;
+  border-right: 2px solid var(--mark);
+  border-bottom: 2px solid var(--mark);
+  transform: rotate(-45deg);
+  transition: transform 0.15s;
+}
+.admin tr.open .dToggle .chev { transform: rotate(45deg); border-color: var(--amber); }
+
+
+/* ── Bank header rows + overflow menu ───────────────────────────────────── */
+
+tr.bankRow td {
+  padding: 0.45rem 0.6rem;
+  background: var(--panel);
+  border-top: 1px solid var(--border-strong);
+}
+tr.bankRow .bkRowInner { display: flex; align-items: center; gap: 0.5rem; }
+tr.bankRow .bkCaret {
+  min-height: 0;
+  padding: 0 0.4rem;
+  color: var(--mark);
+  background: none;
+  border: none;
+}
+tr.bankRow .bkCaret:hover { color: var(--ink); background: none; }
+tr.bankRow .bkName {
+  margin-right: 0.5rem;
+  color: var(--ink);
+  font-weight: 700;
+  font-size: 0.8rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+tr.bankRow.bk-see .bkName { color: var(--blue); }
+tr.bankRow.bk-off .bkName { color: var(--dim); text-decoration: line-through; }
+tr.bankRow .bkSummary {
+  flex: 1;
+  min-width: 0;
+  margin-left: 0.6rem;
+  color: var(--dim);
+  font-size: 0.72rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The six bank actions live behind one ⋯ menu; the header stays a summary. */
+.bankMenu { position: relative; margin-left: auto; flex: none; }
+.bankMenu summary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.35rem; min-height: 2.35rem;
+  box-sizing: border-box;
+  padding: 0.2rem 0.6rem;
+  color: var(--label);
+  border-radius: 4px;
+  font-size: 1.1rem;
+  line-height: 1;
+  list-style: none;
+  cursor: pointer;
+}
+.bankMenu summary::-webkit-details-marker { display: none; }
+.bankMenu summary:hover, .bankMenu[open] summary { color: var(--ink); background: var(--etch); }
+.bankMenuList {
+  position: absolute; right: 0; top: calc(100% + 4px); z-index: 30;
+  display: grid;
+  gap: 0.1rem;
+  min-width: 12rem;
+  padding: 0.35rem;
   background: var(--panel);
   border: 1px solid var(--panel-edge);
   border-radius: 8px;
+  box-shadow: 0 12px 36px rgb(0 0 0 / 0.5);
 }
-.admin .discoveries .dcToolbar + .tableWrap { border-radius: 0 0 8px 8px; }
-.admin .chTable { margin-top: 0; }
-.admin .chTable th { height: 2rem; color: var(--label); letter-spacing: 0.06em; }
-.admin .chTable td { height: 2.2rem; }
+.admin .bankMenuList button {
+  min-height: 2.35rem;
+  justify-content: flex-start;
+  background: none;
+  border: none;
+  text-align: left;
+}
+.admin .bankMenuList button:hover:not(:disabled) { background: var(--etch); border: none; }
+@media (pointer: coarse) {
+  .bankMenu summary, .admin .bankMenuList button { min-height: 2.75rem; }
+}
+
+
+/* ── Chips ──────────────────────────────────────────────────────────────── */
+
+/* One chip recipe (spec 2026-07-16): size and shape identical, color varies. */
+.admin .count,
+.admin .modeChip,
+.dcSee, .dcHear, .dcSvc, .memChip {
+  padding: 0.08em 0.45em;
+  margin-left: 0.45em;
+  border: 1px solid var(--panel-edge);
+  border-radius: 4px;
+  font-weight: 600;
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  vertical-align: 0.1em;
+  white-space: nowrap;
+}
+.admin .modeChip { color: var(--green); border-color: color-mix(in srgb, var(--sage) 55%, transparent); }
+.admin .modeChip.digital { color: var(--caution); border-color: color-mix(in srgb, var(--golden-amber) 55%, transparent); }
+.memChip { color: var(--dim); text-transform: uppercase; }
+
+/* Close Call triage verdicts */
+.dcSee { color: var(--blue); border-color: var(--blue); }
+.dcHear { color: var(--green); border-color: var(--green); }
+/* Service allocation: OUTBAND matches no known allocation — the interesting ones. */
+.dcSvc { color: var(--dim); }
+.dcSvc.outband { color: var(--red); border-color: var(--red); font-weight: 700; }
+
+/* Identified modulation, plain text in the table's Mode column. */
+.admin .dMode { color: var(--label); white-space: nowrap; }
+.admin .dMode.digital { color: var(--caution); }
+
+/* "Olathe, KS" — anything an identification source located. */
+.admin .loc {
+  margin-left: 0.4rem;
+  color: var(--blue);
+  font-size: 0.78rem;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+.bellChip svg {
+  width: 0.85em; height: 0.85em;
+  margin-left: 0.4em;
+  color: var(--red);
+  vertical-align: -0.08em;
+}
+
+
+/* ── Bank builder + bank chips ──────────────────────────────────────────── */
 
 .bankBuilder {
   margin: 0 0 1rem;
@@ -1026,10 +734,10 @@ body { font-family: var(--font-sans, sans-serif); }
   border-radius: 8px;
 }
 .bankBuilder summary {
-  cursor: pointer;
   padding: 0.8rem 1rem;
   color: var(--ink);
   font-weight: 600;
+  cursor: pointer;
 }
 .bankBuilder summary span { margin-left: 0.5rem; color: var(--dim); font-size: 0.78rem; font-weight: 400; }
 .admin .bankAdd {
@@ -1038,15 +746,46 @@ body { font-family: var(--font-sans, sans-serif); }
   gap: 0.75rem;
   align-items: end;
   padding: 0.2rem 1rem 1rem;
-  border-top: 1px solid var(--etch);
+  border-top: 1px solid var(--rule);
 }
 .admin .bankAdd label { display: grid; gap: 0.25rem; color: var(--label); font-size: 0.75rem; }
-.admin .bankAdd input, .admin .bankAdd select { box-sizing: border-box; width: 100% !important; margin: 0; }
+.admin .bankAdd input, .admin .bankAdd select { box-sizing: border-box; width: 100%; }
 .admin .bankAdd .err { grid-column: 1 / -1; }
 
-/* ── Settings cards (spec 2026-07-16 admin IA): four save-scoped cards.
-   Desktop: two-column grid, all open (summary is a plain header).
-   Phone: single column accordion — one card open at a time (JS closes
+.admin .bankChips { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.3rem 0 0.7rem; }
+.admin .bankChips .empty { color: var(--dim); font-size: 0.85rem; font-style: italic; }
+.admin .bankChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.35rem 0.7rem;
+  border: 1px solid var(--panel-edge);
+  border-radius: 4px;
+  font-size: 0.95rem;
+  letter-spacing: 0.06em;
+  opacity: 0.55;
+}
+.admin .bankChip.on { opacity: 1; border-color: color-mix(in srgb, var(--sage) 55%, transparent); }
+.admin .bankChip .bankState { width: 0.55em; height: 0.55em; background: var(--mark); border-radius: 50%; }
+.admin .bankChip.on .bankState { background: var(--green); }
+.admin .bankChip .bankCount {
+  padding: 0.05rem 0.4rem;
+  color: var(--label);
+  background: var(--etch);
+  border-radius: 4px;
+  font-size: 0.72rem;
+}
+.admin .bankChip .bankDel { color: var(--dim); margin-left: 0.2rem; padding: 0 0.15rem; }
+.admin .bankChip .bankDel:hover { color: var(--red); }
+.bankGear { opacity: 0.55; margin-left: 0.45em; cursor: pointer; }
+.bankGear:hover { opacity: 1; }
+.bankProf { color: var(--caution); }
+
+
+/* ── Settings cards ─────────────────────────────────────────────────────── */
+
+/* Desktop: two-column grid, all open (the summary is a plain header).
+   Phone: single column accordion, one card open at a time (JS closes the
    siblings), chevron shows state. */
 .settingsCards { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; align-items: start; }
 .settingsCard {
@@ -1055,157 +794,442 @@ body { font-family: var(--font-sans, sans-serif); }
   border-radius: 8px;
 }
 .settingsCard summary {
-  display: flex; align-items: baseline; gap: 0.6rem;
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  min-height: 2.75rem;
+  box-sizing: border-box;
   padding: 0.9rem 1.1rem;
-  min-height: 2.75rem; box-sizing: border-box;
-  cursor: pointer; list-style: none;
+  list-style: none;
+  cursor: pointer;
 }
 .settingsCard summary::-webkit-details-marker { display: none; }
-.settingsCard summary h2 { margin: 0; color: var(--ink); font-family: var(--cond); font-size: 1rem; }
+.settingsCard summary h2 { margin: 0; color: var(--ink); font-size: 1rem; }
 .settingsCard .cardHint { color: var(--dim); font-size: 0.78rem; }
 .settingsCard .cardBody { padding: 0 1.1rem 1.1rem; }
-@media (min-width: 700px) {
-  .settingsCard summary { pointer-events: none; }
-}
-@media (max-width: 699.9px) {
-  .settingsCards { grid-template-columns: 1fr; }
-  .settingsCard summary::after {
-    content: "›";
-    margin-left: auto; align-self: center;
-    color: var(--dim);
-    transform: rotate(90deg);
-  }
-  .settingsCard[open] summary::after { transform: rotate(-90deg); }
-}
-.settingsCard .settingGroups label {
+
+.settingGroups label {
   display: grid;
   grid-template-columns: minmax(12rem, 1fr) minmax(8rem, 1fr);
   align-items: center;
   gap: 1rem;
   margin: 0;
   padding: 0.55rem 0;
-  border-bottom: 1px solid var(--etch);
+  border-bottom: 1px solid var(--rule);
 }
-.settingsCard .settingGroups label:last-child { border-bottom: 0; }
+.settingGroups label:last-child { border-bottom: 0; }
 .settingGroups label > span:first-child { display: grid; gap: 0.15rem; color: var(--ink); }
 .settingGroups label small { color: var(--dim); font-size: 0.68rem; line-height: 1.35; }
-.settingGroups input, .settingGroups select { box-sizing: border-box; width: 100%; margin: 0; }
+.settingGroups input, .settingGroups select { box-sizing: border-box; width: 100%; }
 .settingGroups .inputUnit { display: flex; align-items: center; gap: 0.4rem; }
 .settingGroups .inputUnit b { min-width: 2rem; color: var(--dim); font-size: 0.68rem; font-weight: 500; }
-.settingsCard .settingGroups .switchRow { grid-template-columns: 1fr auto; }
+.settingGroups .switchRow { grid-template-columns: 1fr auto; }
 .settingGroups .switchRow input { width: auto; }
-.formActions { display: flex; align-items: center; gap: 0.75rem; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--etch); }
-
-
-@media (max-width: 1100px) {
-  .admin .bankAdd { grid-template-columns: repeat(2, 1fr); }
-  .admin .bankAdd #bkAdd { justify-self: start; }
+.formActions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--rule);
 }
-@media (max-width: 900px) {
-  .workspace { gap: 1.2rem; }
-  .adminNav { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 0.35rem; }
-  .adminNav a { flex: 1 0 auto; min-height: 2.7rem; }
-  .adminNav .navCopy small { display: none; }
+
+
+/* ── Insights ───────────────────────────────────────────────────────────── */
+
+.admin .inToolbar { display: flex; gap: 0.4rem; margin-bottom: 0.6rem; }
+.admin .inPeriod.active { color: var(--amber); border-color: var(--amber); }
+.admin .inTotals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.4rem;
+  margin-bottom: 0.7rem;
+  color: var(--label);
+  font-size: 0.95rem;
 }
-/* ── Phone layout (spec 2026-07-16 mobile): designed for the phone, not
-   shrunk from the desktop. Bottom tab bar in the thumb zone, compact
-   headers, reflowed hero, tables that never scroll sideways. This block
-   sits late in the file on purpose — it outranks the 560/900px rules. */
-@media (max-width: 700px) {
-  .adminHead { min-height: 2.75rem; margin-bottom: 0.9rem; padding-block: 0.5rem; }
-  .adminHead .brandSub { display: none; }
-  .adminHead .headActions a { padding-inline: 0.4rem; }
-
-  /* Bottom tab bar: five equal tabs, icon over label, safe-area aware. */
-  .adminNav {
-    /* Below the drawer scrim (z40): an open drawer covers the tab bar. */
-    position: fixed; inset: auto 0 0 0; z-index: 35;
-    display: flex; flex-direction: row; gap: 0;
-    margin: 0;
-    padding: 0.25rem 0.25rem calc(0.25rem + env(safe-area-inset-bottom));
-    background: var(--panel);
-    border-top: 1px solid var(--panel-edge);
-    overflow: visible;
-    min-width: 0; width: auto;
-  }
-  .adminNav a {
-    flex: 1 1 0; min-width: 0; min-height: 3.1rem;
-    display: flex; flex-direction: column;
-    align-items: center; justify-content: center; gap: 0.15rem;
-    padding: 0.3rem 0.1rem;
-    position: relative;
-    border: none; border-radius: 4px;
-    text-align: center;
-  }
-  .adminNav a.active { background: transparent; border: none; }
-  .adminNav .navCopy { display: block; min-width: 0; max-width: 100%; }
-  .adminNav .navCopy b {
-    display: block;
-    font-size: 0.62rem; letter-spacing: 0;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  }
-  .adminNav .navCopy small { display: none; }
-  .adminNav .navIco svg { width: 1.3rem; height: 1.3rem; }
-  .adminNav a.active .navIco { color: var(--spark, #ff6b35); }
-  .adminNav .navBadge:not(:empty) {
-    position: absolute; top: 0.1rem; right: 50%;
-    transform: translateX(1.3rem);
-    margin: 0;
-  }
-  /* Content clears the fixed bar. */
-  .admin { padding-bottom: calc(5.5rem + env(safe-area-inset-bottom)); }
-
-  /* Compact page headers: the tab bar already names the page. */
-  .pageIntro { align-items: stretch; flex-direction: column; margin-bottom: 0.8rem; }
-  .pageIntro > button { align-self: start; }
-  .pageIntro p, .pageIntro .eyebrow { display: none; }
-  .pageIntro h1 { font-size: 1.35rem; margin: 0; }
-
-  /* Hero: full-width rows, flexing volume, two-up transmission buttons. */
-  .admin .nowCard .npControls { grid-template-columns: 1fr; }
-  .admin .audioControls { display: flex; flex-wrap: wrap; gap: 0.6rem; }
-  .admin .audioControls #streamBtn { flex: 1 1 100%; }
-  .admin .audioControls label:not(.checkLabel) {
-    flex: 1 1 100%;
-    display: flex; align-items: center; gap: 0.6rem;
-  }
-  .admin .audioControls input[type="range"] { flex: 1; width: auto; }
-  .admin .transmissionControls {
-    display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;
-  }
-  .admin .transmissionControls button { margin: 0; width: 100%; }
-  .admin .transmissionControls #resumeBtn { grid-column: 1 / -1; }
-  .admin .systemActions .hint { width: 100%; text-align: left; }
-
-  /* Channels table fits the screen — no sideways scroll. */
-  .admin .channels .chTable { display: table; table-layout: fixed; width: 100%; }
-  .admin .channels .chTable th:nth-child(1) { width: 6.2rem; }
-  .admin .channels .chTable .chAudible { width: 4rem; }
-  .admin .channels .chTable td.rowOpen:nth-child(2) {
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  }
-  tr.bankRow .bkSummary { display: none; }
-
-  .admin .bankAdd { grid-template-columns: 1fr; }
-  .bankBuilder summary span { display: block; margin: 0.25rem 0 0 1rem; }
-  .settingsCard .settingGroups label { grid-template-columns: 1fr; gap: 0.4rem; }
-  .settingsCard .settingGroups .switchRow { grid-template-columns: 1fr auto; }
-  .healthAlert, .suppressedRow, .archiveRec { align-items: stretch; flex-direction: column; }
-  .healthAlert a { margin-left: 0; }
-  .drawer { width: min(100vw, 100%) !important; }
-  .locationMap { height: 190px; }
+.admin .inTotals b { color: var(--amber); font-size: 1.15rem; }
+.admin .inBusiest b { font-size: 0.95rem; }
+/* The full table is a drill-in, not the default read. */
+.admin .inBreakdown summary {
+  display: flex;
+  align-items: center;
+  min-height: 2.75rem;
+  box-sizing: border-box;
+  color: var(--label);
+  font-size: 0.85rem;
+  cursor: pointer;
 }
+.admin .inBreakdown summary:hover { color: var(--ink); }
+.admin .inClock { display: flex; align-items: flex-end; gap: 2px; height: 32px; margin-bottom: 0.8rem; }
+.admin .inClock .inHr { flex: 1; background: color-mix(in srgb, var(--spark) 45%, transparent); min-height: 3px; }
+.admin .inClock .inHr.now { background: var(--green); }
+.admin .inTop { width: 100%; border-collapse: collapse; margin-bottom: 0.6rem; }
+.admin .inTop td { padding: 0.18rem 0.4rem; border: none; font-size: 0.85rem; }
+.admin .inTop .inName { max-width: 14rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.admin .inTop .inBar { width: 40%; }
+.admin .inTop .inBar div {
+  height: 8px;
+  min-width: 2px;
+  background: color-mix(in srgb, var(--spark) 60%, transparent);
+  border-radius: 2px;
+}
+.admin .inTop .inN { color: var(--amber); font-variant-numeric: tabular-nums; text-align: right; }
+.admin .inTop .inAir { color: var(--dim); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+.admin .inSplit { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.admin .inChip {
+  padding: 0.06rem 0.5rem;
+  color: var(--label);
+  border: 1px solid var(--panel-edge);
+  border-radius: 4px;
+  font-size: 0.75rem;
+}
+.admin .inChip.tag { color: var(--blue); }
+.inChannel { cursor: pointer; }
+.inChannel:hover td, .inChannel:focus td { background: color-mix(in srgb, var(--pine) 12%, transparent); }
+
+
+/* ── Alert feed ─────────────────────────────────────────────────────────── */
+
+.alertList { list-style: none; margin: 0; padding: 0; }
+.alertList li {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  padding: 0.35rem 0;
+  /* Was --border-subtle, which is the same value as --bg-subtle in the dark
+     theme: a separator at exactly 1.00:1 against the card behind it. */
+  border-bottom: 1px solid var(--rule);
+  font-size: 0.85rem;
+}
+.alertList li:last-child { border-bottom: none; }
+.alertList .alertWhen { color: var(--dim); white-space: nowrap; }
+.alertList .alertWhat { color: var(--ink); }
+/* Per-row dismiss, pushed right. Faint so the feed stays calm to read, but
+   always visible — this is touch-first, so hover-only would be undiscoverable. */
+.alertList .alertDismiss { margin-left: auto; align-self: center; opacity: 0.55; transition: opacity 0.15s; }
+.alertList li:hover .alertDismiss,
+.alertList .alertDismiss:focus-visible { opacity: 1; }
+.alertFeedFoot { display: flex; justify-content: flex-end; margin-top: 0.6rem; }
+.admin .alertClearAll {
+  padding: 0.3rem 0.7rem;
+  color: var(--red);
+  background: none;
+  border-color: color-mix(in srgb, var(--flamingo) 70%, transparent);
+  font-size: 0.72rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.admin .alertClearAll:hover { background: color-mix(in srgb, var(--flamingo) 12%, transparent); }
+
+
+/* ── System health ──────────────────────────────────────────────────────── */
+
+.sysGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 0.8rem; }
+.sysCell {
+  padding: 0.6rem 0.8rem;
+  background: var(--etch);
+  border: 1px solid var(--panel-edge);
+  border-radius: 8px;
+}
+.sysCell.hot { border-color: var(--red); }
+.sysCell.hot .sysValue { color: var(--red); }
+.sysLabel { color: var(--dim); font-size: 0.7rem; letter-spacing: 0.06em; text-transform: uppercase; }
+.sysValue { margin: 0.15rem 0 0.3rem; font-size: 1.1rem; font-variant-numeric: tabular-nums; }
+.spark { width: 100%; height: 28px; }
+.spark polyline { stroke: var(--blue); stroke-width: 1.5; }
+.spark.hot polyline { stroke: var(--red); }
+
+.healthVerdict {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 14px;
+}
+.healthVerdict .verdictDot { width: 12px; height: 12px; border-radius: 50%; flex: 0 0 auto; }
+.healthVerdict .verdictLabel { font-weight: 700; letter-spacing: 0.04em; }
+.healthVerdict .verdictReason { color: var(--label); }
+.healthVerdict.healthy { background: color-mix(in srgb, var(--green) 9%, var(--etch)); }
+.healthVerdict.healthy .verdictDot { background: var(--green); }
+.healthVerdict.stressed { background: color-mix(in srgb, var(--golden-amber) 9%, var(--etch)); }
+.healthVerdict.stressed .verdictDot { background: var(--caution); }
+.healthVerdict.trouble { background: color-mix(in srgb, var(--red) 9%, var(--etch)); }
+.healthVerdict.trouble .verdictDot { background: var(--red); }
+
+/* Overview's health banner. No accent rail: the tinted ground and the
+   severity border already say it, and a thick colored left border on a
+   callout is the one card decoration this project does not need. */
+.healthBanner {
+  margin: 0 0 1rem;
+  background: color-mix(in srgb, var(--golden-amber) 9%, var(--panel));
+  border: 1px solid var(--caution);
+  border-radius: 8px;
+}
+.healthBanner.healthClear { display: none; }
+.healthBanner.severe {
+  background: color-mix(in srgb, var(--flamingo) 12%, var(--panel));
+  border-color: var(--red);
+}
+.healthAlert { display: flex; align-items: center; gap: 1rem; padding: 0.8rem 1rem; }
+.healthAlert + .healthAlert { border-top: 1px solid var(--panel-edge); }
+.healthAlert div { display: grid; gap: 0.2rem; }
+.healthAlert span, .healthAlert small { color: var(--label); }
+.healthAlert a { margin-left: auto; color: var(--caution); white-space: nowrap; }
+.safetyMode { padding: 0.7rem 1rem; border-bottom: 1px solid var(--red); color: var(--red); }
+
+
+/* ── Lockouts ───────────────────────────────────────────────────────────── */
+
+/* A graveyard — collapsed until the operator needs to undo a mistake. Chips,
+   not rows: thirty lockouts fit one screen. */
+.lockoutsBox summary {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 2.75rem;
+  box-sizing: border-box;
+  color: var(--label);
+  cursor: pointer;
+}
+.lockoutsBox summary:hover { color: var(--ink); }
+.loChips { display: flex; flex-wrap: wrap; gap: 0.5rem; padding: 0.4rem 0 0.2rem; }
+.loChips .empty { color: var(--dim); font-size: 0.85rem; font-style: italic; }
+.loChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.15rem 0.3rem 0.15rem 0.6rem;
+  color: var(--label);
+  border: 1px solid var(--panel-edge);
+  border-radius: 4px;
+  font-variant-numeric: tabular-nums;
+}
+.admin .loChip .unlock { min-height: 0; padding: 0.18rem 0.5rem; font-size: 0.75rem; }
+@media (pointer: coarse) {
+  .admin .loChip .iconBtn { min-width: 2.35rem; min-height: 2.35rem; }
+}
+
+
+/* ── Duplicates, archive suggestions, suppressed ────────────────────────── */
+
+.dupPanel {
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  background: color-mix(in srgb, var(--golden-amber) 9%, var(--panel));
+  border: 1px solid var(--caution);
+  border-radius: 8px;
+}
+.dupPanel h3 { margin: 0 0 8px; font-size: 14px; }
+.dupSet { margin: 0 0 8px; font-size: 13px; }
+.dupSet ul { margin: 4px 0 0; padding-left: 18px; list-style: disc; }
+.dupSet li { color: var(--label); }
+.dupKeep { color: var(--green); font-size: 11px; text-transform: uppercase; }
+.dupDrop { color: var(--caution); font-size: 11px; text-transform: uppercase; }
+.dupPanel button { margin-top: 6px; }
+
+.suppressedPanel, .archiveRecommendations {
+  margin-top: 1rem;
+  padding: 0.8rem;
+  border: 1px solid var(--panel-edge);
+  border-radius: 8px;
+}
+.suppressedPanel summary { color: var(--label); cursor: pointer; }
+.suppressedRow, .archiveRec {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.5rem 0;
+  border-top: 1px solid var(--rule);
+}
+.suppressedRow span, .archiveRec span { flex: 1; }
+.suppressedRow small { color: var(--dim); }
+.archiveRecommendations h3 { margin: 0; }
+.archiveRecommendations p { color: var(--label); }
+.admin .empty { color: var(--dim); font-style: italic; }
+
+
+/* ── Channel drawer ─────────────────────────────────────────────────────── */
+
+/* The dossier slides in from the right. It lives inside .admin so it inherits
+   the control system — as a sibling of <main> it matched none of the
+   `.admin button` / `.admin input` rules and rendered as bare UA widgets. */
+.drawerScrim {
+  position: fixed; inset: 0; z-index: 40;
+  background: rgb(0 0 0 / 0.55);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s;
+}
+.drawerScrim.open { opacity: 1; pointer-events: auto; }
+.drawer {
+  position: fixed; top: 0; right: 0; bottom: 0; z-index: 41;
+  width: min(420px, 100vw);
+  padding: 1.1rem 1.2rem 2rem;
+  background: var(--panel);
+  border-left: 1px solid var(--panel-edge);
+  box-shadow: -18px 0 50px rgb(0 0 0 / 0.5);
+  overflow-y: auto;
+  transform: translateX(102%);
+  transition: transform 0.22s cubic-bezier(0.2, 0.8, 0.3, 1);
+}
+.drawer.open { transform: translateX(0); }
+.drawer .dwHead { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.drawer .dwHead h3 { margin: 0; font-weight: 600; font-size: 1.3rem; letter-spacing: 0.02em; }
+.drawer .drawerEyebrow {
+  color: var(--amber);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.drawer .dwFreq {
+  margin: 0.2rem 0 1rem;
+  color: var(--amber);
+  font-size: 2.1rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.drawer .dwUnit {
+  margin-left: 0.4em;
+  color: var(--amber);
+  font-size: 0.45em;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  vertical-align: 0.5em;
+}
+/* Drawer forms share the settings-card row grammar: section legends,
+   label-left/input-right rows with visible hints, one primary Save. */
+.drawer .dwForm { border-top: 1px solid var(--rule); padding-top: 0.2rem; }
+.drawer .dwHelp { margin: 0.4rem 0 0.2rem; color: var(--label); font-size: 0.82rem; line-height: 1.5; }
+.drawer .dwSection {
+  margin-top: 0.9rem;
+  padding-bottom: 0.35rem;
+  color: var(--label);
+  font-weight: 600;
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.drawer .dwRow {
+  display: grid;
+  grid-template-columns: minmax(9rem, 1fr) minmax(7rem, 1fr);
+  align-items: center;
+  gap: 0.8rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--rule);
+}
+.drawer .dwRow > span:first-child { display: grid; gap: 0.15rem; color: var(--ink); }
+.drawer .dwRow small { color: var(--dim); font-size: 0.68rem; line-height: 1.35; }
+.drawer .dwRow input, .drawer .dwRow select { box-sizing: border-box; width: 100%; }
+.drawer .dwRow.switchRow { grid-template-columns: 1fr auto; }
+.drawer .dwRow.switchRow input { width: auto; }
+.drawer .dwFooter {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--rule);
+}
+.drawer .dwFooter .listen { margin-left: auto; }
+.drawer .dwInfo {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.35rem 0.9rem;
+  margin: 1rem 0 0;
+  padding-top: 0.8rem;
+  border-top: 1px solid var(--rule);
+  font-size: 0.84rem;
+}
+.drawer .dwInfo dt {
+  align-self: baseline;
+  color: var(--dim);
+  font-weight: 600;
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.drawer .dwInfo dd { margin: 0; color: var(--label); overflow-wrap: anywhere; }
+.drawer .dwVia { color: var(--dim); font-size: 0.9em; }
+.drawer .dwDigital { color: var(--caution); }
+.drawer .dwActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--rule);
+}
+.drawer .dwClose { flex: none; }
+
+/* Identify-and-locate editor inside the discovery drawer. */
+.admin .drawer .locationEditor {
+  margin: 1rem 0 0;
+  padding: 0.9rem;
+  background: var(--etch);
+  border: 1px solid var(--panel-edge);
+  border-radius: 8px;
+}
+.locationEditor h4 { margin: 0 0 0.7rem; font-size: 0.9rem; }
+.locationEditor label { display: grid; gap: 0.25rem; margin-bottom: 0.5rem; }
+.locationEditor input { box-sizing: border-box; width: 100%; }
+.locationSearch { display: flex; gap: 0.35rem; }
+.locationSearch input { flex: 1; min-width: 0; }
+.locationSuggestions { display: grid; gap: 0.25rem; margin: 0.35rem 0; }
+.admin .locationSuggestions button { text-align: left; letter-spacing: 0; }
+.locationMap {
+  height: 230px;
+  margin: 0.6rem 0;
+  background: var(--bg);
+  border: 1px solid var(--panel-edge);
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+
+/* Channel analytics */
+.analyticsSummary { display: flex; flex-wrap: wrap; gap: 0.6rem; margin: 1rem 0; }
+.analyticsSummary span { padding: 0.5rem 0.7rem; border: 1px solid var(--panel-edge); border-radius: 8px; }
+.analyticsSummary b { color: var(--amber); font-variant-numeric: tabular-nums; }
+.signalChart { position: relative; padding: 0.8rem; border: 1px solid var(--panel-edge); border-radius: 8px; }
+.signalChart svg { width: 100%; height: 150px; overflow: visible; }
+.signalChart polyline { stroke: var(--blue); stroke-width: 2; vector-effect: non-scaling-stroke; }
+.chartLabel { margin-bottom: 0.5rem; color: var(--label); }
+.chartRange {
+  position: absolute; inset: 2.5rem 0.4rem 0.4rem auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  color: var(--dim);
+  font-size: 0.68rem;
+}
+.transmissionList { margin: 1rem 0; padding: 0; list-style: none; }
+.transmissionList li {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 1rem;
+  padding: 0.45rem 0;
+  border-bottom: 1px solid var(--rule);
+  font-variant-numeric: tabular-nums;
+}
+.transmissionList b { color: var(--blue); }
+
+
+/* ── Confirm dialog ─────────────────────────────────────────────────────── */
 
 .confirmDialog {
   width: min(29rem, calc(100vw - 2rem));
   padding: 0;
   color: var(--ink);
   background: var(--panel);
-  border: 1px solid var(--border-strong, #4d515c);
+  border: 1px solid var(--border-strong);
   border-radius: 8px;
-  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.65);
+  box-shadow: 0 24px 80px rgb(0 0 0 / 0.65);
 }
-.confirmDialog::backdrop { background: rgba(8, 10, 13, 0.78); backdrop-filter: blur(2px); }
+.confirmDialog::backdrop { background: rgb(8 10 13 / 0.78); }
 .confirmDialog form { padding: 1.35rem; }
 .confirmDialog .confirmEyebrow {
   color: var(--amber);
@@ -1215,15 +1239,10 @@ body { font-family: var(--font-sans, sans-serif); }
   text-transform: uppercase;
 }
 .confirmDialog h2 {
-  position: static;
   margin: 0.35rem 0 0.55rem;
-  padding: 0;
   color: var(--ink);
-  background: transparent;
-  font-family: var(--font-sans, sans-serif);
   font-size: 1.2rem;
   letter-spacing: -0.015em;
-  text-transform: none;
 }
 .confirmDialog p { margin: 0; color: var(--label); line-height: 1.55; }
 .confirmDialog .confirmActions {
@@ -1232,29 +1251,166 @@ body { font-family: var(--font-sans, sans-serif); }
   gap: 0.55rem;
   margin-top: 1.35rem;
   padding-top: 1rem;
-  border-top: 1px solid var(--etch);
+  border-top: 1px solid var(--rule);
 }
-.confirmDialog button {
-  min-height: 2.35rem;
-  padding: 0.45rem 0.75rem;
-  color: var(--ink);
-  background: var(--etch);
-  border: 1px solid var(--panel-edge);
-  border-radius: 4px;
-  font-family: var(--font-sans, sans-serif);
-  font-size: 0.78rem;
-  font-weight: 600;
-  cursor: pointer;
-}
-.confirmDialog button.danger { color: var(--red); border-color: color-mix(in srgb, var(--flamingo) 45%, transparent); }
-.confirmDialog button.primary { color: #17191f; background: var(--amber); border-color: var(--amber); }
-.confirmDialog button:focus-visible { outline: 2px solid var(--golden-amber); outline-offset: 2px; }
 
-/* Channel duplicates audit panel (spec 2026-06-09). */
-.dupPanel { border: 1px solid var(--golden-amber); border-radius: 8px; padding: 12px 14px; margin: 0 0 14px; background: color-mix(in srgb, var(--golden-amber) 9%, var(--bg-subtle)); }
-.dupPanel h3 { margin: 0 0 8px; font-size: 14px; }
-.dupSet { margin: 0 0 8px; font-size: 13px; }
-.dupSet ul { margin: 4px 0 0; padding-left: 18px; }
-.dupKeep { color: var(--green); font-size: 11px; text-transform: uppercase; }
-.dupDrop { color: var(--caution); font-size: 11px; text-transform: uppercase; }
-.dupPanel button.danger { margin-top: 6px; }
+
+/* ── Responsive ─────────────────────────────────────────────────────────── */
+
+@media (max-width: 1100px) {
+  .statRow { grid-template-columns: repeat(2, 1fr); }
+  .clockTile { grid-column: span 2; }
+  .admin .bankAdd { grid-template-columns: repeat(2, 1fr); }
+  .admin .bankAdd #bkAdd { justify-self: start; }
+}
+
+@media (max-width: 900px) {
+  .workspace { flex-direction: column; gap: 1.2rem; }
+  .adminNav {
+    flex-direction: row;
+    flex-wrap: nowrap;
+    position: static;
+    min-width: 0;
+    width: 100%;
+    overflow-x: auto;
+    padding-bottom: 0.35rem;
+  }
+  .adminNav a { flex: 1 0 auto; min-height: 2.7rem; }
+  .adminNav .navCopy small { display: none; }
+}
+
+/* Phone: designed for the phone, not shrunk from the desktop. Bottom tab bar
+   in the thumb zone, compact headers, reflowed hero, single-column forms.
+   Last block in the file on purpose — it outranks the rules above. */
+@media (max-width: 699.98px) {
+  .admin { padding: 0 0.6rem calc(5.5rem + env(safe-area-inset-bottom)); }
+  .adminHead { min-height: 2.75rem; margin-bottom: 0.9rem; padding-block: 0.5rem; }
+  .adminHead .brandSub { display: none; }
+  .adminHead .headActions a { padding-inline: 0.4rem; }
+
+  /* Bottom tab bar: five equal tabs, icon over label, safe-area aware.
+     Below the drawer scrim (z40), so an open drawer covers it. */
+  .adminNav {
+    position: fixed; inset: auto 0 0 0; z-index: 35;
+    flex-direction: row;
+    gap: 0;
+    margin: 0;
+    padding: 0.25rem 0.25rem calc(0.25rem + env(safe-area-inset-bottom));
+    background: var(--panel);
+    border-top: 1px solid var(--panel-edge);
+    overflow: visible;
+  }
+  .adminNav a {
+    flex: 1 1 0;
+    min-width: 0; min-height: 3.1rem;
+    position: relative;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.15rem;
+    padding: 0.3rem 0.1rem;
+    border: none;
+    border-radius: 4px;
+    text-align: center;
+  }
+  .adminNav a.active { background: transparent; }
+  .adminNav a.active .navIco { color: var(--amber); }
+  .adminNav .navCopy { display: block; min-width: 0; max-width: 100%; }
+  .adminNav .navCopy b {
+    display: block;
+    font-size: 0.62rem;
+    letter-spacing: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .adminNav .navBadge:not(:empty) {
+    position: absolute; top: 0.1rem; right: 50%;
+    margin: 0;
+    transform: translateX(1.3rem);
+  }
+
+  /* Compact page headers — the tab bar already names the page. */
+  .pageIntro { flex-direction: column; align-items: stretch; margin-bottom: 0.8rem; }
+  .pageIntro > button { align-self: start; }
+  .pageIntro p, .pageIntro .eyebrow { display: none; }
+  .pageIntro h1 { margin: 0; font-size: 1.35rem; }
+
+  .admin section { padding: 1rem 0.8rem; }
+  .admin .nowCard { padding: 1.1rem; }
+
+  /* Hero: full-width rows, flexing volume, two-up transmission buttons. */
+  .admin .nowCard .npControls { grid-template-columns: 1fr; }
+  .admin .audioControls { display: flex; flex-wrap: wrap; gap: 0.6rem; }
+  .admin .audioControls #streamBtn { flex: 1 1 100%; }
+  .admin .audioControls label:not(.checkLabel) {
+    flex: 1 1 100%;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+  .admin .audioControls input[type="range"] { flex: 1; width: auto; }
+  .admin .transmissionControls { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+  .admin .transmissionControls button { width: 100%; }
+  .admin .transmissionControls #resumeBtn { grid-column: 1 / -1; }
+  .admin .systemActions .hint { width: 100%; text-align: left; }
+
+  /* Tables keep their column budget on a 360px screen. Triage's four row
+     actions move into the drawer, which already carries all five — the row
+     tap is the way in on a phone. */
+  .admin .channels .chTable th:nth-child(1) { width: 6.2rem; }
+  .admin .channels .chTable th:nth-child(3) { width: 4rem; }
+  .admin .discoveries .chTable th:nth-child(1) { width: 2.2rem; }
+  .admin .discoveries .chTable th:nth-child(2) { width: 6.4rem; }
+  .admin .discoveries .chTable th:nth-child(4),
+  .admin .discoveries .chTable td.dMode,
+  .admin .discoveries .chTable th:nth-child(5),
+  .admin .discoveries .chTable td.actions { display: none; }
+  .admin .discoveries .chTable td:nth-child(2) { white-space: normal; }
+  .admin .chTable td.rowOpen { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  tr.bankRow .bkSummary { display: none; }
+
+  .settingsCards { grid-template-columns: 1fr; }
+  .settingsCard summary::after {
+    content: "›";
+    margin-left: auto;
+    align-self: center;
+    color: var(--mark);
+    transform: rotate(90deg);
+  }
+  .settingsCard[open] summary::after { transform: rotate(-90deg); }
+  .settingGroups label { grid-template-columns: 1fr; gap: 0.4rem; }
+  .settingGroups .switchRow { grid-template-columns: 1fr auto; }
+
+  .admin .bankAdd { grid-template-columns: 1fr; }
+  .bankBuilder summary span { display: block; margin: 0.25rem 0 0; }
+  .healthAlert, .suppressedRow, .archiveRec { flex-direction: column; align-items: stretch; }
+  /* Alert rows stack rather than squeezing a timestamp beside three lines
+     of wrapped alert text. */
+  .alertList li { flex-wrap: wrap; gap: 0.15rem 0.75rem; }
+  .alertList .alertWhen { flex: 1 0 100%; font-size: 0.78rem; }
+  .alertList .alertWhat { flex: 1; min-width: 0; }
+  .healthAlert a { margin-left: 0; }
+  .drawer { width: 100vw; }
+  .locationMap { height: 190px; }
+}
+
+/* Desktop keeps every settings card open, so its summary is a header rather
+   than a control. Keyboard users can still toggle it — pointer-events only
+   stops the click. */
+@media (min-width: 700px) {
+  .settingsCard summary { pointer-events: none; }
+}
+
+
+/* ── Reduced motion ─────────────────────────────────────────────────────── */
+
+/* Quiet the movement, keep the feedback. The previous rule was scoped to
+   `.admin *` and killed every transition inside it — including hover colour,
+   which is information, not motion — while the drawer and its scrim sat
+   outside `.admin` and went on sliding. */
+@media (prefers-reduced-motion: reduce) {
+  .drawer, .drawerScrim { transition-duration: 1ms; }
+  .admin .dToggle .chev { transition: none; }
+  .admin button:active:not(:disabled) { transform: none; }
+}

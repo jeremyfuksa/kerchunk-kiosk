@@ -6,7 +6,9 @@
     <title>Kerchunk Kiosk</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=Hanken+Grotesk:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <!-- The font stylesheet itself is requested per route from main.ts, and
+         off the render-blocking path — see loadFonts() there. -->
+
   </head>
   <body>
     <div id="app"></div>
