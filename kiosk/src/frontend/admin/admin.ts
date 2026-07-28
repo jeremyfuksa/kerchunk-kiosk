@@ -145,6 +145,7 @@ function iconBtn(cls: string, icon: string, label: string, attrs = ""): string {
 export function renderAdmin(root: HTMLElement): void {
   root.innerHTML = `
     <main class="admin">
+      <button type="button" class="skipLink">Skip to content</button>
       <header class="adminHead">
         <a class="brand" href="#/" aria-label="Kerchunk admin overview">KERCHUNK <span class="brandSub">admin</span></a>
         <div class="headActions">
@@ -160,8 +161,8 @@ export function renderAdmin(root: HTMLElement): void {
         <a href="#/scan" data-route="scan"><span class="navIco" data-ico="scan"></span><span class="navCopy"><b>Settings</b><small>Scanning, alerts, weather</small></span></a>
         <a href="#/system" data-route="system"><span class="navIco" data-ico="system"></span><span class="navCopy"><b>System</b><small>Appliance health and controls</small></span></a>
       </nav>
-      <div class="pages">
-      <div id="healthBanner" class="healthBanner healthClear" data-page="home" role="alert"></div>
+      <div class="pages" id="adminPages" tabindex="-1">
+      <div id="healthBanner" class="healthBanner healthClear" data-page="home" role="status" aria-live="polite"></div>
       <div class="pageIntro" data-page="home">
         <div><span class="eyebrow">Overview</span><h1>Radio status</h1><p>Monitor what is playing, check system health, and review recent activity.</p></div>
       </div>
@@ -213,6 +214,13 @@ export function renderAdmin(root: HTMLElement): void {
         <div class="pageIntro sectionIntro">
           <div><span class="eyebrow">Channels</span><h1>Channel library <span class="count" id="chCount"></span></h1><p>Add frequencies, choose what is audible, and organize related channels into banks.</p></div>
           <button id="addBtn" class="primary">+ Add channel</button>
+        </div>
+        <div class="chFilterBar">
+          <label class="chFilter">
+            <span class="visuallyHidden">Filter channels</span>
+            <input id="chFilter" type="search" placeholder="Filter by name, frequency or tag…  (press /)" autocomplete="off" />
+          </label>
+          <span id="chFilterCount" class="hint"></span>
         </div>
         <details class="bankBuilder">
           <summary>Create a channel bank <span>Group channels by band, frequency range, or tag</span></summary>
@@ -311,13 +319,23 @@ export function renderAdmin(root: HTMLElement): void {
       </section>
       <section class="systemCard" data-page="system">
         <h2>Kiosk &amp; radio actions</h2>
-        <div class="systemActions">
-          <button id="kioskReload" title="Refresh the display page and reload its map and frontend assets">Refresh kiosk screen</button>
-          <button id="testAlert" title="Show a sample weather-alert banner on the kiosk (for design + verifying alerts work)">Test weather alert</button>
-          <button id="testAlertClear" title="Clear the test weather-alert banner from the kiosk">Clear alert</button>
-          <button id="backendRestart" class="danger" title="Restart the radio backend and scanner helpers">Restart radio backend</button>
-          <button id="systemReboot" class="danger" title="Reboot the whole appliance">Reboot appliance</button>
-          <button id="systemShutdown" class="danger" title="Power the appliance off — it stays off until someone presses its power button">Shut down appliance</button>
+        <div class="actionGroup">
+          <h3 class="actionGroupLabel">Kiosk screen</h3>
+          <div class="systemActions">
+            <button id="kioskReload" title="Refresh the display page and reload its map and frontend assets">Refresh kiosk screen</button>
+            <button id="testAlert" title="Show a sample weather-alert banner on the kiosk (for design + verifying alerts work)">Test weather alert</button>
+            <button id="testAlertClear" title="Clear the test weather-alert banner from the kiosk">Clear alert</button>
+            <span id="kioskActionStatus" class="hint" role="status"></span>
+          </div>
+        </div>
+        <div class="actionGroup power">
+          <h3 class="actionGroupLabel">Power</h3>
+          <p class="hint actionGroupNote">These take the radio off air.</p>
+          <div class="systemActions">
+            <button id="backendRestart" class="danger" title="Restart the radio backend and scanner helpers">Restart radio backend</button>
+            <button id="systemReboot" class="danger" title="Reboot the whole appliance">Reboot appliance</button>
+            <button id="systemShutdown" class="danger" title="Power the appliance off — it stays off until someone presses its power button">Shut down appliance</button>
+          </div>
           <span id="systemActionStatus" class="hint" role="status"></span>
         </div>
       </section>
@@ -330,8 +348,9 @@ export function renderAdmin(root: HTMLElement): void {
       </section>
       </div>
       </div>
+    <div id="toastHost" class="toastHost" role="status" aria-live="polite"></div>
     <div id="drawerScrim" class="drawerScrim"></div>
-    <aside id="chDrawer" class="drawer" aria-label="Channel details" aria-hidden="true" inert></aside>
+    <aside id="chDrawer" class="drawer" role="dialog" aria-modal="true" aria-label="Channel details" aria-hidden="true" inert></aside>
     <dialog id="confirmDialog" class="confirmDialog" aria-labelledby="confirmTitle" aria-describedby="confirmMessage">
       <form method="dialog">
         <span class="confirmEyebrow">Confirm action</span>
@@ -344,6 +363,74 @@ export function renderAdmin(root: HTMLElement): void {
       </form>
     </dialog>
     </main>`;
+
+  // ── Acknowledgement layer ───────────────────────────────────────────────
+  // Destructive actions used to mutate, re-render, and say nothing. "Did that
+  // work, and can I take it back?" had no answer anywhere in the app — and
+  // lockout describes itself as permanent-until-unlocked, with the unlock list
+  // on a different page inside a collapsed disclosure.
+  // A fragment href would set location.hash, and this app is hash-routed —
+  // the first control a keyboard user reaches would have navigated them to
+  // Overview. Move focus directly instead.
+  const skipLink = root.querySelector<HTMLButtonElement>(".skipLink")!;
+  const adminPages = root.querySelector<HTMLElement>("#adminPages")!;
+  skipLink.addEventListener("click", () => adminPages.focus());
+
+  const toastHost = root.querySelector<HTMLElement>("#toastHost")!;
+  /** How long an undo stays offered. */
+  const TOAST_MS = 8000;
+  let toastTimer: ReturnType<typeof setTimeout> | undefined;
+
+  function showToast(text: string, opts: { undo?: () => Promise<void>; ms?: number } = {}): void {
+    if (toastTimer !== undefined) clearTimeout(toastTimer);
+    toastHost.innerHTML = `<div class="toast"><span class="toastText">${esc(text)}</span>${
+      opts.undo ? `<button type="button" class="toastUndo">Undo</button>` : ""
+    }<button type="button" class="toastClose iconBtn" aria-label="Dismiss">${ICONS.dismiss}</button></div>`;
+    toastHost.classList.add("on");
+    const close = (): void => {
+      toastHost.classList.remove("on");
+      toastHost.innerHTML = "";
+      if (toastTimer !== undefined) { clearTimeout(toastTimer); toastTimer = undefined; }
+    };
+    toastHost.querySelector<HTMLButtonElement>(".toastClose")!.addEventListener("click", close);
+    const undo = opts.undo;
+    if (undo) {
+      const undoBtn = toastHost.querySelector<HTMLButtonElement>(".toastUndo")!;
+      undoBtn.addEventListener("click", async () => {
+        // Keep the toast mounted until the write settles. Tearing it down
+        // first meant a rejected undo (the 409 guard makes that reachable)
+        // destroyed the only affordance for retrying it.
+        if (toastTimer !== undefined) { clearTimeout(toastTimer); toastTimer = undefined; }
+        undoBtn.disabled = true;
+        undoBtn.textContent = "Undoing…";
+        try {
+          await undo();
+          close();
+          showToast("Undone.");
+        } catch (e) {
+          undoBtn.disabled = false;
+          undoBtn.textContent = "Undo";
+          const line = toastHost.querySelector<HTMLElement>(".toastText");
+          if (line) line.textContent = (e as Error).message;
+          toastTimer = setTimeout(close, opts.ms ?? TOAST_MS);
+        }
+      });
+    }
+    toastTimer = setTimeout(close, opts.ms ?? TOAST_MS);
+  }
+
+  /** Read-modify-write against the live config, surfacing a rejected write
+   *  (409 from the optimistic-concurrency guard) instead of failing silently. */
+  async function editConfig(mutate: (cfg: Config) => void): Promise<void> {
+    try {
+      const cfg = await api.getConfig();
+      mutate(cfg);
+      await api.putConfig(cfg);
+    } catch (e) {
+      showToast((e as Error).message);
+      throw e;
+    }
+  }
 
   /** Field-level status line. Success used to be written as the literal string
    *  "saved" into the same `.err` span styled `color: var(--red)` — so every
@@ -482,7 +569,13 @@ export function renderAdmin(root: HTMLElement): void {
   // Any click/tap outside an open bank menu closes it.
   document.addEventListener("click", (ev) => {
     root.querySelectorAll<HTMLDetailsElement>(".bankMenu[open]").forEach((menu) => {
-      if (!menu.contains(ev.target as Node)) menu.open = false;
+      if (menu.contains(ev.target as Node)) return;
+      // Read BEFORE closing: collapsing a <details> makes its contents
+      // non-rendered and drops focus to <body>, so testing afterwards is
+      // always false.
+      const hadFocus = menu.contains(document.activeElement);
+      menu.open = false;
+      if (hadFocus) menu.querySelector<HTMLElement>("summary")?.focus();
     });
   });
 
@@ -515,11 +608,36 @@ export function renderAdmin(root: HTMLElement): void {
       danger: true,
     });
     if (!confirmed) return;
-    const cfg = await api.getConfig();
-    await api.putConfig(lockoutFreqIn(cfg, freq));
+    // `unlockFreqIn` is the operator-facing "unlock", not the inverse of this
+    // action: lockoutFreqIn also DROPS every pending discovery at the
+    // frequency (with its hit count and any location the lookup chain paid
+    // for), and unlock force-enables channels that may have been archived
+    // beforehand. Snapshot both so Undo restores what was actually there.
+    let droppedDiscoveries: Discovery[] = [];
+    const priorEnabled = new Map<string, boolean>();
+    await editConfig((cfg) => {
+      droppedDiscoveries = (cfg.discoveries ?? []).filter((d) => d.freq === freq);
+      for (const c of cfg.channels) if (c.freq === freq) priorEnabled.set(c.id, c.enabled);
+      Object.assign(cfg, lockoutFreqIn(cfg, freq));
+    });
     await refresh();
-    renderDiscoveries();
-    renderLockouts();
+    void renderDiscoveries();
+    void renderLockouts();
+    showToast(`Locked out ${label}.`, {
+      undo: async () => {
+        await editConfig((cfg) => {
+          cfg.scan = { ...cfg.scan, lockoutHz: (cfg.scan.lockoutHz ?? []).filter((f) => f !== freq) };
+          cfg.channels = cfg.channels.map((c) =>
+            priorEnabled.has(c.id) ? { ...c, enabled: priorEnabled.get(c.id)! } : c);
+          if (droppedDiscoveries.length) {
+            cfg.discoveries = [...(cfg.discoveries ?? []), ...droppedDiscoveries];
+          }
+        });
+        await refresh();
+        void renderDiscoveries();
+        void renderLockouts();
+      },
+    });
   }
 
   // ── Banks: toggleable predicates over band/tags (ROADMAP Idea 1) ──
@@ -557,7 +675,10 @@ export function renderAdmin(root: HTMLElement): void {
 
   // ── Insights (ROADMAP Idea 9): aggregates over the history store ──
   const inBody = root.querySelector<HTMLElement>("#inBody")!;
-  let inHours = 24;
+  // Persisted: this used to be a plain local, so a 7d/30d selection silently
+  // reverted to 24h on the next route change.
+  const IN_HOURS_KEY = "kerchunk.admin.insightHours";
+  let inHours = Number(localStorage.getItem(IN_HOURS_KEY)) || 24;
 
   function fmtAir(ms: number): string {
     const m = Math.round(ms / 60000);
@@ -620,7 +741,11 @@ export function renderAdmin(root: HTMLElement): void {
     });
   }
   root.querySelectorAll<HTMLButtonElement>(".inPeriod").forEach((b) =>
-    b.addEventListener("click", () => { inHours = Number(b.dataset.h); void renderInsights(); }));
+    b.addEventListener("click", () => {
+      inHours = Number(b.dataset.h);
+      localStorage.setItem(IN_HOURS_KEY, String(inHours));
+      void renderInsights();
+    }));
   poll({ run: renderInsights, everyMs: POLL_MS.insights, pages: ["home"] });
 
   // ── Home stat tiles (Idea 15): the glance numbers. One /api/stats(24h)
@@ -702,6 +827,7 @@ export function renderAdmin(root: HTMLElement): void {
   // ── System health (Idea 16): gauges + sparklines off /api/system.
   const sysBody = root.querySelector<HTMLElement>("#sysBody")!;
   const healthBanner = root.querySelector<HTMLElement>("#healthBanner")!;
+  let lastHealthSig = "";
   function spark(values: Array<number | null>, max: number, warn: number): string {
     const W = 120; const H = 28;
     const pts = values.map((v, i) => {
@@ -725,10 +851,19 @@ export function renderAdmin(root: HTMLElement): void {
     if (!now) { sysBody.textContent = "No readings yet — data appears within a minute."; return; }
     healthBanner.classList.toggle("healthClear", alerts.length === 0);
     healthBanner.classList.toggle("severe", alerts.some((a) => a.severity === "severe"));
-    healthBanner.innerHTML = alerts.length ? `${safetyMode ? `<div class="safetyMode"><strong>Protection active:</strong> Close Call and sweep ranges are paused until temperature recovers.</div>` : ""}${alerts.map((a) => `<div class="healthAlert">
-      <div><strong>${esc(a.title)}</strong><span>${esc(a.message)}</span><small>${esc(a.help)}</small></div>
-      ${a.id.startsWith("cpu-") || a.id.startsWith("memory-") ? `<a href="#/scan">Reduce processing load</a>` : ""}
-    </div>`).join("")}` : "";
+    // Only rewrite when the alert set actually changed: this is a polite live
+    // region, so an unconditional innerHTML write re-announced the same text
+    // every poll for as long as the condition persisted.
+    // Guard only the BANNER write — the gauges below must keep updating every
+    // poll, so this must not short-circuit the rest of the function.
+    const healthSig = `${safetyMode}|${alerts.map((a) => `${a.id}:${a.severity}`).join(",")}`;
+    if (healthSig !== lastHealthSig) {
+      lastHealthSig = healthSig;
+      healthBanner.innerHTML = alerts.length ? `${safetyMode ? `<div class="safetyMode"><strong>Protection active:</strong> Close Call and sweep ranges are paused until temperature recovers.</div>` : ""}${alerts.map((a) => `<div class="healthAlert">
+        <div><strong>${esc(a.title)}</strong><span>${esc(a.message)}</span><small>${esc(a.help)}</small></div>
+        ${a.id.startsWith("cpu-") || a.id.startsWith("memory-") ? `<a href="#/scan">Reduce processing load</a>` : ""}
+      </div>`).join("")}` : "";
+    }
     const num = (k: string) => ring.map((r) => (typeof r[k] === "number" ? r[k] as number : null));
     const cell = (label: string, value: string, sparkHtml: string, hot = false) =>
       `<div class="sysCell${hot ? " hot" : ""}"><div class="sysLabel">${label}</div>
@@ -856,12 +991,35 @@ export function renderAdmin(root: HTMLElement): void {
     </tr>`;
   }
 
+  /** Free-text filter over the library. Matches name, frequency (as typed —
+   *  "146.52" and "146520000" both work) and tags, so finding one channel in
+   *  ninety-seven stops being a scroll. */
+  function matchesFilter(c: Channel): boolean {
+    const q = chFilterQuery.trim().toLowerCase();
+    if (!q) return true;
+    return c.alphaTag.toLowerCase().includes(q)
+      || fmtFreq(c.freq).includes(q)
+      || String(c.freq).includes(q)
+      || (c.tags ?? []).some((t) => t.toLowerCase().includes(q));
+  }
+
   function renderRows(): void {
-    const groups = groupChannelsByBank(channels, banksCache);
+    const visible = channels.filter(matchesFilter);
+    const filtering = chFilterQuery.trim() !== "";
+    chFilterCount.textContent = filtering
+      ? `${visible.length} of ${channels.length}`
+      : "";
+    if (filtering && visible.length === 0) {
+      chRows.innerHTML = `<tr><td colspan="3" class="empty">No channel matches “${esc(chFilterQuery)}”.</td></tr>`;
+      return;
+    }
+    const groups = groupChannelsByBank(visible, banksCache);
     chRows.innerHTML =
       groups.map((g) => {
         const key = g.bank?.id ?? "unbanked";
-        const body = collapsedBanks.has(key)
+        // While filtering, collapsed banks open themselves — a hidden match is
+        // indistinguishable from no match.
+        const body = collapsedBanks.has(key) && !filtering
           ? ""
           : g.channels.map(displayRow).join("");
         return bankHeaderRow(g) + body;
@@ -904,16 +1062,37 @@ export function renderAdmin(root: HTMLElement): void {
         renderRows();
       });
       if (id === "unbanked") return;
-      const bulk = async (patch: Partial<Pick<Channel, "enabled" | "audible">>) => {
-        const cfg = await api.getConfig();
-        const bank = (cfg.banks ?? []).find((x) => x.id === id);
-        if (!bank) return;
-        cfg.channels = cfg.channels.map((c) => matchesBank(c, bank) ? { ...c, ...patch } : c);
-        await api.putConfig(cfg);
+      const bulk = async (patch: Partial<Pick<Channel, "enabled" | "audible">>, label: string) => {
+        // Snapshot the exact prior state of every channel this touches, so the
+        // undo restores what was there rather than guessing a default.
+        const before = new Map<string, Pick<Channel, "enabled" | "audible">>();
+        let touched = 0;
+        await editConfig((cfg) => {
+          const bank = (cfg.banks ?? []).find((x) => x.id === id);
+          if (!bank) return;
+          cfg.channels = cfg.channels.map((c) => {
+            if (!matchesBank(c, bank)) return c;
+            before.set(c.id, { enabled: c.enabled, audible: c.audible });
+            touched++;
+            return { ...c, ...patch };
+          });
+        });
         await refresh();
+        if (touched === 0) return;
+        showToast(`${label} — ${touched} channel${touched === 1 ? "" : "s"}.`, {
+          undo: async () => {
+            await editConfig((cfg) => {
+              cfg.channels = cfg.channels.map((c) => {
+                const prev = before.get(c.id);
+                return prev ? { ...c, ...prev } : c;
+              });
+            });
+            await refresh();
+          },
+        });
       };
-      tr.querySelector<HTMLButtonElement>(".bkBulkAudible")?.addEventListener("click", () => { closeMenu(); void bulk({ enabled: true, audible: true }); });
-      tr.querySelector<HTMLButtonElement>(".bkBulkSilent")?.addEventListener("click", () => { closeMenu(); void bulk({ enabled: true, audible: false }); });
+      tr.querySelector<HTMLButtonElement>(".bkBulkAudible")?.addEventListener("click", () => { closeMenu(); void bulk({ enabled: true, audible: true }, "Made audible"); });
+      tr.querySelector<HTMLButtonElement>(".bkBulkSilent")?.addEventListener("click", () => { closeMenu(); void bulk({ enabled: true, audible: false }, "Silenced"); });
       tr.querySelector<HTMLButtonElement>(".bkBulkArchive")?.addEventListener("click", async () => {
         closeMenu();
         const b = banksCache.find((x) => x.id === id);
@@ -922,7 +1101,7 @@ export function renderAdmin(root: HTMLElement): void {
           message: "Archived channels stop consuming scanner capacity but keep their identity and location.",
           confirmLabel: "Archive channels",
         })) return;
-        await bulk({ enabled: false });
+        await bulk({ enabled: false }, "Archived");
       });
       tr.querySelector<HTMLButtonElement>(".bkGear")?.addEventListener("click", () => {
         closeMenu();
@@ -952,6 +1131,21 @@ export function renderAdmin(root: HTMLElement): void {
   }
 
   const chCount = root.querySelector<HTMLElement>("#chCount")!;
+  const chFilterEl = root.querySelector<HTMLInputElement>("#chFilter")!;
+  const chFilterCount = root.querySelector<HTMLElement>("#chFilterCount")!;
+  let chFilterQuery = "";
+  chFilterEl.addEventListener("input", () => { chFilterQuery = chFilterEl.value; renderRows(); });
+  // "/" focuses the filter from anywhere on the Channels page, the way every
+  // list-heavy tool the operator already uses behaves.
+  document.addEventListener("keydown", (ev) => {
+    if (ev.key !== "/" || ev.metaKey || ev.ctrlKey || ev.altKey) return;
+    const t = ev.target as HTMLElement | null;
+    if (t && (t.tagName === "INPUT" || t.tagName === "SELECT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+    if (currentRoute() !== "channels") return;
+    ev.preventDefault();
+    chFilterEl.focus();
+    chFilterEl.select();
+  });
   // ── Channel drawer: full dossier + the editor (edit left the table rows).
   const drawer = root.querySelector<HTMLElement>("#chDrawer")!;
   const scrim = root.querySelector<HTMLElement>("#drawerScrim")!;
@@ -966,9 +1160,14 @@ export function renderAdmin(root: HTMLElement): void {
   // control in the tab order after a close — focus landed on invisible Save /
   // Lock out buttons. `inert` on the drawer when shut, and on the page behind
   // it when open, keeps the tab ring where the eye is.
+  // aria-modal="true" tells assistive tech to ignore everything outside the
+  // drawer, so everything outside it must actually be inert — including the
+  // toast and skip link this pass added.
   const inertWhileOpen = [
+    root.querySelector<HTMLElement>(".skipLink")!,
     root.querySelector<HTMLElement>(".adminHead")!,
     root.querySelector<HTMLElement>(".workspace")!,
+    root.querySelector<HTMLElement>("#toastHost")!,
   ];
   let drawerReturnFocus: HTMLElement | null = null;
 
@@ -1278,7 +1477,7 @@ export function renderAdmin(root: HTMLElement): void {
       closeDrawer();
     });
     drawer.querySelector<HTMLButtonElement>("#dwDismiss")!.addEventListener("click", async () => {
-      await mutateDiscovery(d.id, () => {});
+      await mutateDiscovery(d.id, () => {}, { text: (x) => `Dismissed ${x.alphaTag}.` });
       closeDrawer();
     });
     void mountDiscoveryLocationEditor(d);
@@ -1392,8 +1591,13 @@ export function renderAdmin(root: HTMLElement): void {
     host.innerHTML = `<h3>Archive suggestions</h3><p>Not heard in 30 days. Priority and manually located channels are excluded.</p>
       ${recs.slice(0, 12).map((c) => `<div class="archiveRec"><span><b>${esc(c.alphaTag)}</b> ${fmtFreq(c.freq)}${c.audible ? " · audible" : ""}</span><button data-id="${esc(c.id)}">Archive</button></div>`).join("")}`;
     host.querySelectorAll<HTMLButtonElement>("button").forEach((b) => b.addEventListener("click", async () => {
-      await api.updateChannel(b.dataset.id!, { enabled: false });
+      const id = b.dataset.id!;
+      const name = recs.find((c) => c.id === id)?.alphaTag ?? "channel";
+      await api.updateChannel(id, { enabled: false });
       await refresh();
+      showToast(`Archived ${name}.`, {
+        undo: async () => { await api.updateChannel(id, { enabled: true }); await refresh(); },
+      });
     }));
   }
 
@@ -1410,16 +1614,45 @@ export function renderAdmin(root: HTMLElement): void {
   type Discovery = NonNullable<Awaited<ReturnType<typeof api.getConfig>>["discoveries"]>[number];
   let discoveries: Discovery[] = [];
 
-  async function mutateDiscovery(id: string, fn: (cfg2: Awaited<ReturnType<typeof api.getConfig>>, d: Discovery) => void): Promise<void> {
-    const cfg2 = await api.getConfig();
-    const d = (cfg2.discoveries ?? []).find((x) => x.id === id);
-    if (!d) return;
-    cfg2.discoveries = (cfg2.discoveries ?? []).filter((x) => x.id !== id);
-    fn(cfg2, d);
-    await api.putConfig(cfg2);
+  async function mutateDiscovery(
+    id: string,
+    fn: (cfg2: Awaited<ReturnType<typeof api.getConfig>>, d: Discovery) => void,
+    toast?: { text: (d: Discovery) => string; undoable?: boolean },
+  ): Promise<void> {
+    let removed: Discovery | undefined;
+    // `fn` may ALSO add a channel (promoteDiscovery does). An undo that only
+    // put the discovery back left the promoted channel in place — and because
+    // promoteDiscovery derives a deterministic id from the discovery id, a
+    // second Add then wrote two channels sharing one id. Snapshot the channel
+    // ids that existed before `fn` ran so the undo can reverse both halves.
+    let idsBefore: Set<string> | undefined;
+    await editConfig((cfg2) => {
+      const d = (cfg2.discoveries ?? []).find((x) => x.id === id);
+      if (!d) return;
+      removed = d;
+      idsBefore = new Set(cfg2.channels.map((c) => c.id));
+      cfg2.discoveries = (cfg2.discoveries ?? []).filter((x) => x.id !== id);
+      fn(cfg2, d);
+    });
+    if (!removed) return;
     await refresh();
-    renderDiscoveries();
-    renderLockouts();
+    void renderDiscoveries();
+    void renderLockouts();
+    if (toast) {
+      const gone = removed;
+      const priorIds = idsBefore;
+      showToast(toast.text(gone), toast.undoable === false ? {} : {
+        undo: async () => {
+          await editConfig((cfg2) => {
+            cfg2.discoveries = [...(cfg2.discoveries ?? []), gone];
+            // Drop anything `fn` added, so promote's undo is a real inverse.
+            if (priorIds) cfg2.channels = cfg2.channels.filter((c) => priorIds.has(c.id));
+          });
+          await refresh();
+          void renderDiscoveries();
+        },
+      });
+    }
   }
 
   function promoteDiscovery(cfg2: Awaited<ReturnType<typeof api.getConfig>>, d: Discovery): void {
@@ -1508,12 +1741,13 @@ export function renderAdmin(root: HTMLElement): void {
         if (d) api.monitor(d.freq, d.alphaTag);
       });
       if (b.classList.contains("dAdd")) b.addEventListener("click", () =>
-        mutateDiscovery(id, promoteDiscovery));
+        mutateDiscovery(id, promoteDiscovery, { text: (d) => `Added ${d.alphaTag} to channels (silent).` }));
       if (b.classList.contains("dLock")) b.addEventListener("click", () =>
         mutateDiscovery(id, (cfg2, d) => {
           cfg2.scan.lockoutHz = [...new Set([...(cfg2.scan.lockoutHz ?? []), d.freq])];
         }));
-      if (b.classList.contains("dDismiss")) b.addEventListener("click", () => mutateDiscovery(id, () => {}));
+      if (b.classList.contains("dDismiss")) b.addEventListener("click", () => mutateDiscovery(id, () => {},
+        { text: (d) => `Dismissed ${d.alphaTag}.` }));
     });
   }
   // Select-all means the rows on screen. Reading the raw config here also
@@ -1537,16 +1771,31 @@ export function renderAdmin(root: HTMLElement): void {
       confirmLabel: lockout ? "Lock out permanently" : "Dismiss",
       danger: lockout,
     })) return;
-    const cfg = await api.getConfig();
-    const doomed = (cfg.discoveries ?? []).filter((d) => dcSelected.has(d.id));
-    cfg.discoveries = (cfg.discoveries ?? []).filter((d) => !dcSelected.has(d.id));
-    if (lockout) {
-      cfg.scan.lockoutHz = [...new Set([...(cfg.scan.lockoutHz ?? []), ...doomed.map((d) => d.freq)])];
-    }
+    let doomed: Discovery[] = [];
+    await editConfig((cfg) => {
+      doomed = (cfg.discoveries ?? []).filter((d) => dcSelected.has(d.id));
+      cfg.discoveries = (cfg.discoveries ?? []).filter((d) => !dcSelected.has(d.id));
+      if (lockout) {
+        cfg.scan.lockoutHz = [...new Set([...(cfg.scan.lockoutHz ?? []), ...doomed.map((d) => d.freq)])];
+      }
+    });
     dcSelected.clear();
-    await api.putConfig(cfg);
-    renderDiscoveries();
-    renderLockouts();
+    void renderDiscoveries();
+    void renderLockouts();
+    const gone = doomed;
+    showToast(`${lockout ? "Locked out" : "Dismissed"} ${gone.length} ${gone.length === 1 ? "discovery" : "discoveries"}.`, {
+      undo: async () => {
+        await editConfig((cfg) => {
+          cfg.discoveries = [...(cfg.discoveries ?? []), ...gone];
+          if (lockout) {
+            const freqs = new Set(gone.map((d) => d.freq));
+            cfg.scan.lockoutHz = (cfg.scan.lockoutHz ?? []).filter((f) => !freqs.has(f));
+          }
+        });
+        void renderDiscoveries();
+        void renderLockouts();
+      },
+    });
   }
   dcDismissSel.addEventListener("click", () => bulkDiscoveries(false));
   dcLockSel.addEventListener("click", () => bulkDiscoveries(true));
@@ -1693,15 +1942,16 @@ export function renderAdmin(root: HTMLElement): void {
     streamBtn.textContent = "⏹ Stop listening";
   });
   const systemActionStatus = root.querySelector<HTMLElement>("#systemActionStatus")!;
+  const kioskActionStatus = root.querySelector<HTMLElement>("#kioskActionStatus")!;
   root.querySelector<HTMLButtonElement>("#kioskReload")!.addEventListener("click", async (event) => {
     const button = event.currentTarget as HTMLButtonElement;
     button.disabled = true;
-    systemActionStatus.textContent = "Refreshing kiosk screen…";
+    kioskActionStatus.textContent = "Refreshing kiosk screen…";
     try {
       await api.reloadKiosk();
-      systemActionStatus.textContent = "Refresh sent";
+      kioskActionStatus.textContent = "Refresh sent";
     } catch (e) {
-      systemActionStatus.textContent = (e as Error).message;
+      kioskActionStatus.textContent = (e as Error).message;
     } finally {
       button.disabled = false;
     }
@@ -1721,12 +1971,12 @@ export function renderAdmin(root: HTMLElement): void {
     const alphaTag = TEST_ALERTS[testAlertIdx % TEST_ALERTS.length]!;
     testAlertIdx += 1;
     button.disabled = true;
-    systemActionStatus.textContent = `Showing “${alphaTag}”…`;
+    kioskActionStatus.textContent = `Showing “${alphaTag}”…`;
     try {
       await api.testAlert({ alphaTag });
-      systemActionStatus.textContent = `Showing “${alphaTag}” on kiosk — click again for the next type`;
+      kioskActionStatus.textContent = `Showing “${alphaTag}” on kiosk — click again for the next type`;
     } catch (e) {
-      systemActionStatus.textContent = (e as Error).message;
+      kioskActionStatus.textContent = (e as Error).message;
     } finally {
       button.disabled = false;
     }
@@ -1734,12 +1984,12 @@ export function renderAdmin(root: HTMLElement): void {
   root.querySelector<HTMLButtonElement>("#testAlertClear")!.addEventListener("click", async (event) => {
     const button = event.currentTarget as HTMLButtonElement;
     button.disabled = true;
-    systemActionStatus.textContent = "Clearing test alert…";
+    kioskActionStatus.textContent = "Clearing test alert…";
     try {
       await api.testAlert({ clear: true });
-      systemActionStatus.textContent = "Test alert cleared";
+      kioskActionStatus.textContent = "Test alert cleared";
     } catch (e) {
-      systemActionStatus.textContent = (e as Error).message;
+      kioskActionStatus.textContent = (e as Error).message;
     } finally {
       button.disabled = false;
     }
