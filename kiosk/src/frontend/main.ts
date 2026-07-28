@@ -11,15 +11,16 @@ const root = document.getElementById("app")!;
 
 // Web fonts, per route and off the critical path. index.html used to request
 // four families on every surface: the wall and art canvases draw with
-// system-ui and need none, admin and dashboard override every font token to
-// Inter, and only the map uses the Campfire faces — so most pages downloaded
-// ten faces they never drew. Hanken Grotesk turned out to be used nowhere.
+// system-ui and need none. Every surface that draws text now draws it in
+// Inter — the map was the last holdout on Fira Code + Space Grotesk, which
+// DESIGN.md recorded as drift rather than an exception, so it no longer pulls
+// ten faces to render a legend and a row of callsign chips.
 // The `media="print"` swap keeps a slow or unreachable fonts.googleapis.com
 // from holding up first paint on an appliance that boots unattended.
 const FONT_QUERY: Record<string, string> = {
   admin: "family=Inter:wght@400;500;600;700",
   dashboard: "family=Inter:wght@400;500;600;700",
-  map: "family=Fira+Code:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700",
+  map: "family=Inter:wght@400;500;600;700",
 };
 
 function loadFonts(page: string): void {

@@ -50,14 +50,17 @@
   --k-clock: 2.7rem;      /* clock, classic layout */
   --k-alert-xl: 3.3rem;   /* warning-tier alert tag — the loudest text */
   --k-clock-lg: 3.7rem;   /* clock, map-stage */
-
-  --mono: var(--font-mono);
-  --cond: var(--font-sans);
 }
 
 /* Inter throughout (spec 2026-07-16): one face for display, body, and data.
-   Scoped to this page — the CSS bundle is global and map/wall/art keep the
-   Campfire faces. html[data-page] outranks Campfire's :root/.dark tokens. */
+   Scoped to this page — the CSS bundle is global and wall/art keep the
+   Campfire faces. html[data-page] outranks Campfire's :root/.dark tokens.
+
+   There is deliberately no local `--mono` / `--cond` alias. Both used to exist
+   and both resolved to Inter after the one-face spec landed, so seventeen
+   `font-family: var(--cond)` declarations were describing a distinction the
+   page had already stopped making — a fossil of the retired two-face system
+   that read, at a glance, like this file still had a display/data pairing. */
 html[data-page="dashboard"] {
   --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-body: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -87,7 +90,7 @@ html[data-page="dashboard"] {
 
 body {
   margin: 0;
-  font-family: var(--mono);
+  font-family: var(--font-sans);
   background: var(--bg);
   color: var(--ink);
 }
@@ -113,17 +116,23 @@ body {
   line-height: 1;
 }
 .topbar .clockDate {
-  font-family: var(--cond);
   font-weight: 600; font-size: var(--k-body);
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--dim);
   margin-top: 0.3rem;
 }
+/* Weather is ambient, not live radio state, so it does not wear the accent.
+   It used to: a 2.8rem amber condition glyph beside a 2.5rem amber temperature
+   made the outside air the loudest thing on a wall whose entire job is to
+   report the radio — and on a scanning-idle screen it was the ONLY lit thing,
+   so the one true signal on the page was the weather. Amber on this surface
+   means the tuned tag, the sweep that says the radio is working, and the bank
+   chip covering the current window. Nothing else. */
 .topbar .wx { display: flex; align-items: center; gap: 0.7rem; font-size: var(--k-alert); color: var(--label); }
-.topbar .wxIcon { width: 2.4rem; height: 2.4rem; color: var(--amber); }
+.topbar .wxIcon { width: 2.4rem; height: 2.4rem; color: var(--label); }
 .topbar .wxTemp {
-  color: var(--amber);
+  color: var(--ink);
   font-weight: 600; font-size: var(--k-value);
   font-variant-numeric: tabular-nums;
 }
@@ -147,7 +156,6 @@ body {
 }
 
 .now .active {
-  font-family: var(--cond);
   font-weight: 700; font-size: var(--k-status);
   letter-spacing: 0.06em;
   color: var(--green);
@@ -164,7 +172,6 @@ body {
    the size — it's what you read from across the room. The frequency is the
    supporting mono line underneath. */
 .now .tag {
-  font-family: var(--cond);
   font-weight: 600;
   font-size: clamp(3rem, 7.5vw, 6.2rem);
   line-height: 1.08;
@@ -185,7 +192,6 @@ body {
   letter-spacing: 0.02em;
 }
 .now .freq .unit {
-  font-family: var(--cond);
   font-size: 0.5em; font-weight: 600;
   letter-spacing: 0.06em;
   color: var(--dim);
@@ -196,13 +202,12 @@ body {
 /* Scanning idle state: label + sweeping bar (the radio is WORKING) */
 .now .scanning { text-align: center; }
 .now .scanning .scanText {
-  font-family: var(--cond);
   font-weight: 600; font-size: var(--k-headline);
   letter-spacing: 0.06em;
   color: var(--dim);
 }
 .now .scanning .sweep {
-  width: 320px; height: 4px;
+  width: 20rem; height: 0.25rem;
   margin: 1.4rem auto 0;
   background: var(--etch);
   border-radius: 4px;
@@ -233,13 +238,13 @@ body {
 
 /* ── Signal meter: LED segments ── */
 .dash .meter {
-  width: 62%; max-width: 460px; height: 16px;
+  width: 62%; max-width: 28.75rem; height: 1rem;
   margin: 1.6rem auto 0;
   background: var(--etch);
   border: 1px solid var(--panel-edge);
   border-radius: 4px;
   overflow: hidden;
-  padding: 2px;
+  padding: 0.125rem;
 }
 /* LED segmentation is PAINTED OVER the fill, not masked out of it. A mask on
    the track would also chop the track's own background and border into
@@ -280,7 +285,6 @@ body {
   background: var(--bg);
 }
 .log h2 {
-  font-family: var(--cond);
   font-weight: 600; font-size: var(--k-meta);
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -299,17 +303,23 @@ body {
   color: var(--dim);
 }
 .log li:first-child { color: var(--ink); }
+/* Drawn, not typed. "▸" resolved to whatever the fallback font had — the one
+   glyph on this page that was a character rather than a shape, and it sat at
+   whatever weight and baseline that font chose. */
 .log li:first-child::before {
-  content: "▸";
-  color: var(--amber);
+  content: "";
+  align-self: center;
+  width: 0.34em; height: 0.34em;
   margin-right: 0.1rem;
+  border-right: 2px solid var(--amber);
+  border-bottom: 2px solid var(--amber);
+  transform: rotate(-45deg);
 }
 .log .t { color: var(--label); font-size: 0.85em; min-width: 7ch; }
 
 /* ── Mode badge: stencil chip ── */
 .modeBadge:not(:empty) {
   padding: 0.35rem 1rem;
-  font-family: var(--cond);
   font-weight: 700; font-size: var(--k-body);
   letter-spacing: 0.06em;
   color: var(--amber);
@@ -321,7 +331,6 @@ body {
 
 .now .scanning .standby { color: var(--caution, var(--amber)); }
 .now .standbyHint {
-  font-family: var(--cond);
   font-size: var(--k-body);
   color: var(--dim);
   margin-top: 0.8rem;
@@ -345,7 +354,6 @@ body {
   background: color-mix(in srgb, var(--alert-color) 18%, transparent);
   border-top: 1px solid var(--alert-color);
   border-bottom: 1px solid var(--alert-color);
-  font-family: var(--mono);
 }
 .alertBar[data-kind="tornado"]  { --alert-color: #e01a2b; --alert-on: #fff; }
 .alertBar[data-kind="severe"]   { --alert-color: #f5a623; --alert-on: #1a1205; }
@@ -374,14 +382,12 @@ body {
   animation: alertRing 1.2s ease-in-out infinite;
 }
 .alertBar .alertLabel {
-  font-family: var(--cond);
   font-size: var(--k-alert);
   letter-spacing: 0.06em;
   color: var(--alert-color);
 }
 .alertBar .alertFreq { font-size: var(--k-alert); color: var(--ink); }
 .alertBar .alertTag {
-  font-family: var(--cond);
   font-size: var(--k-alert);
   color: var(--ink);
   min-width: 0;
@@ -392,7 +398,6 @@ body {
 .alertBar .alertCounties {
   margin-left: auto;
   flex: 0 0 auto;
-  font-family: var(--cond);
   font-size: var(--k-alert);
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -588,13 +593,13 @@ body {
 }
 .dash.mapStage .now .freq { font-size: var(--k-value); margin-top: 0.4rem; }
 .dash.mapStage .meter {
-  width: 100%; max-width: 340px; height: 13px;
+  width: 100%; max-width: 21.25rem; height: 0.8rem;
   margin: 1rem 0 0;
 }
 .dash.mapStage .meterDb { font-size: var(--k-meta); }
 .dash.mapStage .now .scanning { text-align: left; }
 .dash.mapStage .now .scanning .scanText { font-size: var(--k-scan); }
-.dash.mapStage .now .scanning .sweep { width: 280px; margin: 1rem 0 0; }
+.dash.mapStage .now .scanning .sweep { width: 17.5rem; margin: 1rem 0 0; }
 .dash.mapStage .now .scanning .standbyHint { font-size: var(--k-body); }
 .dash.mapStage .now .err { font-size: var(--k-body); max-width: 100%; padding: 0.9rem; }
 
@@ -613,7 +618,6 @@ body {
 }
 .bankRail:empty { display: none; }
 .bankChipK {
-  font-family: var(--cond);
   font-weight: 600; font-size: var(--k-body);
   letter-spacing: 0.04em; text-transform: uppercase;
   padding: 0.3rem 0.85rem;
@@ -641,7 +645,6 @@ body {
 .now .mutedBadge {
   position: absolute; top: 0.9rem; right: 1.1rem;
   display: flex; align-items: center; gap: 0.45rem;
-  font-family: var(--cond);
   font-weight: 700; font-size: var(--k-body);
   letter-spacing: 0.06em;
   color: var(--red);
@@ -676,22 +679,20 @@ body {
   align-items: center; justify-content: center;
   gap: 1.4rem;
   background: var(--bg);
-  font-family: var(--mono);
 }
 .bootMsg.hidden { display: none; }
 .bootMsg .bootText {
-  font-family: var(--cond);
   font-weight: 600; font-size: var(--k-headline);
   letter-spacing: 0.06em;
   color: var(--amber);
 }
 .bootMsg .bootBar {
-  width: 62%; max-width: 460px; height: 16px;
+  width: 62%; max-width: 28.75rem; height: 1rem;
   background: var(--etch);
   border: 1px solid var(--panel-edge);
   border-radius: 4px;
   overflow: hidden;
-  padding: 2px;
+  padding: 0.125rem;
 }
 .bootMsg .bootBarFill {
   height: 100%;

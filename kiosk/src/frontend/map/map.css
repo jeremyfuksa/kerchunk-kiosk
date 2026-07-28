@@ -1,3 +1,16 @@
+/* Inter here too, closing DESIGN.md's last recorded type deviation: the /map
+   page was the one surface still drawing Campfire's Space Grotesk (legend,
+   aircraft chips) and Fira Code (legend, map messages), and DESIGN.md recorded
+   that as "drift to be corrected, not a sanctioned exception". Monospace as a
+   costume for "technical" is a named don't; nothing on this page is code.
+   Embedded in the dashboard the chips already rendered Inter, so the map only
+   looked like a different product when opened on its own. */
+html[data-page="map"] {
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-body: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
 .mapWrap { position: fixed; inset: 0; }
 #gmap { width: 100%; height: 100%; background: var(--bg-base); }
 
@@ -5,7 +18,7 @@
   position: fixed; left: 1rem; bottom: 1.2rem; z-index: 5;
   display: flex; align-items: center; gap: 0.6rem;
   padding: 0.45rem 0.9rem;
-  font-family: var(--font-mono, ui-monospace, monospace);
+  font-family: var(--font-sans);
   font-size: 0.8rem;
   color: var(--text-secondary);
   background: color-mix(in srgb, var(--bg-base) 85%, transparent);
@@ -24,7 +37,7 @@
   position: fixed; inset: 0; z-index: 4;
   display: flex; align-items: center; justify-content: center;
   text-align: center;
-  font-family: var(--font-mono, ui-monospace, monospace);
+  font-family: var(--font-sans);
   color: var(--text-secondary);
   line-height: 1.8;
   pointer-events: none;
@@ -65,9 +78,15 @@
    never overprint it. Text color is set per-marker to the type color (see
    AircraftLayer.label), tying the chip to its silhouette. !important beats the
    Google Maps inline label styles. */
+/* Sized off the KIOSK ramp, not the admin's. This chip's main home is the
+   wall, read from across a room, and it was taking `--t-dense` — a token
+   declared only in admin.css, for tables read at arm's length. The dashboard
+   carries its own larger `--k-*` scale for exactly this reason; a callsign
+   floating over the map is the same kind of dense instrument readout as the
+   dB line, so it takes that step. */
 .acLabel {
   font-family: var(--font-sans, ui-sans-serif, system-ui), sans-serif !important;
-  font-size: var(--t-dense) !important;
+  font-size: var(--k-meta) !important;
   font-weight: 600 !important;
   letter-spacing: 0.14em !important;
   text-transform: uppercase;
