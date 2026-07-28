@@ -119,6 +119,76 @@ typography:
     fontWeight: 600
     lineHeight: 1.08
     letterSpacing: "0.01em"
+  kiosk-meta:
+    fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+    fontSize: "0.95rem"
+    fontWeight: 400
+    lineHeight: 1.4
+  kiosk-body:
+    fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+    fontSize: "1.05rem"
+    fontWeight: 400
+    lineHeight: 1.45
+  kiosk-label:
+    fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+    fontSize: "1.2rem"
+    fontWeight: 600
+    lineHeight: 1.3
+  kiosk-alert:
+    fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+    fontSize: "1.3rem"
+    fontWeight: 600
+    lineHeight: 1.3
+  kiosk-status:
+    fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+    fontSize: "1.5rem"
+    fontWeight: 700
+    lineHeight: 1.25
+  kiosk-scan:
+    fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+    fontSize: "1.6rem"
+    fontWeight: 600
+    lineHeight: 1.2
+  kiosk-value:
+    fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+    fontSize: "1.9rem"
+    fontWeight: 600
+    lineHeight: 1.15
+  kiosk-headline:
+    fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+    fontSize: "2.2rem"
+    fontWeight: 600
+    lineHeight: 1.15
+  kiosk-alert-lg:
+    fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+    fontSize: "2.5rem"
+    fontWeight: 700
+    lineHeight: 1.04
+  kiosk-clock:
+    fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+    fontSize: "2.7rem"
+    fontWeight: 600
+    lineHeight: 1
+  kiosk-alert-xl:
+    fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+    fontSize: "3.3rem"
+    fontWeight: 700
+    lineHeight: 1.02
+  kiosk-clock-lg:
+    fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+    fontSize: "3.7rem"
+    fontWeight: 600
+    lineHeight: 1
+  kiosk-freq:
+    fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+    fontSize: "clamp(1.7rem, 3.6vw, 2.8rem)"
+    fontWeight: 500
+    lineHeight: 1.2
+  kiosk-display-map:
+    fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+    fontSize: "clamp(2.3rem, 3.9vw, 3.85rem)"
+    fontWeight: 600
+    lineHeight: 1.08
 rounded:
   hairline: "2px"
   control: "4px"
@@ -265,6 +335,8 @@ Ten fixed steps and two clamps. Pick by what the text *does*; the ramp is expose
 | Display LG | `--t-display-lg` | 2.1rem | The drawer's frequency — the largest thing in the admin. |
 | Page title | — | `clamp(1.6rem, 3vw, 2.25rem)` | Admin page titles. One per page. |
 | Kiosk display | — | `clamp(3rem, 7.5vw, 6.2rem)` | The kiosk's live channel name. Kiosk only. |
+
+The kiosk carries a **second ramp**, and needs one: it runs two layouts (the classic band and the map-stage overlay) and is read from across a room rather than at arm's length. Twelve role steps, `--k-*`, from `kiosk-meta` (0.95rem, the dB readout and boot phase) through `kiosk-clock-lg` (3.7rem, the map-stage clock) and `kiosk-alert-xl` (3.3rem, a warning-tier storm name — the loudest text in the system). Plus two clamps for the live channel name and its frequency, which must track viewport width because the tag length is unpredictable.
 
 Two `em`-based sizes sit off the ramp on purpose, because they must scale with whatever they annotate rather than with the page: the drawer's `MHz` unit (`0.45em` of its frequency) and the `via <source>` note (`0.9em`).
 

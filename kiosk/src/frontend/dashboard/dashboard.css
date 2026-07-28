@@ -11,9 +11,15 @@
   --panel: var(--bg-subtle);
   --panel-edge: var(--border-default);
   --etch: var(--bg-base);
+  /* Text tiers, matched to DESIGN.md's Three-Tier Rule. --dim was
+     text-tertiary at 3.11:1 on --panel: below AA, and this is the surface
+     read from FURTHEST away — it painted the Recent log, the dB readout,
+     SCANNING, the clock date, the boot phase and the bank chips.
+     Now: --ink 12.4 · --label 6.9 · --dim 4.6 · --mark 3.1 (glyphs only). */
   --ink: var(--text-primary);
-  --dim: var(--text-tertiary);
-  --label: var(--text-secondary);
+  --label: var(--neutral-300);
+  --dim: var(--text-secondary);
+  --mark: var(--text-tertiary);
   --amber: var(--spark);            /* the Campfire flame — hero data color */
   --amber-soft: color-mix(in srgb, var(--spark) 55%, transparent);
   /* Consequence colours come from the numbered ramps, NOT from Campfire's
@@ -26,6 +32,25 @@
   --green: var(--success-400);
   --red: var(--danger-400);
   --blue: color-mix(in srgb, var(--pine) 65%, var(--text-primary));
+  /* Kiosk type ramp. Twelve role steps, down from 28 ad-hoc values. The
+     dashboard carries TWO layouts — the classic band and the map-stage
+     overlay — so it needs its own scale, larger than the admin's: this is
+     read from across a room, not at arm's length. Near-duplicates that
+     carried no distinction (1.12/1.15/1.20, 1.30/1.35/1.40, 1.50/1.60/1.62,
+     1.80/1.90, 2.40/2.50) collapsed onto one step each. */
+  --k-meta: 0.95rem;      /* dB readout, log heading, boot phase */
+  --k-body: 1.05rem;      /* log rows, bank chips, hints, badges */
+  --k-label: 1.2rem;      /* map-stage secondary labels */
+  --k-alert: 1.3rem;      /* alert banner text, weather block */
+  --k-status: 1.5rem;     /* the ACTIVE label, map-stage weather */
+  --k-scan: 1.6rem;       /* SCANNING / RETUNING / error copy */
+  --k-value: 1.9rem;      /* temperature, map-stage frequency, counties */
+  --k-headline: 2.2rem;   /* classic SCANNING, WARMING UP */
+  --k-alert-lg: 2.5rem;   /* map-stage alert tag, map-stage temperature */
+  --k-clock: 2.7rem;      /* clock, classic layout */
+  --k-alert-xl: 3.3rem;   /* warning-tier alert tag — the loudest text */
+  --k-clock-lg: 3.7rem;   /* clock, map-stage */
+
   --mono: var(--font-mono);
   --cond: var(--font-sans);
 }
@@ -83,23 +108,23 @@ body {
 .topbar .clockBlock { text-align: right; }
 .topbar .clock {
   font-variant-numeric: tabular-nums;
-  font-size: 2.7rem; font-weight: 600;
+  font-size: var(--k-clock); font-weight: 600;
   color: var(--ink);
   line-height: 1;
 }
 .topbar .clockDate {
   font-family: var(--cond);
-  font-weight: 600; font-size: 1.05rem;
+  font-weight: 600; font-size: var(--k-body);
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--dim);
   margin-top: 0.3rem;
 }
-.topbar .wx { display: flex; align-items: center; gap: 0.7rem; font-size: 1.25rem; color: var(--label); }
+.topbar .wx { display: flex; align-items: center; gap: 0.7rem; font-size: var(--k-alert); color: var(--label); }
 .topbar .wxIcon { width: 2.4rem; height: 2.4rem; color: var(--amber); }
 .topbar .wxTemp {
   color: var(--amber);
-  font-weight: 600; font-size: 1.9rem;
+  font-weight: 600; font-size: var(--k-value);
   font-variant-numeric: tabular-nums;
 }
 .topbar .wxCond { max-width: 26rem; }
@@ -123,7 +148,7 @@ body {
 
 .now .active {
   font-family: var(--cond);
-  font-weight: 700; font-size: 1.5rem;
+  font-weight: 700; font-size: var(--k-status);
   letter-spacing: 0.06em;
   color: var(--green);
   display: flex; align-items: center; gap: 0.6rem;
@@ -172,7 +197,7 @@ body {
 .now .scanning { text-align: center; }
 .now .scanning .scanText {
   font-family: var(--cond);
-  font-weight: 600; font-size: 2.2rem;
+  font-weight: 600; font-size: var(--k-headline);
   letter-spacing: 0.06em;
   color: var(--dim);
 }
@@ -196,7 +221,7 @@ body {
 
 .now .err {
   color: var(--red);
-  font-size: 1.6rem;
+  font-size: var(--k-scan);
   text-align: center;
   padding: 1.5rem;
   max-width: 80%;
@@ -225,7 +250,7 @@ body {
           mask-image: repeating-linear-gradient(90deg, #000 0 8px, transparent 8px 11px);
 }
 .dash .meterDb {
-  font-size: 0.95rem;
+  font-size: var(--k-meta);
   font-variant-numeric: tabular-nums;
   color: var(--dim);
   margin-top: 0.45rem;
@@ -241,7 +266,7 @@ body {
 }
 .log h2 {
   font-family: var(--cond);
-  font-weight: 600; font-size: 0.95rem;
+  font-weight: 600; font-size: var(--k-meta);
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--label);
@@ -254,7 +279,7 @@ body {
   display: flex; align-items: baseline; gap: 0.7rem;
   padding: 0.5rem 0.2rem;
   border-bottom: 1px solid var(--etch);
-  font-size: 1.05rem;
+  font-size: var(--k-body);
   font-variant-numeric: tabular-nums;
   color: var(--dim);
 }
@@ -270,7 +295,7 @@ body {
 .modeBadge:not(:empty) {
   padding: 0.35rem 1rem;
   font-family: var(--cond);
-  font-weight: 700; font-size: 1.05rem;
+  font-weight: 700; font-size: var(--k-body);
   letter-spacing: 0.06em;
   color: var(--amber);
   background: color-mix(in srgb, var(--spark) 8%, transparent);
@@ -282,7 +307,7 @@ body {
 .now .scanning .standby { color: var(--caution, var(--amber)); }
 .now .standbyHint {
   font-family: var(--cond);
-  font-size: 1.05rem;
+  font-size: var(--k-body);
   color: var(--dim);
   margin-top: 0.8rem;
 }
@@ -295,6 +320,7 @@ body {
    Colors follow NWS convention: tornado red, severe-tstorm amber, flood
    green, winter magenta, wind goldenrod, fire orange-red, civil crimson. */
 .alertBar {
+  position: relative;
   --alert-color: var(--red);   /* storm color (fallback: flamingo) */
   --alert-on: #fff;            /* text/icon color when sitting on a solid fill */
   display: none;
@@ -316,21 +342,32 @@ body {
 .alertBar[data-kind="civil"]    { --alert-color: #c8102e; --alert-on: #fff; }
 .alertBar[data-kind="test"]     { --alert-color: #5b6b7a; --alert-on: #e8eef3; }
 .alertBar[data-kind="default"]  { --alert-color: var(--red); --alert-on: #fff; }
-.alertBar.on { display: flex; animation: alertPulse 1.2s ease-in-out infinite; }
+.alertBar.on { display: flex; }
+/* The pulse rides on an overlay's OPACITY, not on the element's background /
+   box-shadow. Those repaint the layer every frame for as long as an alert is
+   up — which during severe weather is half an hour on a box that idles at
+   85 °C driving a WebGL map. Opacity is composited: same look, no repaint. */
+.alertBar.on::after {
+  content: "";
+  position: absolute; inset: 0;
+  pointer-events: none;
+  background: color-mix(in srgb, var(--alert-color) 14%, transparent);
+  animation: alertFade 1.2s ease-in-out infinite;
+}
 .alertBar .alertGlyph svg {
   width: 1.6rem; height: 1.6rem; color: var(--alert-color);
   animation: alertRing 1.2s ease-in-out infinite;
 }
 .alertBar .alertLabel {
   font-family: var(--cond);
-  font-size: 1.3rem;
+  font-size: var(--k-alert);
   letter-spacing: 0.06em;
   color: var(--alert-color);
 }
-.alertBar .alertFreq { font-size: 1.3rem; color: var(--ink); }
+.alertBar .alertFreq { font-size: var(--k-alert); color: var(--ink); }
 .alertBar .alertTag {
   font-family: var(--cond);
-  font-size: 1.3rem;
+  font-size: var(--k-alert);
   color: var(--ink);
   min-width: 0;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -341,7 +378,7 @@ body {
   margin-left: auto;
   flex: 0 0 auto;
   font-family: var(--cond);
-  font-size: 1.3rem;
+  font-size: var(--k-alert);
   font-weight: 700;
   letter-spacing: 0.04em;
   color: var(--alert-color);
@@ -350,10 +387,7 @@ body {
   border-radius: 4px;
   white-space: nowrap;
 }
-@keyframes alertPulse {
-  0%, 100% { background: color-mix(in srgb, var(--alert-color) 18%, transparent); }
-  50% { background: color-mix(in srgb, var(--alert-color) 32%, transparent); }
-}
+@keyframes alertFade { 0%, 100% { opacity: 0; } 50% { opacity: 1; } }
 @keyframes alertRing {
   0%, 100% { transform: rotate(0deg); }
   20% { transform: rotate(12deg); }
@@ -397,13 +431,13 @@ body {
 /* Clock is the hero (mirrors the now-card tag); weather, then mode, beneath.
    Readability over the map: lift the dimmer date/condition text and size up. */
 .dash.mapStage .topbar .clockBlock { order: 1; }
-.dash.mapStage .topbar .clock { font-size: 3.7rem; }
-.dash.mapStage .topbar .clockDate { font-size: 1.2rem; color: var(--label); }
-.dash.mapStage .topbar .wx { order: 2; justify-content: flex-end; gap: 0.6rem; font-size: 1.5rem; }
+.dash.mapStage .topbar .clock { font-size: var(--k-clock-lg); }
+.dash.mapStage .topbar .clockDate { font-size: var(--k-label); color: var(--label); }
+.dash.mapStage .topbar .wx { order: 2; justify-content: flex-end; gap: 0.6rem; font-size: var(--k-status); }
 /* Weather reads as ICON + NUMBERS at distance: big condition icon, big temp,
    wind arrow + speed — the condition words are dropped entirely. */
 .dash.mapStage .topbar .wxIcon { width: 2.8rem; height: 2.8rem; }
-.dash.mapStage .topbar .wxTemp { font-size: 2.4rem; }
+.dash.mapStage .topbar .wxTemp { font-size: var(--k-alert-lg); }
 .dash.mapStage .topbar #modeBadge { order: 3; }
 /* EAS alert as a lower-right overlay CARD (mirrors the top-left now-card and
    the top-right clock/weather card). Glanceable from across the room: red
@@ -425,26 +459,35 @@ body {
 }
 .dash.mapStage .alertBar.on {
   display: inline-flex;
-  animation: alertCardPulse 1.6s ease-in-out infinite;
+  box-shadow: 0 10px 34px rgb(0 0 0 / 0.55), 0 0 0 1.5px var(--alert-color);
 }
 .dash.mapStage .alertBar .alertHead { display: flex; align-items: center; gap: 0.55rem; }
 .dash.mapStage .alertBar .alertGlyph svg { width: 1.7rem; height: 1.7rem; }
-.dash.mapStage .alertBar .alertLabel { font-size: 1.15rem; letter-spacing: 0.06em; }
+.dash.mapStage .alertBar .alertLabel { font-size: var(--k-label); letter-spacing: 0.06em; }
 .dash.mapStage .alertBar .alertTag {
-  font-size: 2.5rem; line-height: 1.04; font-weight: 700; color: var(--ink);
+  font-size: var(--k-alert-lg); line-height: 1.04; font-weight: 700; color: var(--ink);
   white-space: normal; overflow: visible; text-overflow: clip; min-width: 0;
 }
 .dash.mapStage .alertBar .alertGlyph svg { color: var(--alert-color); }
 .dash.mapStage .alertBar .alertLabel { color: var(--alert-color); }
 .dash.mapStage .alertBar .alertCounties {
   margin: 0; padding: 0; border: none; flex: none;
-  font-size: 1.9rem; font-weight: 700; letter-spacing: 0.02em; color: var(--alert-color);
+  font-size: var(--k-value); font-weight: 700; letter-spacing: 0.02em; color: var(--alert-color);
   white-space: normal;
 }
-@keyframes alertCardPulse {
-  0%, 100% { box-shadow: 0 10px 34px rgba(0, 0, 0, 0.55), 0 0 0 1.5px var(--alert-color); }
-  50%      { box-shadow: 0 10px 34px rgba(0, 0, 0, 0.55), 0 0 0 1.5px var(--alert-color),
-                         0 0 18px 2px color-mix(in srgb, var(--alert-color) 55%, transparent); }
+/* Glow layers: a static box-shadow on a pseudo-element, faded in and out by
+   opacity so the compositor owns the animation. */
+.dash.mapStage .alertBar.on::before {
+  content: "";
+  position: absolute; inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow: 0 0 18px 2px color-mix(in srgb, var(--alert-color) 55%, transparent);
+  animation: alertFade 1.6s ease-in-out infinite;
+}
+.dash.mapStage .alertBar.statement.on::before { animation: none; opacity: 0; }
+.dash.mapStage .alertBar.warning.on::before {
+  box-shadow: 0 0 30px 4px color-mix(in srgb, var(--alert-color) 75%, transparent);
 }
 
 /* ── Severity tiers on the map-stage card ────────────────────────────────────
@@ -467,8 +510,8 @@ body {
   border-radius: 0 8px 8px 0;
 }
 .dash.mapStage .alertBar.statement.on { animation: none; }
-.dash.mapStage .alertBar.statement .alertTag { font-size: 1.9rem; }
-.dash.mapStage .alertBar.statement .alertCounties { font-size: 1.4rem; }
+.dash.mapStage .alertBar.statement .alertTag { font-size: var(--k-value); }
+.dash.mapStage .alertBar.statement .alertCounties { font-size: var(--k-status); }
 
 /* WARNING: solid storm-color slab, bigger, louder. */
 .dash.mapStage .alertBar.warning {
@@ -477,16 +520,18 @@ body {
   gap: 0.6rem;
   background: var(--alert-color);
 }
-.dash.mapStage .alertBar.warning.on { animation: alertWarnPulse 1.6s ease-in-out infinite; }
+.dash.mapStage .alertBar.warning.on {
+  box-shadow: 0 10px 34px rgb(0 0 0 / 0.55), 0 0 0 1px color-mix(in srgb, var(--alert-on) 35%, transparent);
+}
 .dash.mapStage .alertBar.warning .alertGlyph svg {
   width: 3rem; height: 3rem; color: var(--alert-on);
 }
 .dash.mapStage .alertBar.warning .alertLabel {
-  font-size: 1.35rem; letter-spacing: 0.06em; font-weight: 700;
+  font-size: var(--k-alert); letter-spacing: 0.06em; font-weight: 700;
   color: var(--alert-on);
 }
 .dash.mapStage .alertBar.warning .alertTag {
-  font-size: 3.3rem; line-height: 1.02; color: var(--alert-on);
+  font-size: var(--k-alert-xl); line-height: 1.02; color: var(--alert-on);
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.28);
 }
 /* Counties become a high-contrast chip on the solid fill (the dark card glow
@@ -495,16 +540,9 @@ body {
   margin-top: 0.15rem;
   padding: 0.1rem 0.65rem;
   border-radius: 4px;
-  font-size: 1.8rem;
+  font-size: var(--k-value);
   color: var(--alert-on);
   background: color-mix(in srgb, var(--alert-on) 16%, transparent);
-}
-@keyframes alertWarnPulse {
-  0%, 100% { box-shadow: 0 10px 34px rgba(0, 0, 0, 0.55),
-                         0 0 0 1px color-mix(in srgb, var(--alert-on) 30%, transparent); }
-  50%      { box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6),
-                         0 0 0 1px color-mix(in srgb, var(--alert-on) 40%, transparent),
-                         0 0 30px 4px color-mix(in srgb, var(--alert-color) 75%, transparent); }
 }
 .dash.mapStage .dashBody {
   position: relative; z-index: 1;
@@ -526,24 +564,24 @@ body {
   padding: 0.95rem 1.35rem 1.1rem;
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
 }
-.dash.mapStage .now .active { font-size: 1.12rem; }
+.dash.mapStage .now .active { font-size: var(--k-label); }
 .dash.mapStage .now .tag {
   font-size: clamp(2.3rem, 3.9vw, 3.85rem);
   text-align: left;
   max-width: 100%;
   margin-top: 0.42rem;
 }
-.dash.mapStage .now .freq { font-size: 1.8rem; margin-top: 0.4rem; }
+.dash.mapStage .now .freq { font-size: var(--k-value); margin-top: 0.4rem; }
 .dash.mapStage .meter {
   width: 100%; max-width: 340px; height: 13px;
   margin: 1rem 0 0;
 }
-.dash.mapStage .meterDb { font-size: 0.9rem; }
+.dash.mapStage .meterDb { font-size: var(--k-meta); }
 .dash.mapStage .now .scanning { text-align: left; }
-.dash.mapStage .now .scanning .scanText { font-size: 1.62rem; }
+.dash.mapStage .now .scanning .scanText { font-size: var(--k-scan); }
 .dash.mapStage .now .scanning .sweep { width: 280px; margin: 1rem 0 0; }
-.dash.mapStage .now .scanning .standbyHint { font-size: 1.05rem; }
-.dash.mapStage .now .err { font-size: 1.05rem; max-width: 100%; padding: 0.9rem; }
+.dash.mapStage .now .scanning .standbyHint { font-size: var(--k-body); }
+.dash.mapStage .now .err { font-size: var(--k-body); max-width: 100%; padding: 0.9rem; }
 
 /* ── Bank rail: hardware-scanner bank LEDs along the bottom. The chip(s)
    covering the currently-tuned window glow as the radio hops. */
@@ -561,7 +599,7 @@ body {
 .bankRail:empty { display: none; }
 .bankChipK {
   font-family: var(--cond);
-  font-weight: 600; font-size: 1.05rem;
+  font-weight: 600; font-size: var(--k-body);
   letter-spacing: 0.04em; text-transform: uppercase;
   padding: 0.3rem 0.85rem;
   border: 1px solid var(--panel-edge);
@@ -589,7 +627,7 @@ body {
   position: absolute; top: 0.9rem; right: 1.1rem;
   display: flex; align-items: center; gap: 0.45rem;
   font-family: var(--cond);
-  font-weight: 700; font-size: 1.05rem;
+  font-weight: 700; font-size: var(--k-body);
   letter-spacing: 0.06em;
   color: var(--red);
   border: 1px solid color-mix(in srgb, var(--red) 60%, transparent);
@@ -600,7 +638,7 @@ body {
 .now .mutedBadge svg { width: 1.15em; height: 1.15em; }
 /* Muted = the meter is theater; dim the card's signal life a touch. */
 .now.isMuted .meter, .now.isMuted .meterDb { opacity: 0.45; }
-.dash.mapStage .now .mutedBadge { top: 0.7rem; right: 0.8rem; font-size: 0.85rem; }
+.dash.mapStage .now .mutedBadge { top: 0.7rem; right: 0.8rem; font-size: var(--k-meta); }
 
 /* Motion respect on the kiosk too (alert pulse, sweep, breathe, replay). Also
    kill transitions — the now-playing meter glide and the warm-up bar use them. */
@@ -628,7 +666,7 @@ body {
 .bootMsg.hidden { display: none; }
 .bootMsg .bootText {
   font-family: var(--cond);
-  font-weight: 600; font-size: 2.2rem;
+  font-weight: 600; font-size: var(--k-headline);
   letter-spacing: 0.06em;
   color: var(--amber);
 }
@@ -649,7 +687,7 @@ body {
           mask-image: repeating-linear-gradient(90deg, #000 0 8px, transparent 8px 11px);
 }
 .bootMsg .bootPhase {
-  font-size: 0.95rem;
+  font-size: var(--k-meta);
   letter-spacing: 0.06em; text-transform: uppercase;
   color: var(--dim);
 }

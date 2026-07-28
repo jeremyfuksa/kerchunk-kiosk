@@ -156,6 +156,31 @@ export function renderDashboard(root: HTMLElement): void {
         <div class="bootPhase"></div>
       </div>
     </div>`;
+  // ── Poll budget ─────────────────────────────────────────────────────────
+  // Three independent timers (status 5 s, system 10 s, weather 10 min) used to
+  // collide every 10 s, and the appliance has been observed to deadlock on 2+
+  // concurrent requests (see CLAUDE.md). One ticker now runs them strictly one
+  // at a time. Cadences are the knobs.
+  const POLL_MS = { status: 5_000, systemRisk: 10_000, weather: 600_000 };
+  const POLL_TICK_MS = 1_000;
+  type Poll = { run: () => Promise<void>; everyMs: number; lastAt: number };
+  const polls: Poll[] = [];
+  function poll(run: () => Promise<void>, everyMs: number): void {
+    polls.push({ run, everyMs, lastAt: 0 });
+  }
+  let ticking = false;
+  async function tick(): Promise<void> {
+    if (ticking) return;
+    ticking = true;
+    try {
+      for (const p of polls) {
+        if (Date.now() - p.lastAt < p.everyMs) continue;
+        p.lastAt = Date.now();
+        await p.run().catch(() => {});
+      }
+    } finally { ticking = false; }
+  }
+
   const dashEl = root.querySelector<HTMLElement>(".dash")!;
   const systemRisk = root.querySelector<HTMLElement>("#systemRisk")!;
   // True once the WebGL map mounts (the .mapStage layout). Under it, the Recent
@@ -165,8 +190,8 @@ export function renderDashboard(root: HTMLElement): void {
     .then((mounted) => { if (mounted) { mapMounted = true; dashEl.classList.add("mapStage"); } })
     .catch(() => { /* no map = classic dashboard, nothing lost */ });
   let lastRiskSig = "";
-  function paintSystemRisk(): void {
-    void fetch("/api/system").then((r) => r.ok ? r.json() : null).then((s) => {
+  function paintSystemRisk(): Promise<void> {
+    return fetch("/api/system").then((r) => r.ok ? r.json() : null).then((s) => {
       const severe = s?.alerts?.filter((a: { severity: string }) => a.severity === "severe") ?? [];
       const sig = severe.map((a: { title: string }) => a.title).join("|");
       if (sig === lastRiskSig) return; // unchanged — skip the innerHTML write (usually "")
@@ -177,8 +202,7 @@ export function renderDashboard(root: HTMLElement): void {
       systemRisk.classList.toggle("on", severe.length > 0);
     }).catch(() => {});
   }
-  paintSystemRisk();
-  setInterval(paintSystemRisk, 10_000);
+  poll(paintSystemRisk, POLL_MS.systemRisk);
 
   const nowEl = root.querySelector<HTMLElement>("#now")!;
   const logEl = root.querySelector<HTMLElement>("#logList")!;
@@ -195,8 +219,8 @@ export function renderDashboard(root: HTMLElement): void {
     requestAnimationFrame(() => { rafPending = false; paint(); });
   }
   let lastMode: string | undefined;
-  function paintBadge(): void {
-    api.getStatus()
+  function paintBadge(): Promise<void> {
+    return api.getStatus()
       .then((s) => {
         modeBadge.textContent =
           s.mode === "weather" ? "WEATHER"
@@ -218,10 +242,9 @@ export function renderDashboard(root: HTMLElement): void {
       })
       .catch(() => {});
   }
-  paintBadge();
-  // Mute flips in the admin without an engine restart — poll lightly so the
-  // kiosk's MUTED badge tracks it within a few seconds.
-  setInterval(paintBadge, 5000);
+  // Mute flips in the admin without an engine restart — polled so the kiosk's
+  // MUTED badge tracks it within a few seconds.
+  poll(paintBadge, POLL_MS.status);
 
   let scanCount = -1; // unknown until the first status fetch
   // Once the live WS warmup stream is seen, it owns `warmed` (the /api/status
@@ -460,8 +483,8 @@ export function renderDashboard(root: HTMLElement): void {
     return `<span class="wxWind">${arrow}<span class="wxWindSpd">${speed}</span></span>`;
   }
 
-  function paintWeather(): void {
-    fetch("/api/weather")
+  function paintWeather(): Promise<void> {
+    return fetch("/api/weather")
       .then((r) => (r.ok ? r.json() : null))
       .then((wx: { tempF: number; condition: string; wind: string; isDaytime: boolean } | null) => {
         // Glanceable: condition ICON + temp NUMBER + wind arrow + speed. The
@@ -472,8 +495,7 @@ export function renderDashboard(root: HTMLElement): void {
       })
       .catch(() => {});
   }
-  paintWeather();
-  setInterval(paintWeather, 10 * 60 * 1000);
+  poll(paintWeather, POLL_MS.weather);
 
   api.getLogs().then((rows) => { state = { ...state, log: mergeLogs(state.log, rows) }; paint(); }).catch(() => {});
   const proto = location.protocol === "https:" ? "wss" : "ws";
@@ -486,4 +508,8 @@ export function renderDashboard(root: HTMLElement): void {
     schedule(); // coalesce: a burst of events in one frame => one paint()
   }).connect();
   paint();
+
+  // One timer drives every poll registered above, sequentially.
+  setInterval(() => { void tick(); }, POLL_TICK_MS);
+  void tick();
 }
