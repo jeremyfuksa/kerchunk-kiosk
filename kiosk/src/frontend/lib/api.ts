@@ -14,8 +14,25 @@ async function j<T>(res: Response): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+// `/api/config` is the admin's most-called route — ~24 call sites, several on
+// timers, and a burst of six during page init. The appliance has been observed
+// to deadlock on concurrent requests (see CLAUDE.md), so callers that ask at
+// the same moment share one round trip.
+//
+// Deliberately NOT a cache: the in-flight promise is dropped as soon as it
+// settles, so a later caller always re-reads. And every caller gets its own
+// clone, because most of them are read-modify-write (`cfg.banks = …` then
+// `putConfig`) and sharing one object would let two edits stomp each other.
+let configInFlight: Promise<Config> | null = null;
+
+function fetchConfigShared(): Promise<Config> {
+  configInFlight ??= fetch("/api/config").then(j<Config>)
+    .finally(() => { configInFlight = null; });
+  return configInFlight.then((cfg) => structuredClone(cfg));
+}
+
 export const api = {
-  getConfig: () => fetch("/api/config").then(j<Config>),
+  getConfig: fetchConfigShared,
   putConfig: (cfg: Config) =>
     fetch("/api/config", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(cfg) }).then(j<Config>),
   getChannels: () => fetch("/api/channels").then(j<Channel[]>),
