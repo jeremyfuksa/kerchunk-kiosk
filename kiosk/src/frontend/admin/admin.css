@@ -144,12 +144,16 @@ body {
   box-shadow: 0 12px 36px rgb(0 0 0 / 0.5);
 }
 .toast .toastText { color: var(--ink); font-size: var(--t-dense); }
+/* Undo is a caution control, not a second lit amber: it reuses the existing
+   .lock/.dDismiss recipe, keeps Signal Amber reserved for live state, and its
+   edge clears the 3:1 floor (the amber mix measured 2.52:1). No min-height
+   override either — that out-specified the coarse-pointer touch floor and
+   rendered 33.6px on the phone this toast was designed for. */
 .admin .toast .toastUndo {
-  min-height: 2.1rem;
   padding: 0.3rem 0.7rem;
-  color: var(--amber);
+  color: var(--caution);
   background: none;
-  border-color: color-mix(in srgb, var(--spark) 60%, transparent);
+  border-color: color-mix(in srgb, var(--golden-amber) 60%, transparent);
   font-weight: 700;
 }
 .admin .toast .toastClose { flex: none; color: var(--dim); }
@@ -522,7 +526,7 @@ body {
   border-top: 1px solid var(--rule);
 }
 .actionGroupLabel {
-  margin: 0 0 0.6rem;
+  margin: 0 0 0.2rem;
   color: var(--dim);
   font-size: var(--t-micro);
   font-weight: 600;
@@ -530,6 +534,9 @@ body {
   text-transform: uppercase;
 }
 .actionGroup.power .actionGroupLabel { color: var(--red); }
+/* The consequence reads as a sentence, so it takes the hint grammar rather
+   than tracked uppercase (The Legend Rule). */
+.actionGroupNote { margin: 0 0 0.7rem; }
 .admin .systemActions {
   grid-column: 1 / -1;
   display: flex;

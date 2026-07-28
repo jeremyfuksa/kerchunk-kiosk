@@ -162,9 +162,21 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
   // the server wrote in between, silently. Every persist bumps this; a PUT may
   // carry the revision it read (If-Match) and is rejected if it is stale.
   let configRev = 0;
-  const configEtag = (): string => `W/"cfg-${configRev}"`;
+  // Per-process salt: configRev restarts at 0, so without this a tab holding
+  // W/"cfg-3" from before a restart would match an unrelated post-restart
+  // state and be accepted — precisely the stale write the guard exists to
+  // refuse. Any If-Match minted by a previous process now fails forever.
+  const configBootId = randomUUID().slice(0, 8);
+  const configEtag = (): string => `W/"cfg-${configBootId}-${configRev}"`;
   function saveConfig(cfg: Config, opts: { telemetry?: boolean } = {}): void {
-    configRev++;
+    // Telemetry persists (levelTrimDb, rfDb — server-owned EMAs on debounces of
+    // 10 s and 30 s) deliberately do NOT advance the revision. They carry no
+    // operator-visible state and a client round-trips them unchanged, so
+    // bumping would have let the radio's own housekeeping reject the
+    // operator's edit on any busy band — a worse failure than the one this
+    // guard exists to prevent. Losing one EMA sample to a client write is
+    // harmless; they re-derive continuously.
+    if (!opts.telemetry) configRev++;
     configStore.save(cfg, opts);
   }
   // Runtime mode. Deliberately not read from or written to config: the kiosk
@@ -744,8 +756,8 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
       const ifMatch = req.headers["if-match"];
       if (typeof ifMatch === "string" && ifMatch !== configEtag()) {
         return json(res, 409, {
-          error: "The configuration changed on the appliance while you were editing. "
-            + "Your view has been refreshed — please redo that change.",
+          error: "The configuration changed on the appliance while you were editing, "
+            + "so your change was not applied. Please try it again.",
         }, { ETag: configEtag() });
       }
       const parsed = configSchema.safeParse(body);

@@ -35,7 +35,7 @@ describe("config optimistic concurrency", () => {
     const { server } = makeApp();
     const res = await request(server).get("/api/config");
     expect(res.status).toBe(200);
-    expect(res.headers.etag).toMatch(/^W\/"cfg-\d+"$/);
+    expect(res.headers.etag).toMatch(/^W\/"cfg-[0-9a-f]{8}-\d+"$/);
   });
 
   it("accepts a PUT carrying the current revision", async () => {
@@ -91,6 +91,22 @@ describe("config optimistic concurrency", () => {
     const replay = await request(server)
       .put("/api/config").set("If-Match", etag1).send(first.body);
     expect(replay.status).toBe(409);
+  });
+
+  it("does not honour an ETag minted by a previous process", async () => {
+    // configRev restarts at 0, so without a per-process salt a tab holding
+    // W/"cfg-3" from before a restart would match an unrelated new state.
+    const a = makeApp();
+    const staleEtag = (await request(a.server).get("/api/config")).headers.etag!;
+    rmSync(dir, { recursive: true, force: true });
+
+    const b = makeApp();
+    const fresh = await request(b.server).get("/api/config");
+    expect(fresh.headers.etag).not.toBe(staleEtag);
+
+    const res = await request(b.server)
+      .put("/api/config").set("If-Match", staleEtag).send(fresh.body);
+    expect(res.status).toBe(409);
   });
 
   it("still accepts a PUT with no If-Match, so older clients keep working", async () => {
