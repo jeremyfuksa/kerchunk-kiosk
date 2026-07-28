@@ -25,23 +25,23 @@ colors:
   service-unknown: "#747b8a"
   position-unknown: "#4a7c7e"
 typography:
-  display:
+  micro:
     fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
-    fontSize: "clamp(3rem, 7.5vw, 6.2rem)"
+    fontSize: "0.7rem"
     fontWeight: 600
-    lineHeight: 1.08
-    letterSpacing: "0.01em"
-  headline:
+    lineHeight: 1.35
+    letterSpacing: "0.06em"
+  caption:
     fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
-    fontSize: "clamp(1.6rem, 3vw, 2.25rem)"
-    fontWeight: 700
-    lineHeight: 1.1
-    letterSpacing: "-0.035em"
-  title:
-    fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
-    fontSize: "1rem"
+    fontSize: "0.78rem"
     fontWeight: 600
     lineHeight: 1.4
+    letterSpacing: "0.02em"
+  dense:
+    fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+    fontSize: "0.85rem"
+    fontWeight: 400
+    lineHeight: 1.5
     letterSpacing: "normal"
   body:
     fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
@@ -49,19 +49,57 @@ typography:
     fontWeight: 400
     lineHeight: 1.55
     letterSpacing: "normal"
-  label:
-    fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
-    fontSize: "0.68rem"
-    fontWeight: 600
-    lineHeight: 1.35
-    letterSpacing: "0.06em"
-  data:
+  title:
     fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
     fontSize: "1rem"
-    fontWeight: 500
-    lineHeight: 1.2
+    fontWeight: 600
+    lineHeight: 1.4
+    letterSpacing: "normal"
+  lead:
+    fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+    fontSize: "1.15rem"
+    fontWeight: 600
+    lineHeight: 1.3
     letterSpacing: "0.02em"
     fontFeature: "tabular-nums"
+  heading:
+    fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+    fontSize: "1.3rem"
+    fontWeight: 600
+    lineHeight: 1.2
+    letterSpacing: "0.02em"
+  display-sm:
+    fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+    fontSize: "1.5rem"
+    fontWeight: 600
+    lineHeight: 1.2
+    letterSpacing: "0.02em"
+  display:
+    fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+    fontSize: "1.9rem"
+    fontWeight: 600
+    lineHeight: 1.2
+    letterSpacing: "normal"
+    fontFeature: "tabular-nums"
+  display-lg:
+    fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+    fontSize: "2.1rem"
+    fontWeight: 600
+    lineHeight: 1.1
+    letterSpacing: "normal"
+    fontFeature: "tabular-nums"
+  page-title:
+    fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+    fontSize: "clamp(1.6rem, 3vw, 2.25rem)"
+    fontWeight: 700
+    lineHeight: 1.1
+    letterSpacing: "-0.035em"
+  kiosk-display:
+    fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+    fontSize: "clamp(3rem, 7.5vw, 6.2rem)"
+    fontWeight: 600
+    lineHeight: 1.08
+    letterSpacing: "0.01em"
 rounded:
   control: "4px"
   card: "8px"
@@ -182,14 +220,31 @@ The consequence colours. These are never decorative: each one means a specific o
 **Character:** One face doing every job. Inter is chosen for the same reason instruments use a single grotesque: it stays legible at 0.68rem on a phone and at 6rem across a room, and its tabular figures are unambiguous at a glance. Monospace was retired deliberately — nothing here is code, and `font-variant-numeric: tabular-nums` gives column alignment without the costume.
 
 ### Hierarchy
-- **Display** (600, `clamp(3rem, 7.5vw, 6.2rem)`, 1.08): the kiosk's live channel name. One per screen, and only on the kiosk.
-- **Headline** (700, `clamp(1.6rem, 3vw, 2.25rem)`, 1.1, tracking `-0.035em`): page titles in the admin. One per page.
-- **Title** (600, 1rem): card headers. Always paired with an optional trailing hint in Quiet Hint.
-- **Body** (400, 0.92rem, 1.55): prose, table cells, form values. Descriptive paragraphs cap at `48rem`.
-- **Label** (600, 0.68–0.78rem, tracking `0.06em`, uppercase): instrument legends — column headers, stat-tile captions, eyebrows, section markers.
-- **Data** (500–600, tabular): frequencies, temperatures, counts, timestamps.
+
+Ten fixed steps and two clamps. Pick by what the text *does*; the ramp is exposed as `--t-*` custom properties, so a role is one token, never a literal.
+
+| Role | Token | Size | Purpose |
+|---|---|---|---|
+| Micro | `--t-micro` | 0.7rem | Instrument legends: column headers, eyebrows, chips, badges, unit suffixes. Tracked `0.06em`, usually uppercase. |
+| Caption | `--t-caption` | 0.78rem | Interface chrome: buttons, nav, hints, card sub-headers. |
+| Dense | `--t-dense` | 0.85rem | Table and list body, empty states, error text. |
+| Body | `--t-body` | 0.92rem | Prose, inputs, form labels. Paragraphs cap at `48rem` (~52ch). |
+| Title | `--t-title` | 1rem | Card headers and the masthead brand. |
+| Lead | `--t-lead` | 1.15rem | Emphasised inline values — system gauges, insight totals, the now-playing frequency. |
+| Heading | `--t-heading` | 1.3rem | Drawer and dialog headings. |
+| Display SM | `--t-display-sm` | 1.5rem | The live channel name in the admin hero. |
+| Display | `--t-display` | 1.9rem | Stat-tile values. |
+| Display LG | `--t-display-lg` | 2.1rem | The drawer's frequency — the largest thing in the admin. |
+| Page title | — | `clamp(1.6rem, 3vw, 2.25rem)` | Admin page titles. One per page. |
+| Kiosk display | — | `clamp(3rem, 7.5vw, 6.2rem)` | The kiosk's live channel name. Kiosk only. |
+
+Two `em`-based sizes sit off the ramp on purpose, because they must scale with whatever they annotate rather than with the page: the drawer's `MHz` unit (`0.45em` of its frequency) and the `via <source>` note (`0.9em`).
 
 ### Named Rules
+
+**The Ramp Rule.** Font size comes from a `--t-*` token, never a literal. Before adding a step, check whether an existing one does the job — the ramp replaced 32 ad-hoc values, five of which sat between 0.82 and 0.88rem and carried no distinction a reader could see. The only literals allowed are the two clamps and the two `em` values above.
+
+**The No-Pixels Rule.** Type is sized in `rem` or `em`, never `px`. Three `px` sizes had crept in (11, 13, 14) and silently ignored browser zoom and OS font-size settings — on an appliance that is read at arm's length and from across a room, that is the wrong thing to freeze.
 
 **The Tabular Rule.** Any number that can change while being looked at — frequency, temperature, CPU, hit count, clock, dB — is `font-variant-numeric: tabular-nums`. A digit that changes width makes an instrument look unreliable.
 
