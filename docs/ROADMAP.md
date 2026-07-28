@@ -696,7 +696,18 @@ this roadmap.
 
 ---
 
-## Idea 13 — ADS-B aircraft on the map
+## Idea 13 — ADS-B aircraft on the map — *SHIPPED (network feed) 2026-06-18; local RF still open*
+
+> **Status (reconciled against code 2026-07-28).** The consumption side shipped
+> and is live: `src/backend/aircraft.ts` polls the **airplanes.live** HTTP feed
+> (no SDR, no DSP), gated on `config.aircraft.enabled`, and `map/aircraft.ts`
+> renders type-coloured targets with heading glyphs, callsign chips and comet
+> trails. Currently enabled: 75 km radius, 5 s poll, 60-target cap, trails on.
+> Design spec: `docs/superpowers/specs/2026-06-18-aircraft-overlay-design.md`.
+>
+> What remains is only the **Tier C RF path** — a local V4 stick + dump1090
+> sidecar feeding the same layer instead of the network. `config.radios[].role`
+> already reserves `adsb` for it. Still antenna-pending; see "Tabled".
 
 **The pitch.** Plot live aircraft on the map and pair them with airband voice:
 *see the plane move AND hear the tower/approach frequency it's working.* No
@@ -931,8 +942,19 @@ throttling, which a bare CPU% gauge would hide.
 
 ## Where things stand (2026-06-07) — open items, sorted
 
-Ideas 1, 2, 4, 5, 6, 7, 8, 9, 11, 15, 16 are shipped or resolved; the stretch
-sweep landed CC band-sweep and remote listening (PRs #66–#68); ambient replay
+> **Reconciled against the code 2026-07-28.** This section had drifted: Idea 13
+> was listed as tabled when its map layer had shipped against the network feed,
+> and two watch items had been resolved without being struck. Corrected in
+> place below and in each Idea. Nothing here is a plan change — only the doc
+> catching up with what is already running on the appliance.
+>
+> Also shipped since this section was written, and not tracked as roadmap
+> ideas: `DESIGN.md` + `.impeccable/design.json` (the visual system, 2026-07-28)
+> and the admin/kiosk design remediation that produced them (PRs #207–#211).
+
+Ideas 1, 2, 4, 5, 6, 7, 8, 9, 11, **13 (network feed)**, 15, 16 are shipped or
+resolved; the stretch sweep landed CC band-sweep and remote listening
+(PRs #66–#68); ambient replay
 shipped then was REMOVED 2026-06-08 (camera-punch read as a bug + CPU/heat).
 Transcription shipped then was removed (operator decision, 2026-06-07 — see the
 stretch list above). What's open, in execution order:
@@ -954,9 +976,12 @@ stretch list above). What's open, in execution order:
 > instinct. Back to field-proving from here.
 
 ### Build next (software-only, in order)
-1. **Idea 3 — ambient skins** (constellation, kerchunk wall, data poster). The
-   first skin (auto-replay) was removed (2026-06-08, see Idea 8); any future
-   skin must NOT punch the camera on a quiet band. Optional, low priority.
+1. **Idea 3 — ambient skins.** Two of the three named concepts now exist: the
+   **kerchunk wall** (`frontend/wall/`, `wallField.ts`) and **"Day's Map"**
+   (`frontend/art/`, `sediment.ts` + `project.ts`, PR #118), both routed and
+   both idle-suspending. Constellation and data poster are unbuilt. The first
+   skin (auto-replay) was removed (2026-06-08, see Idea 8); any future skin
+   must NOT punch the camera on a quiet band. Optional, low priority.
 
 ### Hardening backlog — DSP efficiency (from the 2026-06-06 review) — COMPLETE 2026-06-09
 `docs/PROCESSOR-EFFICIENCY-REVIEW-2026-06-06.md` found the dominant cost is the
@@ -989,9 +1014,12 @@ Distinct from the parked polyphase-channelizer rewrite below — these were
 in-place wins on the current helper, not a DSP re-architecture.
 
 ### Tabled by operator (2026-06-06 — don't re-pitch; he'll return to them)
-- **Idea 13 — ADS-B**: hardware staged (V4 stick identified, port system
-  ready, plan = blog-librtlsdr build → dump1090 sidecar → map layer);
-  antenna pending. Tabled "for now."
+- **Idea 13 — ADS-B, RF path only**: the map layer itself SHIPPED 2026-06-18
+  against the airplanes.live network feed (see Idea 13). What stays tabled is
+  the local receive path: hardware staged (V4 stick identified, port system
+  ready, plan = blog-librtlsdr build → dump1090 sidecar → existing map layer);
+  antenna pending. Tabled "for now" — and now a pure upgrade rather than a
+  prerequisite, since the feature already works over the network.
 - **Idea 14 — Meshtastic**: tabled before the connection question
   (USB-serial / BLE / MQTT) was answered.
 
@@ -1017,16 +1045,21 @@ in-place wins on the current helper, not a DSP re-architecture.
   header, NOT `Authorization: Bearer` (that 401s `auth_missing`) — see PR
   fixing the client. Remaining unlocated entries are genuinely non-ham
   (railroad VHF, 2m/70cm simplex calling, business-band Close Call).
-- **SAME proof-of-life**: KEAX's next weekly test should land in the alert
-  feed (banner only if alerts.sameTests).
+- ~~**SAME proof-of-life**: KEAX's next weekly test should land in the alert
+  feed (banner only if alerts.sameTests).~~ CONFIRMED 2026-07-22: `REQUIRED
+  WEEKLY TEST — KEAX/NWS` on 162.5500 is in the alert history. The whole chain
+  — weather radio → multimon-ng → SAME parse → county filter → alert feed —
+  is proven end to end on real traffic.
 - **ERP estimator anchors**: estimates refine as licensed channels are
   heard; GMRS clamps at the Part 95 ceiling by design.
-- **"Day's Map" art view idle-suspend**: the artistic kiosk (`art.ts`, PR #118)
+- ~~**"Day's Map" art view idle-suspend**: the artistic kiosk (`art.ts`, PR #118)
   runs an unconditional `requestAnimationFrame` with no idle-suspend, unlike the
-  live map (PR #106). It is NOT the default kiosk screen, so it costs nothing
-  today — but it must gain a wake/sleep gate (the `map.ts` pattern: stop the loop
-  when the sediment field and breath are static) BEFORE it can become the default,
-  or it silently undoes the item-#4 idle-render win on a quiet band.
+  live map (PR #106). It must gain a wake/sleep gate BEFORE it can become the
+  default, or it silently undoes the item-#4 idle-render win on a quiet band.~~
+  DONE: `art.ts` now drives its paint through the shared `lib/idleLoop.ts`
+  (`createIdleLoop({ tick: paint })`), which also handles a resize while
+  suspended and a wake at local midnight for the daily reset. The blocker on
+  making Day's Map the default kiosk screen is cleared.
 
 
 ## Suggested sequencing (historical)
