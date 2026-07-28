@@ -53,6 +53,21 @@
   --green: var(--success-400);
   --red: var(--danger-400);
   --blue: color-mix(in srgb, var(--pine) 65%, var(--text-primary));
+
+  /* Type scale. Ten steps and one clamp, down from 32 ad-hoc values — five of
+     which sat between 0.82 and 0.88rem, a band no reader can tell apart, and
+     three of which were px and so ignored browser zoom entirely.
+     Pick by what the text DOES, not by how big it should look. */
+  --t-micro: 0.7rem;        /* chips, eyebrows, units, badges, column heads */
+  --t-caption: 0.78rem;     /* buttons, nav chrome, hints, captions */
+  --t-dense: 0.85rem;       /* table and list body, empty states, errors */
+  --t-body: 0.92rem;        /* body copy, inputs, form labels */
+  --t-title: 1rem;          /* card headers, brand */
+  --t-lead: 1.15rem;        /* emphasised inline values */
+  --t-heading: 1.3rem;      /* drawer and dialog headings */
+  --t-display-sm: 1.5rem;   /* the live channel name */
+  --t-display: 1.9rem;      /* stat tile values */
+  --t-display-lg: 2.1rem;   /* the drawer frequency */
 }
 
 /* One face for display, body and data (spec 2026-07-16). Scoped, so
@@ -68,7 +83,7 @@ html[data-page="admin"] {
 body {
   margin: 0;
   font-family: var(--font-sans);
-  font-size: 0.92rem;
+  font-size: var(--t-body);
   background: var(--bg);
   color: var(--ink);
 }
@@ -96,7 +111,7 @@ body {
 .adminHead .brand {
   color: var(--ink);
   font-weight: 700;
-  font-size: 1.05rem;
+  font-size: var(--t-title);
   letter-spacing: 0.06em;
   text-decoration: none;
 }
@@ -104,7 +119,7 @@ body {
   margin-left: 0.6rem;
   color: var(--dim);
   font-weight: 600;
-  font-size: 0.7rem;
+  font-size: var(--t-micro);
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
@@ -114,7 +129,7 @@ body {
   color: var(--label);
   border: 1px solid transparent;
   border-radius: 8px;
-  font-size: 0.78rem;
+  font-size: var(--t-caption);
   font-weight: 600;
   text-decoration: none;
 }
@@ -148,7 +163,7 @@ body {
   border: 1px solid transparent;
   border-radius: 8px;
   font-weight: 600;
-  font-size: 0.8rem;
+  font-size: var(--t-caption);
   text-decoration: none;
 }
 .adminNav a:hover { color: var(--ink); background: var(--panel); }
@@ -160,8 +175,8 @@ body {
 .adminNav .navIco { color: var(--label); }
 .adminNav .navIco svg { width: 1.15rem; height: 1.15rem; display: block; }
 .adminNav .navCopy { display: grid; gap: 0.1rem; }
-.adminNav .navCopy b { color: inherit; font-size: 0.86rem; letter-spacing: 0.02em; }
-.adminNav .navCopy small { color: var(--dim); font-size: 0.68rem; font-weight: 400; }
+.adminNav .navCopy b { color: inherit; font-size: var(--t-body); letter-spacing: 0.02em; }
+.adminNav .navCopy small { color: var(--dim); font-size: var(--t-micro); font-weight: 400; }
 .adminNav a.active .navCopy small { color: var(--label); }
 .adminNav .navBadge:not(:empty) {
   margin-left: auto;
@@ -169,7 +184,7 @@ body {
   color: var(--bg);
   background: var(--caution);
   border-radius: 4px;
-  font-size: 0.7rem;
+  font-size: var(--t-micro);
   font-variant-numeric: tabular-nums;
 }
 
@@ -185,7 +200,7 @@ body {
 }
 .eyebrow {
   color: var(--amber);
-  font-size: 0.68rem;
+  font-size: var(--t-micro);
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -193,6 +208,8 @@ body {
 .pageIntro h1 {
   margin: 0.1rem 0 0.25rem;
   color: var(--ink);
+  /* Off the fixed ramp on purpose: the page title is the one role that
+     should track viewport width. */
   font-size: clamp(1.6rem, 3vw, 2.25rem);
   line-height: 1.1;
   letter-spacing: -0.035em;
@@ -222,12 +239,12 @@ body {
   gap: 0.5rem;
   margin: 0 0 0.9rem;
   color: var(--ink);
-  font-size: 1rem;
+  font-size: var(--t-title);
   font-weight: 600;
 }
 .admin .hint {
   color: var(--dim);
-  font-size: 0.72rem;
+  font-size: var(--t-micro);
   font-weight: 500;
   text-transform: none;
 }
@@ -257,7 +274,7 @@ body {
 .admin select,
 .admin button {
   font-family: inherit;
-  font-size: 0.92rem;
+  font-size: var(--t-body);
   padding: 0.38rem 0.55rem;
   color: var(--ink);
   background: var(--etch);
@@ -265,13 +282,13 @@ body {
   border-radius: 4px;
 }
 .admin input::placeholder { color: var(--dim); }
-.admin label { color: var(--label); font-size: 0.88rem; }
+.admin label { color: var(--label); font-size: var(--t-body); }
 
 .admin button {
   min-height: 2.35rem;
   margin: 0;
   padding: 0.45rem 0.75rem;
-  font-size: 0.78rem;
+  font-size: var(--t-caption);
   font-weight: 600;
   letter-spacing: 0.02em;
   cursor: pointer;
@@ -309,7 +326,7 @@ body {
   background: color-mix(in srgb, var(--blue) 12%, var(--etch));
   border-color: color-mix(in srgb, var(--blue) 70%, transparent);
 }
-.admin .err { color: var(--red); font-size: 0.85rem; }
+.admin .err { color: var(--red); font-size: var(--t-dense); }
 .admin .err:not(:empty) { margin-left: 0.5rem; }
 
 /* Icon buttons: compact squares, glyph inherits the consequence color. No
@@ -395,14 +412,14 @@ body {
 .admin .nowCard .npWhat { margin: 0.45rem 0 1.1rem; }
 .admin .nowCard .npName {
   font-weight: 600;
-  font-size: 1.5rem;
+  font-size: var(--t-display-sm);
   letter-spacing: 0.02em;
   color: var(--ink);
 }
 .admin .nowCard .npFreq {
   margin-left: 0.7rem;
   color: var(--amber);
-  font-size: 1.05rem;
+  font-size: var(--t-lead);
   font-variant-numeric: tabular-nums;
 }
 .admin .nowCard .npControls {
@@ -451,19 +468,19 @@ a.statTile:hover { border-color: var(--caution); }
 .stLabel {
   color: var(--dim);
   font-weight: 600;
-  font-size: 0.68rem;
+  font-size: var(--t-micro);
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 .stValue {
   margin: 0.15rem 0;
   color: var(--amber);
-  font-size: 1.9rem;
+  font-size: var(--t-display);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   line-height: 1.2;
 }
-.stSub { color: var(--label); font-size: 0.75rem; }
+.stSub { color: var(--label); font-size: var(--t-caption); }
 
 .hourClock { display: flex; align-items: flex-end; gap: 2px; height: 3.1rem; margin-top: 0.4rem; }
 .clkBar { flex: 1; background: var(--blue); opacity: 0.65; min-height: 3px; }
@@ -472,7 +489,7 @@ a.statTile:hover { border-color: var(--caution); }
   align-self: center;
   width: 100%;
   color: var(--dim);
-  font-size: 0.78rem;
+  font-size: var(--t-caption);
   text-align: center;
 }
 
@@ -503,7 +520,7 @@ a.statTile:hover { border-color: var(--caution); }
   box-shadow: 0 1px 0 var(--rule);
   color: var(--label);
   font-weight: 600;
-  font-size: 0.78rem;
+  font-size: var(--t-caption);
   letter-spacing: 0.06em;
   text-align: left;
   text-transform: uppercase;
@@ -523,11 +540,11 @@ a.statTile:hover { border-color: var(--caution); }
 .admin .chTable th:last-child { text-align: right; }
 .admin .chTable td.actions { text-align: right; white-space: nowrap; }
 .admin .chTable td.actions .iconBtn { margin: 0; }
-.admin .chTable button { min-height: 0; padding: 0.22rem 0.5rem; font-size: 0.78rem; }
+.admin .chTable button { min-height: 0; padding: 0.22rem 0.5rem; font-size: var(--t-caption); }
 .admin .chTable .empty {
   padding: 1rem;
   color: var(--dim);
-  font-size: 0.85rem;
+  font-size: var(--t-dense);
   font-style: italic;
   text-align: center;
 }
@@ -553,7 +570,7 @@ a.statTile:hover { border-color: var(--caution); }
   color: var(--mark);
   background: none;
   border: none;
-  font-size: 1rem;
+  font-size: var(--t-title);
   line-height: 1.2;
 }
 .admin .chTable tbody tr:hover .rowChev,
@@ -577,13 +594,13 @@ a.statTile:hover { border-color: var(--caution); }
   padding: 0.5rem 0.6rem 0.6rem;
   background: color-mix(in srgb, var(--spark) 3%, transparent);
   color: var(--label);
-  font-size: 0.82rem;
+  font-size: var(--t-dense);
 }
 .admin tr.dcDetail .dl {
   margin: 0 0.3rem 0 0.9rem;
   color: var(--dim);
   font-weight: 600;
-  font-size: 0.7rem;
+  font-size: var(--t-micro);
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
@@ -627,7 +644,7 @@ tr.bankRow .bkName {
   margin-right: 0.5rem;
   color: var(--ink);
   font-weight: 700;
-  font-size: 0.8rem;
+  font-size: var(--t-caption);
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
@@ -638,7 +655,7 @@ tr.bankRow .bkSummary {
   min-width: 0;
   margin-left: 0.6rem;
   color: var(--dim);
-  font-size: 0.72rem;
+  font-size: var(--t-micro);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -655,7 +672,7 @@ tr.bankRow .bkSummary {
   padding: 0.2rem 0.6rem;
   color: var(--label);
   border-radius: 4px;
-  font-size: 1.1rem;
+  font-size: var(--t-lead);
   line-height: 1;
   list-style: none;
   cursor: pointer;
@@ -697,7 +714,7 @@ tr.bankRow .bkSummary {
   border: 1px solid var(--panel-edge);
   border-radius: 4px;
   font-weight: 600;
-  font-size: 0.7rem;
+  font-size: var(--t-micro);
   letter-spacing: 0.04em;
   vertical-align: 0.1em;
   white-space: nowrap;
@@ -721,7 +738,7 @@ tr.bankRow .bkSummary {
 .admin .loc {
   margin-left: 0.4rem;
   color: var(--blue);
-  font-size: 0.78rem;
+  font-size: var(--t-caption);
   font-weight: 500;
   letter-spacing: 0.05em;
   white-space: nowrap;
@@ -748,7 +765,7 @@ tr.bankRow .bkSummary {
   font-weight: 600;
   cursor: pointer;
 }
-.bankBuilder summary span { margin-left: 0.5rem; color: var(--dim); font-size: 0.78rem; font-weight: 400; }
+.bankBuilder summary span { margin-left: 0.5rem; color: var(--dim); font-size: var(--t-caption); font-weight: 400; }
 .admin .bankAdd {
   display: grid;
   grid-template-columns: 1.4fr repeat(3, minmax(7rem, 0.75fr)) 1.5fr auto;
@@ -757,12 +774,12 @@ tr.bankRow .bkSummary {
   padding: 0.2rem 1rem 1rem;
   border-top: 1px solid var(--rule);
 }
-.admin .bankAdd label { display: grid; gap: 0.25rem; color: var(--label); font-size: 0.75rem; }
+.admin .bankAdd label { display: grid; gap: 0.25rem; color: var(--label); font-size: var(--t-caption); }
 .admin .bankAdd input, .admin .bankAdd select { box-sizing: border-box; width: 100%; }
 .admin .bankAdd .err { grid-column: 1 / -1; }
 
 .admin .bankChips { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.3rem 0 0.7rem; }
-.admin .bankChips .empty { color: var(--dim); font-size: 0.85rem; font-style: italic; }
+.admin .bankChips .empty { color: var(--dim); font-size: var(--t-dense); font-style: italic; }
 .admin .bankChip {
   display: inline-flex;
   align-items: center;
@@ -770,7 +787,7 @@ tr.bankRow .bkSummary {
   padding: 0.35rem 0.7rem;
   border: 1px solid var(--panel-edge);
   border-radius: 4px;
-  font-size: 0.95rem;
+  font-size: var(--t-body);
   letter-spacing: 0.06em;
   opacity: 0.55;
 }
@@ -782,7 +799,7 @@ tr.bankRow .bkSummary {
   color: var(--label);
   background: var(--etch);
   border-radius: 4px;
-  font-size: 0.72rem;
+  font-size: var(--t-micro);
 }
 .admin .bankChip .bankDel { color: var(--dim); margin-left: 0.2rem; padding: 0 0.15rem; }
 .admin .bankChip .bankDel:hover { color: var(--red); }
@@ -813,8 +830,8 @@ tr.bankRow .bkSummary {
   cursor: pointer;
 }
 .settingsCard summary::-webkit-details-marker { display: none; }
-.settingsCard summary h2 { margin: 0; color: var(--ink); font-size: 1rem; }
-.settingsCard .cardHint { color: var(--dim); font-size: 0.78rem; }
+.settingsCard summary h2 { margin: 0; color: var(--ink); font-size: var(--t-title); }
+.settingsCard .cardHint { color: var(--dim); font-size: var(--t-caption); }
 .settingsCard .cardBody { padding: 0 1.1rem 1.1rem; }
 
 .settingGroups label {
@@ -828,10 +845,10 @@ tr.bankRow .bkSummary {
 }
 .settingGroups label:last-child { border-bottom: 0; }
 .settingGroups label > span:first-child { display: grid; gap: 0.15rem; color: var(--ink); }
-.settingGroups label small { color: var(--dim); font-size: 0.68rem; line-height: 1.35; }
+.settingGroups label small { color: var(--dim); font-size: var(--t-micro); line-height: 1.35; }
 .settingGroups input, .settingGroups select { box-sizing: border-box; width: 100%; }
 .settingGroups .inputUnit { display: flex; align-items: center; gap: 0.4rem; }
-.settingGroups .inputUnit b { min-width: 2rem; color: var(--dim); font-size: 0.68rem; font-weight: 500; }
+.settingGroups .inputUnit b { min-width: 2rem; color: var(--dim); font-size: var(--t-micro); font-weight: 500; }
 .settingGroups .switchRow { grid-template-columns: 1fr auto; }
 .settingGroups .switchRow input { width: auto; }
 .formActions {
@@ -854,10 +871,10 @@ tr.bankRow .bkSummary {
   gap: 1.4rem;
   margin-bottom: 0.7rem;
   color: var(--label);
-  font-size: 0.95rem;
+  font-size: var(--t-body);
 }
-.admin .inTotals b { color: var(--amber); font-size: 1.15rem; }
-.admin .inBusiest b { font-size: 0.95rem; }
+.admin .inTotals b { color: var(--amber); font-size: var(--t-lead); }
+.admin .inBusiest b { font-size: var(--t-body); }
 /* The full table is a drill-in, not the default read. */
 .admin .inBreakdown summary {
   display: flex;
@@ -865,7 +882,7 @@ tr.bankRow .bkSummary {
   min-height: 2.75rem;
   box-sizing: border-box;
   color: var(--label);
-  font-size: 0.85rem;
+  font-size: var(--t-dense);
   cursor: pointer;
 }
 .admin .inBreakdown summary:hover { color: var(--ink); }
@@ -873,7 +890,7 @@ tr.bankRow .bkSummary {
 .admin .inClock .inHr { flex: 1; background: color-mix(in srgb, var(--spark) 45%, transparent); min-height: 3px; }
 .admin .inClock .inHr.now { background: var(--green); }
 .admin .inTop { width: 100%; border-collapse: collapse; margin-bottom: 0.6rem; }
-.admin .inTop td { padding: 0.18rem 0.4rem; border: none; font-size: 0.85rem; }
+.admin .inTop td { padding: 0.18rem 0.4rem; border: none; font-size: var(--t-dense); }
 .admin .inTop .inName { max-width: 14rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .admin .inTop .inBar { width: 40%; }
 .admin .inTop .inBar div {
@@ -890,7 +907,7 @@ tr.bankRow .bkSummary {
   color: var(--label);
   border: 1px solid var(--panel-edge);
   border-radius: 4px;
-  font-size: 0.75rem;
+  font-size: var(--t-caption);
 }
 .admin .inChip.tag { color: var(--blue); }
 .inChannel { cursor: pointer; }
@@ -908,7 +925,7 @@ tr.bankRow .bkSummary {
   /* Was --border-subtle, which is the same value as --bg-subtle in the dark
      theme: a separator at exactly 1.00:1 against the card behind it. */
   border-bottom: 1px solid var(--rule);
-  font-size: 0.85rem;
+  font-size: var(--t-dense);
 }
 .alertList li:last-child { border-bottom: none; }
 .alertList .alertWhen { color: var(--dim); white-space: nowrap; }
@@ -924,7 +941,7 @@ tr.bankRow .bkSummary {
   color: var(--red);
   background: none;
   border-color: color-mix(in srgb, var(--red) 70%, transparent);
-  font-size: 0.72rem;
+  font-size: var(--t-micro);
   letter-spacing: 0.02em;
   text-transform: uppercase;
 }
@@ -942,8 +959,8 @@ tr.bankRow .bkSummary {
 }
 .sysCell.hot { border-color: var(--red); }
 .sysCell.hot .sysValue { color: var(--red); }
-.sysLabel { color: var(--dim); font-size: 0.7rem; letter-spacing: 0.06em; text-transform: uppercase; }
-.sysValue { margin: 0.15rem 0 0.3rem; font-size: 1.1rem; font-variant-numeric: tabular-nums; }
+.sysLabel { color: var(--dim); font-size: var(--t-micro); letter-spacing: 0.06em; text-transform: uppercase; }
+.sysValue { margin: 0.15rem 0 0.3rem; font-size: var(--t-lead); font-variant-numeric: tabular-nums; }
 .spark { width: 100%; height: 28px; }
 .spark polyline { stroke: var(--blue); stroke-width: 1.5; }
 .spark.hot polyline { stroke: var(--red); }
@@ -955,7 +972,7 @@ tr.bankRow .bkSummary {
   margin: 0 0 10px;
   padding: 10px 12px;
   border-radius: 8px;
-  font-size: 14px;
+  font-size: var(--t-dense);
 }
 .healthVerdict .verdictDot { width: 12px; height: 12px; border-radius: 50%; flex: 0 0 auto; }
 .healthVerdict .verdictLabel { font-weight: 700; letter-spacing: 0.04em; }
@@ -1004,7 +1021,7 @@ tr.bankRow .bkSummary {
 }
 .lockoutsBox summary:hover { color: var(--ink); }
 .loChips { display: flex; flex-wrap: wrap; gap: 0.5rem; padding: 0.4rem 0 0.2rem; }
-.loChips .empty { color: var(--dim); font-size: 0.85rem; font-style: italic; }
+.loChips .empty { color: var(--dim); font-size: var(--t-dense); font-style: italic; }
 .loChip {
   display: inline-flex;
   align-items: center;
@@ -1015,7 +1032,7 @@ tr.bankRow .bkSummary {
   border-radius: 4px;
   font-variant-numeric: tabular-nums;
 }
-.admin .loChip .unlock { min-height: 0; padding: 0.18rem 0.5rem; font-size: 0.75rem; }
+.admin .loChip .unlock { min-height: 0; padding: 0.18rem 0.5rem; font-size: var(--t-caption); }
 @media (pointer: coarse) {
   .admin .loChip .iconBtn { min-width: 2.35rem; min-height: 2.35rem; }
 }
@@ -1030,12 +1047,12 @@ tr.bankRow .bkSummary {
   border: 1px solid var(--caution);
   border-radius: 8px;
 }
-.dupPanel h3 { margin: 0 0 8px; font-size: 14px; }
-.dupSet { margin: 0 0 8px; font-size: 13px; }
+.dupPanel h3 { margin: 0 0 8px; font-size: var(--t-dense); }
+.dupSet { margin: 0 0 8px; font-size: var(--t-dense); }
 .dupSet ul { margin: 4px 0 0; padding-left: 18px; list-style: disc; }
 .dupSet li { color: var(--label); }
-.dupKeep { color: var(--green); font-size: 11px; text-transform: uppercase; }
-.dupDrop { color: var(--caution); font-size: 11px; text-transform: uppercase; }
+.dupKeep { color: var(--green); font-size: var(--t-micro); text-transform: uppercase; }
+.dupDrop { color: var(--caution); font-size: var(--t-micro); text-transform: uppercase; }
 .dupPanel button { margin-top: 6px; }
 
 .suppressedPanel, .archiveRecommendations {
@@ -1085,10 +1102,10 @@ tr.bankRow .bkSummary {
 }
 .drawer.open { transform: translateX(0); }
 .drawer .dwHead { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
-.drawer .dwHead h3 { margin: 0; font-weight: 600; font-size: 1.3rem; letter-spacing: 0.02em; }
+.drawer .dwHead h3 { margin: 0; font-weight: 600; font-size: var(--t-heading); letter-spacing: 0.02em; }
 .drawer .drawerEyebrow {
   color: var(--amber);
-  font-size: 0.65rem;
+  font-size: var(--t-micro);
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -1096,14 +1113,14 @@ tr.bankRow .bkSummary {
 .drawer .dwFreq {
   margin: 0.2rem 0 1rem;
   color: var(--amber);
-  font-size: 2.1rem;
+  font-size: var(--t-display-lg);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 .drawer .dwUnit {
   margin-left: 0.4em;
   color: var(--amber);
-  font-size: 0.45em;
+  font-size: 0.45em;   /* em, not a ramp step: the unit scales with its number */
   font-weight: 600;
   letter-spacing: 0.06em;
   vertical-align: 0.5em;
@@ -1111,13 +1128,13 @@ tr.bankRow .bkSummary {
 /* Drawer forms share the settings-card row grammar: section legends,
    label-left/input-right rows with visible hints, one primary Save. */
 .drawer .dwForm { border-top: 1px solid var(--rule); padding-top: 0.2rem; }
-.drawer .dwHelp { margin: 0.4rem 0 0.2rem; color: var(--label); font-size: 0.82rem; line-height: 1.5; }
+.drawer .dwHelp { margin: 0.4rem 0 0.2rem; color: var(--label); font-size: var(--t-dense); line-height: 1.5; }
 .drawer .dwSection {
   margin-top: 0.9rem;
   padding-bottom: 0.35rem;
   color: var(--label);
   font-weight: 600;
-  font-size: 0.72rem;
+  font-size: var(--t-micro);
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
@@ -1130,7 +1147,7 @@ tr.bankRow .bkSummary {
   border-bottom: 1px solid var(--rule);
 }
 .drawer .dwRow > span:first-child { display: grid; gap: 0.15rem; color: var(--ink); }
-.drawer .dwRow small { color: var(--dim); font-size: 0.68rem; line-height: 1.35; }
+.drawer .dwRow small { color: var(--dim); font-size: var(--t-micro); line-height: 1.35; }
 .drawer .dwRow input, .drawer .dwRow select { box-sizing: border-box; width: 100%; }
 .drawer .dwRow.switchRow { grid-template-columns: 1fr auto; }
 .drawer .dwRow.switchRow input { width: auto; }
@@ -1150,18 +1167,18 @@ tr.bankRow .bkSummary {
   margin: 1rem 0 0;
   padding-top: 0.8rem;
   border-top: 1px solid var(--rule);
-  font-size: 0.84rem;
+  font-size: var(--t-dense);
 }
 .drawer .dwInfo dt {
   align-self: baseline;
   color: var(--dim);
   font-weight: 600;
-  font-size: 0.72rem;
+  font-size: var(--t-micro);
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 .drawer .dwInfo dd { margin: 0; color: var(--label); overflow-wrap: anywhere; }
-.drawer .dwVia { color: var(--dim); font-size: 0.9em; }
+.drawer .dwVia { color: var(--dim); font-size: 0.9em; }  /* em: shrinks with whatever row it annotates */
 .drawer .dwDigital { color: var(--caution); }
 .drawer .dwActions {
   display: flex;
@@ -1181,7 +1198,7 @@ tr.bankRow .bkSummary {
   border: 1px solid var(--panel-edge);
   border-radius: 8px;
 }
-.locationEditor h4 { margin: 0 0 0.7rem; font-size: 0.9rem; }
+.locationEditor h4 { margin: 0 0 0.7rem; font-size: var(--t-body); }
 .locationEditor label { display: grid; gap: 0.25rem; margin-bottom: 0.5rem; }
 .locationEditor input { box-sizing: border-box; width: 100%; }
 .locationSearch { display: flex; gap: 0.35rem; }
@@ -1213,7 +1230,7 @@ tr.bankRow .bkSummary {
   flex-direction: column;
   justify-content: space-between;
   color: var(--dim);
-  font-size: 0.68rem;
+  font-size: var(--t-micro);
 }
 .transmissionList { margin: 1rem 0; padding: 0; list-style: none; }
 .transmissionList li {
@@ -1242,7 +1259,7 @@ tr.bankRow .bkSummary {
 .confirmDialog form { padding: 1.35rem; }
 .confirmDialog .confirmEyebrow {
   color: var(--amber);
-  font-size: 0.65rem;
+  font-size: var(--t-micro);
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -1250,7 +1267,7 @@ tr.bankRow .bkSummary {
 .confirmDialog h2 {
   margin: 0.35rem 0 0.55rem;
   color: var(--ink);
-  font-size: 1.2rem;
+  font-size: var(--t-heading);
   letter-spacing: -0.015em;
 }
 .confirmDialog p { margin: 0; color: var(--label); line-height: 1.55; }
@@ -1327,7 +1344,7 @@ tr.bankRow .bkSummary {
   .adminNav .navCopy { display: block; min-width: 0; max-width: 100%; }
   .adminNav .navCopy b {
     display: block;
-    font-size: 0.62rem;
+    font-size: var(--t-micro);
     letter-spacing: 0;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1343,7 +1360,7 @@ tr.bankRow .bkSummary {
   .pageIntro { flex-direction: column; align-items: stretch; margin-bottom: 0.8rem; }
   .pageIntro > button { align-self: start; }
   .pageIntro p, .pageIntro .eyebrow { display: none; }
-  .pageIntro h1 { margin: 0; font-size: 1.35rem; }
+  .pageIntro h1 { margin: 0; font-size: 1.35rem; }  /* fixed floor for the clamp above */
 
   .admin section { padding: 1rem 0.8rem; }
   .admin .nowCard { padding: 1.1rem; }
@@ -1397,7 +1414,7 @@ tr.bankRow .bkSummary {
   /* Alert rows stack rather than squeezing a timestamp beside three lines
      of wrapped alert text. */
   .alertList li { flex-wrap: wrap; gap: 0.15rem 0.75rem; }
-  .alertList .alertWhen { flex: 1 0 100%; font-size: 0.78rem; }
+  .alertList .alertWhen { flex: 1 0 100%; font-size: var(--t-caption); }
   .alertList .alertWhat { flex: 1; min-width: 0; }
   .healthAlert a { margin-left: 0; }
   .drawer { width: 100vw; }
