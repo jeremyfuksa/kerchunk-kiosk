@@ -249,6 +249,120 @@
         "displayName": "Position Unknown",
         "canonical": "#4a7c7e",
         "note": "A hit with no honest map position. Deliberately distinct from every service colour — uncertain geography must never look located."
+      },
+      "shadow-ink": {
+        "role": "neutral",
+        "displayName": "Shadow Ink",
+        "canonical": "#000000",
+        "note": "Depth only, 28-85% alpha: every shadow plus the drawer scrim. Never a surface colour."
+      },
+      "backdrop-ink": {
+        "role": "neutral",
+        "displayName": "Backdrop Ink",
+        "canonical": "#080a0d",
+        "note": "78% behind the modal dialog."
+      },
+      "overmap-plate": {
+        "role": "neutral",
+        "displayName": "Over-map Plate",
+        "canonical": "#0a0d12",
+        "note": "70% behind aircraft callsign chips, where the ground is arbitrary map imagery."
+      },
+      "wall-ground": {
+        "role": "neutral",
+        "displayName": "Wall Ground",
+        "canonical": "#05070a",
+        "note": "Ambient canvas skin. Deliberately darker than Night Ground — an unlit room, not a panel."
+      },
+      "art-ground": {
+        "role": "neutral",
+        "displayName": "Art Ground",
+        "canonical": "#04060a",
+        "note": "Outer stop of the art surface's radial ground."
+      },
+      "art-ground-mid": {
+        "role": "neutral",
+        "displayName": "Art Ground Mid",
+        "canonical": "#070a10",
+        "note": "Middle stop."
+      },
+      "art-ground-lift": {
+        "role": "neutral",
+        "displayName": "Art Ground Lift",
+        "canonical": "#0b0f16",
+        "note": "Centre stop — the faint lift under the sediment field."
+      },
+      "storm-tornado": {
+        "role": "tertiary",
+        "displayName": "Tornado",
+        "canonical": "#e01a2b",
+        "note": "NWS convention, externally mandated. Do not restyle toward the Kerchunk palette."
+      },
+      "storm-severe": {
+        "role": "tertiary",
+        "displayName": "Severe thunderstorm",
+        "canonical": "#f5a623",
+        "note": "NWS convention, externally mandated. Do not restyle toward the Kerchunk palette."
+      },
+      "storm-flood": {
+        "role": "tertiary",
+        "displayName": "Flood",
+        "canonical": "#15924f",
+        "note": "NWS convention, externally mandated. Do not restyle toward the Kerchunk palette."
+      },
+      "storm-winter": {
+        "role": "tertiary",
+        "displayName": "Winter",
+        "canonical": "#d23a9d",
+        "note": "NWS convention, externally mandated. Do not restyle toward the Kerchunk palette."
+      },
+      "storm-wind": {
+        "role": "tertiary",
+        "displayName": "Wind",
+        "canonical": "#c59a2c",
+        "note": "NWS convention, externally mandated. Do not restyle toward the Kerchunk palette."
+      },
+      "storm-tropical": {
+        "role": "tertiary",
+        "displayName": "Tropical",
+        "canonical": "#a8327f",
+        "note": "NWS convention, externally mandated. Do not restyle toward the Kerchunk palette."
+      },
+      "storm-fire": {
+        "role": "tertiary",
+        "displayName": "Fire",
+        "canonical": "#e8501e",
+        "note": "NWS convention, externally mandated. Do not restyle toward the Kerchunk palette."
+      },
+      "storm-civil": {
+        "role": "tertiary",
+        "displayName": "Civil emergency",
+        "canonical": "#c8102e",
+        "note": "NWS convention, externally mandated. Do not restyle toward the Kerchunk palette."
+      },
+      "storm-test": {
+        "role": "tertiary",
+        "displayName": "Test",
+        "canonical": "#5b6b7a",
+        "note": "NWS convention, externally mandated. Do not restyle toward the Kerchunk palette."
+      },
+      "storm-on-light": {
+        "role": "tertiary",
+        "displayName": "Storm On (light)",
+        "canonical": "#ffffff",
+        "note": "Paired on-colour for a solid storm fill."
+      },
+      "storm-on-dark": {
+        "role": "tertiary",
+        "displayName": "Storm On (dark)",
+        "canonical": "#1a1205",
+        "note": "Paired on-colour for a solid storm fill."
+      },
+      "storm-on-test": {
+        "role": "tertiary",
+        "displayName": "Storm On (test)",
+        "canonical": "#e8eef3",
+        "note": "Paired on-colour for a solid storm fill."
       }
     },
     "typographyMeta": {
@@ -563,6 +677,11 @@
         "name": "The No-Pixels Rule",
         "body": "Type is sized in rem or em, never px. Three px sizes had crept in (11, 13, 14) and silently ignored browser zoom and OS font-size settings — on an appliance read at arm's length and from across a room, that is the wrong thing to freeze.",
         "section": "typography"
+      },
+      {
+        "name": "The Borrowed Palette Rule",
+        "body": "Depth inks, ambient canvas grounds and the NWS storm palette are part of the system but not interchangeable with it. Nothing else may borrow them, and the storm colours are never restyled toward the Kerchunk palette — an operator reading a tornado warning from across a room is relying on a colour they already know.",
+        "section": "colors"
       }
     ],
     "dos": [
@@ -588,7 +707,8 @@
       "Don't use monospace as a signal of 'technical'. One face, tabular figures.",
       "Don't invent a second card-header grammar, or a radius between 4px and 8px.",
       "Don't repeat a Campfire token's hex as a var(--token, #hex) fallback; the token layer is always loaded, and a duplicated hex drifts silently.",
-      "Don't size type in px — it freezes out browser zoom and OS font-size settings."
+      "Don't size type in px — it freezes out browser zoom and OS font-size settings.",
+      "Don't restyle the NWS storm palette toward the Kerchunk palette, and don't use a depth ink as a surface colour."
     ]
   }
 }

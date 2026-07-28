@@ -1360,7 +1360,7 @@ tr.bankRow .bkSummary {
   .pageIntro { flex-direction: column; align-items: stretch; margin-bottom: 0.8rem; }
   .pageIntro > button { align-self: start; }
   .pageIntro p, .pageIntro .eyebrow { display: none; }
-  .pageIntro h1 { margin: 0; font-size: 1.35rem; }  /* fixed floor for the clamp above */
+  .pageIntro h1 { margin: 0; font-size: var(--t-heading); }  /* fixed floor for the clamp above */
 
   .admin section { padding: 1rem 0.8rem; }
   .admin .nowCard { padding: 1.1rem; }

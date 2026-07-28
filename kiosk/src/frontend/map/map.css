@@ -1,5 +1,5 @@
 .mapWrap { position: fixed; inset: 0; }
-#gmap { width: 100%; height: 100%; background: var(--bg-base, #1c1f26); }
+#gmap { width: 100%; height: 100%; background: var(--bg-base); }
 
 .mapLegend {
   position: fixed; left: 1rem; bottom: 1.2rem; z-index: 5;
@@ -7,37 +7,37 @@
   padding: 0.45rem 0.9rem;
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 0.8rem;
-  color: var(--text-secondary, #9299a5);
-  background: color-mix(in srgb, var(--bg-base, #1c1f26) 85%, transparent);
-  border: 1px solid var(--border-default, #42454e);
-  border-radius: 6px;
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--bg-base) 85%, transparent);
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
 }
 .mapLegend .lgBlip {
   width: 0.7em; height: 0.7em; border-radius: 50%;
   display: inline-block;
 }
-.mapLegend .lgBlip.active { background: #ff6b35; box-shadow: 0 0 8px rgba(255, 107, 53, 0.6); }
-.mapLegend .lgBlip.cc { background: #dc3a38; box-shadow: 0 0 8px rgba(220, 58, 56, 0.6); }
-.mapLegend .lgNote { color: var(--text-tertiary, #747b8a); margin-left: 0.4rem; }
+.mapLegend .lgBlip.active { background: var(--spark); box-shadow: 0 0 8px color-mix(in srgb, var(--spark) 60%, transparent); }
+.mapLegend .lgBlip.cc { background: var(--flamingo); box-shadow: 0 0 8px color-mix(in srgb, var(--flamingo) 60%, transparent); }
+.mapLegend .lgNote { color: var(--text-tertiary); margin-left: 0.4rem; }
 
 .mapMsg {
   position: fixed; inset: 0; z-index: 4;
   display: flex; align-items: center; justify-content: center;
   text-align: center;
   font-family: var(--font-mono, ui-monospace, monospace);
-  color: var(--text-secondary, #9299a5);
+  color: var(--text-secondary);
   line-height: 1.8;
   pointer-events: none;
 }
 .mapMsg:empty { display: none; }
-.blipInfo { color: #1c1f26; font-weight: 600; }
+.blipInfo { color: var(--bg-base); font-weight: 600; }
 
-.mapLegend .lgAnt { color: var(--golden-amber, #ffc05c); font-size: 1rem; line-height: 0; }
-.blipMeta { color: #5e6371; font-size: 0.8em; font-weight: 400; margin-top: 0.2rem; }
+.mapLegend .lgAnt { color: var(--golden-amber); font-size: 1rem; line-height: 0; }
+.blipMeta { color: var(--neutral-600); font-size: 0.8em; font-weight: 400; margin-top: 0.2rem; }
 
-.mapLegend .lgAnt svg { width: 14px; height: 14px; color: var(--golden-amber, #ffc05c); display: inline-block; vertical-align: -2px; }
+.mapLegend .lgAnt svg { width: 14px; height: 14px; color: var(--golden-amber); display: inline-block; vertical-align: -2px; }
 
-.mapLegend .lgBlip.nofix { background: #4a7c7e; box-shadow: 0 0 8px rgba(74, 124, 126, 0.6); }
+.mapLegend .lgBlip.nofix { background: var(--pine); box-shadow: 0 0 8px color-mix(in srgb, var(--pine) 60%, transparent); }
 
 /* Edge glow: a hit with no honest map position pulses the screen edges in the
    band's color instead of planting a synthetic dot. Faint, quick rise, slow
@@ -67,7 +67,7 @@
    Google Maps inline label styles. */
 .acLabel {
   font-family: var(--font-sans, ui-sans-serif, system-ui), sans-serif !important;
-  font-size: 13px !important;
+  font-size: var(--t-dense) !important;
   font-weight: 600 !important;
   letter-spacing: 0.14em !important;
   text-transform: uppercase;

@@ -24,6 +24,25 @@ colors:
   service-publicsafety: "#e5383b"
   service-unknown: "#747b8a"
   position-unknown: "#4a7c7e"
+  shadow-ink: "#000000"
+  backdrop-ink: "#080a0d"
+  overmap-plate: "#0a0d12"
+  wall-ground: "#05070a"
+  art-ground: "#04060a"
+  art-ground-mid: "#070a10"
+  art-ground-lift: "#0b0f16"
+  storm-tornado: "#e01a2b"
+  storm-severe: "#f5a623"
+  storm-flood: "#15924f"
+  storm-winter: "#d23a9d"
+  storm-wind: "#c59a2c"
+  storm-tropical: "#a8327f"
+  storm-fire: "#e8501e"
+  storm-civil: "#c8102e"
+  storm-test: "#5b6b7a"
+  storm-on-light: "#ffffff"
+  storm-on-dark: "#1a1205"
+  storm-on-test: "#e8eef3"
 typography:
   micro:
     fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
@@ -101,6 +120,7 @@ typography:
     lineHeight: 1.08
     letterSpacing: "0.01em"
 rounded:
+  hairline: "2px"
   control: "4px"
   card: "8px"
   dot: "9999px"
@@ -117,7 +137,7 @@ components:
     textColor: "{colors.night-ground}"
     rounded: "{rounded.control}"
     padding: "0.45rem 0.75rem"
-    typography: "{typography.label}"
+    typography: "{typography.caption}"
     height: "2.35rem"
   button-primary-hover:
     backgroundColor: "{colors.caution-hay}"
@@ -155,7 +175,7 @@ components:
     textColor: "{colors.cool-label}"
     rounded: "{rounded.control}"
     padding: "0.08em 0.45em"
-    typography: "{typography.label}"
+    typography: "{typography.micro}"
 ---
 
 # Design System: Kerchunk
@@ -204,6 +224,14 @@ The consequence colours. These are never decorative: each one means a specific o
 - **Bright Ink** (`#f7f8f9`): primary text and data.
 - **Cool Label** (`#b8bcc5`): field labels, secondary values, prose.
 - **Quiet Hint** (`#9299a5`): helper text under a field, units, column headers, empty states.
+
+### Depth inks and external palettes
+
+Three groups sit outside the semantic palette. They are part of the system, not drift — but they are not interchangeable with it, and nothing else may borrow them.
+
+- **Depth inks.** Shadow Ink (`#000000`) at 28–85% alpha for every shadow and the drawer scrim; Backdrop Ink (`#080a0d`, 78%) behind the modal dialog; Over-map Plate (`#0a0d12`, 70%) behind aircraft callsign chips, where the ground is arbitrary Google Maps imagery. These are *depth*, never surface colour — a card never takes one as a background.
+- **Ambient canvas grounds.** The wall (`#05070a`) and art (`#04060a` → `#070a10` → `#0b0f16` radial) surfaces sit deliberately darker than Night Ground. They are unlit rooms, not panels, and they paint luminance on top rather than laying text on a field.
+- **NWS storm palette.** Tornado, severe, flood, winter, wind, tropical, fire, civil and test, each with a paired on-colour. Externally mandated by National Weather Service convention — see Components → Weather Alert Card. **Do not restyle these toward the Kerchunk palette.** An operator reading a tornado warning from across a room is relying on a colour they already know.
 
 ### Named Rules
 
@@ -284,7 +312,9 @@ Shadow appears only where something genuinely floats above another layer, and it
 
 ## Shapes
 
-Two radii, and they mean different things. **Controls and chips are `4px`** — tight, machined, close to square. **Cards, panels, tiles and menus are `8px`** — the container language. Status dots and bank LEDs are full circles. Nothing else is rounded, and there is no `12px`+ soft-card treatment anywhere in the system.
+Three radii, and they mean different things. **Hairline marks are `2px`** — the insight bars and the map's aircraft callsign chips, where a larger radius would eat a shape only a few pixels tall. **Controls and chips are `4px`** — tight, machined, close to square. **Cards, panels, tiles and menus are `8px`** — the container language. Status dots and bank LEDs are full circles. Nothing else is rounded, and there is no `12px`+ soft-card treatment anywhere in the system.
+
+A `#000` inside a `mask-image` is not a colour and is not subject to the palette: it is the opaque stencil that punches the LED segment gaps in the signal meter and boot bar.
 
 Borders are always `1px` and always meaningful: a card edge, a control edge, a rule between rows. The single exception is the 2px ring a weather *watch* card wears on the kiosk, where the frame must read as deliberate at distance.
 
