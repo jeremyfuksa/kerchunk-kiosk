@@ -270,16 +270,21 @@ body {
    own recessed fill (WCAG 1.4.11). The previous border was --border-default
    on --bg-subtle: 1.38:1, which left a settings page of twenty fields reading
    as floating labels until something took focus. */
+/* Shared control chrome. Buttons specialise below with their own size, weight
+   and padding — so nothing declared here is re-declared there. */
 .admin input,
 .admin select,
 .admin button {
   font-family: inherit;
-  font-size: var(--t-body);
-  padding: 0.38rem 0.55rem;
   color: var(--ink);
   background: var(--etch);
   border: 1px solid var(--control-edge);
   border-radius: 4px;
+}
+.admin input,
+.admin select {
+  padding: 0.38rem 0.55rem;
+  font-size: var(--t-body);
 }
 .admin input::placeholder { color: var(--dim); }
 .admin label { color: var(--label); font-size: var(--t-body); }
