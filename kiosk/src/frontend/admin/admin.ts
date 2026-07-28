@@ -272,7 +272,7 @@ export function renderAdmin(root: HTMLElement): void {
       </section>
       <div class="statRow" data-page="home" id="statRow"></div>
       <section class="insights" data-page="home">
-        <h2>Insights <span class="hint" id="inPeriodHint"></span></h2>
+        <h2>Channel activity <span class="hint" id="inPeriodHint"></span></h2>
         <div class="inToolbar">
           <button class="inPeriod" data-h="24">24 h</button>
           <button class="inPeriod" data-h="168">7 d</button>
@@ -721,38 +721,40 @@ export function renderAdmin(root: HTMLElement): void {
     } = await r.json();
 
     const maxHits = Math.max(1, ...st.topChannels.map((c) => c.hits));
-    const maxHour = Math.max(1, ...st.byHour);
-    const nowHour = new Date().getHours();
 
-    // Glance first (spec 2026-07-16 polish): a headline and the hour clock
-    // are the take-away; the full table lives behind one disclosure.
-    const busiest = st.topChannels[0];
-    const wasOpen = inBody.querySelector<HTMLDetailsElement>(".inBreakdown")?.open ?? false;
+    // Which channels are busy, over a window you pick. The totals are the
+    // scope line for the table below them, not a second set of hero numbers —
+    // at 24h they say what the stat tiles overhead already said, so they are
+    // sized as a caption and the ranking is the content.
+    //
+    // That ranking used to sit behind a "Show breakdown" disclosure, under a
+    // headline and an hour clock that were both straight copies of the tiles.
+    // The card's default state was therefore 100% duplicate, and its one
+    // original contribution was the part you had to click for. Inverted:
+    // the table is the card, and the duplicated clock is gone (the tile owns
+    // that instrument — two identical-looking clocks reporting *different*
+    // windows was worse than one).
     inBody.innerHTML = `
       <div class="inTotals">
         <span><b>${st.totalHits}</b> hits</span>
         <span><b>${fmtAir(st.totalAirtimeMs)}</b> airtime</span>
         <span><b>${st.discoveries}</b> close calls</span>
-        <span class="inBusiest">${busiest ? `busiest <b>${esc(busiest.alphaTag) || fmtFreq(busiest.freq)}</b>` : "quiet band"}</span>
       </div>
-      <div class="inClock" title="activity by hour of day">
-        ${st.byHour.map((n, h) => `<div class="inHr${h === nowHour ? " now" : ""}" style="height:${Math.max(4, (n / maxHour) * 100).toFixed(0)}%" title="${String(h).padStart(2, "0")}:00 — ${n}"></div>`).join("")}
-      </div>
-      <details class="inBreakdown"${wasOpen ? " open" : ""}>
-        <summary>Show breakdown</summary>
-        <table class="inTop">
-          ${st.topChannels.slice(0, 8).map((c) => `<tr class="inChannel" data-freq="${c.freq}" tabindex="0" title="Open channel analytics">
+      ${st.topChannels.length === 0
+        ? `<div class="empty">No traffic in this window.</div>`
+        : `<table class="inTop">
+          <thead><tr><th>Channel</th><th></th><th>Hits</th><th>Airtime</th></tr></thead>
+          <tbody>${st.topChannels.slice(0, 8).map((c) => `<tr class="inChannel" data-freq="${c.freq}" tabindex="0" title="Open channel analytics">
             <td class="inName">${esc(c.alphaTag) || fmtFreq(c.freq)}</td>
             <td class="inBar"><div style="width:${(100 * c.hits / maxHits).toFixed(0)}%"></div></td>
             <td class="inN">${c.hits}</td>
             <td class="inAir">${fmtAir(c.airtimeMs)}</td>
-          </tr>`).join("")}
+          </tr>`).join("")}</tbody>
         </table>
         <div class="inSplit">
           ${st.byBand.map((b) => `<span class="inChip">${esc(b.band.toUpperCase())} ${b.hits}</span>`).join("")}
           ${st.byTag.map((t) => `<span class="inChip tag">${esc(t.tag)} ${t.hits}</span>`).join("")}
-        </div>
-      </details>`;
+        </div>`}`;
     root.querySelector<HTMLElement>("#inPeriodHint")!.textContent =
       inHours === 24 ? "last 24 hours" : inHours === 168 ? "last 7 days" : "last 30 days";
     root.querySelectorAll<HTMLButtonElement>(".inPeriod").forEach((b) =>

@@ -459,7 +459,6 @@ body {
 .admin .bankBuilder > summary::before,
 .admin .lockoutsBox > summary::before,
 .admin .suppressedPanel > summary::before,
-.admin .inBreakdown > summary::before,
 .admin .settingsCard > summary::after {
   content: "";
   display: inline-block;
@@ -476,8 +475,7 @@ body {
 /* These four summaries were rendering the browser's own triangle. */
 .admin .bankBuilder > summary,
 .admin .lockoutsBox > summary,
-.admin .suppressedPanel > summary,
-.admin .inBreakdown > summary {
+.admin .suppressedPanel > summary {
   display: flex;
   align-items: center;
   gap: 0.55rem;
@@ -485,20 +483,17 @@ body {
 }
 .admin .bankBuilder > summary::-webkit-details-marker,
 .admin .lockoutsBox > summary::-webkit-details-marker,
-.admin .suppressedPanel > summary::-webkit-details-marker,
-.admin .inBreakdown > summary::-webkit-details-marker { display: none; }
+.admin .suppressedPanel > summary::-webkit-details-marker { display: none; }
 .admin .bankBuilder[open] > summary::before,
 .admin .lockoutsBox[open] > summary::before,
-.admin .suppressedPanel[open] > summary::before,
-.admin .inBreakdown[open] > summary::before { transform: rotate(45deg); }
+.admin .suppressedPanel[open] > summary::before { transform: rotate(45deg); }
 .admin .bkCaret[aria-expanded="true"] .chev { transform: rotate(45deg); }
 
 @media (prefers-reduced-motion: reduce) {
   .admin .chev,
   .admin .bankBuilder > summary::before,
   .admin .lockoutsBox > summary::before,
-  .admin .suppressedPanel > summary::before,
-  .admin .inBreakdown > summary::before { transition: none; }
+  .admin .suppressedPanel > summary::before { transition: none; }
 }
 
 /* Volume fader */
@@ -1059,38 +1054,37 @@ tr.bankRow .bkSummary {
 
 .admin .inToolbar { display: flex; gap: 0.4rem; margin-bottom: 0.6rem; }
 .admin .inPeriod.active { color: var(--amber); border-color: var(--amber); }
+/* The scope line for the table under it, not a second row of hero numbers.
+   At 24h these three restate the stat tiles directly overhead, so they read at
+   caption rank — bold marks the figure inside the sentence, size does not. */
 .admin .inTotals {
   display: flex;
   flex-wrap: wrap;
-  gap: 1.4rem;
+  gap: 1.1rem;
   margin-bottom: 0.7rem;
-  color: var(--label);
-  font-size: var(--t-body);
-}
-.admin .inTotals b { color: var(--ink); font-size: var(--t-lead); }
-.admin .inBusiest b { font-size: var(--t-body); }
-/* The full table is a drill-in, not the default read. */
-.admin .inBreakdown summary {
-  display: flex;
-  align-items: center;
-  min-height: 2.75rem;
-  box-sizing: border-box;
-  color: var(--label);
+  color: var(--dim);
   font-size: var(--t-dense);
-  cursor: pointer;
 }
-.admin .inBreakdown summary:hover { color: var(--ink); }
-/* Same instrument as the Overview tile's .hourClock, so it is built the same
-   way: rem box, percentage bars. It used to be a px box with px bar heights
-   computed in JS — one component, two implementations, and the px one ignored
-   browser zoom. */
-.admin .inClock { display: flex; align-items: flex-end; gap: 2px; height: 2rem; margin-bottom: 0.8rem; }
-.admin .inClock .inHr { flex: 1; background: var(--blue); opacity: 0.65; min-height: 3px; }
-.admin .inClock .inHr.now { background: var(--amber); opacity: 1; }  /* the one live thing on this card */
-.admin .inTop { width: 100%; border-collapse: collapse; margin-bottom: 0.6rem; }
+.admin .inTotals b { color: var(--label); font-weight: 600; font-variant-numeric: tabular-nums; }
+/* Declared widths and fixed layout, like every other table here: the bar used
+   to float ~300px clear of the name it belonged to, because an auto-layout
+   name column took only the width its text needed. Nothing scrolls sideways. */
+.admin .inTop { width: 100%; table-layout: fixed; border-collapse: collapse; margin-bottom: 0.6rem; }
+.admin .inTop th {
+  padding: 0 0.4rem 0.25rem;
+  color: var(--dim);
+  font-weight: 600;
+  font-size: var(--t-micro);
+  letter-spacing: 0.06em;
+  text-align: left;
+  text-transform: uppercase;
+}
+.admin .inTop th:nth-child(3), .admin .inTop th:nth-child(4) { text-align: right; }
 .admin .inTop td { padding: 0.18rem 0.4rem; border: none; font-size: var(--t-dense); }
-.admin .inTop .inName { max-width: 14rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.admin .inTop .inBar { width: 40%; }
+.admin .inTop .inName { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.admin .inTop th:nth-child(1) { width: 26%; }
+.admin .inTop th:nth-child(3) { width: 4.5rem; }
+.admin .inTop th:nth-child(4) { width: 5.5rem; }
 /* The bar is the comparison; it takes the observational blue the rest of this
    app uses for sparklines and read-only instrumentation. */
 .admin .inTop .inBar div {
@@ -1600,6 +1594,12 @@ tr.bankRow .bkSummary {
   .settingsCards { grid-template-columns: 1fr; }
   .settingGroups label { grid-template-columns: 1fr; gap: 0.4rem; }
   .settingGroups .switchRow { grid-template-columns: 1fr auto; }
+
+  /* The ranking bar is the first thing to go on a phone: the rows are already
+     sorted, so the bar is redundant reinforcement, and 350px of screen is
+     better spent on the channel name than on a 60px stub of one. */
+  .admin .inTop .inBar, .admin .inTop th:nth-child(2) { display: none; }
+  .admin .inTop th:nth-child(1) { width: auto; }
 
   .admin .bankAdd { grid-template-columns: 1fr; }
   .bankBuilder summary span { display: block; margin: 0.25rem 0 0; }
