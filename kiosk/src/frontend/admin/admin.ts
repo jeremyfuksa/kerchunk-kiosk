@@ -166,7 +166,7 @@ export function renderAdmin(root: HTMLElement): void {
         <div><span class="eyebrow">Overview</span><h1>Radio status</h1><p>Monitor what is playing, check system health, and review recent activity.</p></div>
       </div>
       <section class="nowCard hero" data-page="home">
-        <h2>Now playing</h2>
+        <h2>Now playing <span id="npSilent" class="silentChip" hidden></span></h2>
         <div class="npWhat"><span id="npName" class="npName">scanning…</span> <span id="npFreq" class="npFreq"></span></div>
         <div class="npControls">
           <div class="controlGroup audioControls">
@@ -344,6 +344,27 @@ export function renderAdmin(root: HTMLElement): void {
       </form>
     </dialog>
     </main>`;
+
+  /** Field-level status line. Success used to be written as the literal string
+   *  "saved" into the same `.err` span styled `color: var(--red)` — so every
+   *  successful save flashed the failure colour and then stayed on screen,
+   *  making the NEXT save unverifiable. Mirrors setSystemActionStatus below. */
+  const fieldStatusTimers = new WeakMap<HTMLElement, ReturnType<typeof setTimeout>>();
+  function setFieldStatus(el: HTMLElement, text: string, kind: "ok" | "err", clearAfterMs?: number): void {
+    const pending = fieldStatusTimers.get(el);
+    if (pending !== undefined) { clearTimeout(pending); fieldStatusTimers.delete(el); }
+    el.textContent = text;
+    el.classList.toggle("ok", kind === "ok");
+    el.classList.toggle("err", kind === "err");
+    if (clearAfterMs !== undefined && text !== "") {
+      fieldStatusTimers.set(el, setTimeout(() => {
+        el.textContent = "";
+        fieldStatusTimers.delete(el);
+      }, clearAfterMs));
+    }
+  }
+  /** How long a green "Saved" lingers before clearing itself. */
+  const SAVED_MESSAGE_MS = 4000;
 
   const confirmDialog = root.querySelector<HTMLDialogElement>("#confirmDialog")!;
   const confirmTitle = root.querySelector<HTMLElement>("#confirmTitle")!;
@@ -1103,7 +1124,7 @@ export function renderAdmin(root: HTMLElement): void {
         if (c) {
           await api.updateChannel(c.id, patch);
           await refresh();
-          err.textContent = "saved";
+          setFieldStatus(err, "Saved", "ok", SAVED_MESSAGE_MS);
         } else {
           await api.addChannel(patch);
           closeDrawer();
@@ -1442,8 +1463,16 @@ export function renderAdmin(root: HTMLElement): void {
     }));
     const present = new Set(ds.map((d) => d.id));
     for (const id of dcSelected) if (!present.has(id)) dcSelected.delete(id);
+    // The empty state has to know WHY it is empty. It used to promise "Close
+    // Call is hunting" even when config.scan.closeCall was false — the queue
+    // was structurally incapable of filling and the page said otherwise.
+    // (undefined means the engine default, which is ON.)
+    const hunting = cfg.scan.closeCall !== false;
+    const emptyCopy = hunting
+      ? "Nothing pending — Close Call is hunting. New discoveries land here."
+      : `Close Call is off, so no new discoveries will arrive. <a href="#/scan">Turn it on in Settings ›</a>`;
     dcRows.innerHTML = ds.length === 0
-      ? `<tr><td colspan="5" class="empty">Nothing pending — Close Call is hunting. New discoveries land here.</td></tr>`
+      ? `<tr><td colspan="5" class="empty">${emptyCopy}</td></tr>`
       : ds.map((d) => `<tr data-id="${esc(d.id)}" class="dcRow">
           <td><input type="checkbox" class="dSel" ${dcSelected.has(d.id) ? "checked" : ""} aria-label="Select ${fmtFreq(d.freq)} ${esc(d.alphaTag)}" /></td>
           <td class="rowOpen">${fmtFreq(d.freq)}<span class="dcSvc${serviceFor(d.freq) ? "" : " outband"}">${esc(serviceFor(d.freq) ?? "OUTBAND")}</span></td>
@@ -1560,10 +1589,18 @@ export function renderAdmin(root: HTMLElement): void {
   // replays the current audible channel on connect). Lockout buttons act on
   // whatever is playing right now.
   const npName = root.querySelector<HTMLElement>("#npName")!;
+  const npSilent = root.querySelector<HTMLElement>("#npSilent")!;
+  const nowCard = root.querySelector<HTMLElement>(".nowCard")!;
   const npFreq = root.querySelector<HTMLElement>("#npFreq")!;
   const tlockBtn = root.querySelector<HTMLButtonElement>("#tlockBtn")!;
   const lockBtn = root.querySelector<HTMLButtonElement>("#lockBtn")!;
   let nowPlaying: { freq: number; alphaTag: string } | null = null;
+  // Speaker reality, not just engine reality. The hero used to render the
+  // tuned channel identically whether the sink was live, muted or at zero —
+  // so an operator standing next to a silent radio read "Now playing" in lit
+  // amber. Audibility is now part of what the card reports.
+  let audioMuted = false;
+  let audioVolume = 100;
   let npAudibleDriven = false;
   let currentMode: "scan" | "weather" | "monitor" = "scan";
   let weatherChannel: Channel | null = null;
@@ -1583,6 +1620,12 @@ export function renderAdmin(root: HTMLElement): void {
       npName.textContent = nowPlaying ? (nowPlaying.alphaTag || fmtFreq(nowPlaying.freq)) : "scanning…";
       npFreq.textContent = nowPlaying ? fmtFreq(nowPlaying.freq) : "";
     }
+    // Nothing reaches the speaker when muted or at zero — say so, and stop
+    // the channel name claiming to be live.
+    const silent = audioMuted || audioVolume === 0;
+    npSilent.hidden = !silent;
+    npSilent.textContent = audioMuted ? "MUTED" : "VOLUME 0";
+    nowCard.classList.toggle("isSilent", silent);
     resumeBtn.style.display = monitoring ? "" : "none";
     weatherBtn.textContent = currentMode === "weather" ? "Resume scanning" : "Listen to weather";
     weatherBtn.disabled = currentMode !== "weather" && weatherChannel === null;
@@ -1855,11 +1898,22 @@ export function renderAdmin(root: HTMLElement): void {
   function syncAudioControls(cfg: { audio: { volume: number; muted: boolean; remoteListening?: boolean } }): void {
     if (document.activeElement !== vol) vol.value = String(cfg.audio.volume);
     if (document.activeElement !== mute) mute.checked = cfg.audio.muted;
+    audioMuted = cfg.audio.muted;
+    audioVolume = cfg.audio.volume;
     syncRemoteListening(cfg.audio.remoteListening ?? false);
+    paintNow();
   }
   api.getConfig().then(syncAudioControls);
-  vol.addEventListener("change", () => { api.setVolume(Number(vol.value)); vol.blur(); });
-  mute.addEventListener("change", () => api.setMuted(mute.checked));
+  vol.addEventListener("change", () => {
+    audioVolume = Number(vol.value);
+    api.setVolume(audioVolume);
+    paintNow();
+  });
+  mute.addEventListener("change", () => {
+    audioMuted = mute.checked;
+    api.setMuted(audioMuted);
+    paintNow();
+  });
   root.querySelector<HTMLButtonElement>("#skipBtn")!.addEventListener("click", () => api.skip());
 
   // Scan tuning knobs — optional config fields; empty input = engine default
@@ -1894,6 +1948,7 @@ export function renderAdmin(root: HTMLElement): void {
     tSameFips.value = (cfg.alerts?.sameFips ?? []).join(", ");
     tSameTests.checked = cfg.alerts?.sameTests ?? false;
     tCloseCall.checked = cfg.scan.closeCall ?? true;   // engine default: ON
+    syncCloseCallDependents();
     tCloseCallDb.value = cfg.scan.closeCallDb != null ? String(cfg.scan.closeCallDb) : "";
     tSweep.value = (cfg.scan.sweepRanges ?? [])
       .map((r) => `${r.loHz / 1e6}-${r.hiHz / 1e6}`).join(", ");
@@ -1903,6 +1958,14 @@ export function renderAdmin(root: HTMLElement): void {
   // slice of config. Field semantics unchanged: empty = default/clear.
   const numOrU = (el: HTMLInputElement): number | undefined =>
     el.value.trim() === "" ? undefined : Number(el.value);
+
+  // A dependent field that stays live under an off parent implies a setting
+  // that does something. Close Call's threshold only means anything when Close
+  // Call is on.
+  function syncCloseCallDependents(): void {
+    tCloseCallDb.disabled = !tCloseCall.checked;
+  }
+  tCloseCall.addEventListener("change", syncCloseCallDependents);
 
   root.querySelector<HTMLButtonElement>("#tSave")!.addEventListener("click", async () => {
     tErr.textContent = "";
@@ -1924,8 +1987,8 @@ export function renderAdmin(root: HTMLElement): void {
       const hang = numOrU(tHang);
       if (hang !== undefined) cfg.scan.dwellMs = hang;
       await api.putConfig(cfg);
-      tErr.textContent = "saved";
-    } catch (e) { tErr.textContent = (e as Error).message; }
+      setFieldStatus(tErr, "Saved", "ok", SAVED_MESSAGE_MS);
+    } catch (e) { setFieldStatus(tErr, (e as Error).message, "err"); }
   });
 
   const alErr = root.querySelector<HTMLElement>("#alErr")!;
@@ -1946,8 +2009,8 @@ export function renderAdmin(root: HTMLElement): void {
       if (Object.keys(alerts).length) cfg.alerts = alerts;
       else delete cfg.alerts;
       await api.putConfig(cfg);
-      alErr.textContent = "saved";
-    } catch (e) { alErr.textContent = (e as Error).message; }
+      setFieldStatus(alErr, "Saved", "ok", SAVED_MESSAGE_MS);
+    } catch (e) { setFieldStatus(alErr, (e as Error).message, "err"); }
   });
 
   const igErr = root.querySelector<HTMLElement>("#igErr")!;
@@ -1968,12 +2031,12 @@ export function renderAdmin(root: HTMLElement): void {
         // No display block (no weather location yet) means no place to store
         // these AND no map without coordinates — say so instead of a silent
         // "saved" that drops the key.
-        igErr.textContent = "set a weather location first — the map needs coordinates";
+        setFieldStatus(igErr, "Set a weather location first — the map needs coordinates.", "err");
         return;
       }
       await api.putConfig(cfg);
-      igErr.textContent = "saved";
-    } catch (e) { igErr.textContent = (e as Error).message; }
+      setFieldStatus(igErr, "Saved", "ok", SAVED_MESSAGE_MS);
+    } catch (e) { setFieldStatus(igErr, (e as Error).message, "err"); }
   });
 
   // Settings cards: desktop shows all four open; phones get an accordion
@@ -2017,13 +2080,14 @@ export function renderAdmin(root: HTMLElement): void {
   }).catch(() => {});
 
   wxSave.addEventListener("click", async () => {
-    wxErr.textContent = "";
+    setFieldStatus(wxErr, "", "err");
     try {
       const saved = await api.setWeatherChannel(weatherFormToChannel({ mhz: wxFreq.value, alphaTag: wxTag.value, mode: wxMode.value }));
       weatherChannel = saved.weatherChannel;
       paintNow();
+      setFieldStatus(wxErr, "Saved", "ok", SAVED_MESSAGE_MS);
     } catch (e) {
-      wxErr.textContent = (e as Error).message;
+      setFieldStatus(wxErr, (e as Error).message, "err");
     }
   });
 

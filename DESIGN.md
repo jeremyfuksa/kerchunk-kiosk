@@ -392,6 +392,8 @@ Borders are always `1px` and always meaningful: a card edge, a control edge, a r
 
 **The Hairline Rule.** Borders are 1px. A thicker coloured border on a card, list item, callout or alert is not part of this system — emphasis comes from ground tint, type size, or the accent colour of the text itself.
 
+*One documented exception:* the kiosk's weather alert card encodes NWS severity partly through border weight — a 4px storm-colour spine for **statement**, a 2px storm-colour ring for **watch**, a solid fill for **warning**. Border weight is doing semantic work there, read at distance, on the one component whose job is to be unmissable. Like the storm palette itself, it is not restyled toward the house rules. Nothing else may borrow it.
+
 ## Components
 
 ### Buttons

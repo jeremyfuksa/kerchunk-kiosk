@@ -241,13 +241,28 @@ body {
   overflow: hidden;
   padding: 2px;
 }
+/* LED segmentation is PAINTED OVER the fill, not masked out of it. A mask on
+   the track would also chop the track's own background and border into
+   dashes; a mask on the fill would stretch with scaleX. An overlay of
+   track-coloured gaps keeps the segments physically fixed, keeps the groove
+   and border continuous, and costs nothing to animate. */
+.dash .meter,
+.bootMsg .bootBar { position: relative; }
+.dash .meter::after,
+.bootMsg .bootBar::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(90deg, transparent 0 8px, var(--etch) 8px 11px);
+}
 .dash .meterFill {
   height: 100%;
+  width: 100%;
+  transform-origin: left center;
   background: linear-gradient(90deg, var(--green) 0 55%, var(--amber) 55% 80%, var(--red) 80%);
-  transition: width 0.25s linear;
-  /* LED segmentation: punch gaps with a hard-stop mask */
-  -webkit-mask-image: repeating-linear-gradient(90deg, #000 0 8px, transparent 8px 11px);
-          mask-image: repeating-linear-gradient(90deg, #000 0 8px, transparent 8px 11px);
+  /* scaleX, not width: animating width lays out every frame. */
+  transition: transform 0.25s linear;
 }
 .dash .meterDb {
   font-size: var(--k-meta);
@@ -679,12 +694,12 @@ body {
   padding: 2px;
 }
 .bootMsg .bootBarFill {
-  height: 100%; width: 0;
+  height: 100%;
+  width: 100%;
+  transform: scaleX(0);
+  transform-origin: left center;
   background: linear-gradient(90deg, var(--green) 0 55%, var(--amber) 55%);
-  transition: width 0.4s ease-out;
-  /* LED segmentation, matching the signal meter. */
-  -webkit-mask-image: repeating-linear-gradient(90deg, #000 0 8px, transparent 8px 11px);
-          mask-image: repeating-linear-gradient(90deg, #000 0 8px, transparent 8px 11px);
+  transition: transform 0.4s ease-out;
 }
 .bootMsg .bootPhase {
   font-size: var(--k-meta);
