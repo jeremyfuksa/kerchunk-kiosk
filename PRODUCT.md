@@ -169,6 +169,27 @@ solved.
   piece is going for, and design work should treat it as a given rather than
   something to re-litigate.
 
+- **The kiosk concept is fixed and is not a redesign target.** The dashboard
+  is the work and its concept stands as conceived. Changes to it are
+  *improvements on the original* — better executed, better resolved, more
+  legible — never a replacement of the idea. Any proposal that reads as "the
+  kiosk becomes something else" is out of bounds regardless of merit.
+
+  The consequence for every other surface: coherence flows **toward** the
+  kiosk. When the admin and the kiosk disagree, the admin moves.
+
+- **Convention over concept, for the admin.** Offered a dealt visual world or
+  the category standard played straight, the author chose the standard. The
+  admin is therefore built as a modern operator console executed at full
+  fidelity — no concept layered over it, no irony, and no quirk smuggled back
+  in through the side door.
+
+  **The craft bar is Linear, Stripe and Vercel.** Dense information held calm,
+  ruthless typographic consistency, keyboard-first and fast, restrained
+  palette with a single accent, hairline structure, near-zero decoration.
+  Those products' level of finish is the bar the admin has to clear; matching
+  the *category* is not the same as matching that bar, and only the bar counts.
+
 No other identity constraint, required asset, or reference has been made
 binding.
 
