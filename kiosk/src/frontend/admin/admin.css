@@ -19,9 +19,10 @@
      main.ts imports tokens.css first, so the tokens always exist, and a
      duplicated hex silently drifts when Campfire retunes its ramp.
 
-     Text tiers are chosen for contrast on --panel, the common card ground:
-       --ink   12.4:1   --label 6.9:1   --dim 4.6:1   (all clear AA)
-       --mark   3.1:1   non-text glyphs only — carets, chevrons, grooves.
+     Text tiers are chosen for contrast on --panel, the common card ground
+     (ratios for Campfire's night-ramp retune, campfire#59):
+       --ink   16.7:1   --label 9.3:1   --dim 6.2:1   (all clear AA)
+       --mark   4.5:1   non-text glyphs only — carets, chevrons, grooves.
      --label reaches past the semantic scale to neutral-300 on purpose: the
      dark theme has no third *text* tier above 4.5:1, so hint text (--dim)
      and field labels (--label) would otherwise be the same gray. */
@@ -43,8 +44,8 @@
      carry a *second*, much darker value under `.dark`, which is the theme
      this app always runs in. As rendered they measured 2.8–3.6:1 on --panel,
      below AA. The numbered ramps are theme-independent, so the steps below
-     are picked for this ground and stay honest:
-       --red 5.0:1   --green 6.5:1   --caution 8.4:1   --blue 5.1:1
+     are picked for this ground and stay honest (post night-ramp retune):
+       --red 6.7:1   --green 8.7:1   --caution 11.2:1   --blue 6.9:1
      Pine has no numbered ramp, so it is lifted toward --ink to keep its teal
      hue rather than swapped for a blue-gray. */
   /* The emphasis budget, and it is a budget. Amber marks what is LIVE — the
@@ -371,7 +372,12 @@ body {
 .admin button:disabled { opacity: 0.4; cursor: default; }
 
 /* Consequence colouring: green adopts, amber cautions, red destroys, blue
-   listens. The glyph in an icon button inherits it via currentColor. */
+   listens. The glyph in an icon button inherits it via currentColor.
+   The label carries the consequence; the edge is structure. Buttons used to
+   ring themselves in their consequence colour at rest, which put four
+   differently-coloured outlines in one transport stack — the colour now
+   lives in the text, and the edge takes the consequence mix only on
+   hover/focus, the moment of intent. */
 .admin .primary {
   color: var(--bg);
   background: var(--amber);
@@ -383,13 +389,16 @@ body {
   background: var(--caution);
   border-color: var(--caution);
 }
-/* Each mix is set so the edge clears 3:1 against --panel, like the neutral
-   --control-edge does. At a flat 55% the red and blue edges landed at 2.5 and
-   2.6 — which also meant a plain button out-shouted a destructive one. */
-.admin .save, .admin .dAdd { color: var(--green); border-color: color-mix(in srgb, var(--green) 60%, transparent); }
-.admin .del, .admin .danger, .admin #lockBtn { color: var(--red); border-color: color-mix(in srgb, var(--red) 70%, transparent); }
-.admin .lock, .admin .dLock, .admin .dDismiss, .admin #tlockBtn { color: var(--caution); border-color: color-mix(in srgb, var(--caution) 60%, transparent); }
-.admin .listen, .admin .dListen, .admin .weatherAction { color: var(--blue); border-color: color-mix(in srgb, var(--blue) 70%, transparent); }
+.admin .save, .admin .dAdd { color: var(--green); }
+.admin .del, .admin .danger, .admin #lockBtn { color: var(--red); }
+.admin .lock, .admin .dLock, .admin .dDismiss, .admin #tlockBtn { color: var(--caution); }
+.admin .listen, .admin .dListen, .admin .weatherAction { color: var(--blue); }
+/* Each mix clears 3:1 against --panel, like the neutral --control-edge does.
+   Declared after the generic button hover so intent outranks it. */
+.admin .save:hover:not(:disabled), .admin .dAdd:hover:not(:disabled) { border-color: color-mix(in srgb, var(--green) 60%, transparent); }
+.admin .del:hover:not(:disabled), .admin .danger:hover:not(:disabled), .admin #lockBtn:hover:not(:disabled) { border-color: color-mix(in srgb, var(--red) 70%, transparent); }
+.admin .lock:hover:not(:disabled), .admin .dLock:hover:not(:disabled), .admin .dDismiss:hover:not(:disabled), .admin #tlockBtn:hover:not(:disabled) { border-color: color-mix(in srgb, var(--caution) 60%, transparent); }
+.admin .listen:hover:not(:disabled), .admin .dListen:hover:not(:disabled), .admin .weatherAction:hover:not(:disabled) { border-color: color-mix(in srgb, var(--blue) 70%, transparent); }
 .admin .resume {
   color: var(--blue);
   background: color-mix(in srgb, var(--blue) 12%, var(--etch));
