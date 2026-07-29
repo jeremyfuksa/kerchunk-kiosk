@@ -17,7 +17,7 @@
           "kiosk/src/frontend/dashboard/dashboard.css"
         ],
         "createdAt": "2026-07-28T19:10:52.179Z",
-        "reason": "NWS severity tiers encode urgency through border weight; documented exception to The Hairline Rule in DESIGN.md"
+        "reason": "NWS severity is encoded in border weight on the EAS alert card (4px statement spine / 2px watch ring / solid warning fill); DESIGN.md records this as the one documented exception to the Hairline Rule"
       }
     ]
   }

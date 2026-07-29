@@ -455,7 +455,3 @@ The kiosk's EAS surface, and the one place colour is driven by external conventi
 - **Don't** use monospace as a signal of "technical". One face, tabular figures.
 - **Don't** invent a second card-header grammar, or a radius between `4px` and `8px`.
 - **Don't** repeat a Campfire token's hex as a `var(--token, #hex)` fallback; the token layer is always loaded, and a duplicated hex drifts silently.
-
-<!-- Known deviation: the /map surface still inherits Campfire's Space Grotesk
-     and Fira Code for its legend and aircraft chips. Inter is normative per this
-     document; the map is drift to be corrected, not a sanctioned exception. -->
