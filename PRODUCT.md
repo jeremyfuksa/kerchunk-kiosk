@@ -213,10 +213,13 @@ binding.
    lives elsewhere. Anything that makes it read as a scanner readout again is
    moving against the project. *This principle previously said the opposite,
    and that error produced a run of work aimed at the wrong subject.*
-2. **Density is the ambition, not the hazard.** The stated goal is how much
-   data can go on the map while staying useful and well-designed. Reducing,
-   simplifying and calming are not automatically improvements here; the bar is
-   more signal held legibly, not less signal shown.
+2. **Density is the ambition — on the map, and only there.** The stated goal
+   is "how far I could push the amount of data on the map while keeping it
+   useful and well-designed." That is a claim about the kiosk, where holding
+   more signal legibly is the craft. It is **not** a mandate for the other
+   surfaces: the admin is a backstage console with a channel list and a volume
+   control, and it should be clean. Reducing and calming are improvements
+   there, and were wrongly treated as violations of this principle once.
 3. **The radio's stability is a hard floor under all of it.** No surface may
    cost audio quality, thermal headroom or engine stability to render. This
    bounds how the work is built; it is not what the work is about.
