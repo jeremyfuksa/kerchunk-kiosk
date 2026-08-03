@@ -19,9 +19,10 @@
      main.ts imports tokens.css first, so the tokens always exist, and a
      duplicated hex silently drifts when Campfire retunes its ramp.
 
-     Text tiers are chosen for contrast on --panel, the common card ground:
-       --ink   12.4:1   --label 6.9:1   --dim 4.6:1   (all clear AA)
-       --mark   3.1:1   non-text glyphs only — carets, chevrons, grooves.
+     Text tiers are chosen for contrast on --panel, the common card ground
+     (ratios for Campfire's night-ramp retune, campfire#59):
+       --ink   16.7:1   --label 9.3:1   --dim 6.2:1   (all clear AA)
+       --mark   4.5:1   non-text glyphs only — carets, chevrons, grooves.
      --label reaches past the semantic scale to neutral-300 on purpose: the
      dark theme has no third *text* tier above 4.5:1, so hint text (--dim)
      and field labels (--label) would otherwise be the same gray. */
@@ -43,8 +44,8 @@
      carry a *second*, much darker value under `.dark`, which is the theme
      this app always runs in. As rendered they measured 2.8–3.6:1 on --panel,
      below AA. The numbered ramps are theme-independent, so the steps below
-     are picked for this ground and stay honest:
-       --red 5.0:1   --green 6.5:1   --caution 8.4:1   --blue 5.1:1
+     are picked for this ground and stay honest (post night-ramp retune):
+       --red 6.7:1   --green 8.7:1   --caution 11.2:1   --blue 6.9:1
      Pine has no numbered ramp, so it is lifted toward --ink to keep its teal
      hue rather than swapped for a blue-gray. */
   /* The emphasis budget, and it is a budget. Amber marks what is LIVE — the
@@ -371,7 +372,12 @@ body {
 .admin button:disabled { opacity: 0.4; cursor: default; }
 
 /* Consequence colouring: green adopts, amber cautions, red destroys, blue
-   listens. The glyph in an icon button inherits it via currentColor. */
+   listens. The glyph in an icon button inherits it via currentColor.
+   The label carries the consequence; the edge is structure. Buttons used to
+   ring themselves in their consequence colour at rest, which put four
+   differently-coloured outlines in one transport stack — the colour now
+   lives in the text, and the edge takes the consequence mix only on
+   hover/focus, the moment of intent. */
 .admin .primary {
   color: var(--bg);
   background: var(--amber);
@@ -383,13 +389,16 @@ body {
   background: var(--caution);
   border-color: var(--caution);
 }
-/* Each mix is set so the edge clears 3:1 against --panel, like the neutral
-   --control-edge does. At a flat 55% the red and blue edges landed at 2.5 and
-   2.6 — which also meant a plain button out-shouted a destructive one. */
-.admin .save, .admin .dAdd { color: var(--green); border-color: color-mix(in srgb, var(--green) 60%, transparent); }
-.admin .del, .admin .danger, .admin #lockBtn { color: var(--red); border-color: color-mix(in srgb, var(--red) 70%, transparent); }
-.admin .lock, .admin .dLock, .admin .dDismiss, .admin #tlockBtn { color: var(--caution); border-color: color-mix(in srgb, var(--caution) 60%, transparent); }
-.admin .listen, .admin .dListen, .admin .weatherAction { color: var(--blue); border-color: color-mix(in srgb, var(--blue) 70%, transparent); }
+.admin .save, .admin .dAdd { color: var(--green); }
+.admin .del, .admin .danger, .admin #lockBtn { color: var(--red); }
+.admin .lock, .admin .dLock, .admin .dDismiss, .admin #tlockBtn { color: var(--caution); }
+.admin .listen, .admin .dListen, .admin .weatherAction { color: var(--blue); }
+/* Each mix clears 3:1 against --panel, like the neutral --control-edge does.
+   Declared after the generic button hover so intent outranks it. */
+.admin .save:hover:not(:disabled), .admin .dAdd:hover:not(:disabled) { border-color: color-mix(in srgb, var(--green) 60%, transparent); }
+.admin .del:hover:not(:disabled), .admin .danger:hover:not(:disabled), .admin #lockBtn:hover:not(:disabled) { border-color: color-mix(in srgb, var(--red) 70%, transparent); }
+.admin .lock:hover:not(:disabled), .admin .dLock:hover:not(:disabled), .admin .dDismiss:hover:not(:disabled), .admin #tlockBtn:hover:not(:disabled) { border-color: color-mix(in srgb, var(--caution) 60%, transparent); }
+.admin .listen:hover:not(:disabled), .admin .dListen:hover:not(:disabled), .admin .weatherAction:hover:not(:disabled) { border-color: color-mix(in srgb, var(--blue) 70%, transparent); }
 .admin .resume {
   color: var(--blue);
   background: color-mix(in srgb, var(--blue) 12%, var(--etch));
@@ -499,8 +508,9 @@ body {
 /* Volume fader */
 .admin input[type="range"] {
   -webkit-appearance: none; appearance: none;
-  width: 150px; height: 4px;
-  padding: 0; margin: 0 0.4rem;
+  width: 100%; height: 4px;
+  box-sizing: border-box;
+  padding: 0; margin: 0;
   background: var(--mark);
   border: none; border-radius: 4px;
   vertical-align: middle;
@@ -531,26 +541,94 @@ body {
   .admin .iconBtn { min-width: 2.75rem; min-height: 2.75rem; padding: 0.5rem; }
   .admin .iconBtn svg { width: 18px; height: 18px; margin: auto; }
   .admin input[type="checkbox"] { width: 1.35rem; height: 1.35rem; }
+  /* Remote listening flips an engine-restart-grade switch — the whole row is
+     the target, not just the checkbox. */
+  .admin .npAudio .checkLabel { min-height: 2.75rem; }
   .admin input[type="range"] { height: 8px; }
   .admin input[type="range"]::-webkit-slider-thumb { width: 22px; height: 30px; }
   .admin input[type="range"]::-moz-range-thumb { width: 22px; height: 30px; }
 }
 
 
-/* ── Now playing (the hero) ─────────────────────────────────────────────── */
-
-/* Lit rather than tabbed: a warm ground and a stronger edge carry the
-   emphasis, so the card does not need an accent bar down its left side. */
-.admin .nowCard {
-  margin-top: 1.6rem;
-  padding: 1.5rem;
-  background: color-mix(in srgb, var(--spark) 4%, var(--panel));
+/* ── The Now panel ────────────────────────────────────────────────────────
+   The live radio as a permanent third region of the workspace (direction
+   contract in admin.ts): verdict → live channel → transport → volume →
+   vitals, on every page. ≥1101px it is a sticky right-hand panel; below
+   that it condenses to a pinned strip that expands into a bottom sheet —
+   one element, two layouts, no duplicated controls. */
+.nowPanel {
+  position: sticky;
+  top: 0.8rem;
+  flex: none;
+  width: 17.5rem;
+  /* Documented One-Scroll exemption: the panel's content fits every normal
+     viewport; this overflow only guards a very short laptop window against
+     clipping the vitals, it is not a working scroll region. */
+  max-height: calc(100vh - 1.6rem);
+  overflow-y: auto;
+  background: color-mix(in srgb, var(--spark) 3%, var(--panel));
   border: 1px solid var(--border-strong);
+  border-radius: 8px;
 }
-/* The card header is a label, not the live thing. Its warm ground and stronger
-   edge already say "this is the lit card"; the amber goes to the frequency. */
+.npStrip { display: none; }
+.npBody { display: grid; }
+
+/* The verdict line: the 5-second answer, and the road to the System page. */
+.admin .npVerdict {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.7rem 1rem;
+  color: var(--label);
+  font-size: var(--t-caption);
+  font-weight: 600;
+  text-decoration: none;
+  border-bottom: 1px solid var(--rule);
+  border-radius: 8px 8px 0 0;
+}
+.admin .npVerdict:hover { color: var(--ink); background: var(--row-hover); }
+.npVerdict .verdictDot,
+.npStripDot {
+  width: 0.6rem; height: 0.6rem;
+  flex: none;
+  background: var(--mark);
+  border-radius: 50%;
+}
+.npVerdict.healthy .verdictDot, .npStripDot.healthy { background: var(--green); }
+.npVerdict.stressed .verdictDot, .npStripDot.stressed { background: var(--caution); }
+.npVerdict.trouble .verdictDot, .npStripDot.trouble { background: var(--red); }
+.npVerdictText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.npLive { padding: 0.85rem 1rem 1rem; border-bottom: 1px solid var(--rule); }
+.npLegend {
+  color: var(--dim);
+  font-size: var(--t-micro);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.npName {
+  margin-top: 0.35rem;
+  color: var(--ink);
+  font-weight: 600;
+  font-size: var(--t-display-sm);
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+.npFreq {
+  margin-top: 0.15rem;
+  color: var(--amber);
+  font-size: var(--t-lead);
+  font-variant-numeric: tabular-nums;
+}
 /* Nothing is reaching the speaker: the chip says which reason, and the channel
-   name drops out of ink so the card stops reading as "live". */
+   name drops out of ink so the panel stops reading as "live". */
 .admin .silentChip {
   padding: 0.08em 0.45em;
   color: var(--caution);
@@ -561,31 +639,34 @@ body {
   letter-spacing: 0.06em;
   vertical-align: 0.1em;
 }
-.admin .nowCard.isSilent .npName { color: var(--dim); }
-.admin .nowCard.isSilent .npFreq { color: var(--dim); }
-.admin .nowCard .npWhat { margin: 0.45rem 0 1.1rem; }
-.admin .nowCard .npName {
+.nowPanel.isSilent .npName,
+.nowPanel.isSilent .npFreq { color: var(--dim); }
+
+.npTransport { display: grid; gap: 0.5rem; padding: 0.85rem 1rem; border-bottom: 1px solid var(--rule); }
+.npPair { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+
+.npAudio { display: grid; gap: 0.55rem; padding: 0.85rem 1rem; border-bottom: 1px solid var(--rule); }
+.npAudioHead { display: flex; align-items: center; justify-content: space-between; }
+.admin #mute[aria-pressed="true"] {
+  color: var(--caution);
+  border-color: color-mix(in srgb, var(--caution) 60%, transparent);
+}
+
+.admin .npVitals {
+  display: flex;
+  gap: 0.9rem;
+  padding: 0.65rem 1rem;
+  color: var(--dim);
+  font-size: var(--t-micro);
   font-weight: 600;
-  font-size: var(--t-display-sm);
-  letter-spacing: 0.02em;
-  color: var(--ink);
-}
-.admin .nowCard .npFreq {
-  margin-left: 0.7rem;
-  color: var(--amber);
-  font-size: var(--t-lead);
+  letter-spacing: 0.04em;
   font-variant-numeric: tabular-nums;
+  text-decoration: none;
+  border-radius: 0 0 8px 8px;
 }
-.admin .nowCard .npControls {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 0.75rem 1rem;
-  padding-top: 0.7rem;
-  border-top: 1px solid var(--rule);
-}
-.admin .controlGroup { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
-.admin .audioControls { min-width: 0; }
-.admin .transmissionControls { justify-content: flex-end; }
+.admin .npVitals:hover { color: var(--label); background: var(--row-hover); }
+.admin .npVitals:empty { display: none; }
+.npAudioHead #volPct { color: var(--label); font-variant-numeric: tabular-nums; }
 
 /* Benign kiosk actions and irreversible power actions were one flat row of
    six identically-shaped buttons. Separate them, and label the consequence. */
@@ -607,22 +688,17 @@ body {
    than tracked uppercase (The Legend Rule). */
 .actionGroupNote { margin: 0 0 0.7rem; }
 .admin .systemActions {
-  grid-column: 1 / -1;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem;
-  padding-top: 0.75rem;
-  border-top: 1px solid var(--rule);
 }
-.admin .systemActions .hint { min-width: 8rem; text-align: right; }
-/* On the System page the actions live in their own card, not the hero grid. */
-.systemCard .systemActions { grid-column: auto; padding-top: 0; border-top: 0; }
-.systemCard .systemActions .hint { margin-left: auto; }
+.admin .systemActions .hint { margin-left: auto; min-width: 8rem; text-align: right; }
 
 
 /* ── Stat tiles ─────────────────────────────────────────────────────────── */
 
+.statRow:empty { display: none; }
 .statRow {
   display: grid;
   grid-template-columns: repeat(4, 1fr) 2fr;
@@ -1053,7 +1129,13 @@ tr.bankRow .bkSummary {
 /* ── Insights ───────────────────────────────────────────────────────────── */
 
 .admin .inToolbar { display: flex; gap: 0.4rem; margin-bottom: 0.6rem; }
-.admin .inPeriod.active { color: var(--amber); border-color: var(--amber); }
+/* Selection, not liveness: a chosen window is not a lit thing (One Lit Thing
+   Rule), so it reads as pressed-in ink, never amber. */
+.admin .inPeriod.active {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--ink) 10%, var(--etch));
+  border-color: var(--label);
+}
 /* The scope line for the table under it, not a second row of hero numbers.
    At 24h these three restate the stat tiles directly overhead, so they read at
    caption rank — bold marks the figure inside the sentence, size does not. */
@@ -1480,6 +1562,72 @@ tr.bankRow .bkSummary {
   .clockTile { grid-column: span 2; }
   .admin .bankAdd { grid-template-columns: repeat(2, 1fr); }
   .admin .bankAdd #bkAdd { justify-self: start; }
+
+  /* The Now panel yields early rather than squeezing: it becomes a pinned
+     strip along the bottom, expanding into a bottom sheet. Column-reverse
+     keeps the strip in DOM-first, screen-last position, so the sheet opens
+     upward from it. Below the toast (z38) and the drawer scrim (z40). */
+  .nowPanel {
+    position: fixed;
+    inset: auto 0 0 0;
+    z-index: 36;
+    display: flex;
+    flex-direction: column-reverse;
+    width: auto;
+    max-height: none;
+    overflow: visible;
+    border: none;
+    border-top: 1px solid var(--border-strong);
+    border-radius: 0;
+  }
+  .nowPanel.open { box-shadow: 0 -12px 36px rgb(0 0 0 / 0.5); }
+  .npStrip {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    width: 100%;
+    min-height: 3.1rem;
+    padding: 0.45rem 0.9rem;
+    background: none;
+    border: none;
+    border-radius: 0;
+    text-align: left;
+    font-size: var(--t-caption);
+  }
+  .npStripName {
+    flex: 1;
+    min-width: 0;
+    color: var(--ink);
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .nowPanel.isSilent .npStripName { color: var(--dim); }
+  .npStripState:not(:empty) {
+    padding: 0.08em 0.45em;
+    color: var(--caution);
+    border: 1px solid color-mix(in srgb, var(--caution) 60%, transparent);
+    border-radius: 4px;
+    font-size: var(--t-micro);
+    font-weight: 600;
+    letter-spacing: 0.06em;
+  }
+  /* Closed points up (the sheet opens upward); open points down. */
+  .npStrip .chev { transform: rotate(-135deg); }
+  .nowPanel.open .npStrip .chev { transform: rotate(45deg); }
+  .npBody { display: none; }
+  .nowPanel.open .npBody {
+    display: grid;
+    max-height: min(70vh, 34rem);
+    overflow-y: auto;
+    border-bottom: 1px solid var(--rule);
+  }
+  .admin .npVerdict { border-radius: 0; }
+
+  /* Content and toast clear the pinned strip. */
+  .admin { padding-bottom: 8.5rem; }
+  .toastHost { bottom: 4.6rem; }
 }
 
 @media (max-width: 900px) {
@@ -1501,7 +1649,9 @@ tr.bankRow .bkSummary {
    in the thumb zone, compact headers, reflowed hero, single-column forms.
    Last block in the file on purpose — it outranks the rules above. */
 @media (max-width: 699.98px) {
-  .admin { padding: 0 0.6rem calc(5.5rem + env(safe-area-inset-bottom)); }
+  .admin { padding: 0 0.6rem calc(9.2rem + env(safe-area-inset-bottom)); }
+  /* The Now strip rides above the tab bar; both stay in the thumb zone. */
+  .nowPanel { inset: auto 0 calc(3.6rem + env(safe-area-inset-bottom)) 0; }
   .adminHead { min-height: 2.75rem; margin-bottom: 0.9rem; padding-block: 0.5rem; }
   .adminHead .brandSub { display: none; }
   .adminHead .headActions a { padding-inline: 0.4rem; }
@@ -1520,6 +1670,7 @@ tr.bankRow .bkSummary {
   }
   .adminNav a {
     flex: 1 1 0;
+    box-sizing: border-box;   /* the Now strip's bottom offset assumes 3.6rem of bar */
     min-width: 0; min-height: 3.1rem;
     position: relative;
     flex-direction: column;
@@ -1558,22 +1709,6 @@ tr.bankRow .bkSummary {
   .pageIntro h1 { margin: 0; font-size: var(--t-heading); }  /* fixed floor for the clamp above */
 
   .admin section { padding: 1rem 0.8rem; }
-  .admin .nowCard { padding: 1.1rem; }
-
-  /* Hero: full-width rows, flexing volume, two-up transmission buttons. */
-  .admin .nowCard .npControls { grid-template-columns: 1fr; }
-  .admin .audioControls { display: flex; flex-wrap: wrap; gap: 0.6rem; }
-  .admin .audioControls #streamBtn { flex: 1 1 100%; }
-  .admin .audioControls label:not(.checkLabel) {
-    flex: 1 1 100%;
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-  }
-  .admin .audioControls input[type="range"] { flex: 1; width: auto; }
-  .admin .transmissionControls { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
-  .admin .transmissionControls button { width: 100%; }
-  .admin .transmissionControls #resumeBtn { grid-column: 1 / -1; }
   .admin .systemActions .hint { width: 100%; text-align: left; }
 
   /* Tables keep their column budget on a 360px screen. Triage's four row
@@ -1617,8 +1752,8 @@ tr.bankRow .bkSummary {
   /* Switch rows put their control hard against the right edge with the label
      ~250px away; give the whole row a comfortable target instead. */
   .settingsCard .settingGroups .switchRow { padding-block: 0.75rem; }
-  /* The toast clears the fixed tab bar. */
-  .toastHost { bottom: calc(4.6rem + env(safe-area-inset-bottom)); }
+  /* The toast clears the fixed tab bar AND the Now strip above it. */
+  .toastHost { bottom: calc(8.2rem + env(safe-area-inset-bottom)); }
   .locationMap { height: 11.9rem; }
 }
 

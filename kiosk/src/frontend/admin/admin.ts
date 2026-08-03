@@ -1,3 +1,17 @@
+/* ── Direction contract (2026-07-28 admin shape) ──────────────────────────
+   THESIS: the live radio is a permanent region of the workspace, not a page.
+   Refused: the stacked-cards status homepage where the glance is a route.
+   OWN-WORLD: Night Watch as recorded in DESIGN.md — flat slate plates,
+   hairline rules, tracked micro legends, tabular data, amber spent on live
+   state only. No new palette, no concept layer.
+   STORY: opening the admin anywhere answers "is it healthy, what's it on",
+   and the knobs (volume, mute, transport) are reachable without navigating.
+   FIRST VIEWPORT: nav rail · work column · Now panel (verdict → live channel
+   → transport → volume → vitals). ≤1100px the panel condenses to a pinned
+   strip that expands to a sheet. Home becomes the Activity page.
+   FORM: grounded structure 6 of 7 (split workspace with persistent Now
+   inspector), seed e5c00ed8; challengers refused on brand-commitment grounds
+   (convention over concept). */
 import type { Channel, Config } from "../../backend/config/schema.js";
 import { NOAA_CHANNELS } from "../../backend/config/noaa.js";
 import { api } from "../lib/api.js";
@@ -23,6 +37,8 @@ import icoPlay from "lucide-static/icons/play.svg?raw";
 import icoStop from "lucide-static/icons/square.svg?raw";
 import icoEllipsis from "lucide-static/icons/ellipsis.svg?raw";
 import icoChevronRight from "lucide-static/icons/chevron-right.svg?raw";
+import icoVolume from "lucide-static/icons/volume-2.svg?raw";
+import icoVolumeOff from "lucide-static/icons/volume-x.svg?raw";
 import icoExternal from "lucide-static/icons/arrow-up-right.svg?raw";
 import type { Bank } from "../../backend/config/schema.js";
 import { ReconnectingWs } from "../lib/wsClient.js";
@@ -151,6 +167,8 @@ const ICONS: Record<string, string> = {
   more: icoEllipsis,
   chevron: icoChevronRight,
   external: icoExternal,
+  volume: icoVolume,
+  volumeOff: icoVolumeOff,
 };
 
 function iconBtn(cls: string, icon: string, label: string, attrs = ""): string {
@@ -179,7 +197,7 @@ export function renderAdmin(root: HTMLElement): void {
       </header>
       <div class="workspace">
       <nav class="adminNav" id="adminNav" aria-label="Admin sections">
-        <a href="#/" data-route="home"><span class="navIco" data-ico="home"></span><span class="navCopy"><b>Overview</b><small>Live status and activity</small></span></a>
+        <a href="#/" data-route="home"><span class="navIco" data-ico="home"></span><span class="navCopy"><b>Activity</b><small>Hits, insights, and alerts</small></span></a>
         <a href="#/triage" data-route="triage"><span class="navIco" data-ico="triage"></span><span class="navCopy"><b>Triage</b><small>Review new discoveries</small></span><span id="navDcCount" class="navBadge"></span></a>
         <a href="#/channels" data-route="channels"><span class="navIco" data-ico="channels"></span><span class="navCopy"><b>Channels</b><small>Organize what you scan</small></span></a>
         <a href="#/scan" data-route="scan"><span class="navIco" data-ico="scan"></span><span class="navCopy"><b>Settings</b><small>Scanning, alerts, weather</small></span></a>
@@ -188,26 +206,17 @@ export function renderAdmin(root: HTMLElement): void {
       <div class="pages" id="adminPages" tabindex="-1">
       <div id="healthBanner" class="healthBanner healthClear" data-page="home" role="status" aria-live="polite"></div>
       <div class="pageIntro" data-page="home">
-        <div><h1>Radio status</h1></div>
+        <div><h1>Activity</h1></div>
       </div>
-      <section class="nowCard hero" data-page="home">
-        <h2>Now playing <span id="npSilent" class="silentChip" hidden></span></h2>
-        <div class="npWhat"><span id="npName" class="npName">scanning…</span> <span id="npFreq" class="npFreq"></span></div>
-        <div class="npControls">
-          <div class="controlGroup audioControls">
-            <button id="streamBtn" class="primary" disabled title="Enable remote listening to stream the feed">${btnIco("play")}Listen here</button>
-            <label>Volume <input id="vol" type="range" min="0" max="100" /></label>
-            <label class="checkLabel"><input id="mute" type="checkbox" /> Mute</label>
-            <label class="checkLabel"><input id="remoteListen" type="checkbox" /> Remote listening</label>
-          </div>
-          <div class="controlGroup transmissionControls">
-            <button id="resumeBtn" class="resume" style="display:none">${btnIco("stop")}Resume scan</button>
-            <button id="weatherBtn" class="weatherAction">Listen to weather</button>
-            <button id="skipBtn" title="Force-close the current transmission">Skip transmission</button>
-            <button id="tlockBtn" title="Suppress this channel for 30 minutes (clears on restart)" disabled>Pause 30 min</button>
-            <button id="lockBtn" class="danger" title="Remove this channel and never Close-Call its frequency again" disabled>Lock out channel</button>
-          </div>
+      <div class="statRow" data-page="home" id="statRow"></div>
+      <section class="insights" data-page="home">
+        <h2>Channel activity <span class="hint" id="inPeriodHint"></span></h2>
+        <div class="inToolbar">
+          <button class="inPeriod" data-h="24">24 h</button>
+          <button class="inPeriod" data-h="168">7 d</button>
+          <button class="inPeriod" data-h="720">30 d</button>
         </div>
+        <div id="inBody" class="inBody"></div>
       </section>
       <section class="alertFeed" data-page="home">
         <h2>Alerts <span class="hint">last 25</span></h2>
@@ -269,16 +278,6 @@ export function renderAdmin(root: HTMLElement): void {
         </div>
         <span id="chErr" class="err"></span>
         <div id="archiveRecommendations" class="archiveRecommendations"></div>
-      </section>
-      <div class="statRow" data-page="home" id="statRow"></div>
-      <section class="insights" data-page="home">
-        <h2>Channel activity <span class="hint" id="inPeriodHint"></span></h2>
-        <div class="inToolbar">
-          <button class="inPeriod" data-h="24">24 h</button>
-          <button class="inPeriod" data-h="168">7 d</button>
-          <button class="inPeriod" data-h="720">30 d</button>
-        </div>
-        <div id="inBody" class="inBody"></div>
       </section>
       <div class="pageIntro" data-page="scan">
         <div><h1>Scanner settings</h1><p>Each card saves on its own.</p></div>
@@ -371,6 +370,46 @@ export function renderAdmin(root: HTMLElement): void {
         </details>
       </section>
       </div>
+      <aside class="nowPanel" id="nowPanel" aria-label="Radio now">
+        <button type="button" class="npStrip" id="npStrip" aria-expanded="false" aria-controls="npBody">
+          <span class="npStripDot" id="npStripDot" aria-hidden="true"></span>
+          <span class="npStripName" id="npStripName">scanning…</span>
+          <span class="npStripState" id="npStripState"></span>
+          <span class="chev" aria-hidden="true"></span>
+        </button>
+        <div class="npBody" id="npBody">
+          <a class="npVerdict" id="npVerdict" href="#/system" title="Open the System page">
+            <span class="verdictDot" aria-hidden="true"></span>
+            <span class="npVerdictText" id="npVerdictText">checking…</span>
+          </a>
+          <div class="npLive">
+            <div class="npLegend"><span id="npMode">Now</span> <span id="npSilent" class="silentChip" hidden></span></div>
+            <div id="npName" class="npName">scanning…</div>
+            <div id="npFreq" class="npFreq"></div>
+          </div>
+          <div class="npTransport">
+            <button id="streamBtn" class="listen" disabled title="Enable remote listening to stream the feed">${btnIco("play")}Listen here</button>
+            <button id="resumeBtn" class="resume" style="display:none">${btnIco("stop")}Resume scan</button>
+            <div class="npPair">
+              <button id="weatherBtn" class="weatherAction" title="Park the radio on the NOAA weather channel">Weather</button>
+              <button id="skipBtn" title="Force-close the current transmission">Skip</button>
+            </div>
+            <div class="npPair">
+              <button id="tlockBtn" title="Suppress this channel for 30 minutes (clears on restart)" disabled>Pause 30 min</button>
+              <button id="lockBtn" class="danger" title="Remove this channel and never Close-Call its frequency again" disabled>Lock out</button>
+            </div>
+          </div>
+          <div class="npAudio">
+            <div class="npAudioHead">
+              <span class="npLegend" id="volLabel">Volume <b id="volPct"></b></span>
+              <button id="mute" type="button" aria-pressed="false" title="Silence the speaker">${btnIco("volume")}Mute</button>
+            </div>
+            <input id="vol" type="range" min="0" max="100" aria-labelledby="volLabel" />
+            <label class="checkLabel"><input id="remoteListen" type="checkbox" /> Remote listening</label>
+          </div>
+          <a class="npVitals" id="npVitals" href="#/system" title="Temperature · CPU · open channels — open the System page"></a>
+        </div>
+      </aside>
       </div>
     <div id="toastHost" class="toastHost" role="status" aria-live="polite"></div>
     <div id="drawerScrim" class="drawerScrim"></div>
@@ -526,7 +565,8 @@ export function renderAdmin(root: HTMLElement): void {
   // These are the tuning knobs; each poll declares which routes it feeds.
   const POLL_MS = {
     systemGauges: 3_000,   // System page: live CPU/temp gauges
-    systemBanner: 30_000,  // Overview: just the health banner, no gauges
+    systemPanel: 30_000,   // every page: the Now panel's verdict + vitals
+    audioSync: 15_000,     // pages the discoveries poll skips: volume/mute sync
     discoveries: 15_000,   // triage table + audio-control sync
     analytics: 5_000,      // only while an analytics drawer is open
     insights: 60_000,
@@ -570,7 +610,7 @@ export function renderAdmin(root: HTMLElement): void {
   }
   function applyRoute(): void {
     const route = currentRoute();
-    const titles: Record<string, string> = { home: "Overview", triage: "Triage", channels: "Channels", scan: "Settings", system: "System" };
+    const titles: Record<string, string> = { home: "Activity", triage: "Triage", channels: "Channels", scan: "Settings", system: "System" };
     document.title = `${titles[route]} · Kerchunk Admin`;
     root.querySelectorAll<HTMLElement>("[data-page]").forEach((el) => {
       el.classList.toggle("pageHidden", el.dataset.page !== route);
@@ -583,6 +623,11 @@ export function renderAdmin(root: HTMLElement): void {
     });
     refreshPollsFor(route);
   }
+  // Registered before every other poll on purpose: polls run sequentially in
+  // registration order, and the Now panel's verdict is the glance — it should
+  // be the first thing a fresh page resolves, not the last.
+  poll({ run: () => renderSystem(), everyMs: POLL_MS.systemPanel });
+
   window.addEventListener("hashchange", applyRoute);
   applyRoute();
   document.addEventListener("visibilitychange", () => {
@@ -603,7 +648,7 @@ export function renderAdmin(root: HTMLElement): void {
   });
 
   const vol = root.querySelector<HTMLInputElement>("#vol")!;
-  const mute = root.querySelector<HTMLInputElement>("#mute")!;
+  const mute = root.querySelector<HTMLButtonElement>("#mute")!;
   const chRows = root.querySelector<HTMLElement>("#chRows")!;
   const chErr = root.querySelector<HTMLElement>("#chErr")!;
   const addBtn = root.querySelector<HTMLButtonElement>("#addBtn")!;
@@ -876,6 +921,28 @@ export function renderAdmin(root: HTMLElement): void {
       health: { verdict: "healthy" | "stressed" | "trouble"; reason: string };
       coreCount: number;
     };
+    // The Now panel's verdict and vitals render on every page — they are the
+    // reason this poll runs everywhere, so paint them before the early return.
+    // The verdict may not read calmer than the alert list: /api/system can say
+    // health "healthy" while carrying an over-temperature alert, and a green
+    // dot beside a caution banner is the glance lying. Take the worse of the
+    // two, and let the loudest alert name the reason.
+    const RANK = { healthy: 0, stressed: 1, trouble: 2 } as const;
+    const alertVerdict = alerts.some((a) => a.severity === "severe") ? "trouble"
+      : alerts.length > 0 ? "stressed" : "healthy";
+    const verdict = RANK[alertVerdict] > RANK[health.verdict] ? alertVerdict : health.verdict;
+    npVerdict.classList.remove("healthy", "stressed", "trouble");
+    npVerdict.classList.add(verdict);
+    npStripDot.classList.remove("healthy", "stressed", "trouble");
+    npStripDot.classList.add(verdict);
+    npVerdictText.textContent = verdict !== health.verdict && alerts[0] ? alerts[0].title : health.reason;
+    if (now) {
+      const vt = now.tempC as number | null;
+      npVitals.innerHTML =
+        `<span>${vt === null ? "—" : `${vt}°C`}</span>`
+        + `<span>CPU ${now.cpuPct}%</span>`
+        + `<span>${now.openCount} open</span>`;
+    }
     if (!now) { sysBody.textContent = "No readings yet — data appears within a minute."; return; }
     healthBanner.classList.toggle("healthClear", alerts.length === 0);
     healthBanner.classList.toggle("severe", alerts.some((a) => a.severity === "severe"));
@@ -921,11 +988,20 @@ export function renderAdmin(root: HTMLElement): void {
        </div>
        <div class="sysGrid">${cells}</div>`;
   }
-  // renderSystem writes two things: the gauges on the System page and the
-  // health banner on Overview. The gauges want live cadence; the banner does
-  // not — so the same function runs at two rates depending on where you are.
+  // renderSystem writes three things: the gauges on the System page, the
+  // health banner on Activity, and the Now panel's verdict + vitals on every
+  // page. The gauges want live cadence; the panel does not — so the same
+  // function runs at two rates depending on where you are.
   poll({ run: renderSystem, everyMs: POLL_MS.systemGauges, pages: ["system"] });
-  poll({ run: renderSystem, everyMs: POLL_MS.systemBanner, pages: ["home"] });
+  // (The every-page systemPanel poll registers up by applyRoute, first in
+  // tick order — the verdict is the glance and resolves before anything else.)
+  // The Now panel's volume/mute must track the server everywhere; the
+  // discoveries poll already does that on home/triage, this covers the rest.
+  poll({
+    run: async () => syncAudioControls(await api.getConfig()),
+    everyMs: POLL_MS.audioSync,
+    pages: ["channels", "scan", "system"],
+  });
   poll({
     run: () => renderAnalyticsDrawer(analyticsFreq!),
     everyMs: POLL_MS.analytics,
@@ -1869,8 +1945,32 @@ export function renderAdmin(root: HTMLElement): void {
   // whatever is playing right now.
   const npName = root.querySelector<HTMLElement>("#npName")!;
   const npSilent = root.querySelector<HTMLElement>("#npSilent")!;
-  const nowCard = root.querySelector<HTMLElement>(".nowCard")!;
+  const nowPanel = root.querySelector<HTMLElement>("#nowPanel")!;
   const npFreq = root.querySelector<HTMLElement>("#npFreq")!;
+  const npStrip = root.querySelector<HTMLButtonElement>("#npStrip")!;
+  const npStripName = root.querySelector<HTMLElement>("#npStripName")!;
+  const npStripState = root.querySelector<HTMLElement>("#npStripState")!;
+  const npStripDot = root.querySelector<HTMLElement>("#npStripDot")!;
+  const npVerdict = root.querySelector<HTMLAnchorElement>("#npVerdict")!;
+  const npVerdictText = root.querySelector<HTMLElement>("#npVerdictText")!;
+  const npVitals = root.querySelector<HTMLElement>("#npVitals")!;
+
+  // ≤1100px the panel is a pinned strip; tapping it expands the full panel
+  // as a bottom sheet. One element, one set of controls — the strip and the
+  // sheet are the same panel wearing two layouts, so nothing is duplicated.
+  npStrip.addEventListener("click", () => {
+    const open = !nowPanel.classList.contains("open");
+    nowPanel.classList.toggle("open", open);
+    npStrip.setAttribute("aria-expanded", String(open));
+  });
+  const closeNowSheet = (): void => {
+    nowPanel.classList.remove("open");
+    npStrip.setAttribute("aria-expanded", "false");
+  };
+  window.addEventListener("hashchange", closeNowSheet);
+  document.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape" && nowPanel.classList.contains("open") && !drawerId) closeNowSheet();
+  });
   const tlockBtn = root.querySelector<HTMLButtonElement>("#tlockBtn")!;
   const lockBtn = root.querySelector<HTMLButtonElement>("#lockBtn")!;
   let nowPlaying: { freq: number; alphaTag: string } | null = null;
@@ -1883,6 +1983,9 @@ export function renderAdmin(root: HTMLElement): void {
   let npAudibleDriven = false;
   let currentMode: "scan" | "weather" | "monitor" = "scan";
   let weatherChannel: Channel | null = null;
+  // A SAME break-in holds the scanner on NWR mid-transmission; the panel says
+  // so instead of presenting the weather channel as an ordinary hit.
+  let breakIn = false;
 
   const resumeBtn = root.querySelector<HTMLButtonElement>("#resumeBtn")!;
   const weatherBtn = root.querySelector<HTMLButtonElement>("#weatherBtn")!;
@@ -1904,9 +2007,23 @@ export function renderAdmin(root: HTMLElement): void {
     const silent = audioMuted || audioVolume === 0;
     npSilent.hidden = !silent;
     npSilent.textContent = audioMuted ? "MUTED" : "VOLUME 0";
-    nowCard.classList.toggle("isSilent", silent);
+    nowPanel.classList.toggle("isSilent", silent);
+    mute.setAttribute("aria-pressed", String(audioMuted));
+    mute.innerHTML = audioMuted ? `${btnIco("volumeOff")}Muted` : `${btnIco("volume")}Mute`;
+    const volPct = root.querySelector<HTMLElement>("#volPct");
+    if (volPct) volPct.textContent = `${audioVolume}%`;
+    // The pinned strip mirrors the live line so the glance works collapsed.
+    npStripName.textContent = npName.textContent;
+    npStripState.textContent = breakIn ? "WX ALERT"
+      : silent ? npSilent.textContent
+      : currentMode === "weather" ? "WX" : monitoring ? "MON" : "";
+    const legend = root.querySelector<HTMLElement>("#npMode");
+    if (legend) legend.textContent = breakIn ? "Weather break-in" : "Now";
     resumeBtn.style.display = monitoring ? "" : "none";
-    weatherBtn.textContent = currentMode === "weather" ? "Resume scanning" : "Listen to weather";
+    weatherBtn.textContent = currentMode === "weather" ? "Resume scan" : "Weather";
+    weatherBtn.title = currentMode === "weather"
+      ? "Leave weather-only mode and resume scanning"
+      : "Park the radio on the NOAA weather channel";
     weatherBtn.disabled = currentMode !== "weather" && weatherChannel === null;
     // Both act on the live audible channel: no target (or monitoring,
     // where lockout-of-what-you-chose makes no sense) disables both.
@@ -1918,6 +2035,7 @@ export function renderAdmin(root: HTMLElement): void {
     try {
       const st = await api.getStatus();
       currentMode = st.mode;
+      breakIn = st.breakIn === true;
       monitoring = st.mode === "monitor" && st.monitor
         ? { freq: st.monitor.freq, alphaTag: st.monitor.alphaTag } : null;
       paintNow();
@@ -2179,20 +2297,25 @@ export function renderAdmin(root: HTMLElement): void {
 
   function syncAudioControls(cfg: { audio: { volume: number; muted: boolean; remoteListening?: boolean } }): void {
     if (document.activeElement !== vol) vol.value = String(cfg.audio.volume);
-    if (document.activeElement !== mute) mute.checked = cfg.audio.muted;
     audioMuted = cfg.audio.muted;
     audioVolume = cfg.audio.volume;
     syncRemoteListening(cfg.audio.remoteListening ?? false);
     paintNow();
   }
   api.getConfig().then(syncAudioControls);
+  // `input` keeps the % readout and silent-state honest while the thumb is
+  // still down; the API write waits for `change` so a drag is one request.
+  vol.addEventListener("input", () => {
+    audioVolume = Number(vol.value);
+    paintNow();
+  });
   vol.addEventListener("change", () => {
     audioVolume = Number(vol.value);
     api.setVolume(audioVolume);
     paintNow();
   });
-  mute.addEventListener("change", () => {
-    audioMuted = mute.checked;
+  mute.addEventListener("click", () => {
+    audioMuted = !audioMuted;
     api.setMuted(audioMuted);
     paintNow();
   });

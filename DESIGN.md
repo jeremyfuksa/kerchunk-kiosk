@@ -7,10 +7,10 @@ colors:
   adopt-moss: "#9ac35d"
   destroy-coral: "#f17d7b"
   listen-pine: "#87a7a9"
-  night-ground: "#1c1f26"
-  slate-panel: "#2b303b"
-  hairline: "#4d515c"
-  steel: "#747b8a"
+  night-ground: "#0e0f12"
+  slate-panel: "#16181d"
+  hairline: "#343842"
+  steel: "#7a8090"
   bright-ink: "#f7f8f9"
   cool-label: "#b8bcc5"
   quiet-hint: "#9299a5"
@@ -287,10 +287,10 @@ The consequence colours. These are never decorative: each one means a specific o
 - **Position Unknown** (`#4a7c7e`): a hit that has no honest map position. Distinct from every service colour on purpose — uncertain geography must never masquerade as a located site.
 
 ### Neutral
-- **Night Ground** (`#1c1f26`): the page field, and the recessed fill inside controls. The same value doing both jobs is what makes an input read as cut *into* a panel.
-- **Slate Panel** (`#2b303b`): every card, table body, drawer and menu.
-- **Hairline** (`#4d515c`): row separators, field dividers, card-internal rules.
-- **Steel** (`#747b8a`): two jobs, both non-text — the resting edge of every interactive control, and purely decorative glyphs (carets, chevrons, the fader groove).
+- **Night Ground** (`#0e0f12`): the page field, and the recessed fill inside controls. The same value doing both jobs is what makes an input read as cut *into* a panel.
+- **Slate Panel** (`#16181d`): every card, table body, drawer and menu.
+- **Hairline** (`#343842`): row separators, field dividers, card-internal rules.
+- **Steel** (`#7a8090`): two jobs, both non-text — the resting edge of every interactive control, and purely decorative glyphs (carets, chevrons, the fader groove).
 - **Bright Ink** (`#f7f8f9`): primary text and data.
 - **Cool Label** (`#b8bcc5`): field labels, secondary values, prose.
 - **Quiet Hint** (`#9299a5`): helper text under a field, units, column headers, empty states.
@@ -309,7 +309,7 @@ Three groups sit outside the semantic palette. They are part of the system, not 
 
 **The Dark-Value Rule.** Campfire's *named* expressive tokens (`--flamingo`, `--sage`, `--pine`, `--golden-amber`) carry a second, much darker value under `.dark` — the theme this app always runs in. Aliasing them for text or edges silently lands at 2.8–3.6:1. Take consequence colours from the **numbered ramps** (`--danger-400`, `--success-400`, `--warning-500`), which are theme-independent, and lift Pine toward `--ink` because it has no ramp.
 
-**The Three-Tier Rule.** Text uses exactly three tiers — Bright Ink, Cool Label, Quiet Hint — and all three clear 4.5:1 on Slate Panel (12.4 / 6.9 / 4.6). There is no fourth, dimmer tier, because the dark ground does not have room for one. Anything dimmer than Quiet Hint is a glyph, not text.
+**The Three-Tier Rule.** Text uses exactly three tiers — Bright Ink, Cool Label, Quiet Hint — and all three clear 4.5:1 on Slate Panel (16.7 / 9.3 / 6.2). There is no fourth, dimmer tier, because the dark ground does not have room for one. Anything dimmer than Quiet Hint is a glyph, not text.
 
 ## Typography
 
@@ -400,7 +400,7 @@ Borders are always `1px` and always meaningful: a card edge, a control edge, a r
 - **Shape:** tightly machined (`4px` radius), `2.35rem` tall, `0.45rem 0.75rem` padding, 0.78rem semibold label.
 - **Primary:** solid Signal Amber with Night Ground text — the one filled button on a screen. Hover shifts the fill to Caution Hay.
 - **Default:** recessed Night Ground fill, Bright Ink text, Steel edge.
-- **Consequence variants:** the label takes the consequence colour and the edge takes a mix of it strong enough to clear 3:1 (Adopt 60%, Caution 60%, Destroy 70%, Listen 70%).
+- **Consequence variants:** the label takes the consequence colour; the edge stays neutral Steel at rest and takes a mix of the consequence colour strong enough to clear 3:1 (Adopt 60%, Caution 60%, Destroy 70%, Listen 70%) on hover and focus — colour at the moment of intent, not four coloured outlines in one stack.
 - **Icon buttons:** no resting border or fill — a recognisable glyph in its consequence colour identifies the control. Edge and fill appear on hover and focus.
 - **Focus:** `2px` Caution Hay outline at `2px` offset, on every interactive element without exception.
 
