@@ -148,7 +148,10 @@ export function classifyHealth(i: HealthInput): HealthVerdict {
   // STRESSED — working, but under duress. (engineState "running"/"starting"
   // fall through to here; a "starting" engine reads "Warming up…" via !warmed.)
   if (!i.warmed) return { verdict: "stressed", reason: "Warming up…" };
-  if (i.safetyMode) return { verdict: "stressed", reason: "Running hot — Close Call paused to cool down." };
+  // Deliberately names no specific feature: safetyMode only *forces* Close Call
+  // and sweeps off, and both are usually already off, so "Close Call paused"
+  // read as a lie on a box that never had it on.
+  if (i.safetyMode) return { verdict: "stressed", reason: "Running hot — thermal protection active." };
   if (i.now.throttled === true) return { verdict: "stressed", reason: "CPU thermal-throttling." };
   if (i.helperRestartsRecent >= 1) return { verdict: "stressed", reason: "DSP helper restarted recently." };
 

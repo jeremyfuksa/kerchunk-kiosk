@@ -954,7 +954,7 @@ export function renderAdmin(root: HTMLElement): void {
     const healthSig = `${safetyMode}|${alerts.map((a) => `${a.id}:${a.severity}`).join(",")}`;
     if (healthSig !== lastHealthSig) {
       lastHealthSig = healthSig;
-      healthBanner.innerHTML = alerts.length ? `${safetyMode ? `<div class="safetyMode"><strong>Protection active:</strong> Close Call and sweep ranges are paused until temperature recovers.</div>` : ""}${alerts.map((a) => `<div class="healthAlert">
+      healthBanner.innerHTML = alerts.length ? `${safetyMode ? `<div class="safetyMode"><strong>Protection active:</strong> the box is above its thermal limit. Close Call and sweep ranges stay off until temperature recovers.</div>` : ""}${alerts.map((a) => `<div class="healthAlert">
         <div><strong>${esc(a.title)}</strong><span>${esc(a.message)}</span><small>${esc(a.help)}</small></div>
         ${a.id.startsWith("cpu-") || a.id.startsWith("memory-") ? `<a href="#/scan">Reduce processing load</a>` : ""}
       </div>`).join("")}` : "";
