@@ -8,10 +8,14 @@ web
 
 ## Users
 
-**One operator — the person who built the appliance and runs it.** Both
-surfaces serve that same person; there is no second audience. Confirmed: the
-wall display is a personal instrument in the operator's own space, not a shared
-or public display, and nobody else configures or triages.
+**One person — the author, who built it and lives with it.** Both surfaces
+serve that same person; there is no second audience. Confirmed: the kiosk is in
+the author's **office**, not a shared or public space, and nobody else
+configures or triages.
+
+The relationship is closer to owning a piece than operating a tool. The kiosk
+is on most of the time and mostly *watched* rather than used; the admin is
+picked up to adjust something and put down again.
 
 The consequence is that neither surface has to explain itself. Density is
 correct, domain vocabulary is correct, and there is no newcomer to onboard.
@@ -25,32 +29,65 @@ The operator reads the product at two distances, and both are primary:
 
 ## Product Purpose
 
-Kerchunk is a software-defined-radio scanner **appliance**. One persistent GNU
-Radio flowgraph samples a ~2 MHz window and demodulates every channel in it
-simultaneously, so there is no scan latency and no missed burst inside a band
-group. It runs continuously, boots lid-closed straight to a fullscreen
-dashboard on an external monitor, and is administered over the network.
+**Kerchunk is a piece of data art.** In the author's own words it is "a kiosk
+for my office that feels like a control center for every radio signal in the
+Kansas City metro," and "a piece of data art that tells a real story about
+what's moving across the invisible airwaves over Kansas City."
 
-Success is: the operator hears what matters, can tell what the radio is doing
-from across the room without interacting with it, and can retune, triage or
-reconfigure from any device without interrupting the audio.
+The subject is **the invisible layer over one city** — fire dispatch, a
+hospital, a rail yard, a business, a ham repeater, an aircraft overhead — made
+visible and audible in one place, continuously. Radio is the *mechanism* that
+gets at that subject. It is not the point, and this document has already been
+wrong once by treating it as the point.
+
+The turn that defined the project is recorded plainly: "As the map filled, it
+stopped being a scanner readout and turned into something closer to data art."
+Anything that pushes it back toward reading as a scanner readout is moving
+against the work.
+
+Success is: the piece is worth having on the wall, it tells a true story about
+the city continuously without being tended, and the parts that turned out to be
+genuinely useful stay useful — the weather warnings arrive "faster than the
+warnings on my phone."
 
 ## Positioning
 
-The mechanism a neighbouring product could not truthfully copy: **simultaneous
-wideband demodulation instead of sequential scanning.** A conventional scanner
-visits frequencies one at a time and misses whatever starts while it is
-elsewhere. Kerchunk demodulates up to 12 channels at once from a single tuned
-window, so within a band group there is nothing to miss.
+**Six disparate data feeds fused into one story about one city.** The stated
+ambition was "to find out how far I could push six disparate data feeds into
+something that tells a story," and the design intent is explicitly a density
+question: "how far I could push the amount of data on the map while keeping it
+useful and well-designed." Density is a goal here, not a hazard to be reduced.
 
-Two things follow from that architecture rather than being features bolted on:
+The technical mechanism that makes the density possible — and which a
+neighbouring product could not truthfully copy — is **simultaneous wideband
+demodulation instead of sequential scanning.** A conventional scanner visits
+frequencies one at a time and misses whatever starts while it is elsewhere.
+Kerchunk demodulates up to 12 channels at once from a single tuned window, so
+within a band group there is nothing to miss. Two things follow from that
+architecture rather than being bolted on:
 
 - The SDR is opened **once per boot** and retuned live between band groups,
   structurally eliminating the USB re-open thrash that destabilises
   `rtl_fm`-style scanners.
 - **Close Call** watches the whole tuned window with the same FFT, so
   discovering unknown activity is a property of how the radio works, not a
-  separate mode the operator switches into.
+  separate mode to switch into.
+
+It is **receive-only**. Nothing here transmits, there is no callsign in play,
+no contact is made and no station is worked. The relationship to every source
+on the map is one-way: the city talks and this listens.
+
+## Origin
+
+Kerchunk began as *Bearpaw*, software to drive an old Uniden scanner. Once the
+basic functionality was replicated the question that redirected the project
+was: "Why not have the system go get it for you?" — automating the lookup
+instead of operating the radio by hand. Bearpaw was shelved and the work
+pivoted to SDR dongles and, in the author's phrase, "the ultimate visual
+display."
+
+That history is the reason the identification chain exists and the reason the
+map is the centrepiece rather than a feature.
 
 ## Operating Context
 
@@ -126,6 +163,33 @@ solved.
   two may evolve together. Changes ripple to anything else consuming Campfire,
   and that is an accepted cost.
 
+- **"Control center."** The author's own stated register for the kiosk: it
+  should feel "like a control center for every radio signal in the Kansas City
+  metro." Recorded as volunteered, not expanded — it names the feeling the
+  piece is going for, and design work should treat it as a given rather than
+  something to re-litigate.
+
+- **The kiosk concept is fixed and is not a redesign target.** The dashboard
+  is the work and its concept stands as conceived. Changes to it are
+  *improvements on the original* — better executed, better resolved, more
+  legible — never a replacement of the idea. Any proposal that reads as "the
+  kiosk becomes something else" is out of bounds regardless of merit.
+
+  The consequence for every other surface: coherence flows **toward** the
+  kiosk. When the admin and the kiosk disagree, the admin moves.
+
+- **Convention over concept, for the admin.** Offered a dealt visual world or
+  the category standard played straight, the author chose the standard. The
+  admin is therefore built as a modern operator console executed at full
+  fidelity — no concept layered over it, no irony, and no quirk smuggled back
+  in through the side door.
+
+  **The craft bar is Linear, Stripe and Vercel.** Dense information held calm,
+  ruthless typographic consistency, keyboard-first and fast, restrained
+  palette with a single accent, hairline structure, near-zero decoration.
+  Those products' level of finish is the bar the admin has to clear; matching
+  the *category* is not the same as matching that bar, and only the bar counts.
+
 No other identity constraint, required asset, or reference has been made
 binding.
 
@@ -144,21 +208,33 @@ binding.
 
 ## Product Principles
 
-1. **The radio is the product; the screen reports it.** No surface may cost
-   audio quality, thermal headroom, or engine stability to render. When
-   presentation and the radio conflict, the radio wins.
-2. **Tighten before expanding.** Fixing what exists beats adding surface area.
-   Ideas that have been deliberately set aside stay set aside.
-3. **Built for one known operator in a known room.** Density and domain
-   vocabulary are right; onboarding, hand-holding and explanatory chrome are
-   not. Avoid hardcoding the specific location or hardware where avoiding it
-   is cheap, but do not design for a hypothetical stranger.
-4. **Two distances, both primary.** The wall answers "what is the radio doing"
-   from across a room with no interaction. The admin answers "change this" on
-   a phone held at arm's length. Neither read may be sacrificed for the other.
-5. **Prove it on hardware.** Anything audible is verified by ear and anything
-   visual on the real display, within minutes. Design for live verification
-   rather than for review in the abstract.
+1. **The screen is the work; the radio is how it gets its material.** The map
+   filling with real traffic is the artifact, not a readout of a machine that
+   lives elsewhere. Anything that makes it read as a scanner readout again is
+   moving against the project. *This principle previously said the opposite,
+   and that error produced a run of work aimed at the wrong subject.*
+2. **Density is the ambition — on the map, and only there.** The stated goal
+   is "how far I could push the amount of data on the map while keeping it
+   useful and well-designed." That is a claim about the kiosk, where holding
+   more signal legibly is the craft. It is **not** a mandate for the other
+   surfaces: the admin is a backstage console with a channel list and a volume
+   control, and it should be clean. Reducing and calming are improvements
+   there, and were wrongly treated as violations of this principle once.
+3. **The radio's stability is a hard floor under all of it.** No surface may
+   cost audio quality, thermal headroom or engine stability to render. This
+   bounds how the work is built; it is not what the work is about.
+4. **Two distances, one known audience.** The office kiosk is watched from
+   across the room, ambiently, for long stretches without interaction. The
+   admin is picked up at arm's length to adjust something and put down again.
+   Both reads are primary and neither may be sacrificed for the other. Because
+   the audience is one person who built it, domain vocabulary is correct and
+   onboarding, hand-holding and explanatory chrome are not — though the
+   specific location and hardware should not be hardcoded where avoiding that
+   is cheap.
+5. **Prove it on hardware, in small steps.** Anything audible is verified by
+   ear and anything visual on the real display, within minutes. Fixing what
+   exists beats adding surface area, and ideas deliberately set aside stay set
+   aside.
 
 ## Accessibility & Inclusion
 
