@@ -10,6 +10,19 @@ import type { CcSampleStore } from "./ccSampleStore.js";
  *  config knob. */
 export const PREROLL_SECONDS = 2;
 
+/** How much of the pre-roll may predate the moment the PREVIOUS speaker owner
+ *  let go. `audible` marks an ownership CHANGE, so a full ring is by
+ *  construction whatever was audible before this lane took the speaker — on a
+ *  busy band a programmed channel that closed a second ago would otherwise be
+ *  spliced onto the head of the clip. The epsilon exists only because the
+ *  event lands a beat after the carrier actually moves. */
+export const PREROLL_GAP_EPSILON_SECONDS = 0.25;
+
+/** How long after the last clip lands before the store is swept. The sweep is
+ *  two readdir passes plus a stat per file, so it is kept off the write path
+ *  entirely and coalesced across a burst of hits into one run. */
+const SWEEP_DELAY_MS = 5_000;
+
 /** The helper's tee rate. */
 export const SOURCE_RATE = 48_000;
 /** Clips are voice-triage grade: 8 kHz mono s16 is ~16 KB/s, a sixth of the
@@ -144,9 +157,21 @@ export class CcRecorder {
   /** When the cap fired, so the suppression above can time out. */
   private cappedAtMs = 0;
   private currentId: string | null = null;
+  /** Ring bytes that arrived while NOBODY owned the speaker. Anything older
+   *  than this belongs to the previous owner — see the seed clamp in
+   *  `onAudible`. Starts at the ring's capacity: before the first ownership
+   *  event there is no previous owner, so the whole ring is fair game. */
+  private unownedBytes: number;
+  private readonly ringBytes = PREROLL_SECONDS * SOURCE_RATE * 2;
+  /** Deferred clip writes, FIFO. Drained one job per tick so two flushes can
+   *  never reorder. */
+  private writeQueue: Array<{ freqHz: number; chunks: Buffer[] }> = [];
+  private draining = false;
+  private sweepTimer: NodeJS.Timeout | null = null;
 
   constructor(private readonly deps: CcRecorderDeps) {
-    this.ring = new PrerollRing(PREROLL_SECONDS * SOURCE_RATE * 2);
+    this.ring = new PrerollRing(this.ringBytes);
+    this.unownedBytes = this.ringBytes;
     this.now = deps.now ?? (() => Date.now());
   }
 
@@ -159,9 +184,16 @@ export class CcRecorder {
       this.clip = [];
       this.clipBytes = 0;
       this.ring.clear();
+      this.unownedBytes = 0;
       return;
     }
-    if (this.freqHz === null) { this.ring.write(chunk); return; }
+    if (this.freqHz === null) {
+      this.ring.write(chunk);
+      this.unownedBytes = this.currentId === null
+        ? Math.min(this.ringBytes, this.unownedBytes + chunk.length)
+        : 0; // a channel owns the speaker: this is ITS audio, not free pre-roll
+      return;
+    }
     const cap = Math.max(1, this.deps.maxSeconds()) * SOURCE_RATE * 2;
     const room = cap - this.clipBytes;
     const take = chunk.length > room ? chunk.subarray(0, room) : chunk;
@@ -176,6 +208,10 @@ export class CcRecorder {
 
   onAudible(channelId: string | null): void {
     if (channelId === this.currentId) return;
+    // Read the unowned-audio budget before ownership changes, then close it:
+    // from here on the ring is being written under a new owner.
+    const gapBytes = this.unownedBytes;
+    if (channelId !== null) this.unownedBytes = 0;
     this.currentId = channelId;
     this.flush();
     if (!this.deps.enabled() || channelId === null) return;
@@ -193,9 +229,13 @@ export class CcRecorder {
     // Clamped to the per-clip cap so a small `maxSeconds()` (from an older
     // config file predating the schema floor) can never seed a "clip" that
     // is entirely pre-roll audio recorded before the lane took the speaker.
+    // Clamped a second way too: never seed more pre-roll than the audio that
+    // arrived AFTER the previous speaker owner let go (plus a small epsilon).
+    // See PREROLL_GAP_EPSILON_SECONDS.
     const cap = Math.max(1, this.deps.maxSeconds()) * SOURCE_RATE * 2;
+    const limit = Math.min(cap, gapBytes + PREROLL_GAP_EPSILON_SECONDS * SOURCE_RATE * 2);
     const preroll = this.ring.read();
-    const seed = preroll.length > cap ? preroll.subarray(preroll.length - cap) : preroll;
+    const seed = preroll.length > limit ? preroll.subarray(preroll.length - limit) : preroll;
     this.clip = seed.length > 0 ? [seed] : [];
     this.clipBytes = seed.length;
   }
@@ -220,27 +260,71 @@ export class CcRecorder {
     this.cappedId = null;
     this.cappedAtMs = 0;
     this.ring.clear();
+    this.unownedBytes = 0;
   }
 
-  /** Write whatever is in flight. Safe to call when nothing is recording. */
+  /** End whatever is in flight and queue it for writing. Safe to call when
+   *  nothing is recording. */
   flush(): void {
     const freqHz = this.freqHz;
     const clip = this.clip;
     const bytes = this.clipBytes;
+    // The state reset is SYNCHRONOUS, and the buffers are detached here rather
+    // than in the deferred body: a chunk arriving on the very next audio
+    // callback belongs to the next clip and cannot land in this one.
     this.freqHz = null;
     this.clip = [];
     this.clipBytes = 0;
     if (freqHz === null || bytes === 0) return;
     if (bytes / 2 / SOURCE_RATE < MIN_CLIP_SECONDS) return;
+    this.writeQueue.push({ freqHz, chunks: clip });
+    if (this.draining) return;
+    this.draining = true;
+    setImmediate(() => this.drainWrites());
+  }
+
+  /** The expensive part, deliberately OFF the audio path. `flush()` is reached
+   *  from `onPcm`, which the engine calls synchronously from the helper's fd-3
+   *  "data" handler — the one path CLAUDE.md says must never stall, and the
+   *  same event loop /api/status is served from. Decimation alone is ~1M
+   *  readInt16LE for a 20 s clip, plus a ~320 KB writeFileSync.
+   *
+   *  One job per tick, in enqueue order, so two flushes can never reorder. */
+  private drainWrites(): void {
+    const job = this.writeQueue.shift();
+    if (!job) { this.draining = false; return; }
     try {
-      this.deps.store.write(freqHz, decimate48kTo8k(Buffer.concat(clip)));
-      this.deps.store.sweep({
-        knownFreqs: this.deps.knownFreqs(),
-        maxBytes: this.deps.maxBytes(),
-        nowMs: this.now(),
-      });
+      this.deps.store.write(job.freqHz, decimate48kTo8k(Buffer.concat(job.chunks)));
     } catch {
       // A full or unwritable state directory must never take the radio down.
     }
+    if (this.writeQueue.length > 0) { setImmediate(() => this.drainWrites()); return; }
+    this.draining = false;
+    this.scheduleSweep();
+  }
+
+  /** Orphan + size-cap sweep, coalesced: a burst of hits costs one sweep, not
+   *  one per clip, and it never runs inside a write. */
+  private scheduleSweep(): void {
+    if (this.sweepTimer) return;
+    this.sweepTimer = setTimeout(() => {
+      this.sweepTimer = null;
+      try {
+        this.deps.store.sweep({
+          knownFreqs: this.deps.knownFreqs(),
+          maxBytes: this.deps.maxBytes(),
+          nowMs: this.now(),
+        });
+      } catch {
+        // As above: the store failing is never worth an exception here.
+      }
+    }, SWEEP_DELAY_MS);
+    this.sweepTimer.unref();
+  }
+
+  /** Resolves once every queued clip has landed on disk. Tests only —
+   *  nothing in production waits for a write. */
+  async settle(): Promise<void> {
+    while (this.draining) await new Promise<void>((r) => setImmediate(r));
   }
 }

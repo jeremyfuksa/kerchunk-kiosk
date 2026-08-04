@@ -308,3 +308,33 @@ describe("channel/discovery location", () => {
     }
   });
 });
+
+describe("close call sample knobs", () => {
+  const withScan = (scan: Record<string, unknown>) => {
+    const base = defaultConfig();
+    return configSchema.safeParse({ ...base, scan: { ...base.scan, ...scan } });
+  };
+
+  it("accepts a clip length inside the band", () => {
+    const parsed = withScan({ closeCallSampleSeconds: 20, closeCallSampleMaxMb: 50 });
+    expect(parsed.success).toBe(true);
+  });
+
+  it("rejects a clip length below the pre-roll floor", () => {
+    // Under 3 s the "clip" would be pre-roll only — audio recorded before the
+    // Close Call lane ever took the speaker.
+    expect(withScan({ closeCallSampleSeconds: 2 }).success).toBe(false);
+  });
+
+  it("rejects a clip length above the memory ceiling", () => {
+    // The in-flight clip lives in RAM at ~96 kB/s inside the audio callback:
+    // 3600 would mean a 345 MB Buffer.concat on the path that must not stall.
+    expect(withScan({ closeCallSampleSeconds: 3600 }).success).toBe(false);
+    expect(withScan({ closeCallSampleSeconds: 120 }).success).toBe(true);
+  });
+
+  it("bounds the directory budget at both ends", () => {
+    expect(withScan({ closeCallSampleMaxMb: 0 }).success).toBe(false);
+    expect(withScan({ closeCallSampleMaxMb: 10_000 }).success).toBe(false);
+  });
+});

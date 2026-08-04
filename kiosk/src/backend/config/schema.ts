@@ -109,9 +109,16 @@ export const configSchema = z.object({
     // floor (PREROLL_SECONDS + 1 = 3) guarantees at least 1 s of actual hit
     // audio survives the cap — below that the "clip" would be pre-roll only,
     // recorded before the Close Call lane ever took the speaker.
-    closeCallSampleSeconds: z.number().min(3).optional(),
+    // The ceiling is a memory guard, not taste: the in-flight clip is held in
+    // RAM at the tee's rate (~96 kB/s), inside the audio callback, so an
+    // unbounded value would mean a multi-hundred-MB Buffer.concat on the one
+    // path that must never stall. Two minutes of a single transmission is
+    // already far past what triage needs.
+    closeCallSampleSeconds: z.number().min(3).max(120).optional(),
     // Total budget for the clip directory, MB. Oldest clips are evicted first.
-    closeCallSampleMaxMb: z.number().positive().optional(),
+    // Capped so a typo can't hand the sweep a budget the state partition
+    // cannot honour.
+    closeCallSampleMaxMb: z.number().positive().max(2_000).optional(),
     // Power-detection source (ROADMAP DSP-efficiency): "lane" (default) reads
     // power from the 12 per-lane probes; "fft" derives it from the Close Call
     // FFT, shedding the per-lane power front-end (~0.5-0.7 cores). Quieting and
