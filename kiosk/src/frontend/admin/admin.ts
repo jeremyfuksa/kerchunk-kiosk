@@ -226,9 +226,20 @@ let sampleDisplay: { id: string; el: HTMLElement; full: number } | null = null;
  *  of `nowPlayingSample`, never of which button was clicked. */
 function paintPlayButtons(): void {
   document.querySelectorAll<HTMLButtonElement>("[data-sample-id]").forEach((btn) => {
+    // Capture the idle label from whatever rendered the control, once. The
+    // triage row's carries the clip duration ("…(12.3s)"); a repaint that
+    // hardcoded its own string would flatten that back to the generic copy
+    // the moment the 15 s poll ran.
+    const idle = btn.dataset.idleLabel ??= btn.title;
     const playing = nowPlayingSample?.id === btn.dataset.sampleId;
+    const label = playing ? "Stop" : idle;
     btn.innerHTML = playing ? ICONS.stop! : ICONS.play!;
-    btn.title = playing ? "Stop" : "Play the recorded sample";
+    // Both, together: `title` alone left the accessible name saying "Play…"
+    // while the button was Stop. `data-playing` is what the amber playing
+    // style keys off — a CSS rule must not depend on English tooltip prose.
+    btn.title = label;
+    btn.setAttribute("aria-label", label);
+    btn.toggleAttribute("data-playing", playing);
   });
 }
 
@@ -380,6 +391,9 @@ export function renderAdmin(root: HTMLElement): void {
           <label><span>Quieting threshold <small>Absolute noise threshold</small></span><span class="inputUnit"><input id="tQuietDb" type="number" max="-1" step="0.5" placeholder="-86" /><b>dB</b></span></label>
           <label class="switchRow"><span>Close Call <small>Find strong nearby signals outside your channel list</small></span><input id="tCloseCall" type="checkbox" /></label>
           <label><span>Close Call threshold <small>Higher values reduce false discoveries</small></span><span class="inputUnit"><input id="tCloseCallDb" type="number" min="5" step="1" placeholder="15" /><b>dB</b></span></label>
+          <label class="switchRow"><span>Record samples <small>Keep a clip of each discovery so you can judge it by ear — changing this restarts the scanner</small></span><input id="tCcRecord" type="checkbox" /></label>
+          <label><span>Sample length <small>Longest clip kept, including 2 seconds before the hit</small></span><span class="inputUnit"><input id="tCcSampleSec" type="number" min="3" max="120" step="1" placeholder="20" /><b>sec</b></span></label>
+          <label><span>Sample storage <small>Total space for clips; the oldest go first</small></span><span class="inputUnit"><input id="tCcSampleMb" type="number" min="1" max="2000" step="1" placeholder="50" /><b>MB</b></span></label>
           <label><span>Sweep ranges <small>Comma-separated MHz ranges; empty disables sweeping</small></span><input id="tSweep" type="text" placeholder="450-470, 150-162" title="Band-sweep: one empty-window stop per rotation hunts for activity inside these ranges" /></label>
         </div>
         <div class="formActions"><button id="tSave" class="primary">Save scanning</button><span id="tErr" class="err"></span></div>
@@ -2496,6 +2510,9 @@ export function renderAdmin(root: HTMLElement): void {
   const tSameTests = root.querySelector<HTMLInputElement>("#tSameTests")!;
   const tCloseCall = root.querySelector<HTMLInputElement>("#tCloseCall")!;
   const tCloseCallDb = root.querySelector<HTMLInputElement>("#tCloseCallDb")!;
+  const tCcRecord = root.querySelector<HTMLInputElement>("#tCcRecord")!;
+  const tCcSampleSec = root.querySelector<HTMLInputElement>("#tCcSampleSec")!;
+  const tCcSampleMb = root.querySelector<HTMLInputElement>("#tCcSampleMb")!;
   const tSweep = root.querySelector<HTMLInputElement>("#tSweep")!;
   const tErr = root.querySelector<HTMLElement>("#tErr")!;
 
@@ -2512,8 +2529,11 @@ export function renderAdmin(root: HTMLElement): void {
     tSameFips.value = (cfg.alerts?.sameFips ?? []).join(", ");
     tSameTests.checked = cfg.alerts?.sameTests ?? false;
     tCloseCall.checked = cfg.scan.closeCall ?? true;   // engine default: ON
-    syncCloseCallDependents();
     tCloseCallDb.value = cfg.scan.closeCallDb != null ? String(cfg.scan.closeCallDb) : "";
+    tCcRecord.checked = cfg.scan.recordCloseCalls === true;  // default: OFF
+    tCcSampleSec.value = cfg.scan.closeCallSampleSeconds != null ? String(cfg.scan.closeCallSampleSeconds) : "";
+    tCcSampleMb.value = cfg.scan.closeCallSampleMaxMb != null ? String(cfg.scan.closeCallSampleMaxMb) : "";
+    syncCloseCallDependents();
     tSweep.value = (cfg.scan.sweepRanges ?? [])
       .map((r) => `${r.loHz / 1e6}-${r.hiHz / 1e6}`).join(", ");
   });
@@ -2528,8 +2548,15 @@ export function renderAdmin(root: HTMLElement): void {
   // Call is on.
   function syncCloseCallDependents(): void {
     tCloseCallDb.disabled = !tCloseCall.checked;
+    // Nothing to record when nothing is being discovered, and no clip length
+    // or budget to argue about when recording is off.
+    tCcRecord.disabled = !tCloseCall.checked;
+    const recording = tCloseCall.checked && tCcRecord.checked;
+    tCcSampleSec.disabled = !recording;
+    tCcSampleMb.disabled = !recording;
   }
   tCloseCall.addEventListener("change", syncCloseCallDependents);
+  tCcRecord.addEventListener("change", syncCloseCallDependents);
 
   root.querySelector<HTMLButtonElement>("#tSave")!.addEventListener("click", async () => {
     tErr.textContent = "";
@@ -2540,6 +2567,11 @@ export function renderAdmin(root: HTMLElement): void {
       cfg.scan.noiseQuietDb = numOrU(tQuietDb);
       cfg.scan.closeCall = tCloseCall.checked;
       cfg.scan.closeCallDb = numOrU(tCloseCallDb);
+      // Flipping recording is an ENGINE RESTART — it changes a helper spawn
+      // arg (the fd-3 PCM tee), unlike the other fields on this card.
+      cfg.scan.recordCloseCalls = tCcRecord.checked;
+      cfg.scan.closeCallSampleSeconds = numOrU(tCcSampleSec);
+      cfg.scan.closeCallSampleMaxMb = numOrU(tCcSampleMb);
       const sweeps = tSweep.value.split(",").map((x) => x.trim()).filter(Boolean)
         .map((x) => {
           const m = /^([\d.]+)\s*-\s*([\d.]+)$/.exec(x);
