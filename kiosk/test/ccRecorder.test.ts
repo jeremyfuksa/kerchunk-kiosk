@@ -283,6 +283,44 @@ describe("CcRecorder", () => {
     expect(store.list()).toEqual([]);
   });
 
+  // The engine clears speaker ownership SILENTLY on a hop, a helper respawn and
+  // a stop (five sites in WidebandEngine, none of which emit `audible`).
+  // `reset()` is the server's stand-in for the event that never comes.
+  it("a hop mid-clip ends the clip — the next window's audio never lands in it", () => {
+    const rec = makeRecorder();
+    rec.onAudible("cc_154570000");
+    rec.onPcm(feed(1, 111));
+    rec.reset();                 // engine hopped windows; no `audible` follows
+    rec.onPcm(feed(1, 999));     // a DIFFERENT window's speaker mix
+    rec.onAudible(null);
+    const samples = readClipSamples(154_570_000);
+    expect(samples.some((v) => v === 999)).toBe(false);
+    expect(samples.every((v) => v === 111)).toBe(true);
+  });
+
+  it("reset drops the pre-roll ring so the abandoned window cannot seed the next clip", () => {
+    const rec = makeRecorder();
+    rec.onPcm(feed(2, 999));     // pre-roll belonging to the window being left
+    rec.reset();
+    rec.onPcm(feed(1, 222));
+    rec.onAudible("cc_154570000");
+    rec.onPcm(feed(1, 333));
+    rec.onAudible(null);
+    const samples = readClipSamples(154_570_000);
+    expect(samples.some((v) => v === 999)).toBe(false);
+  });
+
+  it("after a reset the same lane records again instead of early-returning as a duplicate", () => {
+    const rec = makeRecorder();
+    rec.onAudible("cc_154570000");
+    rec.onPcm(feed(1, 111));
+    rec.reset();
+    rec.onAudible("cc_154570000"); // same id, new span — must not be a no-op
+    rec.onPcm(feed(1, 222));
+    rec.onAudible(null);
+    expect(readClipSamples(154_570_000).every((v) => v === 222)).toBe(true);
+  });
+
   it("discards a clip too short to be worth auditioning", () => {
     const rec = makeRecorder();
     rec.onAudible("cc_154570000");

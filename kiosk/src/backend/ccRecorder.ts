@@ -200,6 +200,28 @@ export class CcRecorder {
     this.clipBytes = seed.length;
   }
 
+  /** The engine lost speaker ownership without saying so.
+   *
+   *  `WidebandEngine` clears its `audibleId` SILENTLY in five places — helper
+   *  spawn, `sendTune` (every group hop), `sendSweepTune`, the max-hold
+   *  force-hop, and `stop()` — and emits no `audible` event for any of them.
+   *  Without this the recorder would keep appending, so a clip could end up
+   *  holding a *different window's* speaker mix: exactly the wrong-audio
+   *  failure this feature exists to prevent.
+   *
+   *  The span up to this moment was genuinely heard, so it is flushed
+   *  (truncated), per the spec's "the clip only ever contains what was
+   *  actually heard" — not thrown away. Everything else is dropped: the
+   *  pre-roll ring (its contents describe the window the engine just left),
+   *  the current owner, and the post-cap suppression. */
+  reset(): void {
+    this.flush();
+    this.currentId = null;
+    this.cappedId = null;
+    this.cappedAtMs = 0;
+    this.ring.clear();
+  }
+
   /** Write whatever is in flight. Safe to call when nothing is recording. */
   flush(): void {
     const freqHz = this.freqHz;

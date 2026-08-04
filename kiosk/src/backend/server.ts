@@ -1,5 +1,6 @@
 import { createServer as httpCreateServer, type IncomingMessage, type ServerResponse, type Server } from "node:http";
-import { readFileSync, existsSync, createReadStream } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { join, normalize, extname } from "node:path";
 import { randomUUID } from "node:crypto";
 import { configSchema, channelSchema, type Config, type Channel } from "./config/schema.js";
@@ -716,7 +717,17 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
       .onAudio?.bind(engine);
     onAudio?.((chunk) => ccRecorder.onPcm(chunk));
     engine.on((ev) => {
-      if (ev.type === "audible") ccRecorder.onAudible(ev.channel?.id ?? null);
+      if (ev.type === "audible") { ccRecorder.onAudible(ev.channel?.id ?? null); return; }
+      // The engine also drops speaker ownership SILENTLY — a group hop, the
+      // max-hold force-hop, a helper respawn and stop() all clear its
+      // `audibleId` with no `audible` event. `tuned` (emitted by every tune,
+      // including the force-hop's and the post-respawn first one) and a
+      // non-running `status` are the only signals that the lane which owned
+      // the speaker no longer does; without them the recorder keeps appending
+      // a different window's audio into the clip.
+      if (ev.type === "tuned" || (ev.type === "status" && ev.state !== "running")) {
+        ccRecorder.reset();
+      }
     });
   }
 
@@ -1082,16 +1093,32 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
     if (method === "GET" && sampleGet?.[1]) {
       if (!ccStore) return json(res, 404, { error: "no sample" });
       const freq = discoveryFreq(decodeURIComponent(sampleGet[1]));
-      const meta = freq !== null ? ccStore.meta(freq) : null;
-      if (freq === null || !meta) return json(res, 404, { error: "no sample" });
+      if (freq === null) return json(res, 404, { error: "no sample" });
+      // Read the clip fully before a byte of the response is written. Clips are
+      // seconds of 8 kHz mono and this route is operator-initiated, so
+      // buffering costs nothing — and it closes two holes a piped
+      // createReadStream had. (1) An unhandled stream `error`: the store's
+      // sweep, the triage-diff delete in PUT /api/config and DELETE
+      // .../sample all unlink the file, and a play click can land between the
+      // stat and the open. A Node stream `error` with no listener THROWS —
+      // uncaught exception, process exit, radio off the air. (2) A
+      // Content-Length taken from an earlier stat, which the frequency's next
+      // hit could invalidate mid-send, hanging the client. It also drops the
+      // fd leak `pipe()` left behind on every aborted <audio> fetch.
+      let clip: Buffer;
+      try {
+        clip = await readFile(ccStore.pathFor(freq));
+      } catch {
+        return json(res, 404, { error: "no sample" });
+      }
       res.writeHead(200, {
         "Content-Type": "audio/wav",
-        "Content-Length": String(meta.bytes),
+        "Content-Length": String(clip.length),
         // A clip is overwritten by the frequency's next hit, so it must never
         // be cached under a URL that outlives it.
         "Cache-Control": "no-store",
       });
-      createReadStream(ccStore.pathFor(freq)).pipe(res);
+      res.end(clip);
       return;
     }
 
