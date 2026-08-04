@@ -126,8 +126,12 @@ export function toScanConfig(
     closeCallDb: cfg.scan.closeCallDb,
     lockoutHz: cfg.scan.lockoutHz,
     detectVia: cfg.scan.detectVia,
-    // PCM tee gate: the helper builds --audio-fd only when remote listening is on.
+    // PCM tee gate: the helper builds --audio-fd when remote listening OR
+    // close call recording wants it. recordCloseCalls is deliberately part of
+    // scan config (not audio) so the PUT handler's scanChanged diff restarts
+    // the engine when the operator flips it — required to (re)build the tee.
     remoteListening: cfg.audio.remoteListening,
+    recordCloseCalls: cfg.scan.recordCloseCalls === true,
     // SAME gate: decode only on a helper that actually carries NWR. toScanConfig
     // injects the wx_same background channel into the main scan only when there
     // is no dedicated weather radio (above); weather mode sets channels to the

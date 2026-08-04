@@ -219,6 +219,29 @@ describe("close call config", () => {
   });
 });
 
+describe("close call sample recording", () => {
+  it("accepts close call sample recording knobs", () => {
+    const cfg = structuredClone(defaultConfig()) as Record<string, unknown> & { scan: Record<string, unknown> };
+    cfg.scan.recordCloseCalls = true;
+    cfg.scan.closeCallSampleSeconds = 20;
+    cfg.scan.closeCallSampleMaxMb = 50;
+    const parsed = configSchema.safeParse(cfg);
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(parsed.data.scan.recordCloseCalls).toBe(true);
+      expect(parsed.data.scan.closeCallSampleSeconds).toBe(20);
+      expect(parsed.data.scan.closeCallSampleMaxMb).toBe(50);
+    }
+  });
+
+  it("rejects a non-positive close call sample length", () => {
+    const cfg = structuredClone(defaultConfig()) as Record<string, unknown> & { scan: Record<string, unknown> };
+    cfg.scan.closeCallSampleSeconds = 0;
+    const parsed = configSchema.safeParse(cfg);
+    expect(parsed.success).toBe(false);
+  });
+});
+
 describe("close call lockouts", () => {
   it("accepts a lockout frequency list", () => {
     const cfg = structuredClone(defaultConfig()) as Record<string, unknown> & { scan: Record<string, unknown> };

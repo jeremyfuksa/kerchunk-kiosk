@@ -100,6 +100,15 @@ export const configSchema = z.object({
     // Discovery threshold: dB over the window's median noise floor. Eager by
     // default (15) per operator preference.
     closeCallDb: z.number().positive().optional(),
+    // Close Call sample recording (#222): capture a short clip of each Close
+    // Call hit so a discovery can be triaged by ear instead of by retuning the
+    // live radio at a frequency that is usually quiet. Flipping this is an
+    // ENGINE RESTART — it changes a helper spawn arg (the fd-3 PCM tee).
+    recordCloseCalls: z.boolean().optional(),
+    // Per-clip length cap, seconds. The clip includes a 2 s pre-roll.
+    closeCallSampleSeconds: z.number().positive().optional(),
+    // Total budget for the clip directory, MB. Oldest clips are evicted first.
+    closeCallSampleMaxMb: z.number().positive().optional(),
     // Power-detection source (ROADMAP DSP-efficiency): "lane" (default) reads
     // power from the 12 per-lane probes; "fft" derives it from the Close Call
     // FFT, shedding the per-lane power front-end (~0.5-0.7 cores). Quieting and
