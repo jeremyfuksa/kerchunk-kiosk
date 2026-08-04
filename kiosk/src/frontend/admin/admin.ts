@@ -188,6 +188,13 @@ function btnIco(icon: string, where: "lead" | "trail" | "solo" = "lead"): string
  *  when recording is off or nothing has been captured yet. */
 let dcSamples: Record<string, { bytes: number; seconds: number; ts: number }> = {};
 
+/** config.scan.recordCloseCalls, refreshed alongside dcSamples. The drawer's
+ *  empty state needs this to tell "off" apart from "on, nothing captured
+ *  yet" — the triage table learned the hard way that an empty state which
+ *  can't explain itself reads as a bug (see the comment above `hunting` in
+ *  renderDiscoveries). */
+let dcRecordingOn = false;
+
 /** At most one clip plays at a time — two Close Calls talking over each other
  *  is exactly the confusion this feature exists to remove. */
 let nowPlaying: { audio: HTMLAudioElement; button: HTMLButtonElement } | null = null;
@@ -1316,6 +1323,10 @@ export function renderAdmin(root: HTMLElement): void {
   let drawerReturnFocus: HTMLElement | null = null;
 
   function closeDrawer(): void {
+    // The playing clip's Stop button is about to be destroyed with the rest
+    // of the drawer's markup — stop it first, same reasoning as the table
+    // re-render in renderDiscoveries.
+    stopSample();
     drawerId = null;
     // Clear the analytics-poll state too: the 5 s interval keys off
     // drawerKind/analyticsFreq, so leaving them set kept fetching history and
@@ -1568,6 +1579,7 @@ export function renderAdmin(root: HTMLElement): void {
     if (!d) { closeDrawer(); return; }
     const loc = d.location;
     const digital = d.mode && DIGITAL.some((x) => d.mode!.toUpperCase().includes(x));
+    const sample = dcSamples[d.id];
     drawer.innerHTML = `
       <header class="dwHead">
         <h3>${esc(d.alphaTag)}</h3>
@@ -1578,6 +1590,11 @@ export function renderAdmin(root: HTMLElement): void {
         <dt>mode</dt><dd${digital ? ' class="dwDigital"' : ""}>${d.mode ? esc(d.mode.toUpperCase()) : "not identified"}${digital ? " · digital — not decodable here" : ""}</dd>
         <dt>exact</dt><dd>${d.freq.toLocaleString()} Hz</dd>
         <dt>found</dt><dd>${new Date(d.ts).toLocaleString()}</dd>
+        <dt>sample</dt><dd class="dwSample">${sample
+          ? `<span class="dwSampleRow">${iconBtn("dwPlay", "play", "Play the recorded sample")}<b class="dwSampleDur">${sample.seconds.toFixed(1)}s</b><small>recorded ${new Date(sample.ts).toLocaleString()}</small>${iconBtn("dwSampleDel", "del", "Delete sample")}</span>`
+          : dcRecordingOn
+            ? `<span class="dwSampleEmpty">No sample yet — the next time this frequency opens, it will be recorded.</span>`
+            : `<span class="dwSampleEmpty">Sample recording is off. <a href="#/scan">Turn it on in Settings</a></span>`}</dd>
         <dt>location</dt><dd>${loc
           ? `${esc([loc.city, loc.state].filter(Boolean).join(", ") || "—")}${loc.lat != null ? ` · ${loc.lat}, ${loc.lon}` : ""} <span class="dwVia">via ${esc(loc.source)}</span>`
           : "not identified"}</dd>
@@ -1604,6 +1621,29 @@ export function renderAdmin(root: HTMLElement): void {
     drawer.querySelector<HTMLButtonElement>(".dwClose")!.addEventListener("click", closeDrawer);
     drawer.querySelector<HTMLButtonElement>("#dwListen")!.addEventListener("click", () =>
       api.monitor(d.freq, d.alphaTag));
+    if (sample) {
+      const playBtn = drawer.querySelector<HTMLButtonElement>(".dwPlay")!;
+      const durEl = drawer.querySelector<HTMLElement>(".dwSampleDur")!;
+      const full = sample.seconds;
+      const resetDur = () => { durEl.textContent = `${full.toFixed(1)}s`; };
+      playBtn.addEventListener("click", () => {
+        const wasThis = nowPlaying?.button === playBtn;
+        playSample(d.id, playBtn);
+        if (wasThis || !nowPlaying) { resetDur(); return; } // we just stopped it
+        // The signature move (design note): the duration counts down while
+        // the clip plays, rather than sitting still like a file property.
+        const audio = nowPlaying.audio;
+        const tick = () => { durEl.textContent = `${Math.max(0, full - audio.currentTime).toFixed(1)}s`; };
+        audio.addEventListener("timeupdate", tick);
+        audio.addEventListener("ended", resetDur);
+        audio.addEventListener("error", resetDur);
+      });
+      drawer.querySelector<HTMLButtonElement>(".dwSampleDel")!.addEventListener("click", async () => {
+        stopSample();
+        await api.deleteDiscoverySample(d.id);
+        await renderDiscoveries();
+      });
+    }
     drawer.querySelector<HTMLButtonElement>("#dwAdd")!.addEventListener("click", async () => {
       await mutateDiscovery(d.id, promoteDiscovery);
       closeDrawer();
@@ -1828,6 +1868,7 @@ export function renderAdmin(root: HTMLElement): void {
     // Best-effort: a failure here must leave the triage table fully usable,
     // just without Play buttons.
     dcSamples = await api.getDiscoverySamples().catch(() => ({}));
+    dcRecordingOn = cfg.scan.recordCloseCalls === true;
     const all = [...(cfg.discoveries ?? [])].sort((a, b) => b.ts - a.ts);
     const ds = all.filter((d) => !d.suppressedAt);
     const suppressed = all.filter((d) => d.suppressedAt);
