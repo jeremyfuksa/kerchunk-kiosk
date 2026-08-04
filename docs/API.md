@@ -110,7 +110,33 @@ at a time (mutation chain); GETs — including the long-lived `/api/stream.wav`
 | POST | `/api/monitor/stop` | Back to scanning. |
 | POST | `/api/audio/volume` | `{ percent: 0–100 }` → amixer + persisted config. |
 | POST | `/api/audio/mute` | `{ muted: boolean }`. |
-| GET | `/api/stream.wav` | Endless 48 kHz mono s16 WAV of the live speaker feed. **Gated:** `404` unless `config.audio.remoteListening` is true (the helper only builds its audio tee when it's on). Slow clients get chunks dropped, not buffered. |
+| GET | `/api/stream.wav` | Endless 48 kHz mono s16 WAV of the live speaker feed. **Gated:** `404` unless `config.audio.remoteListening` is true. Slow clients get chunks dropped, not buffered. |
+
+### Close Call audio samples
+
+A short clip of each Close Call hit, so a discovery can be triaged by ear
+instead of by retuning the live radio at a frequency that is usually quiet.
+Recording is gated on `config.scan.recordCloseCalls` (default off) — which,
+like `audio.remoteListening`, makes the helper build its fd-3 PCM tee, so
+flipping it restarts the engine. Either flag alone is enough to build the tee.
+
+Clips are stored on disk keyed by **frequency** (`<stateDir>/cc-samples/<freqHz>.wav`),
+because a frequency's first hit is recorded before it has earned a discovery
+row — filing takes two hits. These routes map discovery id → frequency, so the
+frequency keying stays an implementation detail.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| GET | `/api/discoveries/samples` | Clips available for playback, keyed by discovery id: `{ "cc_1a2b3c4d": { "bytes": 320044, "seconds": 20, "ts": 1785813886827 } }`. `{}` when recording is off or nothing is captured. One directory listing, cheap enough for the admin's 15 s poll. |
+| GET | `/api/discoveries/:id/sample.wav` | The clip: 8 kHz mono s16 WAV, `Cache-Control: no-store` (the frequency's next hit overwrites it in place). `404` when the id is unknown or has no clip. |
+| DELETE | `/api/discoveries/:id/sample` | Delete the clip → `{ ok: true }`; `404` when there was none. |
+
+Clips are **also deleted automatically** when a discovery leaves the list — the
+`PUT /api/config` handler diffs the incoming `discoveries` against the previous
+set and drops clips for frequencies that vanished, so adding, dismissing,
+locking out, and bulk actions are all covered by one rule. A background sweep
+additionally removes orphans (recorded on a hit that never filed) and enforces
+`config.scan.closeCallSampleMaxMb`, oldest first.
 
 ### Telemetry, history & lookups
 
