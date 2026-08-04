@@ -236,6 +236,7 @@ const aircraftFeed = config.aircraft?.enabled && config.display
 const { server, getConfig } = createServer({
   configStore, engine, weatherEngine, activityLog, wsHub, staticDir: STATIC_DIR,
   lookup, weather, history, aircraftFeed,
+  ccSampleDir: join(dirname(CONFIG_PATH), "cc-samples"),
   selfProtect: true,
   // systemd uses Restart=on-failure, so an intentional non-zero exit performs
   // a full backend/helper restart without requiring passwordless systemctl.

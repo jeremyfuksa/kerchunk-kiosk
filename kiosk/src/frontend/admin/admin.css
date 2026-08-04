@@ -390,15 +390,18 @@ body {
   border-color: var(--caution);
 }
 .admin .save, .admin .dAdd { color: var(--green); }
-.admin .del, .admin .danger, .admin #lockBtn { color: var(--red); }
+.admin .del, .admin .danger, .admin #lockBtn, .admin .dwSampleDel { color: var(--red); }
 .admin .lock, .admin .dLock, .admin .dDismiss, .admin #tlockBtn { color: var(--caution); }
 .admin .listen, .admin .dListen, .admin .weatherAction { color: var(--blue); }
 /* Each mix clears 3:1 against --panel, like the neutral --control-edge does.
    Declared after the generic button hover so intent outranks it. */
 .admin .save:hover:not(:disabled), .admin .dAdd:hover:not(:disabled) { border-color: color-mix(in srgb, var(--green) 60%, transparent); }
-.admin .del:hover:not(:disabled), .admin .danger:hover:not(:disabled), .admin #lockBtn:hover:not(:disabled) { border-color: color-mix(in srgb, var(--red) 70%, transparent); }
+.admin .del:hover:not(:disabled), .admin .danger:hover:not(:disabled), .admin #lockBtn:hover:not(:disabled), .admin .dwSampleDel:hover:not(:disabled) { border-color: color-mix(in srgb, var(--red) 70%, transparent); }
 .admin .lock:hover:not(:disabled), .admin .dLock:hover:not(:disabled), .admin .dDismiss:hover:not(:disabled), .admin #tlockBtn:hover:not(:disabled) { border-color: color-mix(in srgb, var(--caution) 60%, transparent); }
 .admin .listen:hover:not(:disabled), .admin .dListen:hover:not(:disabled), .admin .weatherAction:hover:not(:disabled) { border-color: color-mix(in srgb, var(--blue) 70%, transparent); }
+/* Playing state: the amber the admin reserves for live radio state, because a
+   clip playing IS audio coming out of the box right now. */
+.admin .dPlay[data-playing] { color: var(--amber); }
 .admin .resume {
   color: var(--blue);
   background: color-mix(in srgb, var(--blue) 12%, var(--etch));
@@ -1458,6 +1461,22 @@ tr.bankRow .bkSummary {
 .drawer .dwInfo dd { margin: 0; color: var(--label); overflow-wrap: anywhere; }
 .drawer .dwVia { color: var(--dim); font-size: 0.9em; }  /* em: shrinks with whatever row it annotates */
 .drawer .dwDigital { color: var(--caution); }
+/* The sample row is a fact like mode/found above it, not a tool like the
+   location editor below — so it's one more dt/dd pair, not a raised plate.
+   Raising it would read as a second editor competing with the location one. */
+.drawer .dwSampleRow { display: flex; align-items: center; gap: 0.5rem; }
+.drawer .dwSampleDur {
+  min-width: 4ch; /* the countdown must not reflow its neighbours as digits change */
+  font-variant-numeric: tabular-nums;
+  color: var(--label);
+}
+.drawer .dwSampleRow small { color: var(--dim); font-size: var(--t-micro); }
+.drawer .dwSampleDel { margin-left: auto; }
+.drawer .dwSampleEmpty { color: var(--dim); }
+.drawer .dwSampleEmpty a { color: var(--label); }
+/* Playing state: same recipe as the triage row's Play button (line ~404) —
+   amber is spent here because a clip playing IS audio leaving the box now. */
+.admin .dwPlay[data-playing] { color: var(--amber); }
 .drawer .dwActions {
   display: flex;
   flex-wrap: wrap;

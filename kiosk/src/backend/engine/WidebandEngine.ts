@@ -353,11 +353,14 @@ export class WidebandEngine implements ScannerEngine {
     // `closeCall ?? true`). Off => the helper skips the 2048-pt FFT entirely.
     // A closeCall config change respawns the helper, so this stays in sync.
     if (cfg.closeCall !== false) args.push("--close-call");
-    // Remote-listening PCM tee: only ask the helper to build it when the
-    // feature is on. Off => the helper's --audio-fd default (-1) builds no tee,
-    // skipping the continuous float->s16 + fd-write. A change respawns the
-    // helper (toScanConfig diff), so the tee appears/disappears in lockstep.
-    if (cfg.remoteListening) args.push("--audio-fd", "3");
+    // PCM tee: only ask the helper to build it when a consumer wants it.
+    // Off => the helper's --audio-fd default (-1) builds no tee, skipping the
+    // continuous float->s16 + fd-write. A change respawns the helper
+    // (toScanConfig diff), so the tee appears/disappears in lockstep.
+    // Either consumer wants the tee: remote listening drains it live over
+    // /api/stream.wav, Close Call recording drains it into clips. One tee
+    // serves both — the helper has no notion of who is listening.
+    if (cfg.remoteListening || cfg.recordCloseCalls) args.push("--audio-fd", "3");
     // SAME decoder: spawn it only on a helper that carries NWR (derived in
     // toScanConfig; set true on the dedicated weather engine). Off => no
     // multimon-ng process and no last-lane tap.

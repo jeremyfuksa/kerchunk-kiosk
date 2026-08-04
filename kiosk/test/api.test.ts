@@ -1,16 +1,30 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import request from "supertest";
-import { mkdtempSync, rmSync } from "node:fs";
+import type { Response as SuperAgentResponse } from "superagent";
+import { mkdtempSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { Server } from "node:http";
 import { createServer } from "../src/backend/server.js";
 import { ConfigStore } from "../src/backend/config/ConfigStore.js";
 import { ActivityLog } from "../src/backend/activityLog.js";
 import { WsHub } from "../src/backend/ws.js";
 import { FakeEngine } from "../src/backend/engine/FakeEngine.js";
 import { HistoryStore } from "../src/backend/history.js";
+import { CcSampleStore } from "../src/backend/ccSampleStore.js";
 import type { AircraftSource } from "../src/backend/aircraft.js";
 import type { AircraftTarget } from "../src/backend/engine/ScannerEngine.js";
+
+/** supertest only auto-buffers response bodies for content types it
+ *  recognises; `audio/wav` is not one of them, so without this the WAV
+ *  route's response body would arrive empty and the RIFF assertion below
+ *  would pass vacuously. Forces the raw bytes into a Buffer instead. */
+function binaryParser(res: SuperAgentResponse, callback: (err: Error | null, body: Buffer) => void): void {
+  res.setEncoding("binary");
+  let data = "";
+  res.on("data", (chunk: string) => { data += chunk; });
+  res.on("end", () => callback(null, Buffer.from(data, "binary")));
+}
 
 class FakeAircraftFeed implements AircraftSource {
   started = false;
@@ -22,14 +36,20 @@ class FakeAircraftFeed implements AircraftSource {
 }
 
 let dir: string;
-function makeApp() {
+function makeApp(opts: { ccSamples?: boolean } = {}) {
   dir = mkdtempSync(join(tmpdir(), "ksrv-"));
   const configStore = new ConfigStore(join(dir, "config.json"));
   const engine = new FakeEngine();
   const activityLog = new ActivityLog(100);
   const wsHub = new WsHub();
-  const { server } = createServer({ configStore, engine, activityLog, wsHub, staticDir: dir });
-  return { server, engine, configStore, wsHub };
+  const ccSampleDir = join(dir, "cc-samples");
+  const { server } = createServer({
+    configStore, engine, activityLog, wsHub, staticDir: dir,
+    // Absent on non-appliance hosts: recording is off and the sample routes
+    // must 404 rather than throw.
+    ...(opts.ccSamples === false ? {} : { ccSampleDir }),
+  });
+  return { server, engine, configStore, wsHub, ccSampleDir };
 }
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
@@ -375,12 +395,16 @@ describe("HTTP API", () => {
   });
 
   it("GET /api/stream.wav passes the flag gate once enabled", async () => {
-    const { server } = makeApp();
+    const { server, engine } = makeApp();
+    // Hide the fake's audio tee for this test only. The route's success path
+    // is an ENDLESS stream, which supertest cannot await; falling through to
+    // the engine-capability 404 is what proves the remote-listening gate was
+    // passed. (The tee itself exists on FakeEngine so the sample recorder's
+    // wiring can be driven end to end — see the recording suite below.)
+    (engine as { onAudio?: unknown }).onAudio = undefined;
     const cfg = (await request(server).get("/api/config")).body;
     await request(server).put("/api/config").send({ ...cfg, audio: { ...cfg.audio, remoteListening: true } });
     const res = await request(server).get("/api/stream.wav");
-    // FakeEngine has no onAudio tee, so the route now falls through to the
-    // engine-capability 404 — proving the remote-listening gate was passed.
     expect(res.status).toBe(404);
     expect(res.body.error).toBe("engine has no audio tee");
   });
@@ -1409,5 +1433,163 @@ describe("config mutation serialization", () => {
     expect(ra.status).toBe(200);
     expect(rb.status).toBe(200);
     expect(overlapped).toBe(false); // engine calls strictly serialized
+  });
+});
+
+describe("Close Call sample routes", () => {
+  /** Put a discovery in config and a matching clip on disk. */
+  async function seed(server: Server, ccSampleDir: string, freq = 154_570_000) {
+    const cfg = (await request(server).get("/api/config")).body;
+    cfg.discoveries = [{
+      id: "cc_seed01", freq, alphaTag: `Close Call ${freq}`, ts: Date.now(),
+    }];
+    await request(server).put("/api/config").send(cfg);
+    new CcSampleStore(ccSampleDir).write(freq, Buffer.alloc(8000 * 2)); // 1 s
+    return "cc_seed01";
+  }
+
+  it("lists clips keyed by discovery id", async () => {
+    const { server, ccSampleDir } = makeApp();
+    const id = await seed(server, ccSampleDir);
+    const res = await request(server).get("/api/discoveries/samples");
+    expect(res.status).toBe(200);
+    expect(res.body[id].seconds).toBeCloseTo(1, 2);
+  });
+
+  it("omits clips with no matching discovery", async () => {
+    const { server, ccSampleDir } = makeApp();
+    await seed(server, ccSampleDir);
+    new CcSampleStore(ccSampleDir).write(999_000_000, Buffer.alloc(8000 * 2));
+    const res = await request(server).get("/api/discoveries/samples");
+    expect(Object.keys(res.body).length).toBe(1);
+  });
+
+  it("serves the clip as a WAV", async () => {
+    const { server, ccSampleDir } = makeApp();
+    const id = await seed(server, ccSampleDir);
+    const res = await request(server)
+      .get(`/api/discoveries/${id}/sample.wav`)
+      .buffer(true)
+      .parse(binaryParser);
+    expect(res.status).toBe(200);
+    expect(res.headers["content-type"]).toBe("audio/wav");
+    expect(Buffer.isBuffer(res.body)).toBe(true);
+    expect((res.body as Buffer).subarray(0, 4).toString()).toBe("RIFF");
+  });
+
+  it("404s for a discovery with no clip", async () => {
+    const { server } = makeApp();
+    const res = await request(server).get("/api/discoveries/cc_nope/sample.wav");
+    expect(res.status).toBe(404);
+  });
+
+  it("deletes a clip on request", async () => {
+    const { server, ccSampleDir } = makeApp();
+    const id = await seed(server, ccSampleDir);
+    expect((await request(server).delete(`/api/discoveries/${id}/sample`)).status).toBe(200);
+    expect((await request(server).get(`/api/discoveries/${id}/sample.wav`)).status).toBe(404);
+  });
+
+  it("deletes the clip when the discovery is triaged away", async () => {
+    const { server, ccSampleDir } = makeApp();
+    await seed(server, ccSampleDir);
+    const cfg = (await request(server).get("/api/config")).body;
+    cfg.discoveries = [];
+    await request(server).put("/api/config").send(cfg);
+    expect(new CcSampleStore(ccSampleDir).meta(154_570_000)).toBeNull();
+  });
+
+  it("keeps the clip when the discovery is only edited", async () => {
+    const { server, ccSampleDir } = makeApp();
+    await seed(server, ccSampleDir);
+    const cfg = (await request(server).get("/api/config")).body;
+    cfg.discoveries[0].alphaTag = "Renamed";
+    await request(server).put("/api/config").send(cfg);
+    expect(new CcSampleStore(ccSampleDir).meta(154_570_000)).not.toBeNull();
+  });
+
+  it("404s cleanly when the appliance has no sample directory configured", async () => {
+    const { server } = makeApp({ ccSamples: false });
+    expect((await request(server).get("/api/discoveries/samples")).status).toBe(200);
+    expect((await request(server).get("/api/discoveries/cc_x/sample.wav")).status).toBe(404);
+    expect((await request(server).delete("/api/discoveries/cc_x/sample")).status).toBe(404);
+  });
+});
+
+// The branch's central design decision — the recorder is gated on `audible`
+// (speaker ownership), NOT on `closecall` (detection) — only exists in the
+// wiring inside createServer. These drive the FakeEngine's audio tee end to
+// end so that wiring is actually exercised.
+describe("Close Call sample recording (server wiring)", () => {
+  const FREQ = 154_570_000;
+
+  /** `seconds` of 48 kHz mono s16 at a marker amplitude, as the helper's fd-3
+   *  tee delivers it. Distinct markers per phase let a test assert on decoded
+   *  CONTENT, so audio from the wrong span fails even at the right length. */
+  function pcm(seconds: number, marker: number): Buffer {
+    const buf = Buffer.alloc(Math.round(seconds * 48_000) * 2);
+    for (let i = 0; i < buf.length / 2; i++) buf.writeInt16LE(marker, i * 2);
+    return buf;
+  }
+  function clipSamples(ccSampleDir: string, freq: number): number[] {
+    const buf = readFileSync(new CcSampleStore(ccSampleDir).pathFor(freq)).subarray(44);
+    const out: number[] = [];
+    for (let i = 0; i < buf.length / 2; i++) out.push(buf.readInt16LE(i * 2));
+    return out;
+  }
+  async function enableRecording(server: Server) {
+    const cfg = (await request(server).get("/api/config")).body;
+    cfg.scan.recordCloseCalls = true;
+    await request(server).put("/api/config").send(cfg);
+  }
+
+  it("records the span a close call lane owns the speaker", async () => {
+    const { server, engine, ccSampleDir } = makeApp();
+    await enableRecording(server);
+    engine.emitAudible(`cc_${FREQ}`);
+    engine.emitAudio(pcm(2, 222));
+    engine.emitAudible(null);
+    await new Promise((r) => setImmediate(r));
+    const meta = new CcSampleStore(ccSampleDir).meta(FREQ);
+    expect(meta).not.toBeNull();
+    expect(clipSamples(ccSampleDir, FREQ).every((v) => v === 222)).toBe(true);
+  });
+
+  it("a closecall detection alone produces no clip — only speaker ownership does", async () => {
+    const { server, engine, ccSampleDir } = makeApp();
+    await enableRecording(server);
+    engine.emitCloseCall(FREQ);
+    engine.emitAudio(pcm(2, 222));   // audible went to nobody: this is someone else's
+    await new Promise((r) => setImmediate(r));
+    expect(new CcSampleStore(ccSampleDir).meta(FREQ)).toBeNull();
+  });
+
+  it("a window hop mid-clip ends the clip — the next window's audio never lands in it", async () => {
+    const { server, engine, ccSampleDir } = makeApp();
+    await enableRecording(server);
+    engine.emitAudible(`cc_${FREQ}`);
+    engine.emitAudio(pcm(1, 111));
+    // The real engine clears speaker ownership here and emits NO `audible`.
+    engine.emitTuned(155_000_000);
+    engine.emitAudio(pcm(1, 999));   // a different window's speaker mix
+    engine.emitAudible(null);
+    await new Promise((r) => setImmediate(r));
+    const samples = clipSamples(ccSampleDir, FREQ);
+    expect(samples.some((v) => v === 999)).toBe(false);
+    expect(samples.every((v) => v === 111)).toBe(true);
+  });
+
+  it("an engine stop mid-clip ends the clip; post-restart audio does not splice onto it", async () => {
+    const { server, engine, ccSampleDir } = makeApp();
+    await enableRecording(server);
+    engine.emitAudible(`cc_${FREQ}`);
+    engine.emitAudio(pcm(1, 111));
+    await engine.stop();             // emits status: stopped
+    engine.emitAudio(pcm(1, 999));
+    engine.emitAudible(null);
+    await new Promise((r) => setImmediate(r));
+    const samples = clipSamples(ccSampleDir, FREQ);
+    expect(samples.some((v) => v === 999)).toBe(false);
+    expect(samples.every((v) => v === 111)).toBe(true);
   });
 });

@@ -81,4 +81,41 @@ export class FakeEngine implements ScannerEngine {
   emitCloseCall(freqHz: number): void {
     this.emit({ type: "closecall", freqHz, ts: nextTs() });
   }
+
+  /** Speaker ownership. `channelId` null = silence; a `cc_<hz>` id is
+   *  synthesised into a channel exactly as WidebandEngine does for a Close
+   *  Call lane, so anything downstream (the sample recorder) sees the same
+   *  shape it sees on the appliance. */
+  emitAudible(channelId: string | null): void {
+    if (channelId === null) {
+      this.emit({ type: "audible", channel: null, ts: nextTs() });
+      return;
+    }
+    const cc = /^cc_(\d+)$/.exec(channelId);
+    const channel: Channel = cc
+      ? {
+        id: channelId, freq: Number(cc[1]), alphaTag: "CLOSE CALL",
+        mode: "nfm", enabled: true, priority: true,
+      }
+      : { id: channelId, freq: 0, alphaTag: channelId, mode: "nfm", enabled: true };
+    this.emit({ type: "audible", channel, ts: nextTs() });
+  }
+
+  /** A window hop. The real engine clears speaker ownership here without
+   *  emitting `audible` — the recorder's reset hangs off this event. */
+  emitTuned(freqHz = 0, channelIds: string[] = []): void {
+    this.emit({ type: "tuned", freqHz, channelIds, ts: nextTs() });
+  }
+
+  // ── The helper's fd-3 speaker tee. The real engine hands every chunk to its
+  // audio listeners synchronously from the pipe's "data" handler; the fake
+  // does the same so a test can drive the recorder end to end.
+  private audioListeners = new Set<(chunk: Buffer) => void>();
+  onAudio(listener: (chunk: Buffer) => void): () => void {
+    this.audioListeners.add(listener);
+    return () => this.audioListeners.delete(listener);
+  }
+  emitAudio(chunk: Buffer): void {
+    for (const l of this.audioListeners) l(chunk);
+  }
 }

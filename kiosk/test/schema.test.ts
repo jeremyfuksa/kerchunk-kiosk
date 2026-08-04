@@ -219,6 +219,29 @@ describe("close call config", () => {
   });
 });
 
+describe("close call sample recording", () => {
+  it("accepts close call sample recording knobs", () => {
+    const cfg = structuredClone(defaultConfig()) as Record<string, unknown> & { scan: Record<string, unknown> };
+    cfg.scan.recordCloseCalls = true;
+    cfg.scan.closeCallSampleSeconds = 20;
+    cfg.scan.closeCallSampleMaxMb = 50;
+    const parsed = configSchema.safeParse(cfg);
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(parsed.data.scan.recordCloseCalls).toBe(true);
+      expect(parsed.data.scan.closeCallSampleSeconds).toBe(20);
+      expect(parsed.data.scan.closeCallSampleMaxMb).toBe(50);
+    }
+  });
+
+  it("rejects a non-positive close call sample length", () => {
+    const cfg = structuredClone(defaultConfig()) as Record<string, unknown> & { scan: Record<string, unknown> };
+    cfg.scan.closeCallSampleSeconds = 0;
+    const parsed = configSchema.safeParse(cfg);
+    expect(parsed.success).toBe(false);
+  });
+});
+
 describe("close call lockouts", () => {
   it("accepts a lockout frequency list", () => {
     const cfg = structuredClone(defaultConfig()) as Record<string, unknown> & { scan: Record<string, unknown> };
@@ -283,5 +306,35 @@ describe("channel/discovery location", () => {
       expect(parsed.data.discoveries![0]!.location?.state).toBe("MO");
       expect(parsed.data.discoveries![0]!.suppressedAt).toBe(10);
     }
+  });
+});
+
+describe("close call sample knobs", () => {
+  const withScan = (scan: Record<string, unknown>) => {
+    const base = defaultConfig();
+    return configSchema.safeParse({ ...base, scan: { ...base.scan, ...scan } });
+  };
+
+  it("accepts a clip length inside the band", () => {
+    const parsed = withScan({ closeCallSampleSeconds: 20, closeCallSampleMaxMb: 50 });
+    expect(parsed.success).toBe(true);
+  });
+
+  it("rejects a clip length below the pre-roll floor", () => {
+    // Under 3 s the "clip" would be pre-roll only — audio recorded before the
+    // Close Call lane ever took the speaker.
+    expect(withScan({ closeCallSampleSeconds: 2 }).success).toBe(false);
+  });
+
+  it("rejects a clip length above the memory ceiling", () => {
+    // The in-flight clip lives in RAM at ~96 kB/s inside the audio callback:
+    // 3600 would mean a 345 MB Buffer.concat on the path that must not stall.
+    expect(withScan({ closeCallSampleSeconds: 3600 }).success).toBe(false);
+    expect(withScan({ closeCallSampleSeconds: 120 }).success).toBe(true);
+  });
+
+  it("bounds the directory budget at both ends", () => {
+    expect(withScan({ closeCallSampleMaxMb: 0 }).success).toBe(false);
+    expect(withScan({ closeCallSampleMaxMb: 10_000 }).success).toBe(false);
   });
 });

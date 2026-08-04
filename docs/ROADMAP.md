@@ -908,6 +908,21 @@ throttling, which a bare CPU% gauge would hide.
   clamp where the law is known) and **Close Call triage** (listenability
   verdicts, service-allocation chips with OUTBAND flagging, mirror-bin
   image rejection, persistence-before-filing).
+- **Close Call sample recording — SHIPPED 2026-08-03 (issue #222).** A hit was
+  the only moment that carried information, and it was gone by the time the
+  operator opened triage — "Listen" just retunes the live radio at a frequency
+  that is usually quiet. Now each hit leaves a ≤20 s clip, played from the
+  discovery row or its drawer and deleted when the row is triaged. The design
+  decision that matters: capture is gated on the engine's **`audible`** event,
+  not the `closecall` detection event, because the helper's fd-3 tee is the
+  speaker MIX rather than a per-channel tap — only speaker ownership proves the
+  arriving bytes are the Close Call and not a neighbour's traffic. A 2 s
+  pre-roll ring keeps the clip from losing the first syllable. Clips are keyed
+  by **frequency**, not discovery id, since hit 1 is recorded before filing
+  (which needs two hits). Knobs: `scan.recordCloseCalls` (default off — it
+  shares the fd-3 PCM tee with remote listening, so flipping it restarts the
+  engine), `scan.closeCallSampleSeconds` (20), `scan.closeCallSampleMaxMb`
+  (50); `PREROLL_SECONDS` is a constant at the top of `ccRecorder.ts`.
 - **Close Call band-sweep mode (phase 2 of the CC spec).** Today Close Call
   watches the window the scanner is already parked on. The deferred second
   phase from `specs/2026-06-05-close-call-design.md`: when idle, deliberately

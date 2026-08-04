@@ -184,6 +184,104 @@ function btnIco(icon: string, where: "lead" | "trail" | "solo" = "lead"): string
   return ICONS[icon]!.replace("<svg", `<svg class="btnIco${mod}" aria-hidden="true" focusable="false"`);
 }
 
+/** Clip metadata by discovery id, refreshed with the discoveries poll. Empty
+ *  when recording is off or nothing has been captured yet. */
+let dcSamples: Record<string, { bytes: number; seconds: number; ts: number }> = {};
+
+/** config.scan.recordCloseCalls, refreshed alongside dcSamples. The drawer's
+ *  empty state needs this to tell "off" apart from "on, nothing captured
+ *  yet" — the triage table learned the hard way that an empty state which
+ *  can't explain itself reads as a bug (see the comment above `hunting` in
+ *  renderDiscoveries). */
+let dcRecordingOn = false;
+
+/** At most one clip plays at a time — two Close Calls talking over each other
+ *  is exactly the confusion this feature exists to remove. Keyed by
+ *  discovery id, not by the button that started it: the SAME clip is
+ *  reachable from two controls at once (a triage row and, if its drawer is
+ *  open, the drawer's own sample row), and both must agree about what's
+ *  playing. `id` is the single source of truth every control re-derives
+ *  from — see `paintPlayButtons`/`paintSampleDuration` below.
+ *
+ *  Named `nowPlayingSample`, not `nowPlaying`: `renderAdmin` has its own
+ *  unrelated local `nowPlaying` (the live scan channel, for the Now panel).
+ *  Both share this file; a same-named module-level `let` would be shadowed
+ *  by that local for the entire body of `renderAdmin` — silently, since
+ *  admin.ts isn't covered by the `tsc -p tsconfig.json` gate (that config's
+ *  `include` is backend + frontend/lib only) and the shapes are different
+ *  enough that no type error would surface from the mixed-up references
+ *  either, so this collision would ship undetected either way. */
+let nowPlayingSample: { id: string; audio: HTMLAudioElement } | null = null;
+
+/** The duration display currently mounted in the drawer, if the drawer is
+ *  open on a discovery with a clip. At most one drawer is ever open, so this
+ *  is a single slot, not a registry — `renderDrawer()` overwrites or clears
+ *  it on every (re)render, so a closed or superseded drawer's element is
+ *  never written to twice. */
+let sampleDisplay: { id: string; el: HTMLElement; full: number } | null = null;
+
+/** Every control showing a clip's play state (the triage row's button, and
+ *  the drawer's if open) carries `data-sample-id`. Called after any state
+ *  change AND after any re-render, so a control's icon is always a function
+ *  of `nowPlayingSample`, never of which button was clicked. */
+function paintPlayButtons(): void {
+  document.querySelectorAll<HTMLButtonElement>("[data-sample-id]").forEach((btn) => {
+    // Capture the idle label from whatever rendered the control, once. The
+    // triage row's carries the clip duration ("…(12.3s)"); a repaint that
+    // hardcoded its own string would flatten that back to the generic copy
+    // the moment the 15 s poll ran.
+    const idle = btn.dataset.idleLabel ??= btn.title;
+    const playing = nowPlayingSample?.id === btn.dataset.sampleId;
+    const label = playing ? "Stop" : idle;
+    btn.innerHTML = playing ? ICONS.stop! : ICONS.play!;
+    // Both, together: `title` alone left the accessible name saying "Play…"
+    // while the button was Stop. `data-playing` is what the amber playing
+    // style keys off — a CSS rule must not depend on English tooltip prose.
+    btn.title = label;
+    btn.setAttribute("aria-label", label);
+    btn.toggleAttribute("data-playing", playing);
+  });
+}
+
+/** Same idea for the drawer's countdown figure: derive it from the shared
+ *  playback state rather than from whichever control is being clicked, so a
+ *  drawer that opens or re-renders mid-playback shows the real elapsed
+ *  position instead of assuming nothing is playing. `audio` is the playing
+ *  clip's element when live, or `null` to reset to the full length. */
+function paintSampleDuration(id: string, audio: HTMLAudioElement | null): void {
+  if (!sampleDisplay || sampleDisplay.id !== id) return;
+  const remaining = audio ? Math.max(0, sampleDisplay.full - audio.currentTime) : sampleDisplay.full;
+  sampleDisplay.el.textContent = `${remaining.toFixed(1)}s`;
+}
+
+function stopSample(): void {
+  if (!nowPlayingSample) return;
+  const { id, audio } = nowPlayingSample;
+  audio.pause();
+  nowPlayingSample = null;
+  paintPlayButtons();
+  paintSampleDuration(id, null);
+}
+
+function playSample(id: string): void {
+  // Not button-keyed (see `nowPlayingSample`'s comment): a click on ANY
+  // control for the clip already playing stops it, whether that's the same
+  // button that started it or the same clip's other control (row vs. drawer).
+  const wasThis = nowPlayingSample?.id === id;
+  stopSample();
+  if (wasThis) return;
+  // Cache-bust: a frequency's clip is overwritten by its next hit, and the URL
+  // does not change when it is.
+  const audio = new Audio(
+    `/api/discoveries/${encodeURIComponent(id)}/sample.wav?t=${dcSamples[id]?.ts ?? 0}`);
+  audio.addEventListener("ended", stopSample);
+  audio.addEventListener("error", stopSample);
+  audio.addEventListener("timeupdate", () => paintSampleDuration(id, audio));
+  nowPlayingSample = { id, audio };
+  paintPlayButtons();
+  void audio.play().catch(stopSample);
+}
+
 export function renderAdmin(root: HTMLElement): void {
   root.innerHTML = `
     <main class="admin">
@@ -293,6 +391,9 @@ export function renderAdmin(root: HTMLElement): void {
           <label><span>Quieting threshold <small>Absolute noise threshold</small></span><span class="inputUnit"><input id="tQuietDb" type="number" max="-1" step="0.5" placeholder="-86" /><b>dB</b></span></label>
           <label class="switchRow"><span>Close Call <small>Find strong nearby signals outside your channel list</small></span><input id="tCloseCall" type="checkbox" /></label>
           <label><span>Close Call threshold <small>Higher values reduce false discoveries</small></span><span class="inputUnit"><input id="tCloseCallDb" type="number" min="5" step="1" placeholder="15" /><b>dB</b></span></label>
+          <label class="switchRow"><span>Record samples <small>Keep a clip of each discovery so you can judge it by ear — changing this restarts the scanner</small></span><input id="tCcRecord" type="checkbox" /></label>
+          <label><span>Sample length <small>Longest clip kept, including 2 seconds before the hit</small></span><span class="inputUnit"><input id="tCcSampleSec" type="number" min="3" max="120" step="1" placeholder="20" /><b>sec</b></span></label>
+          <label><span>Sample storage <small>Total space for clips; the oldest go first</small></span><span class="inputUnit"><input id="tCcSampleMb" type="number" min="1" max="2000" step="1" placeholder="50" /><b>MB</b></span></label>
           <label><span>Sweep ranges <small>Comma-separated MHz ranges; empty disables sweeping</small></span><input id="tSweep" type="text" placeholder="450-470, 150-162" title="Band-sweep: one empty-window stop per rotation hunts for activity inside these ranges" /></label>
         </div>
         <div class="formActions"><button id="tSave" class="primary">Save scanning</button><span id="tErr" class="err"></span></div>
@@ -609,6 +710,12 @@ export function renderAdmin(root: HTMLElement): void {
     void tick();
   }
   function applyRoute(): void {
+    // Unconditional: any route change may hide the triage row a clip is
+    // playing from, and re-entering triage/home re-renders it (and any
+    // button state) fresh anyway. Leaving a clip playing behind a page with
+    // no visible stop control defeats the point of an appliance the operator
+    // is meant to know what they're hearing.
+    stopSample();
     const route = currentRoute();
     const titles: Record<string, string> = { home: "Activity", triage: "Triage", channels: "Channels", scan: "Settings", system: "System" };
     document.title = `${titles[route]} · Kerchunk Admin`;
@@ -1278,6 +1385,11 @@ export function renderAdmin(root: HTMLElement): void {
   let drawerReturnFocus: HTMLElement | null = null;
 
   function closeDrawer(): void {
+    // The playing clip's Stop button is about to be destroyed with the rest
+    // of the drawer's markup — stop it first, same reasoning as the table
+    // re-render in renderDiscoveries.
+    stopSample();
+    sampleDisplay = null;
     drawerId = null;
     // Clear the analytics-poll state too: the 5 s interval keys off
     // drawerKind/analyticsFreq, so leaving them set kept fetching history and
@@ -1336,6 +1448,11 @@ export function renderAdmin(root: HTMLElement): void {
     drawerKind = "analytics";
     analyticsFreq = freq;
     drawerId = `analytics_${freq}`;
+    // Bypasses renderDrawer() below, which is the usual place this gets
+    // cleared — an analytics panel has no sample row, so drop any prior
+    // discovery drawer's registration rather than leave it pointed at a
+    // node this render is about to detach.
+    sampleDisplay = null;
     // Analytics renders async — reveal first so the panel doesn't pop in, then
     // move focus once the close button actually exists.
     showDrawer();
@@ -1344,6 +1461,13 @@ export function renderAdmin(root: HTMLElement): void {
   }
 
   function renderDrawer(): void {
+    // The single sample-display registration belongs to whichever discovery
+    // drawer render is about to happen (if any) — clear it here so a
+    // superseded or non-discovery drawer never leaves a stale registration
+    // that `playSample`/`stopSample` could write into after its element is
+    // detached. `renderDiscoveryDrawer` re-registers it below if the new
+    // drawer has a clip.
+    sampleDisplay = null;
     if (drawerKind === "discovery") { renderDiscoveryDrawer(); return; }
     if (drawerKind === "analytics") { if (analyticsFreq) void renderAnalyticsDrawer(analyticsFreq); return; }
     if (drawerKind === "bank") { renderBankProfileDrawer(); return; }
@@ -1530,6 +1654,7 @@ export function renderAdmin(root: HTMLElement): void {
     if (!d) { closeDrawer(); return; }
     const loc = d.location;
     const digital = d.mode && DIGITAL.some((x) => d.mode!.toUpperCase().includes(x));
+    const sample = dcSamples[d.id];
     drawer.innerHTML = `
       <header class="dwHead">
         <h3>${esc(d.alphaTag)}</h3>
@@ -1540,6 +1665,11 @@ export function renderAdmin(root: HTMLElement): void {
         <dt>mode</dt><dd${digital ? ' class="dwDigital"' : ""}>${d.mode ? esc(d.mode.toUpperCase()) : "not identified"}${digital ? " · digital — not decodable here" : ""}</dd>
         <dt>exact</dt><dd>${d.freq.toLocaleString()} Hz</dd>
         <dt>found</dt><dd>${new Date(d.ts).toLocaleString()}</dd>
+        <dt>sample</dt><dd class="dwSample">${sample
+          ? `<span class="dwSampleRow">${iconBtn("dwPlay", "play", "Play the recorded sample", `data-sample-id="${esc(d.id)}"`)}<b class="dwSampleDur">${sample.seconds.toFixed(1)}s</b><small>recorded ${new Date(sample.ts).toLocaleString()}</small>${iconBtn("dwSampleDel", "del", "Delete sample")}</span>`
+          : dcRecordingOn
+            ? `<span class="dwSampleEmpty">No sample yet — the next time this frequency opens, it will be recorded.</span>`
+            : `<span class="dwSampleEmpty">Sample recording is off. <a href="#/scan">Turn it on in Settings</a></span>`}</dd>
         <dt>location</dt><dd>${loc
           ? `${esc([loc.city, loc.state].filter(Boolean).join(", ") || "—")}${loc.lat != null ? ` · ${loc.lat}, ${loc.lon}` : ""} <span class="dwVia">via ${esc(loc.source)}</span>`
           : "not identified"}</dd>
@@ -1566,6 +1696,27 @@ export function renderAdmin(root: HTMLElement): void {
     drawer.querySelector<HTMLButtonElement>(".dwClose")!.addEventListener("click", closeDrawer);
     drawer.querySelector<HTMLButtonElement>("#dwListen")!.addEventListener("click", () =>
       api.monitor(d.freq, d.alphaTag));
+    if (sample) {
+      // Register this drawer's countdown display with the shared playback
+      // state (renderDrawer() cleared any prior registration above), then
+      // paint both the icon and the figure from nowPlayingSample immediately
+      // — this discovery's clip may already be playing (started from the
+      // triage row before the drawer was opened), and the drawer must show
+      // that truth on its first paint, not assume nothing is playing.
+      sampleDisplay = { id: d.id, el: drawer.querySelector<HTMLElement>(".dwSampleDur")!, full: sample.seconds };
+      paintPlayButtons();
+      paintSampleDuration(d.id, nowPlayingSample?.id === d.id ? nowPlayingSample.audio : null);
+      // Play/Stop is the same shared control as the triage row's — playSample
+      // keys off discovery id, not the button clicked, so this one call
+      // covers "start", "stop what I started", and "stop what the row
+      // started" alike.
+      drawer.querySelector<HTMLButtonElement>(".dwPlay")!.addEventListener("click", () => playSample(d.id));
+      drawer.querySelector<HTMLButtonElement>(".dwSampleDel")!.addEventListener("click", async () => {
+        stopSample();
+        await api.deleteDiscoverySample(d.id);
+        await renderDiscoveries();
+      });
+    }
     drawer.querySelector<HTMLButtonElement>("#dwAdd")!.addEventListener("click", async () => {
       await mutateDiscovery(d.id, promoteDiscovery);
       closeDrawer();
@@ -1782,8 +1933,19 @@ export function renderAdmin(root: HTMLElement): void {
   }
 
   async function renderDiscoveries(opts: { refreshDrawer?: boolean } = {}): Promise<void> {
+    // This used to stop any playing clip unconditionally, on the theory that
+    // the button it's bound to is about to be destroyed by the table rebuild
+    // below. That's no longer true: playback state is keyed by discovery id,
+    // not by a button reference (see `nowPlayingSample`), and every render
+    // path repaints icons/duration from that shared state afterward — so a
+    // clip now survives a mid-playback poll instead of being cut off with no
+    // explanation every 15 s. See the `paintPlayButtons()` calls below.
     const cfg = await api.getConfig();
     syncAudioControls(cfg); // one poll feeds both (was a separate 5s loop)
+    // Best-effort: a failure here must leave the triage table fully usable,
+    // just without Play buttons.
+    dcSamples = await api.getDiscoverySamples().catch(() => ({}));
+    dcRecordingOn = cfg.scan.recordCloseCalls === true;
     const all = [...(cfg.discoveries ?? [])].sort((a, b) => b.ts - a.ts);
     const ds = all.filter((d) => !d.suppressedAt);
     const suppressed = all.filter((d) => d.suppressedAt);
@@ -1817,9 +1979,19 @@ export function renderAdmin(root: HTMLElement): void {
           <td class="rowOpen">${fmtFreq(d.freq)}<span class="dcSvc${serviceFor(d.freq) ? "" : " outband"}">${esc(serviceFor(d.freq) ?? "OUTBAND")}</span></td>
           <td class="rowOpen">${esc(d.alphaTag)}${d.audible === false ? '<span class="dcSee" title="Identified as data/paging — filed seen-not-heard; promotes as SEE">SEE</span>' : d.audible === true ? '<span class="dcHear" title="Identified as analog voice — hearable">HEAR</span>' : ""}${locChip(d.location)}<button type="button" class="rowChev" aria-label="Open ${esc(d.alphaTag)} details">${btnIco("chevron", "solo")}</button></td>
           <td class="rowOpen dMode${d.mode && DIGITAL.some((x) => d.mode!.toUpperCase().includes(x)) ? " digital" : ""}">${d.mode ? esc(d.mode.toUpperCase()) : "—"}</td>
-          <td class="actions">${iconBtn("dListen", "listen", "Listen — audition this discovery")}${iconBtn("dAdd", "add", "Add as an enabled channel")}${iconBtn("dLock", "lockout", "Lock out — never Close-Call this frequency again")}${iconBtn("dDismiss", "dismiss", "Dismiss (may be rediscovered later)")}</td>
+          <td class="actions">${dcSamples[d.id]
+            ? iconBtn("dPlay", "play", `Play the recorded sample (${dcSamples[d.id]!.seconds.toFixed(1)}s)`, `data-sample-id="${esc(d.id)}"`)
+            : ""}${iconBtn("dListen", "listen", "Listen — audition this discovery")}${iconBtn("dAdd", "add", "Add as an enabled channel")}${iconBtn("dLock", "lockout", "Lock out — never Close-Call this frequency again")}${iconBtn("dDismiss", "dismiss", "Dismiss (may be rediscovered later)")}</td>
         </tr>`).join("");
     dcAll.checked = ds.length > 0 && dcSelected.size === ds.length;
+    // dcRows.innerHTML above just replaced every row's Play button with a
+    // fresh one defaulting to "Play" — including, possibly, the button for a
+    // clip that's still audibly playing (this poll runs every 15 s and clips
+    // run up to ~20 s, so it WILL land mid-playback). Repaint from the shared
+    // state now that the buttons exist again, so the icon matches reality
+    // instead of a template default. This is the load-bearing call that lets
+    // renderDiscoveries no longer stop playback just to keep itself honest.
+    paintPlayButtons();
     paintDcToolbar();
     dcRows.querySelectorAll<HTMLElement>(".rowOpen").forEach((cell) => {
       const id = (cell.closest("tr") as HTMLElement).dataset.id!;
@@ -1841,6 +2013,7 @@ export function renderAdmin(root: HTMLElement): void {
 
     dcRows.querySelectorAll<HTMLButtonElement>("tr [class^=d]").forEach((b) => {
       const id = (b.closest("tr") as HTMLElement).dataset.id!;
+      if (b.classList.contains("dPlay")) b.addEventListener("click", () => playSample(id));
       if (b.classList.contains("dListen")) b.addEventListener("click", async () => {
         const cfg2 = await api.getConfig();
         const d = (cfg2.discoveries ?? []).find((x) => x.id === id);
@@ -2337,6 +2510,9 @@ export function renderAdmin(root: HTMLElement): void {
   const tSameTests = root.querySelector<HTMLInputElement>("#tSameTests")!;
   const tCloseCall = root.querySelector<HTMLInputElement>("#tCloseCall")!;
   const tCloseCallDb = root.querySelector<HTMLInputElement>("#tCloseCallDb")!;
+  const tCcRecord = root.querySelector<HTMLInputElement>("#tCcRecord")!;
+  const tCcSampleSec = root.querySelector<HTMLInputElement>("#tCcSampleSec")!;
+  const tCcSampleMb = root.querySelector<HTMLInputElement>("#tCcSampleMb")!;
   const tSweep = root.querySelector<HTMLInputElement>("#tSweep")!;
   const tErr = root.querySelector<HTMLElement>("#tErr")!;
 
@@ -2353,8 +2529,11 @@ export function renderAdmin(root: HTMLElement): void {
     tSameFips.value = (cfg.alerts?.sameFips ?? []).join(", ");
     tSameTests.checked = cfg.alerts?.sameTests ?? false;
     tCloseCall.checked = cfg.scan.closeCall ?? true;   // engine default: ON
-    syncCloseCallDependents();
     tCloseCallDb.value = cfg.scan.closeCallDb != null ? String(cfg.scan.closeCallDb) : "";
+    tCcRecord.checked = cfg.scan.recordCloseCalls === true;  // default: OFF
+    tCcSampleSec.value = cfg.scan.closeCallSampleSeconds != null ? String(cfg.scan.closeCallSampleSeconds) : "";
+    tCcSampleMb.value = cfg.scan.closeCallSampleMaxMb != null ? String(cfg.scan.closeCallSampleMaxMb) : "";
+    syncCloseCallDependents();
     tSweep.value = (cfg.scan.sweepRanges ?? [])
       .map((r) => `${r.loHz / 1e6}-${r.hiHz / 1e6}`).join(", ");
   });
@@ -2369,8 +2548,15 @@ export function renderAdmin(root: HTMLElement): void {
   // Call is on.
   function syncCloseCallDependents(): void {
     tCloseCallDb.disabled = !tCloseCall.checked;
+    // Nothing to record when nothing is being discovered, and no clip length
+    // or budget to argue about when recording is off.
+    tCcRecord.disabled = !tCloseCall.checked;
+    const recording = tCloseCall.checked && tCcRecord.checked;
+    tCcSampleSec.disabled = !recording;
+    tCcSampleMb.disabled = !recording;
   }
   tCloseCall.addEventListener("change", syncCloseCallDependents);
+  tCcRecord.addEventListener("change", syncCloseCallDependents);
 
   root.querySelector<HTMLButtonElement>("#tSave")!.addEventListener("click", async () => {
     tErr.textContent = "";
@@ -2381,6 +2567,11 @@ export function renderAdmin(root: HTMLElement): void {
       cfg.scan.noiseQuietDb = numOrU(tQuietDb);
       cfg.scan.closeCall = tCloseCall.checked;
       cfg.scan.closeCallDb = numOrU(tCloseCallDb);
+      // Flipping recording is an ENGINE RESTART — it changes a helper spawn
+      // arg (the fd-3 PCM tee), unlike the other fields on this card.
+      cfg.scan.recordCloseCalls = tCcRecord.checked;
+      cfg.scan.closeCallSampleSeconds = numOrU(tCcSampleSec);
+      cfg.scan.closeCallSampleMaxMb = numOrU(tCcSampleMb);
       const sweeps = tSweep.value.split(",").map((x) => x.trim()).filter(Boolean)
         .map((x) => {
           const m = /^([\d.]+)\s*-\s*([\d.]+)$/.exec(x);

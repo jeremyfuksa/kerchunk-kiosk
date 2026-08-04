@@ -641,3 +641,23 @@ describe("retune fit-check (re-point vs respawn)", () => {
     expect(lines(args).length).toBe(2);
   });
 });
+
+describe("PCM tee gating", () => {
+  it("builds the PCM tee when only close call recording is on", async () => {
+    const args = tmpFile("args");
+    const { engine } = makeEngine({ FAKE_WB_ARGS_FILE: args });
+    await engine.start(cfg([VHF_A], { recordCloseCalls: true }));
+    await waitFor(() => lines(args).length >= 1, 1000);
+    await engine.stop();
+    expect(lines(args)[0]).toContain("--audio-fd");
+  });
+
+  it("does not build the PCM tee when neither remote listening nor recording is on", async () => {
+    const args = tmpFile("args");
+    const { engine } = makeEngine({ FAKE_WB_ARGS_FILE: args });
+    await engine.start(cfg([VHF_A]));
+    await waitFor(() => lines(args).length >= 1, 1000);
+    await engine.stop();
+    expect(lines(args)[0]).not.toContain("--audio-fd");
+  });
+});
