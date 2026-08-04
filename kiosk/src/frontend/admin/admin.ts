@@ -252,7 +252,7 @@ function stopSample(): void {
   paintSampleDuration(id, null);
 }
 
-function playSample(id: string, button: HTMLButtonElement): void {
+function playSample(id: string): void {
   // Not button-keyed (see `nowPlayingSample`'s comment): a click on ANY
   // control for the clip already playing stops it, whether that's the same
   // button that started it or the same clip's other control (row vs. drawer).
@@ -1696,8 +1696,7 @@ export function renderAdmin(root: HTMLElement): void {
       // keys off discovery id, not the button clicked, so this one call
       // covers "start", "stop what I started", and "stop what the row
       // started" alike.
-      drawer.querySelector<HTMLButtonElement>(".dwPlay")!.addEventListener("click", (e) =>
-        playSample(d.id, e.currentTarget as HTMLButtonElement));
+      drawer.querySelector<HTMLButtonElement>(".dwPlay")!.addEventListener("click", () => playSample(d.id));
       drawer.querySelector<HTMLButtonElement>(".dwSampleDel")!.addEventListener("click", async () => {
         stopSample();
         await api.deleteDiscoverySample(d.id);
@@ -1920,9 +1919,13 @@ export function renderAdmin(root: HTMLElement): void {
   }
 
   async function renderDiscoveries(opts: { refreshDrawer?: boolean } = {}): Promise<void> {
-    // The row about to be wiped may own the currently-playing <audio>; stop it
-    // before the button element it's bound to is destroyed.
-    stopSample();
+    // This used to stop any playing clip unconditionally, on the theory that
+    // the button it's bound to is about to be destroyed by the table rebuild
+    // below. That's no longer true: playback state is keyed by discovery id,
+    // not by a button reference (see `nowPlayingSample`), and every render
+    // path repaints icons/duration from that shared state afterward — so a
+    // clip now survives a mid-playback poll instead of being cut off with no
+    // explanation every 15 s. See the `paintPlayButtons()` calls below.
     const cfg = await api.getConfig();
     syncAudioControls(cfg); // one poll feeds both (was a separate 5s loop)
     // Best-effort: a failure here must leave the triage table fully usable,
@@ -1967,10 +1970,13 @@ export function renderAdmin(root: HTMLElement): void {
             : ""}${iconBtn("dListen", "listen", "Listen — audition this discovery")}${iconBtn("dAdd", "add", "Add as an enabled channel")}${iconBtn("dLock", "lockout", "Lock out — never Close-Call this frequency again")}${iconBtn("dDismiss", "dismiss", "Dismiss (may be rediscovered later)")}</td>
         </tr>`).join("");
     dcAll.checked = ds.length > 0 && dcSelected.size === ds.length;
-    // The row about to replace this markup may have carried the currently
-    // playing clip's icon — repaint from the shared state (nowPlayingSample) now
-    // that the buttons exist again, rather than leaving the freshly-rendered
-    // default ("Play") stand in for whatever's actually happening.
+    // dcRows.innerHTML above just replaced every row's Play button with a
+    // fresh one defaulting to "Play" — including, possibly, the button for a
+    // clip that's still audibly playing (this poll runs every 15 s and clips
+    // run up to ~20 s, so it WILL land mid-playback). Repaint from the shared
+    // state now that the buttons exist again, so the icon matches reality
+    // instead of a template default. This is the load-bearing call that lets
+    // renderDiscoveries no longer stop playback just to keep itself honest.
     paintPlayButtons();
     paintDcToolbar();
     dcRows.querySelectorAll<HTMLElement>(".rowOpen").forEach((cell) => {
@@ -1993,7 +1999,7 @@ export function renderAdmin(root: HTMLElement): void {
 
     dcRows.querySelectorAll<HTMLButtonElement>("tr [class^=d]").forEach((b) => {
       const id = (b.closest("tr") as HTMLElement).dataset.id!;
-      if (b.classList.contains("dPlay")) b.addEventListener("click", () => playSample(id, b));
+      if (b.classList.contains("dPlay")) b.addEventListener("click", () => playSample(id));
       if (b.classList.contains("dListen")) b.addEventListener("click", async () => {
         const cfg2 = await api.getConfig();
         const d = (cfg2.discoveries ?? []).find((x) => x.id === id);
