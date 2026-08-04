@@ -184,6 +184,38 @@ function btnIco(icon: string, where: "lead" | "trail" | "solo" = "lead"): string
   return ICONS[icon]!.replace("<svg", `<svg class="btnIco${mod}" aria-hidden="true" focusable="false"`);
 }
 
+/** Clip metadata by discovery id, refreshed with the discoveries poll. Empty
+ *  when recording is off or nothing has been captured yet. */
+let dcSamples: Record<string, { bytes: number; seconds: number; ts: number }> = {};
+
+/** At most one clip plays at a time — two Close Calls talking over each other
+ *  is exactly the confusion this feature exists to remove. */
+let nowPlaying: { audio: HTMLAudioElement; button: HTMLButtonElement } | null = null;
+
+function stopSample(): void {
+  if (!nowPlaying) return;
+  nowPlaying.audio.pause();
+  nowPlaying.button.innerHTML = ICONS.play!;
+  nowPlaying.button.title = "Play the recorded sample";
+  nowPlaying = null;
+}
+
+function playSample(id: string, button: HTMLButtonElement): void {
+  const wasThis = nowPlaying?.button === button;
+  stopSample();
+  if (wasThis) return; // second click on the same button = stop
+  // Cache-bust: a frequency's clip is overwritten by its next hit, and the URL
+  // does not change when it is.
+  const audio = new Audio(
+    `/api/discoveries/${encodeURIComponent(id)}/sample.wav?t=${dcSamples[id]?.ts ?? 0}`);
+  audio.addEventListener("ended", stopSample);
+  audio.addEventListener("error", stopSample);
+  button.innerHTML = ICONS.stop!;
+  button.title = "Stop";
+  nowPlaying = { audio, button };
+  void audio.play().catch(stopSample);
+}
+
 export function renderAdmin(root: HTMLElement): void {
   root.innerHTML = `
     <main class="admin">
@@ -1782,8 +1814,14 @@ export function renderAdmin(root: HTMLElement): void {
   }
 
   async function renderDiscoveries(opts: { refreshDrawer?: boolean } = {}): Promise<void> {
+    // The row about to be wiped may own the currently-playing <audio>; stop it
+    // before the button element it's bound to is destroyed.
+    stopSample();
     const cfg = await api.getConfig();
     syncAudioControls(cfg); // one poll feeds both (was a separate 5s loop)
+    // Best-effort: a failure here must leave the triage table fully usable,
+    // just without Play buttons.
+    dcSamples = await api.getDiscoverySamples().catch(() => ({}));
     const all = [...(cfg.discoveries ?? [])].sort((a, b) => b.ts - a.ts);
     const ds = all.filter((d) => !d.suppressedAt);
     const suppressed = all.filter((d) => d.suppressedAt);
@@ -1817,7 +1855,9 @@ export function renderAdmin(root: HTMLElement): void {
           <td class="rowOpen">${fmtFreq(d.freq)}<span class="dcSvc${serviceFor(d.freq) ? "" : " outband"}">${esc(serviceFor(d.freq) ?? "OUTBAND")}</span></td>
           <td class="rowOpen">${esc(d.alphaTag)}${d.audible === false ? '<span class="dcSee" title="Identified as data/paging — filed seen-not-heard; promotes as SEE">SEE</span>' : d.audible === true ? '<span class="dcHear" title="Identified as analog voice — hearable">HEAR</span>' : ""}${locChip(d.location)}<button type="button" class="rowChev" aria-label="Open ${esc(d.alphaTag)} details">${btnIco("chevron", "solo")}</button></td>
           <td class="rowOpen dMode${d.mode && DIGITAL.some((x) => d.mode!.toUpperCase().includes(x)) ? " digital" : ""}">${d.mode ? esc(d.mode.toUpperCase()) : "—"}</td>
-          <td class="actions">${iconBtn("dListen", "listen", "Listen — audition this discovery")}${iconBtn("dAdd", "add", "Add as an enabled channel")}${iconBtn("dLock", "lockout", "Lock out — never Close-Call this frequency again")}${iconBtn("dDismiss", "dismiss", "Dismiss (may be rediscovered later)")}</td>
+          <td class="actions">${dcSamples[d.id]
+            ? iconBtn("dPlay", "play", `Play the recorded sample (${dcSamples[d.id]!.seconds.toFixed(1)}s)`)
+            : ""}${iconBtn("dListen", "listen", "Listen — audition this discovery")}${iconBtn("dAdd", "add", "Add as an enabled channel")}${iconBtn("dLock", "lockout", "Lock out — never Close-Call this frequency again")}${iconBtn("dDismiss", "dismiss", "Dismiss (may be rediscovered later)")}</td>
         </tr>`).join("");
     dcAll.checked = ds.length > 0 && dcSelected.size === ds.length;
     paintDcToolbar();
@@ -1841,6 +1881,7 @@ export function renderAdmin(root: HTMLElement): void {
 
     dcRows.querySelectorAll<HTMLButtonElement>("tr [class^=d]").forEach((b) => {
       const id = (b.closest("tr") as HTMLElement).dataset.id!;
+      if (b.classList.contains("dPlay")) b.addEventListener("click", () => playSample(id, b));
       if (b.classList.contains("dListen")) b.addEventListener("click", async () => {
         const cfg2 = await api.getConfig();
         const d = (cfg2.discoveries ?? []).find((x) => x.id === id);

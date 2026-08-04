@@ -73,6 +73,11 @@ export const api = {
     fetch("/api/monitor", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ freq, alphaTag }) }).then(j<{ mode: string }>),
   monitorStop: () =>
     fetch("/api/monitor/stop", { method: "POST" }).then(j<{ mode: string }>),
+  getDiscoverySamples: () =>
+    fetch("/api/discoveries/samples")
+      .then(j<Record<string, { bytes: number; seconds: number; ts: number }>>),
+  deleteDiscoverySample: (id: string) =>
+    fetch(`/api/discoveries/${encodeURIComponent(id)}/sample`, { method: "DELETE" }),
   getWeatherChannel: () => fetch("/api/weather-channel").then(j<{ weatherChannel: Channel | null }>),
   setWeatherChannel: (c: Omit<Channel, "id">) =>
     fetch("/api/weather-channel", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(c) }).then(j<{ weatherChannel: Channel }>),

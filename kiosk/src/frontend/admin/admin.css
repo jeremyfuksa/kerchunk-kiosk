@@ -399,6 +399,9 @@ body {
 .admin .del:hover:not(:disabled), .admin .danger:hover:not(:disabled), .admin #lockBtn:hover:not(:disabled) { border-color: color-mix(in srgb, var(--red) 70%, transparent); }
 .admin .lock:hover:not(:disabled), .admin .dLock:hover:not(:disabled), .admin .dDismiss:hover:not(:disabled), .admin #tlockBtn:hover:not(:disabled) { border-color: color-mix(in srgb, var(--caution) 60%, transparent); }
 .admin .listen:hover:not(:disabled), .admin .dListen:hover:not(:disabled), .admin .weatherAction:hover:not(:disabled) { border-color: color-mix(in srgb, var(--blue) 70%, transparent); }
+/* Playing state: the amber the admin reserves for live radio state, because a
+   clip playing IS audio coming out of the box right now. */
+.dPlay[title^="Stop"] { color: var(--amber); }
 .admin .resume {
   color: var(--blue);
   background: color-mix(in srgb, var(--blue) 12%, var(--etch));
