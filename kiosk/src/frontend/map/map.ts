@@ -62,6 +62,14 @@ const BLIP_LIFETIME_MS = 60_000;
 const HISTORY_BACKFILL_MS = 3_600_000;
 
 declare const google: any; // loaded dynamically with the configured key
+// The line above declares a VALUE, so `google.maps.X` in *type* position had
+// nothing to resolve against — which is why `framedBounds()` below failed to
+// compile the moment this file was first typechecked (issue #224). The Maps
+// types are deliberately not vendored, so these alias to `any` exactly like
+// the value does: the annotations document intent, they do not check it.
+declare namespace google.maps {
+  type LatLngBounds = any;
+}
 
 // The full-page /map view: the activity map plus its legend. The kiosk
 // dashboard mounts the SAME map via mountActivityMap (map-as-stage), without

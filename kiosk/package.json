@@ -12,6 +12,7 @@
     "build": "npm run build:frontend && npm run build:backend",
     "build:frontend": "vite build",
     "build:backend": "tsc -p tsconfig.json && cp src/backend/engine/wideband_helper.py src/backend/engine/wideband_dsp_math.py dist/backend/engine/",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.frontend.json --noEmit",
     "start": "node dist/backend/index.js",
     "test": "vitest run",
     "test:py": "/usr/bin/python3 test/wideband_dsp_math_test.py",
