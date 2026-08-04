@@ -401,7 +401,7 @@ body {
 .admin .listen:hover:not(:disabled), .admin .dListen:hover:not(:disabled), .admin .weatherAction:hover:not(:disabled) { border-color: color-mix(in srgb, var(--blue) 70%, transparent); }
 /* Playing state: the amber the admin reserves for live radio state, because a
    clip playing IS audio coming out of the box right now. */
-.dPlay[title^="Stop"] { color: var(--amber); }
+.admin .dPlay[title^="Stop"] { color: var(--amber); }
 .admin .resume {
   color: var(--blue);
   background: color-mix(in srgb, var(--blue) 12%, var(--etch));

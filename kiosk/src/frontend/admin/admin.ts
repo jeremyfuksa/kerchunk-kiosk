@@ -641,6 +641,12 @@ export function renderAdmin(root: HTMLElement): void {
     void tick();
   }
   function applyRoute(): void {
+    // Unconditional: any route change may hide the triage row a clip is
+    // playing from, and re-entering triage/home re-renders it (and any
+    // button state) fresh anyway. Leaving a clip playing behind a page with
+    // no visible stop control defeats the point of an appliance the operator
+    // is meant to know what they're hearing.
+    stopSample();
     const route = currentRoute();
     const titles: Record<string, string> = { home: "Activity", triage: "Triage", channels: "Channels", scan: "Settings", system: "System" };
     document.title = `${titles[route]} · Kerchunk Admin`;
