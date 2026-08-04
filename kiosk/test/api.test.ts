@@ -1,16 +1,30 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import request from "supertest";
+import type { Response as SuperAgentResponse } from "superagent";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { Server } from "node:http";
 import { createServer } from "../src/backend/server.js";
 import { ConfigStore } from "../src/backend/config/ConfigStore.js";
 import { ActivityLog } from "../src/backend/activityLog.js";
 import { WsHub } from "../src/backend/ws.js";
 import { FakeEngine } from "../src/backend/engine/FakeEngine.js";
 import { HistoryStore } from "../src/backend/history.js";
+import { CcSampleStore } from "../src/backend/ccSampleStore.js";
 import type { AircraftSource } from "../src/backend/aircraft.js";
 import type { AircraftTarget } from "../src/backend/engine/ScannerEngine.js";
+
+/** supertest only auto-buffers response bodies for content types it
+ *  recognises; `audio/wav` is not one of them, so without this the WAV
+ *  route's response body would arrive empty and the RIFF assertion below
+ *  would pass vacuously. Forces the raw bytes into a Buffer instead. */
+function binaryParser(res: SuperAgentResponse, callback: (err: Error | null, body: Buffer) => void): void {
+  res.setEncoding("binary");
+  let data = "";
+  res.on("data", (chunk: string) => { data += chunk; });
+  res.on("end", () => callback(null, Buffer.from(data, "binary")));
+}
 
 class FakeAircraftFeed implements AircraftSource {
   started = false;
@@ -28,8 +42,11 @@ function makeApp() {
   const engine = new FakeEngine();
   const activityLog = new ActivityLog(100);
   const wsHub = new WsHub();
-  const { server } = createServer({ configStore, engine, activityLog, wsHub, staticDir: dir });
-  return { server, engine, configStore, wsHub };
+  const ccSampleDir = join(dir, "cc-samples");
+  const { server } = createServer({
+    configStore, engine, activityLog, wsHub, staticDir: dir, ccSampleDir,
+  });
+  return { server, engine, configStore, wsHub, ccSampleDir };
 }
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
@@ -1409,5 +1426,78 @@ describe("config mutation serialization", () => {
     expect(ra.status).toBe(200);
     expect(rb.status).toBe(200);
     expect(overlapped).toBe(false); // engine calls strictly serialized
+  });
+});
+
+describe("Close Call sample routes", () => {
+  /** Put a discovery in config and a matching clip on disk. */
+  async function seed(server: Server, ccSampleDir: string, freq = 154_570_000) {
+    const cfg = (await request(server).get("/api/config")).body;
+    cfg.discoveries = [{
+      id: "cc_seed01", freq, alphaTag: `Close Call ${freq}`, ts: Date.now(),
+    }];
+    await request(server).put("/api/config").send(cfg);
+    new CcSampleStore(ccSampleDir).write(freq, Buffer.alloc(8000 * 2)); // 1 s
+    return "cc_seed01";
+  }
+
+  it("lists clips keyed by discovery id", async () => {
+    const { server, ccSampleDir } = makeApp();
+    const id = await seed(server, ccSampleDir);
+    const res = await request(server).get("/api/discoveries/samples");
+    expect(res.status).toBe(200);
+    expect(res.body[id].seconds).toBeCloseTo(1, 2);
+  });
+
+  it("omits clips with no matching discovery", async () => {
+    const { server, ccSampleDir } = makeApp();
+    await seed(server, ccSampleDir);
+    new CcSampleStore(ccSampleDir).write(999_000_000, Buffer.alloc(8000 * 2));
+    const res = await request(server).get("/api/discoveries/samples");
+    expect(Object.keys(res.body).length).toBe(1);
+  });
+
+  it("serves the clip as a WAV", async () => {
+    const { server, ccSampleDir } = makeApp();
+    const id = await seed(server, ccSampleDir);
+    const res = await request(server)
+      .get(`/api/discoveries/${id}/sample.wav`)
+      .buffer(true)
+      .parse(binaryParser);
+    expect(res.status).toBe(200);
+    expect(res.headers["content-type"]).toBe("audio/wav");
+    expect(Buffer.isBuffer(res.body)).toBe(true);
+    expect((res.body as Buffer).subarray(0, 4).toString()).toBe("RIFF");
+  });
+
+  it("404s for a discovery with no clip", async () => {
+    const { server } = makeApp();
+    const res = await request(server).get("/api/discoveries/cc_nope/sample.wav");
+    expect(res.status).toBe(404);
+  });
+
+  it("deletes a clip on request", async () => {
+    const { server, ccSampleDir } = makeApp();
+    const id = await seed(server, ccSampleDir);
+    expect((await request(server).delete(`/api/discoveries/${id}/sample`)).status).toBe(200);
+    expect((await request(server).get(`/api/discoveries/${id}/sample.wav`)).status).toBe(404);
+  });
+
+  it("deletes the clip when the discovery is triaged away", async () => {
+    const { server, ccSampleDir } = makeApp();
+    await seed(server, ccSampleDir);
+    const cfg = (await request(server).get("/api/config")).body;
+    cfg.discoveries = [];
+    await request(server).put("/api/config").send(cfg);
+    expect(new CcSampleStore(ccSampleDir).meta(154_570_000)).toBeNull();
+  });
+
+  it("keeps the clip when the discovery is only edited", async () => {
+    const { server, ccSampleDir } = makeApp();
+    await seed(server, ccSampleDir);
+    const cfg = (await request(server).get("/api/config")).body;
+    cfg.discoveries[0].alphaTag = "Renamed";
+    await request(server).put("/api/config").send(cfg);
+    expect(new CcSampleStore(ccSampleDir).meta(154_570_000)).not.toBeNull();
   });
 });

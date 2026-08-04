@@ -1,5 +1,5 @@
 import { createServer as httpCreateServer, type IncomingMessage, type ServerResponse, type Server } from "node:http";
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, createReadStream } from "node:fs";
 import { join, normalize, extname } from "node:path";
 import { randomUUID } from "node:crypto";
 import { configSchema, channelSchema, type Config, type Channel } from "./config/schema.js";
@@ -18,6 +18,8 @@ import { solveK, estimateWatts, distKm, type Anchor } from "./powerEstimator.js"
 import { parseSame, fipsMatch, fipsNames, isTest, isEom } from "./same.js";
 import os from "node:os";
 import { SystemStats, classifyHealth } from "./systemStats.js";
+import { CcSampleStore } from "./ccSampleStore.js";
+import { CcRecorder } from "./ccRecorder.js";
 
 export interface ServerDeps {
   /** Optional identification chain — enriches Close Call channel names. */
@@ -49,6 +51,10 @@ export interface ServerDeps {
   statsReadFile?: (path: string) => string;
   /** Optional network ADS-B aircraft overlay feed (off unless configured). */
   aircraftFeed?: AircraftSource;
+  /** Directory for Close Call audio clips (#222). Absent (tests that don't
+   *  exercise it, non-appliance hosts) disables recording and 404s the sample
+   *  routes rather than writing anywhere unexpected. */
+  ccSampleDir?: string;
 }
 
 const MIME: Record<string, string> = {
@@ -686,6 +692,39 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
     }
   });
 
+  // Close Call sample recording (#222). The recorder reads every knob through a
+  // closure so a live config PUT takes effect without rebuilding it. It is
+  // always subscribed and no-ops while disabled — the helper simply sends no
+  // audio when the tee isn't built.
+  const ccStore = deps.ccSampleDir ? new CcSampleStore(deps.ccSampleDir) : null;
+  const ccRecorder = ccStore
+    ? new CcRecorder({
+        store: ccStore,
+        enabled: () => config.scan.recordCloseCalls === true,
+        // Mirrors the filing guard above: the operator's own channels and
+        // locked-out frequencies are not discoveries and never get a clip.
+        isRecordable: (freqHz) =>
+          !config.channels.some((c) => c.freq === freqHz)
+          && !(config.scan.lockoutHz ?? []).includes(freqHz),
+        maxSeconds: () => config.scan.closeCallSampleSeconds ?? 20,
+        maxBytes: () => (config.scan.closeCallSampleMaxMb ?? 50) * 1024 * 1024,
+        knownFreqs: () => (config.discoveries ?? []).map((d) => d.freq),
+      })
+    : null;
+  if (ccRecorder) {
+    const onAudio = (engine as { onAudio?: (l: (c: Buffer) => void) => () => void })
+      .onAudio?.bind(engine);
+    onAudio?.((chunk) => ccRecorder.onPcm(chunk));
+    engine.on((ev) => {
+      if (ev.type === "audible") ccRecorder.onAudible(ev.channel?.id ?? null);
+    });
+  }
+
+  /** Discovery id -> its frequency, the key clips are stored under. */
+  function discoveryFreq(id: string): number | null {
+    return (config.discoveries ?? []).find((d) => d.id === id)?.freq ?? null;
+  }
+
   // Persist config AND re-point the scanner so changes (e.g. editing channels in
   // the admin) take effect immediately, instead of only after a service restart.
   // Uses switchMode's retune path: a channel add/edit/delete only changes the
@@ -769,6 +808,16 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
       const prev = config;
       config = parsed.data;
       saveConfig(config);
+      // Triage cleanup (#222): a discovery that left the list has been added,
+      // dismissed, or locked out — its clip has done its job. Done here rather
+      // than in each admin action so every path (row buttons, drawer, bulk
+      // select) is covered by one rule that cannot drift.
+      if (ccStore) {
+        const stillFiled = new Set((config.discoveries ?? []).map((d) => d.freq));
+        for (const d of prev.discoveries ?? []) {
+          if (!stillFiled.has(d.freq)) ccStore.delete(d.freq);
+        }
+      }
       // Monitor orphan cleanup: if the monitored frequency was removed from
       // every list by this update, fall back to scanning instead of sitting
       // on a frequency that no longer exists anywhere.
@@ -1012,6 +1061,46 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
         .filter((c) => c.enabled && !c.priority && c.location?.source !== "operator"
           && heardBefore.has(c.freq) && !heard.has(c.freq))
         .map((c) => ({ id: c.id, freq: c.freq, alphaTag: c.alphaTag, audible: c.audible !== false })));
+    }
+
+    if (method === "GET" && path === "/api/discoveries/samples") {
+      // Which triage rows have something to play. One readdir, so the admin can
+      // fold this into its existing 15 s discoveries poll instead of probing
+      // every row. Keyed by discovery id — the frequency keying is an
+      // implementation detail of the store.
+      if (!ccStore) return json(res, 200, {});
+      const byFreq = new Map(ccStore.list().map((m) => [m.freqHz, m]));
+      const out: Record<string, { bytes: number; seconds: number; ts: number }> = {};
+      for (const d of config.discoveries ?? []) {
+        const meta = byFreq.get(d.freq);
+        if (meta) out[d.id] = { bytes: meta.bytes, seconds: meta.seconds, ts: meta.ts };
+      }
+      return json(res, 200, out);
+    }
+
+    const sampleGet = /^\/api\/discoveries\/([^/]+)\/sample\.wav$/.exec(path);
+    if (method === "GET" && sampleGet?.[1]) {
+      if (!ccStore) return json(res, 404, { error: "no sample" });
+      const freq = discoveryFreq(decodeURIComponent(sampleGet[1]));
+      const meta = freq !== null ? ccStore.meta(freq) : null;
+      if (freq === null || !meta) return json(res, 404, { error: "no sample" });
+      res.writeHead(200, {
+        "Content-Type": "audio/wav",
+        "Content-Length": String(meta.bytes),
+        // A clip is overwritten by the frequency's next hit, so it must never
+        // be cached under a URL that outlives it.
+        "Cache-Control": "no-store",
+      });
+      createReadStream(ccStore.pathFor(freq)).pipe(res);
+      return;
+    }
+
+    const sampleDel = /^\/api\/discoveries\/([^/]+)\/sample$/.exec(path);
+    if (method === "DELETE" && sampleDel?.[1]) {
+      if (!ccStore) return json(res, 404, { error: "no sample" });
+      const freq = discoveryFreq(decodeURIComponent(sampleDel[1]));
+      if (freq === null || !ccStore.delete(freq)) return json(res, 404, { error: "no sample" });
+      return json(res, 200, { ok: true });
     }
 
     if (method === "GET" && path === "/api/stream.wav") {
