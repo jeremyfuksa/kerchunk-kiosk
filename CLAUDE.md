@@ -80,7 +80,7 @@ Pi-class install; see [`docs/DEPLOY.md`](docs/DEPLOY.md)).
 npm test                 # vitest, no hardware needed (FakeEngine + fake helper)
 npm run test:py          # DSP-math tests — runs /usr/bin/python3 (system python)
 npm run build            # build:frontend (vite) + build:backend (tsc + copy helpers)
-npx tsc -p tsconfig.json --noEmit   # typecheck; vite does NOT typecheck (see below)
+npm run typecheck        # BOTH tsconfigs; vite does NOT typecheck (see below)
 npm run dev:frontend     # vite dev server, proxies /api + /ws to :8080
 USE_FAKE_ENGINE=1 KERCHUNK_CONFIG=/tmp/kc.json npm run dev:backend
 ```
@@ -94,8 +94,12 @@ changes** — every restart respawns the GNU Radio helper (~2.7 cores of
 flowgraph rebuild), spikes thermals, and interrupts live audio.
 
 - **Frontend-only change:** `npm run build` (or at least `build:frontend` +
-  `npx tsc --noEmit` — vite/esbuild does no type checking, and a type error
-  once shipped silently and killed the kiosk map), then
+  `npm run typecheck` — vite/esbuild does no type checking, and a type error
+  once shipped silently and killed the kiosk map. Use the npm script, not a
+  bare `tsc -p tsconfig.json`: that config emits and covers only `src/backend`
+  + `src/frontend/lib`, so for years it did **not** check admin, dashboard,
+  wall, art or map — the exact surfaces that lesson was about. `typecheck`
+  runs it plus `tsconfig.frontend.json`, which covers the rest. #224), then
   `curl -X POST localhost:8080/api/kiosk/reload` to refresh the wall page. A
   reload POST right after a backend restart can race the WS reconnect — wait
   a beat or re-send.
@@ -184,7 +188,8 @@ do not "simplify" them away:
 A change is finished when all of these hold — report each honestly:
 
 1. `npm test` passes (and `test:py` if DSP math changed).
-2. `npx tsc -p tsconfig.json --noEmit` is clean (vite won't catch it).
+2. `npm run typecheck` is clean (vite won't catch it, and neither tsconfig
+   covers the other — the script runs both).
 3. Full `npm run build` succeeds.
 4. Proven on hardware per "Verifying changes" (or explicitly flagged as
    awaiting on-hardware proof, in the off-machine flow).
@@ -193,9 +198,9 @@ A change is finished when all of these hold — report each honestly:
 6. PR opened from a branch; after merge, the branch is deleted and pruned.
 
 What CI actually runs (`.github/workflows/ci.yml`, every PR and push to
-`main`, GitHub-hosted Linux): `npm ci`, `npm run build:backend` (this is the
-typecheck — `tsc` plus the helper copies), `npm test` (vitest), and
-`npm run build:frontend`. It does **not** run `test:py` (needs numpy on the
+`main`, GitHub-hosted Linux): `npm ci`, `npm run typecheck` (both tsconfigs),
+`npm run build:backend` (`tsc` emit plus the helper copies), `npm test`
+(vitest), and `npm run build:frontend`. It does **not** run `test:py` (needs numpy on the
 system python) and never touches hardware — so 1's `test:py` and 4 remain on
 you even with green checks.
 
