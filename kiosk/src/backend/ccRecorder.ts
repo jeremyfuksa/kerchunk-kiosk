@@ -2,6 +2,8 @@
 // speaker feed on fd 3 as 48 kHz mono s16le; this module turns the span of that
 // feed during a Close Call hit into a small WAV on disk.
 
+import type { CcSampleStore } from "./ccSampleStore.js";
+
 /** Pre-roll kept ahead of every clip. The engine's `audible` event lands
  *  slightly after the carrier opens, so a clip that began there would lose the
  *  first syllable. A correctness margin, not a taste dial — deliberately not a
@@ -89,5 +91,109 @@ export class PrerollRing {
   clear(): void {
     this.offset = 0;
     this.filled = 0;
+  }
+}
+
+/** Close Call lanes are not configured channels, so `WidebandEngine` synthesises
+ *  an id carrying the frequency. That id is the ONLY place a hit's frequency and
+ *  its speaker ownership are known together. */
+export const CC_LANE_RE = /^cc_(\d+)$/;
+
+/** Below this a "clip" is a squelch tail or a detection glitch, not something
+ *  an operator can judge a frequency by. */
+const MIN_CLIP_SECONDS = 0.35;
+
+export interface CcRecorderDeps {
+  store: CcSampleStore;
+  /** config.scan.recordCloseCalls */
+  enabled: () => boolean;
+  /** False for configured channels and locked-out frequencies — mirrors the
+   *  filing guard in server.ts so the two cannot drift. */
+  isRecordable: (freqHz: number) => boolean;
+  /** config.scan.closeCallSampleSeconds */
+  maxSeconds: () => number;
+  /** config.scan.closeCallSampleMaxMb, in bytes */
+  maxBytes: () => number;
+  /** Frequencies with a discovery row — anything else on disk is an orphan. */
+  knownFreqs: () => number[];
+  now?: () => number;
+}
+
+/** Records the speaker feed for the span a Close Call lane owns it.
+ *
+ *  Gated on the engine's `audible` event, NOT on the `closecall` detection
+ *  event. The tee is the speaker MIX, not a per-channel tap: detection and
+ *  speaker ownership are separate moments, and only `audible` tells us the
+ *  bytes arriving right now are the Close Call rather than a neighbouring
+ *  channel's traffic. */
+export class CcRecorder {
+  private readonly ring: PrerollRing;
+  private readonly now: () => number;
+  private clip: Buffer[] = [];
+  private clipBytes = 0;
+  private freqHz: number | null = null;
+  /** The lane we already flushed at the cap; further audio on the same span is
+   *  dropped rather than starting a second clip that overwrites the first. */
+  private cappedId: string | null = null;
+  private currentId: string | null = null;
+
+  constructor(private readonly deps: CcRecorderDeps) {
+    this.ring = new PrerollRing(PREROLL_SECONDS * SOURCE_RATE * 2);
+    this.now = deps.now ?? (() => Date.now());
+  }
+
+  onPcm(chunk: Buffer): void {
+    if (!this.deps.enabled()) return;
+    if (this.freqHz === null) { this.ring.write(chunk); return; }
+    const cap = Math.max(1, this.deps.maxSeconds()) * SOURCE_RATE * 2;
+    const room = cap - this.clipBytes;
+    const take = chunk.length > room ? chunk.subarray(0, room) : chunk;
+    this.clip.push(Buffer.from(take));
+    this.clipBytes += take.length;
+    if (this.clipBytes >= cap) {
+      this.cappedId = this.currentId;
+      this.flush();
+    }
+  }
+
+  onAudible(channelId: string | null): void {
+    if (channelId === this.currentId) return;
+    this.currentId = channelId;
+    this.flush();
+    if (!this.deps.enabled() || channelId === null) return;
+    // Same span as the one we already capped: do not start over.
+    if (channelId === this.cappedId) return;
+    this.cappedId = null;
+    const match = CC_LANE_RE.exec(channelId);
+    if (!match?.[1]) return;
+    const freqHz = Number(match[1]);
+    if (!this.deps.isRecordable(freqHz)) return;
+    this.freqHz = freqHz;
+    // Seed with the pre-roll: the carrier opened slightly before this event.
+    const preroll = this.ring.read();
+    this.clip = preroll.length > 0 ? [preroll] : [];
+    this.clipBytes = preroll.length;
+  }
+
+  /** Write whatever is in flight. Safe to call when nothing is recording. */
+  flush(): void {
+    const freqHz = this.freqHz;
+    const clip = this.clip;
+    const bytes = this.clipBytes;
+    this.freqHz = null;
+    this.clip = [];
+    this.clipBytes = 0;
+    if (freqHz === null || bytes === 0) return;
+    if (bytes / 2 / SOURCE_RATE < MIN_CLIP_SECONDS) return;
+    try {
+      this.deps.store.write(freqHz, decimate48kTo8k(Buffer.concat(clip)));
+      this.deps.store.sweep({
+        knownFreqs: this.deps.knownFreqs(),
+        maxBytes: this.deps.maxBytes(),
+        nowMs: this.now(),
+      });
+    } catch {
+      // A full or unwritable state directory must never take the radio down.
+    }
   }
 }
