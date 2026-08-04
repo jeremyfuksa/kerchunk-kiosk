@@ -105,8 +105,11 @@ export const configSchema = z.object({
     // live radio at a frequency that is usually quiet. Flipping this is an
     // ENGINE RESTART — it changes a helper spawn arg (the fd-3 PCM tee).
     recordCloseCalls: z.boolean().optional(),
-    // Per-clip length cap, seconds. The clip includes a 2 s pre-roll.
-    closeCallSampleSeconds: z.number().positive().optional(),
+    // Per-clip length cap, seconds. The clip includes a 2 s pre-roll, so the
+    // floor (PREROLL_SECONDS + 1 = 3) guarantees at least 1 s of actual hit
+    // audio survives the cap — below that the "clip" would be pre-roll only,
+    // recorded before the Close Call lane ever took the speaker.
+    closeCallSampleSeconds: z.number().min(3).optional(),
     // Total budget for the clip directory, MB. Oldest clips are evicted first.
     closeCallSampleMaxMb: z.number().positive().optional(),
     // Power-detection source (ROADMAP DSP-efficiency): "lane" (default) reads

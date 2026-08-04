@@ -103,6 +103,12 @@ export const CC_LANE_RE = /^cc_(\d+)$/;
  *  an operator can judge a frequency by. */
 const MIN_CLIP_SECONDS = 0.35;
 
+/** How long the post-cap suppression on the SAME lane id lasts. Its job is to
+ *  absorb a squelch flap inside one transmission (audible drops and retakes
+ *  within a second or two of the cap firing), not to block a later, genuine
+ *  hit on the same frequency — that must still record. */
+const CAP_FLAP_WINDOW_MS = 3_000;
+
 export interface CcRecorderDeps {
   store: CcSampleStore;
   /** config.scan.recordCloseCalls */
@@ -135,6 +141,8 @@ export class CcRecorder {
   /** The lane we already flushed at the cap; further audio on the same span is
    *  dropped rather than starting a second clip that overwrites the first. */
   private cappedId: string | null = null;
+  /** When the cap fired, so the suppression above can time out. */
+  private cappedAtMs = 0;
   private currentId: string | null = null;
 
   constructor(private readonly deps: CcRecorderDeps) {
@@ -143,7 +151,16 @@ export class CcRecorder {
   }
 
   onPcm(chunk: Buffer): void {
-    if (!this.deps.enabled()) return;
+    if (!this.deps.enabled()) {
+      // Disabled mid-clip: the in-flight clip is abandoned (not flushed) and
+      // the ring is dropped, so neither a stale partial clip nor stale
+      // pre-roll of arbitrary age can survive into a later, re-enabled span.
+      this.freqHz = null;
+      this.clip = [];
+      this.clipBytes = 0;
+      this.ring.clear();
+      return;
+    }
     if (this.freqHz === null) { this.ring.write(chunk); return; }
     const cap = Math.max(1, this.deps.maxSeconds()) * SOURCE_RATE * 2;
     const room = cap - this.clipBytes;
@@ -152,6 +169,7 @@ export class CcRecorder {
     this.clipBytes += take.length;
     if (this.clipBytes >= cap) {
       this.cappedId = this.currentId;
+      this.cappedAtMs = this.now();
       this.flush();
     }
   }
@@ -161,8 +179,10 @@ export class CcRecorder {
     this.currentId = channelId;
     this.flush();
     if (!this.deps.enabled() || channelId === null) return;
-    // Same span as the one we already capped: do not start over.
-    if (channelId === this.cappedId) return;
+    // Same span as the one we already capped: suppress only within a short
+    // flap window (a squelch stutter inside the same transmission) — a
+    // genuine later hit on the same frequency must still record.
+    if (channelId === this.cappedId && this.now() - this.cappedAtMs < CAP_FLAP_WINDOW_MS) return;
     this.cappedId = null;
     const match = CC_LANE_RE.exec(channelId);
     if (!match?.[1]) return;
@@ -170,9 +190,14 @@ export class CcRecorder {
     if (!this.deps.isRecordable(freqHz)) return;
     this.freqHz = freqHz;
     // Seed with the pre-roll: the carrier opened slightly before this event.
+    // Clamped to the per-clip cap so a small `maxSeconds()` (from an older
+    // config file predating the schema floor) can never seed a "clip" that
+    // is entirely pre-roll audio recorded before the lane took the speaker.
+    const cap = Math.max(1, this.deps.maxSeconds()) * SOURCE_RATE * 2;
     const preroll = this.ring.read();
-    this.clip = preroll.length > 0 ? [preroll] : [];
-    this.clipBytes = preroll.length;
+    const seed = preroll.length > cap ? preroll.subarray(preroll.length - cap) : preroll;
+    this.clip = seed.length > 0 ? [seed] : [];
+    this.clipBytes = seed.length;
   }
 
   /** Write whatever is in flight. Safe to call when nothing is recording. */

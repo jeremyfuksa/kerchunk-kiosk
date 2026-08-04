@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { decimate48kTo8k, encodeWav8k, PrerollRing, CcRecorder } from "../src/backend/ccRecorder.js";
@@ -87,7 +87,10 @@ describe("CcRecorder", () => {
   let enabled: boolean;
   let recordable: boolean;
 
-  function makeRecorder(maxSeconds = 20) {
+  // Must match the module-private CAP_FLAP_WINDOW_MS in ccRecorder.ts.
+  const CAP_FLAP_WINDOW_MS = 3_000;
+
+  function makeRecorder(maxSeconds = 20, now: () => number = () => Date.now()) {
     return new CcRecorder({
       store,
       enabled: () => enabled,
@@ -95,16 +98,27 @@ describe("CcRecorder", () => {
       maxSeconds: () => maxSeconds,
       maxBytes: () => 50 * 1024 * 1024,
       knownFreqs: () => [],
-      now: () => Date.now(),
+      now,
     });
   }
 
-  /** `seconds` of 48 kHz mono s16 tone-ish data (non-zero so it is distinguishable). */
-  const feed = (seconds: number) => {
+  /** `seconds` of 48 kHz mono s16 data at a given amplitude. Each test uses a
+   *  distinct marker per phase so the WRITTEN CLIP CONTENT (not just its
+   *  length) can be checked: a recorder that captured a neighbouring
+   *  channel's bytes, or spliced two spans together, must fail a content
+   *  assertion even if the duration looks right. */
+  const feed = (seconds: number, marker = 1000) => {
     const buf = Buffer.alloc(Math.round(seconds * 48_000) * 2);
-    for (let i = 0; i < buf.length / 2; i++) buf.writeInt16LE(1000, i * 2);
+    for (let i = 0; i < buf.length / 2; i++) buf.writeInt16LE(marker, i * 2);
     return buf;
   };
+
+  /** Reads a written clip straight off disk (past the 44-byte WAV header) as
+   *  8 kHz s16 samples, so tests can assert on actual audio content. */
+  function readClipSamples(freqHz: number): number[] {
+    const buf = readFileSync(store.pathFor(freqHz));
+    return readS16(buf.subarray(44));
+  }
 
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), "ccr-"));
@@ -116,23 +130,29 @@ describe("CcRecorder", () => {
 
   it("writes a clip when a close call lane takes and then loses the speaker", () => {
     const rec = makeRecorder();
-    rec.onPcm(feed(1));
+    rec.onPcm(feed(1, 111));
     rec.onAudible("cc_154570000");
-    rec.onPcm(feed(3));
+    rec.onPcm(feed(3, 222));
     rec.onAudible(null);
     const meta = store.meta(154_570_000);
     expect(meta).not.toBeNull();
     // 3 s of hit plus the 2 s pre-roll cap, of which only 1 s was buffered.
     expect(meta!.seconds).toBeCloseTo(4, 1);
+    const samples = readClipSamples(154_570_000);
+    expect(samples.slice(0, 8_000).every((v) => v === 111)).toBe(true);
+    expect(samples.slice(8_000).every((v) => v === 222)).toBe(true);
   });
 
   it("includes pre-roll from before the audible event", () => {
     const rec = makeRecorder();
-    rec.onPcm(feed(5));            // ring keeps the last 2 s
+    rec.onPcm(feed(5, 111));       // ring keeps the last 2 s
     rec.onAudible("cc_154570000");
-    rec.onPcm(feed(1));
+    rec.onPcm(feed(1, 222));
     rec.onAudible(null);
     expect(store.meta(154_570_000)!.seconds).toBeCloseTo(3, 1);
+    const samples = readClipSamples(154_570_000);
+    expect(samples.slice(0, 16_000).every((v) => v === 111)).toBe(true);
+    expect(samples.slice(16_000).every((v) => v === 222)).toBe(true);
   });
 
   it("ignores audible spans that are not close call lanes", () => {
@@ -146,11 +166,13 @@ describe("CcRecorder", () => {
   it("stops at the length cap even while the lane still holds the speaker", () => {
     const rec = makeRecorder(2);
     rec.onAudible("cc_154570000");
-    rec.onPcm(feed(10));
+    rec.onPcm(feed(10, 333));
     expect(store.meta(154_570_000)!.seconds).toBeCloseTo(2, 1);
+    const samples = readClipSamples(154_570_000);
+    expect(samples.every((v) => v === 333)).toBe(true);
   });
 
-  it("does not re-open a clip for the same span after the cap fires", () => {
+  it("does not re-open a clip for the same span immediately after the cap fires", () => {
     const rec = makeRecorder(2);
     rec.onAudible("cc_154570000");
     rec.onPcm(feed(10));
@@ -159,25 +181,97 @@ describe("CcRecorder", () => {
     expect(store.meta(154_570_000)!.ts).toBe(first);
   });
 
+  it("records a later, genuine hit on the same lane once the flap window has passed", () => {
+    let t = 0;
+    const rec = makeRecorder(2, () => t);
+    rec.onAudible("cc_154570000");
+    rec.onPcm(feed(10, 444));      // caps at 2 s, cappedId = this lane
+    rec.onAudible(null);
+    t += CAP_FLAP_WINDOW_MS + 1_000; // well past the flap window
+    rec.onAudible("cc_154570000"); // a genuine later hit — must NOT be suppressed
+    rec.onPcm(feed(1, 555));
+    rec.onAudible(null);
+    // The second write overwrote the file at this frequency; its content must
+    // be entirely the second hit, proving the lane recorded again.
+    const samples = readClipSamples(154_570_000);
+    expect(samples.every((v) => v === 555)).toBe(true);
+  });
+
+  it("onAudible called twice in a row with the same id is a no-op and does not truncate the in-flight clip", () => {
+    const rec = makeRecorder();
+    rec.onAudible("cc_154570000");
+    rec.onPcm(feed(1, 111));
+    rec.onAudible("cc_154570000"); // duplicate — must not flush early
+    rec.onPcm(feed(1, 222));
+    rec.onAudible(null);
+    const samples = readClipSamples(154_570_000);
+    expect(samples.some((v) => v === 111)).toBe(true);
+    expect(samples.some((v) => v === 222)).toBe(true);
+  });
+
+  it("clamps the pre-roll seed to the cap even if maxSeconds is configured below the pre-roll", () => {
+    // The schema now floors closeCallSampleSeconds above PREROLL_SECONDS, but
+    // an older config file (or a bad edit) could still hand the recorder a
+    // smaller value — the seed clamp is the code-level backstop.
+    const rec = makeRecorder(1); // below PREROLL_SECONDS (2 s)
+    rec.onPcm(feed(3, 111));     // ring ends up holding 2 s of 111
+    rec.onAudible("cc_154570000");
+    rec.onAudible(null);
+    const meta = store.meta(154_570_000);
+    expect(meta).not.toBeNull();
+    expect(meta!.seconds).toBeLessThanOrEqual(1.01);
+  });
+
   it("flushes the old clip and starts a new one when the lane changes", () => {
     const rec = makeRecorder();
     rec.onAudible("cc_154570000");
-    rec.onPcm(feed(1));
+    rec.onPcm(feed(1, 111));
     rec.onAudible("cc_155100000");
-    rec.onPcm(feed(1));
+    rec.onPcm(feed(1, 222));
     rec.onAudible(null);
     expect(store.meta(154_570_000)).not.toBeNull();
     expect(store.meta(155_100_000)).not.toBeNull();
+    // Neither clip may contain a sample from the other lane's span.
+    expect(readClipSamples(154_570_000).every((v) => v === 111)).toBe(true);
+    expect(readClipSamples(155_100_000).every((v) => v === 222)).toBe(true);
   });
 
-  it("records nothing while disabled, and keeps no pre-roll", () => {
+  it("records nothing while disabled, and the next clip after re-enabling contains no pre-disable audio", () => {
     enabled = false;
     const rec = makeRecorder();
-    rec.onPcm(feed(3));
+    rec.onPcm(feed(3, 999));
     rec.onAudible("cc_154570000");
-    rec.onPcm(feed(3));
+    rec.onPcm(feed(3, 999));
     rec.onAudible(null);
     expect(store.list()).toEqual([]);
+
+    enabled = true;
+    rec.onPcm(feed(1, 222));       // rebuilds the ring from scratch post re-enable
+    rec.onAudible("cc_154570000");
+    rec.onPcm(feed(1, 333));
+    rec.onAudible(null);
+    const samples = readClipSamples(154_570_000);
+    expect(samples.some((v) => v === 999)).toBe(false);
+    expect(new Set(samples)).toEqual(new Set([222, 333]));
+  });
+
+  it("disabling mid-clip abandons the in-flight clip; the next clip after re-enabling has no pre-disable audio", () => {
+    const rec = makeRecorder();
+    rec.onAudible("cc_154570000");
+    rec.onPcm(feed(1, 111));       // in-flight clip building
+    enabled = false;
+    rec.onPcm(feed(1, 999));       // must be dropped, not appended
+    rec.onAudible(null);           // still disabled: no flush
+    expect(store.list()).toEqual([]);
+
+    enabled = true;
+    rec.onPcm(feed(1, 222));
+    rec.onAudible("cc_154570000");
+    rec.onPcm(feed(1, 333));
+    rec.onAudible(null);
+    const samples = readClipSamples(154_570_000);
+    expect(samples.some((v) => v === 111 || v === 999)).toBe(false);
+    expect(new Set(samples)).toEqual(new Set([222, 333]));
   });
 
   it("skips a frequency the server says is not recordable", () => {
