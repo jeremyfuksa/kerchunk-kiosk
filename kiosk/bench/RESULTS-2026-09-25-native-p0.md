@@ -39,8 +39,10 @@ Reference check (3 s, 11 real lanes): `REF OK max_err_db=0.014 windows=297`.
 GNU Radio helper baseline on the same box: ~223–234% (2026-09-25, meas.sh 60 s ×3).
 
 Verdict: **GO** — 5.5% core_pct for the full config (12 lanes + 1 demod + CC)
-vs. the 60% go line, roughly 40x headroom under load and likely more headroom
-idle. The channelizer (power-only stage) is the largest single contributor at
-3.7 of the 5.5 points (~67%), with FM demod adding ~1.1 points and Close Call
-FFT adding the remaining ~0.7 — the 12-lane overlap-save channelizer, not
-demod or CC, dominates the cost.
+is ~11x under the 60% go line (60 / 5.5), and separately ~40x less than the
+GNU Radio helper baseline (223–234% / 5.5% ≈ 41–43x) — measured under load
+and likely more headroom idle. Package temp stayed well under the 90 °C
+safety trip throughout (78 → 86 °C). The channelizer (power-only stage) is
+the largest single contributor at 3.7 of the 5.5 points (~67%), with FM
+demod adding ~1.1 points and Close Call FFT adding the remaining ~0.7 — the
+12-lane overlap-save channelizer, not demod or CC, dominates the cost.
