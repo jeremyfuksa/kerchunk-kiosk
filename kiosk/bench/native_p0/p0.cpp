@@ -65,10 +65,123 @@ struct Lane {
   std::vector<cf> out;  // lane samples of the current block (for the demod lane)
 };
 
-struct Demod;  // Task 2
-static void demod_block(Demod*, const std::vector<cf>&) {}
-struct CcFft;  // Task 2
-static void cc_feed(CcFft*, const cf*, int) {}
+// ---- Demod lane: FM discriminator, quieting meter, de-emphasis, audio LPF, 50k->48k ----
+static std::vector<float> lowpass(int ntaps, double fc_norm) {   // Hamming windowed sinc, unity DC
+  std::vector<float> h(ntaps);
+  double sum = 0;
+  for (int i = 0; i < ntaps; i++) {
+    double m = i - (ntaps - 1) / 2.0;
+    double s = m == 0 ? 2 * fc_norm : std::sin(2 * M_PI * fc_norm * m) / (M_PI * m);
+    h[i] = (float)(s * (0.54 - 0.46 * std::cos(2 * M_PI * i / (ntaps - 1))));
+    sum += h[i];
+  }
+  for (float& v : h) v = (float)(v / sum);
+  return h;
+}
+
+struct Fir {                      // plain FIR with a history ring (lengths are small here)
+  std::vector<float> h, hist;
+  int pos = 0;
+  explicit Fir(std::vector<float> taps) : h(std::move(taps)), hist(h.size(), 0.f) {}
+  float step(float x) {
+    hist[pos] = x;
+    float acc = 0;
+    int n = (int)h.size(), j = pos;
+    for (int i = 0; i < n; i++) { acc += h[i] * hist[j]; if (--j < 0) j = n - 1; }
+    if (++pos == n) pos = 0;
+    return acc;
+  }
+};
+
+struct Demod {
+  cf prev{1, 0};
+  Fir noise_hpf, audio_lpf;
+  float deemph = 0, deemph_a;
+  // 50k -> 48k polyphase (up 24, down 25) over a 24*16-tap prototype.
+  std::vector<float> proto;
+  std::vector<float> rs_hist;
+  int rs_phase = 0;
+  double noise_acc = 0, audio_acc = 0;
+  long noise_n = 0, out_n = 0;
+  Demod()
+      : noise_hpf([] {                                   // HPF = delta - LPF(8 kHz)
+          auto h = lowpass(41, 8000.0 / LANE_RATE);
+          for (float& v : h) v = -v;
+          h[20] += 1.0f;
+          return h;
+        }()),
+        audio_lpf(lowpass(63, 3500.0 / LANE_RATE)),
+        deemph_a((float)std::exp(-1.0 / (LANE_RATE * 75e-6))),
+        proto(lowpass(24 * 16, 20000.0 / (LANE_RATE * 24.0))),   // 20 kHz at the 1.2 MHz upsampled rate
+        rs_hist(16, 0.f) {
+    for (float& v : proto) v *= 24;                     // interpolation gain
+  }
+  void push48(float x) {                                 // feed one 50k sample, emit 48k outputs
+    rs_hist.erase(rs_hist.begin());
+    rs_hist.push_back(x);
+    // Each input advances the output phase by 24; emit while phase < 24 (i.e. ~24/25 outputs per input).
+    while (rs_phase < 24) {
+      float acc = 0;
+      for (int k = 0; k < 16; k++) acc += proto[rs_phase + 24 * k] * rs_hist[15 - k];
+      audio_acc += (double)acc * acc;
+      out_n++;
+      rs_phase += 25;
+    }
+    rs_phase -= 24;
+  }
+};
+
+static void demod_block(Demod* dm, const std::vector<cf>& x) {
+  if (!dm) return;
+  for (const cf& v : x) {
+    cf c = v * std::conj(dm->prev);
+    dm->prev = v;
+    float disc = std::atan2(c.imag(), c.real()) * (LANE_RATE / (2 * (float)M_PI * 5000.f));  // +-1 at 5 kHz dev
+    float n = dm->noise_hpf.step(disc);
+    dm->noise_acc += (double)n * n;
+    dm->noise_n++;
+    dm->deemph = dm->deemph_a * dm->deemph + (1 - dm->deemph_a) * disc;
+    dm->push48(dm->audio_lpf.step(dm->deemph));
+  }
+}
+
+// ---- Close Call: 2048-pt Blackman-Harris FFT at 20 frames/s, |X|^2 averaged ----
+static constexpr int CC_N = 2048, CC_FPS = 20;
+struct CcFft {
+  fftwf_complex *in, *out;
+  fftwf_plan plan;
+  std::vector<float> win, acc;
+  long every, since = 0;
+  int fill = 0, frames = 0;
+  explicit CcFft(double rate) : win(CC_N), acc(CC_N, 0.f), every((long)(rate / CC_FPS)) {
+    in = fftwf_alloc_complex(CC_N);
+    out = fftwf_alloc_complex(CC_N);
+    plan = fftwf_plan_dft_1d(CC_N, in, out, FFTW_FORWARD, FFTW_MEASURE);
+    for (int i = 0; i < CC_N; i++) {
+      double r = 2 * M_PI * i / (CC_N - 1);
+      win[i] = (float)(0.35875 - 0.48829 * std::cos(r) + 0.14128 * std::cos(2 * r) - 0.01168 * std::cos(3 * r));
+    }
+  }
+};
+
+static void cc_feed(CcFft* cc, const cf* s, int n) {
+  if (!cc) return;
+  for (int i = 0; i < n; i++) {
+    if (cc->fill > 0 || cc->since >= cc->every) {
+      cc->in[cc->fill][0] = s[i].real() * cc->win[cc->fill];
+      cc->in[cc->fill][1] = s[i].imag() * cc->win[cc->fill];
+      if (++cc->fill == CC_N) {
+        fftwf_execute(cc->plan);
+        for (int k = 0; k < CC_N; k++) cc->acc[k] += cc->out[k][0] * cc->out[k][0] + cc->out[k][1] * cc->out[k][1];
+        cc->frames++;
+        cc->fill = 0;
+        cc->since = 0;
+      }
+    } else {
+      cc->since++;
+    }
+  }
+}
 
 int main(int argc, char** argv) {
   Args a = parse(argc, argv);
@@ -123,6 +236,10 @@ int main(int argc, char** argv) {
     lanes.push_back(l);
   }
 
+  Demod dm_obj;
+  Demod* dm = a.demod >= 0 && a.demod < (int)lanes.size() ? &dm_obj : nullptr;
+  CcFft* cc = a.cc ? new CcFft(a.rate) : nullptr;
+
   fftwf_complex* fin = fftwf_alloc_complex(N);
   fftwf_complex* fout = fftwf_alloc_complex(N);
   fftwf_complex* lin = fftwf_alloc_complex(M);
@@ -148,7 +265,7 @@ int main(int argc, char** argv) {
     std::memmove(fin, fin + HOP, sizeof(fftwf_complex) * HOP);
     const uint8_t* s = &raw[2 * pos];
     for (int i = 0; i < HOP; i++) { fin[HOP + i][0] = lut[s[2 * i]]; fin[HOP + i][1] = lut[s[2 * i + 1]]; }
-    cc_feed(nullptr, reinterpret_cast<cf*>(fin + HOP), HOP);
+    cc_feed(cc, reinterpret_cast<cf*>(fin + HOP), HOP);
     fftwf_execute(pf);
     const cf* X = reinterpret_cast<const cf*>(fout);
     for (size_t li = 0; li < lanes.size(); li++) {
@@ -174,7 +291,7 @@ int main(int argc, char** argv) {
       }
       // Renormalize the NCO once per block so float drift can't grow its magnitude.
       l.nco /= std::abs(l.nco);
-      if ((int)li == a.demod) demod_block(nullptr, l.out);
+      if ((int)li == a.demod) demod_block(dm, l.out);
     }
     lane_samples += KEEP;
     if (lane_samples >= WIN) {
@@ -192,6 +309,12 @@ int main(int argc, char** argv) {
   double cpu = cpu_seconds() - c0;
   if (dump) fclose(dump);
   double iq_s = nsamp / a.rate;
+  if (dm) {
+    printf("DEMOD audio_rms=%.4f noise_db=%.2f out48k=%ld\n",
+           std::sqrt(dm->audio_acc / std::max(1L, dm->out_n)),
+           10 * std::log10(dm->noise_acc / std::max(1L, dm->noise_n) + 1e-20), dm->out_n);
+  }
+  if (cc) printf("CC frames=%d\n", cc->frames);
   printf("P0 iq_s=%.2f cpu_s=%.3f core_pct=%.1f lanes=%zu demod=%d cc=%d\n",
          iq_s, cpu, 100 * cpu / iq_s, lanes.size(), a.demod >= 0 ? 1 : 0, a.cc ? 1 : 0);
   return 0;

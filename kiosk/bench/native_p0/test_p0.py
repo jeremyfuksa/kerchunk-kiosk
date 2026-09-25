@@ -46,4 +46,20 @@ with tempfile.TemporaryDirectory() as d:
     out2, db2 = run(p, chans, ("--demod", "0"))
     assert np.allclose(db, db2, atol=0.01), (db, db2)
     assert "demod=1" in out2.strip().splitlines()[-1]
+    # FM demod lane on a tone FM-modulated at 1 kHz, 3 kHz deviation: audio rms
+    # must be clearly non-zero and the quieting noise (8-25 kHz) low vs pure noise.
+    fm = 0.3 * np.exp(1j * (2 * np.pi * A_HZ * t + (3000 / 1000) * np.sin(2 * np.pi * 1000 * t)))
+    pf = os.path.join(d, "fm.cu8")
+    write_cu8(pf, fm + 0.004 * (rng.standard_normal(n) + 1j * rng.standard_normal(n)))
+    out3, _ = run(pf, [A_HZ], ("--demod", "0"))
+    dl = [l for l in out3.splitlines() if l.startswith("DEMOD ")][0]
+    kv = dict(p.split("=") for p in dl.split()[1:])
+    assert float(kv["audio_rms"]) > 0.05, dl
+    assert int(kv["out48k"]) > 0.9 * 48_000, dl        # ~1 s of 48 kHz audio
+    pn = os.path.join(d, "noise.cu8")
+    write_cu8(pn, 0.05 * (rng.standard_normal(n) + 1j * rng.standard_normal(n)))
+    out4, _ = run(pn, [A_HZ], ("--demod", "0"))
+    dl4 = [l for l in out4.splitlines() if l.startswith("DEMOD ")][0]
+    kv4 = dict(p.split("=") for p in dl4.split()[1:])
+    assert float(kv4["noise_db"]) - float(kv["noise_db"]) > 10, (dl, dl4)   # quieting
 print("test_p0: OK")
