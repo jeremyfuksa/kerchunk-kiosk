@@ -30,7 +30,7 @@ static double freq_of(const std::vector<float>& y, size_t from, double rate) {
 }
 
 TEST(resampler_speaker_50k_to_48k) {
-  kc::Resampler r(24, 25, kc::LANE_RATE, 20'000, 4'000);
+  kc::Resampler r(24, 25, kc::LANE_RATE, kc::SPEAKER_RS_CUTOFF_HZ, kc::SPEAKER_RS_TRANSITION_HZ);
   auto x = sine(kc::LANE_RATE, 50'000, 1000, 0.5);
   std::vector<float> y;
   int got = r.push(x.data(), 20'000, y);
@@ -43,7 +43,7 @@ TEST(resampler_speaker_50k_to_48k) {
 
 TEST(resampler_same_50k_to_22050_rejects_images) {
   auto level = [](double f) {
-    kc::Resampler r(441, 1000, kc::LANE_RATE, 10'000, 1'000);
+    kc::Resampler r(441, 1000, kc::LANE_RATE, kc::SAME_RS_CUTOFF_HZ, kc::SAME_RS_TRANSITION_HZ);
     auto x = sine(kc::LANE_RATE, 50'000, f, 0.5);
     std::vector<float> y;
     r.push(x.data(), (int)x.size(), y);
@@ -56,7 +56,7 @@ TEST(resampler_same_50k_to_22050_rejects_images) {
 }
 
 TEST(resampler_reset_restarts_cleanly) {
-  kc::Resampler r(24, 25, kc::LANE_RATE, 20'000, 4'000);
+  kc::Resampler r(24, 25, kc::LANE_RATE, kc::SPEAKER_RS_CUTOFF_HZ, kc::SPEAKER_RS_TRANSITION_HZ);
   auto x = sine(kc::LANE_RATE, 5000, 1000, 0.5);
   std::vector<float> a, b;
   r.push(x.data(), (int)x.size(), a);

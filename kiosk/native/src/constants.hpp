@@ -20,4 +20,8 @@ inline constexpr double AUDIO_LPF_HZ = 3500;
 inline constexpr double AUDIO_LPF_TRANSITION_HZ = 1500;
 inline constexpr int AUDIO_RATE = 48000;           // speaker/tee rate (50k -> 48k = 24/25)
 inline constexpr int SAME_RATE = 22050;            // multimon-ng raw rate (50k -> 22.05k = 441/1000)
+inline constexpr double SPEAKER_RS_CUTOFF_HZ = 20000;      // 50k->48k resampler -6 dB point
+inline constexpr double SPEAKER_RS_TRANSITION_HZ = 4000;   // 50k->48k resampler transition width
+inline constexpr double SAME_RS_CUTOFF_HZ = 10000;         // 50k->22.05k resampler -6 dB point
+inline constexpr double SAME_RS_TRANSITION_HZ = 1000;      // 50k->22.05k resampler transition width
 }  // namespace kc
