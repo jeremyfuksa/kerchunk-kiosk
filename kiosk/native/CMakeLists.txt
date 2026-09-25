@@ -8,7 +8,10 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 # Always built on the machine that runs it (the appliance, or the CI runner that tests it).
 # No -ffast-math: it silently breaks NaN/inf checks the engine relies on.
-set(CMAKE_CXX_FLAGS_RELEASE "-O3 -march=native")
+# Appended (not `set`) so CMake's default Release flags survive -- notably -DNDEBUG, which a
+# bare `set(CMAKE_CXX_FLAGS_RELEASE ...)` would drop -- and so a user/cache override of
+# CMAKE_CXX_FLAGS_RELEASE isn't clobbered.
+string(APPEND CMAKE_CXX_FLAGS_RELEASE " -O3 -march=native")
 add_compile_options(-Wall -Wextra -Wpedantic)
 
 find_package(PkgConfig REQUIRED)
