@@ -27,7 +27,11 @@ Hf = np.fft.fft(h, L)
 rows = list(csv.reader(open(a.dump)))
 dump_t = np.array([float(r[0]) for r in rows[1:]])
 dump = np.array([[float(v) for v in r[1:]] for r in rows[1:]])
+if dump.shape[1] != len(a.chan):
+    print("REF FAIL dump has %d channel columns, expected %d (--chan count)" % (dump.shape[1], len(a.chan)))
+    sys.exit(1)
 worst = (0.0, None)
+n_compared = 0
 for ci, off in enumerate(a.chan):
     y = np.fft.ifft(np.fft.fft(x * np.exp(-2j * np.pi * off * t), L) * Hf)[:len(x)][::D]
     p = np.abs(y) ** 2
@@ -38,9 +42,13 @@ for ci, off in enumerate(a.chan):
             break
         ref = 10 * np.log10(p[start:end].mean() + 1e-20)
         err = abs(ref - dump[wi, ci])
+        n_compared += 1
         if err > worst[0]:
             worst = (err, (off, dump_t[wi], ref, dump[wi, ci]))
+if n_compared == 0:
+    print("REF FAIL no windows compared")
+    sys.exit(1)
 if worst[0] > 0.5:
     print("REF FAIL max_err_db=%.3f at off=%s t=%s ref=%.2f bench=%.2f" % (worst[0], *worst[1]))
     sys.exit(1)
-print("REF OK max_err_db=%.3f" % worst[0])
+print("REF OK max_err_db=%.3f windows=%d" % (worst[0], n_compared))
