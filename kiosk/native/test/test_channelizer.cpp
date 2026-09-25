@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <cmath>
 #include <complex>
+#include <limits>
 #include <random>
 #include <vector>
 
@@ -93,6 +94,54 @@ TEST(channelizer_phase_continuity_even_k0) { check_phase_continuity(250'000); } 
 TEST(channelizer_phase_continuity_odd_k0) { check_phase_continuity(250'390.625); }    // k0 = 641
 TEST(channelizer_phase_continuity_offgrid) { check_phase_continuity(250'200); }       // k0 = 641, resid < 0
 TEST(channelizer_phase_continuity_negative_odd_k0) { check_phase_continuity(-412'890.625); }  // k0 = -1057
+
+TEST(channelizer_set_lanes_accepts_offset_at_limit) {
+  kc::Channelizer ch(RATE);
+  const double limit = RATE / 2.0 - kc::LANE_RATE / 2.0;
+  ch.set_lanes({limit, -limit});
+  CHECK(ch.lanes() == 2);
+}
+
+TEST(channelizer_set_lanes_throws_just_beyond_limit) {
+  kc::Channelizer ch(RATE);
+  const double limit = RATE / 2.0 - kc::LANE_RATE / 2.0;
+  CHECK_THROWS(ch.set_lanes({limit + 1.0}));
+  CHECK_THROWS(ch.set_lanes({-(limit + 1.0)}));
+}
+
+TEST(channelizer_set_lanes_throws_on_nan_and_inf) {
+  kc::Channelizer ch(RATE);
+  CHECK_THROWS(ch.set_lanes({std::nan("")}));
+  CHECK_THROWS(ch.set_lanes({std::numeric_limits<double>::infinity()}));
+  CHECK_THROWS(ch.set_lanes({-std::numeric_limits<double>::infinity()}));
+}
+
+TEST(channelizer_set_lanes_strong_exception_guarantee) {
+  kc::Channelizer ch(RATE);
+  ch.set_lanes({250'000, -300'000});
+  CHECK(ch.lanes() == 2);
+  const double limit = RATE / 2.0 - kc::LANE_RATE / 2.0;
+  // Second offset in the batch is invalid; the whole call must throw before mutating any state,
+  // including lanes already validated earlier in the same offsets_hz vector.
+  CHECK_THROWS(ch.set_lanes({250'000, limit + 1.0}));
+  CHECK(ch.lanes() == 2);
+
+  // Not just the count: the previous lanes must still actually demodulate. Measure lane 0's
+  // (250'000) level directly, the same way channelizer_level_offgrid_and_rejection does.
+  const size_t n = RATE;
+  auto x = sig::tone(RATE, n, 250'000, 0.3);
+  kc::ChunkPower m0;
+  double acc = 0; long cnt = 0;
+  ch.push_cf(x.data(), n, [&](const kc::cf* out, int n_l, int per, const kc::cf*, int) {
+    CHECK(n_l == 2);
+    const kc::cf* y0 = out;  // lane 0 = 250'000
+    for (int d = 0; d < per; d++) {
+      if (m0.chunks() >= 5) { acc += std::norm(y0[d]); cnt++; }
+      m0.push(&y0[d], 1);
+    }
+  });
+  CHECK_NEAR(sig::db_power(acc / (double)(cnt ? cnt : 1)), 10 * std::log10(0.09), 0.3);
+}
 
 TEST(channelizer_push_size_invariance) {
   const size_t n = 200'000;

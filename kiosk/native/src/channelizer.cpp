@@ -39,15 +39,31 @@ Channelizer::Channelizer(int rate) : rate_(rate) {
 
 void Channelizer::set_lanes(const std::vector<double>& offsets_hz) {
   const double binw = (double)rate_ / n_;
-  lanes_.clear();
+  // Beyond this, an offset wraps through the `% n_` bin arithmetic below and silently
+  // demodulates a different (aliased) frequency instead of the requested one.
+  const double limit = rate_ / 2.0 - LANE_RATE / 2.0;
+  for (double off : offsets_hz) {
+    if (!std::isfinite(off))
+      throw std::invalid_argument("Channelizer::set_lanes: offset " + std::to_string(off) + " Hz is not finite");
+    if (std::fabs(off) > limit)
+      throw std::invalid_argument("Channelizer::set_lanes: offset " + std::to_string(off) +
+                                  " Hz exceeds the +-" + std::to_string(limit) +
+                                  " Hz limit (rate/2 - LANE_RATE/2) at rate " + std::to_string(rate_));
+  }
+  // Build into a local vector first: all offsets are already validated above, but this also
+  // keeps the strong exception guarantee if a future change adds a throwing step here — a
+  // throwing set_lanes must leave the previously-installed lanes untouched.
+  std::vector<Lane> lanes;
+  lanes.reserve(offsets_hz.size());
   for (double off : offsets_hz) {
     Lane l;
     l.k0 = (int)std::lround(off / binw);
     double resid = off - l.k0 * binw;
     double w = -2 * M_PI * resid / LANE_RATE;
     l.nco_step = cf((float)std::cos(w), (float)std::sin(w));
-    lanes_.push_back(l);
+    lanes.push_back(l);
   }
+  lanes_ = std::move(lanes);
   out_.assign(lanes_.size() * kLaneSamplesPerHop, cf(0, 0));
   block_ = 0;
 }
