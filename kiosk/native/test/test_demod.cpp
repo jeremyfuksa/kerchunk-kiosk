@@ -32,6 +32,49 @@ TEST(fm_discriminator_static_offset) {
   CHECK_NEAR(last, 0.2, 1e-3);
 }
 
+TEST(fm_discriminator_reset_reprimes) {
+  // Run over real history so prev_ holds a genuine phase, not the zero-init default.
+  auto x = sig::tone(LR, 100, 1000, 0.3);
+  kc::FmDiscriminator d;
+  kc::cf last{0, 0};
+  for (auto v : x) {
+    d.step(v);
+    last = v;
+  }
+  d.reset();
+  // A sample at ~pi phase away from the pre-reset history: if reset didn't take,
+  // this would read as a huge rotation instead of the priming zero.
+  kc::cf jump = -last;
+  CHECK(d.step(jump) == 0.0f);
+  CHECK_NEAR(d.step(jump), 0.0, 1e-6);  // no rotation on the next sample -> 0
+}
+
+TEST(am_envelope_reset_reprimes) {
+  kc::AmEnvelope e;
+  for (int i = 0; i < 10'000; i++) e.step(kc::cf(0.5f, 0.f));
+  e.reset();
+  // Without re-priming this would read ~ 0.01/0.5 - 1 = -0.98 against the stale carrier.
+  float first = e.step(kc::cf(0.01f, 0.f));
+  CHECK_NEAR(first, 0.0, 1e-3);
+}
+
+TEST(quieting_meter_reset_clears) {
+  kc::FmDiscriminator d;
+  kc::QuietingMeter q;
+  auto x = sig::noise(kc::NOISE_WINDOW * 4, 0.05, 8);
+  for (auto v : x) {
+    q.push(d.step(v));
+    if (q.ready()) break;
+  }
+  CHECK(q.ready());
+  q.reset();
+  CHECK(!q.ready());
+  // Zeros in -> zeros out only if reset also clears the HPF's own history.
+  for (int i = 0; i < kc::NOISE_WINDOW; i++) q.push(0.0f);
+  CHECK(q.ready());
+  CHECK(q.db() < -150.0);
+}
+
 TEST(quieting_separates_carrier_from_noise) {
   auto carrier = sig::fm_tone(LR, 50'000, 0, 3000, 1000, 0.3);
   sig::add(carrier, sig::noise(50'000, 0.004, 5));
