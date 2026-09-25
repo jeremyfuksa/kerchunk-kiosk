@@ -56,6 +56,20 @@ with tempfile.TemporaryDirectory() as d:
     kv = dict(p.split("=") for p in dl.split()[1:])
     assert float(kv["audio_rms"]) > 0.05, dl
     assert int(kv["out48k"]) > 0.9 * 48_000, dl        # ~1 s of 48 kHz audio
+    # Odd-k0 block-phase continuity: same modulation, but centered on a channel
+    # whose bin index k0 is odd (250390.625 Hz -> k0=641, vs. A_HZ's even k0=640).
+    # The overlap-save sign flip only fires for odd k0; if it were wrong, a
+    # phase discontinuity every other block would inject a 390 Hz-rate click
+    # and blow up noise_db / shift audio_rms.
+    ODD_HZ = 250_390.625
+    fm_odd = 0.3 * np.exp(1j * (2 * np.pi * ODD_HZ * t + (3000 / 1000) * np.sin(2 * np.pi * 1000 * t)))
+    pfo = os.path.join(d, "fm_odd.cu8")
+    write_cu8(pfo, fm_odd + 0.004 * (rng.standard_normal(n) + 1j * rng.standard_normal(n)))
+    out3o, _ = run(pfo, [ODD_HZ], ("--demod", "0"))
+    dlo = [l for l in out3o.splitlines() if l.startswith("DEMOD ")][0]
+    kvo = dict(p.split("=") for p in dlo.split()[1:])
+    assert abs(float(kvo["audio_rms"]) - float(kv["audio_rms"])) < 0.05 * float(kv["audio_rms"]), (dl, dlo)
+    assert abs(float(kvo["noise_db"]) - float(kv["noise_db"])) < 1.0, (dl, dlo)
     pn = os.path.join(d, "noise.cu8")
     write_cu8(pn, 0.05 * (rng.standard_normal(n) + 1j * rng.standard_normal(n)))
     out4, _ = run(pn, [A_HZ], ("--demod", "0"))

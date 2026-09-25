@@ -93,8 +93,17 @@ struct Fir {                      // plain FIR with a history ring (lengths are 
   }
 };
 
+// Lane samples to exclude from noise_db/audio_rms meter accumulation at
+// startup: the discriminator's first output would otherwise be an arbitrary
+// angle(y0) impulse (up to +-5 after scaling) through the HPF, dominating the
+// 1 s mean. The DSP still runs across this window (cost stays honest) --
+// only the meter accounting is gated.
+static constexpr long METER_WARMUP_SAMPLES = 2500;  // 50 ms @ LANE_RATE
+
 struct Demod {
   cf prev{1, 0};
+  bool primed = false;
+  long sample_idx = 0;
   Fir noise_hpf, audio_lpf;
   float deemph = 0, deemph_a;
   // 50k -> 48k polyphase (up 24, down 25) over a 24*16-tap prototype.
@@ -116,15 +125,14 @@ struct Demod {
         rs_hist(16, 0.f) {
     for (float& v : proto) v *= 24;                     // interpolation gain
   }
-  void push48(float x) {                                 // feed one 50k sample, emit 48k outputs
+  void push48(float x, bool meter) {                     // feed one 50k sample, emit 48k outputs
     rs_hist.erase(rs_hist.begin());
     rs_hist.push_back(x);
     // Each input advances the output phase by 24; emit while phase < 24 (i.e. ~24/25 outputs per input).
     while (rs_phase < 24) {
       float acc = 0;
       for (int k = 0; k < 16; k++) acc += proto[rs_phase + 24 * k] * rs_hist[15 - k];
-      audio_acc += (double)acc * acc;
-      out_n++;
+      if (meter) { audio_acc += (double)acc * acc; out_n++; }
       rs_phase += 25;
     }
     rs_phase -= 24;
@@ -134,14 +142,20 @@ struct Demod {
 static void demod_block(Demod* dm, const std::vector<cf>& x) {
   if (!dm) return;
   for (const cf& v : x) {
+    bool meter = dm->sample_idx >= METER_WARMUP_SAMPLES;
+    dm->sample_idx++;
+    if (!dm->primed) {         // prime prev from the first-ever lane sample; no
+      dm->prev = v;             // discriminator output (and no meter accounting) for it.
+      dm->primed = true;
+      continue;
+    }
     cf c = v * std::conj(dm->prev);
     dm->prev = v;
     float disc = std::atan2(c.imag(), c.real()) * (LANE_RATE / (2 * (float)M_PI * 5000.f));  // +-1 at 5 kHz dev
     float n = dm->noise_hpf.step(disc);
-    dm->noise_acc += (double)n * n;
-    dm->noise_n++;
+    if (meter) { dm->noise_acc += (double)n * n; dm->noise_n++; }
     dm->deemph = dm->deemph_a * dm->deemph + (1 - dm->deemph_a) * disc;
-    dm->push48(dm->audio_lpf.step(dm->deemph));
+    dm->push48(dm->audio_lpf.step(dm->deemph), meter);
   }
 }
 
@@ -188,6 +202,11 @@ int main(int argc, char** argv) {
   const int D = (int)std::lround(a.rate / LANE_RATE);
   if (D * LANE_RATE != (int)a.rate) { fprintf(stderr, "rate must be a multiple of 50 kHz\n"); return 2; }
   const int N = M * D, HOP = N / 2, KEEP = M / 2;  // overlap-save: keep last half
+  if (NTAPS > N / 2 + 1) {
+    fprintf(stderr, "NTAPS=%d exceeds the overlap-save valid region for N=%d (need NTAPS <= N/2+1=%d); "
+                     "would overflow the %d-element filter FFT buffer\n", NTAPS, N, N / 2 + 1, N);
+    return 2;
+  }
 
   // Load the whole capture (excluded from timing).
   FILE* f = fopen(a.file.c_str(), "rb");
