@@ -80,11 +80,12 @@ struct Rig {
   FakeSource src;
   kc::SpscQueue<kc::Command> cmds{64};
   std::unique_ptr<kc::LiveLoop> loop;
+  long long spk = 0;   // speaker samples (48 kHz) emitted
   explicit Rig(bool close_call = false) {
     o.rate = RATE;
     o.close_call = close_call;
     e = std::make_unique<kc::Engine>(o, [this](const nlohmann::json& j) { auto k = j; k["t"] = e->now(); ev.push_back(k); },
-                                     nullptr, nullptr, nullptr);
+                                     [this](const int16_t*, int n) { spk += n; }, nullptr, nullptr);
     loop = std::make_unique<kc::LiveLoop>(*e, src, cmds, RATE);
   }
   void send(const std::string& line) { std::string err; auto c = kc::parse_command(line, err); CHECK(c.has_value()); if (c) cmds.try_push(*c); }
@@ -232,4 +233,20 @@ TEST(live_refused_retune_fails_the_loop_instead_of_scanning_the_old_window) {
   CHECK(r.loop->failed());
   CHECK(r.count("tuned") == 0);     // the tune never applied to samples from the old center
   CHECK(!r.loop->step());           // stays failed
+}
+
+TEST(live_retune_gap_keeps_the_speaker_clock_fed) {
+  // After the first tune applies, every 10 ms of wall time must reach the speaker as 480 samples --
+  // including the old-center + settle blocks a retune discards (else the ALSA ring starves on
+  // every group hop). 10 blocks audio, retune (3 old + 6 settle discarded), 10 blocks audio = 290 ms.
+  Rig r;
+  r.send(TUNE);
+  r.src.add(SETTLE_BLOCKS + 10, 1);   // first tune: its settle is pre-tune (no speaker yet), then 100 ms
+  r.run();
+  r.src.add(3, 1);
+  r.send(R"({"cmd":"tune","centerHz":147000000,"channels":[{"id":"b","freqHz":147050000}]})");
+  r.src.add(SETTLE_BLOCKS + 10, 2);
+  r.run();
+  CHECK(r.count("tuned") == 2);
+  CHECK_NEAR((double)r.spk, 0.29 * kc::AUDIO_RATE, 150);   // hop/resampler granularity; 200 ms without the fill
 }

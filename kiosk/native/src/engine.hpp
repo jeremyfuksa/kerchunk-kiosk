@@ -49,7 +49,9 @@ class Engine {
   void poll();
   void reset_lane(int i);
   void sync_speaker();   // point the speaker path at the scanner's current audible lane + gate
-  void sync_active();    // channelizer lane mask: parked slots off, except one the speaker still feeds
+  void sync_active();
+  void flush_audio();                // out48_ -> speaker + tee (s16)
+  void speak_silence(long long n);   // run the speaker path on silence for n IQ samples of wall time    // channelizer lane mask: parked slots off, except one the speaker still feeds
 
   EngineOptions opt_;
   Emit emit_;
@@ -71,6 +73,7 @@ class Engine {
   // samples_ is the hop-granular event clock (advanced as hops are processed); pushed_ counts every
   // input sample, including a partial hop that a retune discards -- tune() resyncs samples_ to it.
   long long samples_ = 0, pushed_ = 0, lane_samples_ = 0, next_poll_ = CHUNK_SAMPLES;
+  long long gap_lane_acc_ = 0;   // speak_silence remainder (IQ samples x LANE_RATE, mod rate)
   long polls_ = 0;
   long long drops_since_power_ = 0;
   double last_drop_log_ = -1e9;
