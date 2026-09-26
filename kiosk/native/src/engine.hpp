@@ -37,6 +37,7 @@ class Engine {
   void on_hop(const cf* lanes, int per, const cf* raw, int raw_n);
   void poll();
   void reset_lane(int i);
+  void sync_speaker();   // point the speaker path at the scanner's current audible lane + gate
 
   EngineOptions opt_;
   Emit emit_;
@@ -55,7 +56,9 @@ class Engine {
   std::vector<int16_t> s16_, same16_;
   double center_ = 0;
   bool tuned_ = false, cc_on_ = false, quit_ = false;
-  long long samples_ = 0, lane_samples_ = 0, next_poll_ = CHUNK_SAMPLES;
+  // samples_ is the hop-granular event clock (advanced as hops are processed); pushed_ counts every
+  // input sample, including a partial hop that a retune discards -- tune() resyncs samples_ to it.
+  long long samples_ = 0, pushed_ = 0, lane_samples_ = 0, next_poll_ = CHUNK_SAMPLES;
   long polls_ = 0;
 };
 }  // namespace kc

@@ -111,6 +111,7 @@ Binary: kerchunk-dsp (P1b replay), 11 channels (the 2 m group), Close Call on, d
   - open c146625000 db -18.2 @28.201 (still open at end of capture)
   - each open/close paired with `audible` c146625000 / null (9 audible events)
   - Same single periodic source (6 s period, ~0.5 s keyed + 2 s hang) the quieting survey found on this lane; no other lane opened.
+- Note on the `rf` values (-33.9 dB): `rf` is the GR-parity median of the lane's open-period power samples, and the open period includes the 2 s hang after each ~0.5 s burst. Most samples are therefore floor, so the median reports the floor rather than the burst power (bursts open at about -18 dB). This behaviour comes from GR, not from an engine defect.
 - Audio for listening: /home/kiosk/kiosk-iq/2m-native.wav (48 kHz mono, 30.00 s, not in the repo)
 
 Not included: USB reader thread, ALSA write, fd-3 tee (P1c).

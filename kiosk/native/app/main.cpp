@@ -7,8 +7,12 @@
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
+#include <memory>
+#include <optional>
+#include <stdexcept>
 #include <string>
 #include <thread>
+#include <variant>
 #include <vector>
 
 #include "engine.hpp"
@@ -47,10 +51,28 @@ int main(int argc, char** argv) {
     std::fprintf(stderr, "kerchunk-dsp: live SDR input arrives in P1c; use --iq-file\n");
     return 2;
   }
+  if (o.rate <= 0 || o.rate % kc::LANE_RATE != 0) {
+    std::fprintf(stderr, "kerchunk-dsp: --rate must be a positive multiple of %d\n", kc::LANE_RATE);
+    return 2;
+  }
+  std::optional<kc::TuneCmd> tune;
+  if (!tune_json.empty()) {
+    std::string err;
+    auto c = kc::parse_command(tune_json, err);
+    if (!c) { std::fprintf(stderr, "kerchunk-dsp: bad --tune: %s\n", err.c_str()); return 2; }
+    if (!std::holds_alternative<kc::TuneCmd>(*c)) { std::fprintf(stderr, "kerchunk-dsp: --tune must be a tune command\n"); return 2; }
+    tune = std::get<kc::TuneCmd>(*c);
+  }
   kc::dsp_thread_init();
   std::ofstream aout, sout;
-  if (!audio_out.empty()) aout.open(audio_out, std::ios::binary);
-  if (!same_out.empty()) sout.open(same_out, std::ios::binary);
+  if (!audio_out.empty()) {
+    aout.open(audio_out, std::ios::binary);
+    if (!aout) { std::fprintf(stderr, "kerchunk-dsp: cannot open --audio-out %s\n", audio_out.c_str()); return 2; }
+  }
+  if (!same_out.empty()) {
+    sout.open(same_out, std::ios::binary);
+    if (!sout) { std::fprintf(stderr, "kerchunk-dsp: cannot open --same-out %s\n", same_out.c_str()); return 2; }
+  }
   kc::Engine* ep = nullptr;
   auto emit = [&](const nlohmann::json& j) {
     nlohmann::json e = j;
@@ -59,25 +81,31 @@ int main(int argc, char** argv) {
   };
   auto speaker = aout.is_open() ? kc::Engine::Pcm([&](const int16_t* p, int n) { aout.write((const char*)p, n * 2); }) : kc::Engine::Pcm();
   auto same = sout.is_open() ? kc::Engine::Pcm([&](const int16_t* p, int n) { sout.write((const char*)p, n * 2); }) : kc::Engine::Pcm();
-  kc::Engine eng(o, emit, speaker, kc::Engine::Pcm(), same);
+  std::unique_ptr<kc::Engine> engp;
+  try {
+    engp = std::make_unique<kc::Engine>(o, emit, speaker, kc::Engine::Pcm(), same);
+  } catch (const std::exception& ex) {
+    std::fprintf(stderr, "kerchunk-dsp: engine init failed: %s\n", ex.what());
+    return 2;
+  }
+  kc::Engine& eng = *engp;
   ep = &eng;
   std::fputs(kc::to_line({{"ev", "ready"}}).c_str(), stdout);
-  if (!tune_json.empty()) {
-    std::string err;
-    auto c = kc::parse_command(tune_json, err);
-    if (!c) { std::fprintf(stderr, "kerchunk-dsp: bad --tune: %s\n", err.c_str()); return 2; }
-    eng.command(*c);
-  }
+  if (tune) eng.command(kc::Command{*tune});
   FILE* f = std::fopen(iq_file.c_str(), "rb");
   if (!f) { std::perror(iq_file.c_str()); return 1; }
   std::vector<uint8_t> buf((size_t)o.rate / 100 * 2);
   long long total = 0;
   const auto wall0 = std::chrono::steady_clock::now();
   const double c0 = cpu_seconds();
+  size_t carry = 0;   // an odd trailing byte (half an I/Q pair) waits for the next read
   size_t got;
-  while (!eng.quit() && (got = std::fread(buf.data(), 1, buf.size(), f)) >= 2) {
-    eng.push_u8(buf.data(), got / 2);
-    total += (long long)(got / 2);
+  while (!eng.quit() && (got = std::fread(buf.data() + carry, 1, buf.size() - carry, f)) > 0) {
+    const size_t have = carry + got, pairs = have / 2;
+    if (pairs) eng.push_u8(buf.data(), pairs);
+    carry = have % 2;
+    if (carry) buf[0] = buf[have - 1];
+    total += (long long)pairs;
     if (realtime) std::this_thread::sleep_until(wall0 + std::chrono::duration<double>((double)total / o.rate));
   }
   std::fclose(f);

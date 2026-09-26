@@ -23,6 +23,12 @@ void Engine::reset_lane(int i) {
   quiet_[i].reset();
 }
 
+void Engine::sync_speaker() {
+  const int a = sc_.audible();
+  spk_.set_source(a, a >= 0 && sc_.lane(a).am);
+  spk_.set_gain(sc_.gate());
+}
+
 void Engine::command(const Command& c) {
   std::visit([this](const auto& cmd) {
     using T = std::decay_t<decltype(cmd)>;
@@ -31,13 +37,18 @@ void Engine::command(const Command& c) {
     else if constexpr (std::is_same_v<T, SkipCmd>) {
       long long f = sc_.skip(cmd.holdoff_s, now());
       if (f && cc_) cc_->cooldown(f, now() + cmd.holdoff_s);
+      sync_speaker();
     }
-    else if constexpr (std::is_same_v<T, AlertUnmuteCmd>) sc_.alert_unmute(cmd.id, cmd.hold_s, now());
+    else if constexpr (std::is_same_v<T, AlertUnmuteCmd>) {
+      sc_.alert_unmute(cmd.id, cmd.hold_s, now());
+      sync_speaker();
+    }
     else if constexpr (std::is_same_v<T, QuitCmd>) quit_ = true;
   }, c);
 }
 
 void Engine::tune(const TuneCmd& t) {
+  samples_ = pushed_;   // reset_stream() below drops a partial hop; the clock still counts it
   center_ = t.center_hz;
   const double limit = opt_.rate / 2.0 - LANE_RATE / 2.0;
   std::vector<ChannelCmd> ok;
@@ -64,9 +75,7 @@ void Engine::tune(const TuneCmd& t) {
     cc_->set_db(t.close_call_db);
   }
   cc_on_ = cc_ && t.close_call && !t.monitor;
-  const int a = sc_.audible();
-  spk_.set_source(a, a >= 0 && sc_.lane(a).am);
-  spk_.set_gain(sc_.gate());
+  sync_speaker();
   lane_samples_ = 0;
   next_poll_ = CHUNK_SAMPLES;
   polls_ = 0;
@@ -74,6 +83,7 @@ void Engine::tune(const TuneCmd& t) {
 }
 
 void Engine::push_u8(const uint8_t* iq, size_t nsamples) {
+  pushed_ += (long long)nsamples;
   if (!tuned_) { samples_ += (long long)nsamples; return; }
   ch_.push_u8(iq, nsamples, [this](const cf* lanes, int, int per, const cf* raw, int raw_n) { on_hop(lanes, per, raw, raw_n); });
 }
@@ -117,19 +127,23 @@ void Engine::poll() {
   for (int i = 0; i < MAX_LANES; i++)
     readings_[i] = {power_[i].fast_db(), power_[i].slow_db(), quiet_[i].db(), quiet_[i].ready()};
   sc_.poll(now(), readings_, spk_.speech_db());
-  const int a = sc_.audible();
-  spk_.set_source(a, a >= 0 && sc_.lane(a).am);
-  spk_.set_gain(sc_.gate());
+  sync_speaker();
   if (polls_ % POWER_EVERY_POLLS == 0)
     emit_({{"ev", "power"}, {"levels", sc_.power_levels(readings_)}, {"noise", sc_.noise_levels(readings_)}});
   if (cc_on_ && polls_ % CC_EVERY_POLLS == 0) {
     if (auto hit = cc_->check(now(), sc_.assigned_freqs())) {
-      emit_({{"ev", "closecall"}, {"freqHz", *hit}});
-      const int s = sc_.assign_cc(*hit);
+      // Window check first: raster rounding can push an edge-bin hit past the lane limit, and a
+      // lane must never carry a cc_ id the channelizer can't point at.
       const double off = (double)*hit - center_;
-      if (s >= 0 && std::fabs(off) <= opt_.rate / 2.0 - LANE_RATE / 2.0) {
-        ch_.set_lane_offset(s, off);
-        reset_lane(s);
+      if (std::fabs(off) > opt_.rate / 2.0 - LANE_RATE / 2.0) {
+        emit_({{"ev", "log"}, {"msg", "close call " + std::to_string(*hit) + " outside lane window; ignored"}});
+      } else {
+        emit_({{"ev", "closecall"}, {"freqHz", *hit}});
+        const int s = sc_.assign_cc(*hit);
+        if (s >= 0) {
+          ch_.set_lane_offset(s, off);
+          reset_lane(s);
+        }
       }
     }
   }
