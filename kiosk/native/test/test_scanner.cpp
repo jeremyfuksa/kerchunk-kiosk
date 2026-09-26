@@ -13,14 +13,13 @@ struct Sim {
   kc::Scanner s;
   std::vector<kc::LaneReading> r = std::vector<kc::LaneReading>(kc::MAX_LANES);
   double t = 0;
-  float speech = -200;
   explicit Sim(kc::Scanner::Params p = {}) : s(p, [this](const nlohmann::json& e) { ev.push_back(e); }) {
     for (auto& x : r) x = {FLOOR, FLOOR, NOISY, true};
   }
   void set(int i, float db, bool quiet) { r[i] = {db, db, quiet ? QUIET : NOISY, true}; }
   void run(double seconds) {
     int n = (int)(seconds * 1000 / kc::POLL_MS + 0.5);
-    for (int k = 0; k < n; k++) { t += kc::POLL_MS / 1000.0; s.poll(t, r, speech); }
+    for (int k = 0; k < n; k++) { t += kc::POLL_MS / 1000.0; s.poll(t, r); }
   }
   std::vector<nlohmann::json> of(const std::string& type) const {
     std::vector<nlohmann::json> out;
@@ -177,15 +176,14 @@ TEST(scanner_monitor_mode_opens_immediately) {
   CHECK(m.of("close").empty());                   // no squelch in monitor mode
 }
 
-TEST(scanner_rf_and_level_events) {
+TEST(scanner_rf_events_and_unity_gate) {
   Sim m;
   m.s.tune(146e6, {ch("a")}, false);
   m.run(0.8);
   m.set(0, KEYED, true);
-  m.speech = -2;                                  // loud talker: leveler should pull gain down
   m.run(3.0);
-  CHECK(!m.of("level").empty());
-  CHECK(m.of("level").back()["db"].get<double>() < 0);
+  CHECK(m.s.gate() == 1.0f);                      // gate is on/off only; loudness is the speaker AGC's
+  CHECK(m.of("level").empty());                   // the per-channel leveler (and its event) is gone
   m.set(0, FLOOR, false);
   m.run(2.5);
   auto rf = m.of("rf");

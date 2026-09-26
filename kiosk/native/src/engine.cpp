@@ -9,7 +9,8 @@ using nlohmann::json;
 
 Engine::Engine(const EngineOptions& o, Emit emit, Pcm speaker, Pcm tee, Pcm same)
     : opt_(o), emit_(std::move(emit)), speaker_(std::move(speaker)), tee_(std::move(tee)), same_(std::move(same)),
-      ch_(o.rate), sc_(o.squelch, [this](const json& j) { emit_(j); }), spk_(o.speaker_lpf_hz, (float)(AM_GAIN * std::pow(10.0, o.am_gain_db / 20.0))),
+      ch_(o.rate), sc_(o.squelch, [this](const json& j) { emit_(j); }), spk_(o.speaker_lpf_hz, (float)(AM_GAIN * std::pow(10.0, o.am_gain_db / 20.0)), o.agc, o.limiter_ceiling,
+           o.limiter_release_ms),
       power_(MAX_LANES), disc_(MAX_LANES), quiet_(MAX_LANES),
       disc_buf_(MAX_LANES, std::vector<float>(Channelizer::kLaneSamplesPerHop)), readings_(MAX_LANES) {
   if (o.close_call) cc_ = std::make_unique<CloseCall>(o.rate);   // FFTW planning on this (the DSP) thread
@@ -159,7 +160,7 @@ void Engine::poll() {
   polls_++;
   for (int i = 0; i < MAX_LANES; i++)
     readings_[i] = {power_[i].fast_db(), power_[i].slow_db(), quiet_[i].db(), quiet_[i].ready()};
-  sc_.poll(now(), readings_, spk_.speech_db());
+  sc_.poll(now(), readings_);
   sync_speaker();
   if (polls_ % POWER_EVERY_POLLS == 0) {
     json p = {{"ev", "power"}, {"levels", sc_.power_levels(readings_)}, {"noise", sc_.noise_levels(readings_)}};

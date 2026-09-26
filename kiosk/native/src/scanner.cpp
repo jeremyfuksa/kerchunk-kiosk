@@ -18,7 +18,6 @@ void Scanner::assign(int i, const ChannelCmd& c) {
   L.background = c.background;
   L.open_db = c.open_db;
   L.hang_ms = c.hang_ms;
-  L.level_db = L.level_emitted = c.level_db;
   L.warmup_polls = (int)WARMUP_MS / POLL_MS;
   lanes_[i] = std::move(L);
 }
@@ -53,7 +52,7 @@ void Scanner::tune(double center_hz, std::vector<ChannelCmd> channels, bool moni
       L.open = L.carrier = L.quiet = true;
       emit_({{"ev", "open"}, {"id", L.id}, {"db", 0}});
       set_audible(i);
-      gate_ = level_gain(L);
+      gate_ = 1.f;
       break;
     }
   }
@@ -63,7 +62,7 @@ void Scanner::set_audible(int i) {
   if (audible_ == i) return;
   audible_ = i;
   // Gate follows carrier, not just audibility: an open lane riding its hang time must not blast noise.
-  gate_ = (i >= 0 && lanes_[i].carrier) ? level_gain(lanes_[i]) : 0.f;
+  gate_ = (i >= 0 && lanes_[i].carrier) ? 1.f : 0.f;
   if (i >= 0) emit_({{"ev", "audible"}, {"id", lanes_[i].id}});
   else emit_({{"ev", "audible"}, {"id", nullptr}});
 }
@@ -80,20 +79,6 @@ int Scanner::next_open() const {
   return best;
 }
 
-float Scanner::level_gain(const LaneState& L) { return (float)std::pow(10.0, L.level_db / 20.0); }
-
-void Scanner::level(LaneState& L, float speech_db) {
-  if (speech_db <= LEVEL_MIN_DB) return;   // pause/silence: hold gain
-  L.speech_db = L.speech_db ? *L.speech_db + LEVEL_EMA_ALPHA * (speech_db - *L.speech_db) : (double)speech_db;
-  double desired = std::clamp((LEVEL_REF_DB - *L.speech_db) / 2, -LEVEL_MAX_DB, LEVEL_MAX_DB);
-  double err = desired - L.level_db;
-  if (std::fabs(err) > LEVEL_DEADBAND_DB) L.level_db += std::clamp(err, -LEVEL_SLEW_DOWN, LEVEL_SLEW_UP);
-  if (std::fabs(L.level_db - L.level_emitted) >= LEVEL_EMIT_STEP_DB) {
-    L.level_emitted = L.level_db;
-    emit_({{"ev", "level"}, {"id", L.id}, {"db", round1(L.level_db)}});
-  }
-}
-
 void Scanner::flush_rf(LaneState& L) {
   const int n = (int)L.rf.size();
   if (n >= RF_MIN_SAMPLES && L.id.rfind("cc_", 0) != 0) {
@@ -104,7 +89,7 @@ void Scanner::flush_rf(LaneState& L) {
   L.rf.clear();
 }
 
-void Scanner::poll(double now, const std::vector<LaneReading>& r, float speech_db) {
+void Scanner::poll(double now, const std::vector<LaneReading>& r) {
   if (monitor_) return;
   if (r.size() != lanes_.size()) return;   // malformed reading vector: skip this poll, don't crash
   const int n = (int)lanes_.size();
@@ -148,11 +133,7 @@ void Scanner::poll(double now, const std::vector<LaneReading>& r, float speech_d
     L.carrier = L.carrier ? fast > gate_thresh - GATE_HYST_DB / 2 : fast > gate_thresh + GATE_HYST_DB / 2;
     if (!r[i].quiet_ready) L.quiet = false;
     else L.quiet = L.quiet ? r[i].quiet_db < quiet_db + QUIET_HYST_DB / 2 : r[i].quiet_db < quiet_db - QUIET_HYST_DB / 2;
-    if (audible_ == i) {
-      const bool open_now = L.carrier && L.quiet;
-      if (open_now) level(L, speech_db);
-      gate_ = open_now ? level_gain(L) : 0.f;
-    }
+    if (audible_ == i) gate_ = L.carrier && L.quiet ? 1.f : 0.f;
 
     if (!L.open) {
       if (db > *floor + open_db && L.quiet && now >= L.skip_until) {

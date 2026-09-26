@@ -1,6 +1,6 @@
-// Batch cost of the DSP core on a .cu8 replay. demod=all: discriminator + quieting + speech meter
+// Batch cost of the DSP core on a .cu8 replay. demod=all: discriminator + quieting meter
 // on EVERY lane (always-on design); one: only lane 0; none: channelizer + power only.
-// Lane 0 additionally runs the full speaker path (deemph -> audio LPF -> 50k->48k) in all/one modes.
+// Lane 0 additionally runs the full speaker path (deemph -> audio LPF -> AGC -> 50k->48k) in all/one modes.
 #include <sys/resource.h>
 
 #include <algorithm>
@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 
+#include "agc.hpp"
 #include "channelizer.hpp"
 #include "demod.hpp"
 #include "fir.hpp"
@@ -52,8 +53,8 @@ int main(int argc, char** argv) {
   std::vector<kc::ChunkPower> power(L);
   std::vector<kc::FmDiscriminator> disc(L);
   std::vector<kc::QuietingMeter> quiet(L);
-  std::vector<kc::MeanSquare> speech(L, kc::MeanSquare(kc::SPEECH_WINDOW));
   kc::Deemphasis de;
+  kc::Agc agc;
   kc::FirFilter audio_lpf(kc::design_lowpass(kc::LANE_RATE, kc::SPEAKER_LPF_HZ, kc::SPEAKER_LPF_TRANSITION_HZ));
   kc::Resampler to48(24, 25, kc::LANE_RATE, kc::SPEAKER_RS_CUTOFF_HZ, kc::SPEAKER_RS_TRANSITION_HZ);
   std::vector<float> lane_audio(kc::Channelizer::kLaneSamplesPerHop), out48;
@@ -73,8 +74,7 @@ int main(int argc, char** argv) {
         for (int d = 0; d < per; d++) {
           float v = disc[l].step(y[d]);
           quiet[l].push(v);
-          speech[l].push(v);
-          if (l == 0) lane_audio[d] = audio_lpf.step(de.step(v));
+          if (l == 0) lane_audio[d] = agc.step(audio_lpf.step(de.step(v)), false);
         }
         if (l == 0) {
           out48.clear();
@@ -85,7 +85,7 @@ int main(int argc, char** argv) {
     });
   }
   double cpu = cpu_seconds() - c0;
-  for (int l = 0; l < L; l++) sink_guard += power[l].slow_db() + quiet[l].db() + speech[l].db();
+  for (int l = 0; l < L; l++) sink_guard += power[l].slow_db() + quiet[l].db();
   double iq_s = (double)nsamp / rate;
   std::printf("guard=%g\n", sink_guard);  // keeps every meter observable so nothing is elided
   std::printf("COST iq_s=%.2f cpu_s=%.3f core_pct=%.1f lanes=%d demod=%s\n", iq_s, cpu, 100 * cpu / iq_s, L, demod.c_str());

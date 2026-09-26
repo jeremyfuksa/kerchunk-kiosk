@@ -1,6 +1,7 @@
 #include <cmath>
 #include <vector>
 
+#include "agc.hpp"
 #include "audio.hpp"
 #include "check.hpp"
 #include "constants.hpp"
@@ -8,6 +9,16 @@
 #include "signals.hpp"
 
 namespace {
+// AGC pinned at 0 dB (min = max = 0): for tests that measure the path's absolute level.
+kc::AgcParams flat_agc() {
+  kc::AgcParams p;
+  p.max_gain_db = p.min_gain_db = 0;
+  return p;
+}
+// A speaker path whose AGC is a no-op; the limiter stays at its default.
+kc::SpeakerPath flat_path(double lpf = kc::SPEAKER_LPF_HZ, float am_gain = kc::AM_GAIN) {
+  return kc::SpeakerPath(lpf, am_gain, flat_agc());
+}
 // Feed n lane samples of x through a SpeakerPath in 64-sample hops (as the engine does).
 std::vector<float> run(kc::SpeakerPath& sp, const std::vector<sig::cf>& x, int lane) {
   kc::FmDiscriminator d;
@@ -22,7 +33,7 @@ std::vector<float> run(kc::SpeakerPath& sp, const std::vector<sig::cf>& x, int l
 }  // namespace
 
 TEST(speaker_fm_level_and_rate) {
-  kc::SpeakerPath sp;
+  kc::SpeakerPath sp = flat_path();
   sp.set_source(0, false);
   sp.set_gain(1.0f);
   auto x = sig::fm_tone(kc::LANE_RATE, kc::LANE_RATE, 0, 3000, 1000, 0.3);
@@ -30,20 +41,19 @@ TEST(speaker_fm_level_and_rate) {
   CHECK(std::abs((int)y.size() - kc::AUDIO_RATE) <= 64);
   // 3 kHz dev -> 0.6 peak; 75 us de-emphasis at 1 kHz ~ -0.86 dB.
   CHECK_NEAR(sig::rms(y.data() + 4800, y.size() - 4800), 0.6 / std::sqrt(2.0) * 0.906, 0.02);
-  CHECK(sp.speech_db() > -10 && sp.speech_db() < -7);   // ~-8.3 dB (0.384 rms)
 }
 
-TEST(speaker_gain_ramps_on_open_and_rail_clamps) {
-  kc::SpeakerPath sp;
+TEST(speaker_gain_ramps_on_open_and_limiter_caps) {
+  kc::SpeakerPath sp = flat_path();
   sp.set_source(0, false);
   auto x = sig::tone(kc::LANE_RATE, kc::LANE_RATE / 2, 2500, 0.3);   // constant +0.5 discriminator output
   auto y0 = run(sp, x, 0);                                            // gain 0: silence
   CHECK(sig::rms(y0.data(), y0.size()) < 1e-6);
-  sp.set_gain(4.0f);                                                  // 0.5 * 4 = 2 -> rail
+  sp.set_gain(4.0f);                                                  // 0.5 * 4 = 2 -> limiter
   auto y = run(sp, x, 0);
   float peak = 0;
   for (float v : y) peak = std::max(peak, std::fabs(v));
-  CHECK(peak <= kc::RAIL + 1e-6f);
+  CHECK(peak <= (float)kc::LIMITER_CEILING + 1e-6f);                  // limiter, well inside the rail
   CHECK(std::fabs(y[10]) < std::fabs(y[kc::FADE_SAMPLES + 100]));   // ramping up, not a step
 }
 
@@ -73,7 +83,7 @@ TEST(speaker_silence_without_source_keeps_rate) {
 TEST(speaker_am_reprimes_on_open) {
   // Long near-silence on an AM lane, then a strong 50%-modulated carrier as the gate opens:
   // without re-priming, env/carrier starts huge (carrier tracked the noise) and slams the rail.
-  kc::SpeakerPath sp;
+  kc::SpeakerPath sp = flat_path();
   sp.set_source(0, true);
   std::vector<sig::cf> x(kc::LANE_RATE);
   for (size_t i = 0; i < x.size(); i++) {
@@ -87,7 +97,7 @@ TEST(speaker_am_reprimes_on_open) {
   out.clear();
   for (size_t i = half; i + 64 <= x.size(); i += 64) sp.process(&x[i], disc.data(), 64, out);
   const size_t first10ms = kc::AUDIO_RATE / 100;
-  CHECK(sig::rms(out.data(), first10ms) < 0.4);   // not rail-slammed (0.8)
+  CHECK(sig::rms(out.data(), first10ms) < 0.4);   // not slammed into the limiter (0.7)
   CHECK_NEAR(sig::rms(out.data() + 4800, out.size() - 4800), 0.5 / std::sqrt(2.0) * kc::AM_GAIN, 0.04);
 }
 
@@ -113,7 +123,7 @@ TEST(to_s16_clamps_and_scales) {
 
 TEST(speaker_cut_ramps_held_sample_to_zero) {
   // Retune cut: GR faded out before a retune; a hard reset() would step from full scale to 0.
-  kc::SpeakerPath sp;
+  kc::SpeakerPath sp = flat_path();
   sp.set_source(0, false);
   sp.set_gain(1.0f);
   auto x = sig::fm_tone(kc::LANE_RATE, kc::LANE_RATE / 2, 0, 3000, 1000, 0.3);
@@ -158,7 +168,7 @@ TEST(speaker_lpf_knob_passes_or_cuts_hf) {
     for (size_t i = 0; i + 64 <= disc.size(); i += 64) sp.process(&x[i], &disc[i], 64, out);
     return sig::rms(out.data() + 4800, out.size() - 4800);
   };
-  kc::SpeakerPath d1, d4, d10, wide(20000);
+  kc::SpeakerPath d1 = flat_path(), d4 = flat_path(), d10 = flat_path(), wide = flat_path(20000);
   CHECK(rms_at(d1, 1000) > 0.1);      // voice passes
   CHECK(rms_at(d4, 4000) < 0.002);    // hiss band gone
   CHECK(rms_at(d10, 10000) < 0.002);
@@ -170,7 +180,7 @@ TEST(speaker_lpf_knob_passes_or_cuts_hf) {
 // The AM gain knob scales AM speaker audio linearly (FM is untouched by it).
 TEST(speaker_am_gain_scales_am_audio) {
   auto run_am = [](float am_gain) {
-    kc::SpeakerPath sp(kc::SPEAKER_LPF_HZ, am_gain);
+    kc::SpeakerPath sp = flat_path(kc::SPEAKER_LPF_HZ, am_gain);   // AGC would undo the pre-gain
     sp.set_source(0, true);
     sp.set_gain(1.0f);
     std::vector<sig::cf> x(kc::LANE_RATE);

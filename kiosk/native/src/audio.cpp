@@ -21,10 +21,12 @@ std::vector<float> speaker_lpf(double hz) {
 }
 }  // namespace
 
-SpeakerPath::SpeakerPath(double lpf_hz, float am_gain)
+SpeakerPath::SpeakerPath(double lpf_hz, float am_gain, const AgcParams& agc, double limiter_ceiling,
+                         double limiter_release_ms)
     : am_gain_(am_gain),
       lpf_(speaker_lpf(lpf_hz)),
-      speech_(SPEECH_WINDOW),
+      agc_(agc, LANE_RATE),
+      lim_(limiter_ceiling, limiter_release_ms, AUDIO_RATE),
       rs_(24, 25, LANE_RATE, SPEAKER_RS_CUTOFF_HZ, SPEAKER_RS_TRANSITION_HZ) {
   a50_.resize(256);
   a48_.resize(256);
@@ -41,6 +43,8 @@ void SpeakerPath::apply_target(float t) {
   // AM re-prime on gate open: after silence the carrier tracker followed the noise, so the
   // first ~40-100 ms of a new transmission would be hugely over-gained.
   if (target_ == 0.f && t > 0.f && cur_am_) am_.reset();
+  // New transmission: the AGC starts at 0 dB, never with the last talker's gain.
+  if (target_ == 0.f && t > 0.f) agc_.reset();
   const bool edge = (gain_ == 0.f && t > 0.f) || t == 0.f;
   if (edge) {
     ramp_step_ = (t - gain_) / FADE_SAMPLES;
@@ -76,7 +80,8 @@ void SpeakerPath::switch_now() {
   de_.reset();
   lpf_.reset();
   am_.reset();
-  speech_.reset();
+  agc_.reset();
+  lim_.reset();
   gain_ = target_ = 0.f;
   ramp_left_ = 0;
   apply_target(want_target_);
@@ -101,11 +106,14 @@ void SpeakerPath::cut() {
 
 void SpeakerPath::process(const cf* x, const float* disc, int n, std::vector<float>& out48) {
   if ((int)a50_.size() < n) a50_.resize(n);
+  // AGC freezes while the gate is closed or any fade is running: squelch-closed noise and the
+  // edges of a transmission must not move the envelope.
+  const bool agc_frozen = target_ == 0.f || ramp_left_ > 0 || switching_;
   for (int i = 0; i < n; i++) {
     float a = 0.f;
     if (cur_lane_ >= 0 && x && disc) {
       a = cur_am_ ? am_.step(x[i]) * am_gain_ : lpf_.step(de_.step(disc[i]));
-      speech_.push(a);
+      a = agc_.step(a, agc_frozen);
     }
     a50_[i] = a;
   }
@@ -119,7 +127,8 @@ void SpeakerPath::process(const cf* x, const float* disc, int n, std::vector<flo
     }
     float v = a48_[i] * gain_;
     if (hold_left_ > 0) v += hold_ * (float)--hold_left_ / FADE_SAMPLES;   // reaches exactly 0
-    last_out_ = std::clamp(v, -RAIL, RAIL);
+    v = lim_.step(v);
+    last_out_ = std::clamp(v, -RAIL, RAIL);   // last-resort guard; the limiter ceiling sits below it
     out48.push_back(last_out_);
   }
   if (switching_ && ramp_left_ == 0 && gain_ == 0.f) switch_now();

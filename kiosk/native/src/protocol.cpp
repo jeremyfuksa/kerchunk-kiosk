@@ -48,7 +48,6 @@ std::optional<Command> parse_command(const std::string& line, std::string& err) 
           ch.id = c.at("id").get<std::string>();
           ch.freq_hz = c.at("freqHz").get<double>();
           ch.priority = get_or<bool>(c, "priority", false);
-          ch.level_db = get_or<double>(c, "levelDb", 0.0);
           ch.mode = get_or<std::string>(c, "mode", "nfm");
           ch.audible = get_or<bool>(c, "audible", true);
           ch.background = get_or<bool>(c, "background", false);

@@ -1,9 +1,10 @@
-// Speaker path (audible lane -> 48 kHz, gain/fade/rail) and SAME path (background lane -> 22.05 kHz s16).
+// Speaker path (audible lane -> AGC -> 48 kHz, gate/fade -> limiter -> rail) and SAME path (background lane -> 22.05 kHz s16).
 #pragma once
 #include <complex>
 #include <cstdint>
 #include <vector>
 
+#include "agc.hpp"
 #include "constants.hpp"
 #include "demod.hpp"
 #include "fir.hpp"
@@ -17,7 +18,9 @@ class SpeakerPath {
  public:
   // lpf_hz: speaker audio LPF cutoff (0 < lpf_hz < LANE_RATE/2, else std::invalid_argument).
   // am_gain: linear gain on normalized AM audio (default AM_GAIN; the engine applies --am-gain-db).
-  explicit SpeakerPath(double lpf_hz = SPEAKER_LPF_HZ, float am_gain = AM_GAIN);
+  // agc / limiter_*: speaker loudness knobs (the engine applies --agc-* / --limiter-*).
+  explicit SpeakerPath(double lpf_hz = SPEAKER_LPF_HZ, float am_gain = AM_GAIN, const AgcParams& agc = {},
+                       double limiter_ceiling = LIMITER_CEILING, double limiter_release_ms = LIMITER_RELEASE_MS);
   void set_source(int lane, bool am);
   void set_gain(float target);
   void reset();   // hard cut: drops the source and zeroes all state (the next sample may step)
@@ -26,7 +29,7 @@ class SpeakerPath {
   void cut();
   int feeding_lane() const { return cur_lane_; }
   void process(const cf* x, const float* disc, int n, std::vector<float>& out48);
-  float speech_db() const { return speech_.ready() ? speech_.db() : -200.f; }
+  const Agc& agc() const { return agc_; }
 
  private:
   void apply_target(float t);
@@ -41,7 +44,8 @@ class SpeakerPath {
   Deemphasis de_;
   FirFilter lpf_;
   AmEnvelope am_;
-  MeanSquare speech_;
+  Agc agc_;
+  Limiter lim_;
   Resampler rs_;
   std::vector<float> a50_, a48_;
 };
