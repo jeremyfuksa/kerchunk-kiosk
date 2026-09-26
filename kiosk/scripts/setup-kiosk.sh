@@ -12,7 +12,8 @@ STATE_DIR=/var/lib/kerchunk-kiosk
 
 echo "[setup] Installing packages..."
 sudo apt-get update
-sudo apt-get install -y rtl-sdr alsa-utils cage chromium-browser curl ca-certificates
+sudo apt-get install -y rtl-sdr alsa-utils cage chromium-browser curl ca-certificates \
+  cmake pkg-config libfftw3-dev nlohmann-json3-dev libasound2-dev librtlsdr-dev
 
 echo "[setup] Installing Node.js 24 (NodeSource) if node is missing or <24..."
 # Node >=24: the history store imports node:sqlite (built in, but only Node
@@ -39,6 +40,8 @@ fi
 sudo usermod -aG audio,plugdev,video,render,input kerchunk
 
 echo "[setup] Building the app..."
+# Now also compiles kerchunk-dsp (cmake, native/) — the packages above are its
+# build deps (Raspberry Pi OS is Debian-based, same apt names as Ubuntu).
 ( cd "$REPO_DIR" && npm ci && npm run build )
 
 echo "[setup] Installing to $INSTALL_DIR..."
