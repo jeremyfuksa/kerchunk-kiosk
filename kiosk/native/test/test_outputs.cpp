@@ -139,3 +139,22 @@ TEST(alsa_policy_underrun_waits_for_prebuffer_then_resumes) {
   CHECK(kc::AlsaPolicy::decide(2 * kc::ALSA_PERIOD - 1, true, 0) == kc::AlsaPolicy::Action::Silence);
   CHECK(kc::AlsaPolicy::decide(2 * kc::ALSA_PERIOD, true, 0) == kc::AlsaPolicy::Action::Read);
 }
+
+TEST(alsa_sink_counts_ring_overflow_without_a_device) {
+  kc::AlsaSink sink("null", [](const std::string&) {});   // never opened: write() only fills the ring
+  std::vector<int16_t> x(kc::AUDIO_RING + 1000, 1);
+  CHECK(sink.write(x.data(), x.size()) < x.size());
+  const auto st = sink.take_stats();
+  CHECK(st.overflow > 0 && st.overflow <= 1000 + 1);   // SpscRing may keep one slot free
+  CHECK(sink.take_stats().overflow == 0);             // take_stats resets
+}
+
+TEST(alsa_sink_stats_line_silent_when_clean_and_in_ms_otherwise) {
+  CHECK(kc::AlsaSink::format_stats({}, 60).empty());
+  kc::AlsaSink::Stats s;
+  s.drift = 4800;      // 100 ms
+  s.underrun = 480;    // 10 ms
+  s.xruns = 2;
+  CHECK(kc::AlsaSink::format_stats(s, 60) ==
+        "speaker output, last 60 s: 0 ms overflowed, 100 ms drift-trimmed, 10 ms underrun silence, 2 ALSA xruns");
+}
