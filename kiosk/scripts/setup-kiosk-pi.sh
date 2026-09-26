@@ -25,7 +25,8 @@ echo "[setup] Installing packages..."
 sudo apt-get update
 # wlrctl: warps cage's compositor cursor into the corner (the display unit's
 # ExecStartPost) — cage 0.2.0 has no flag to hide the pointer.
-sudo apt-get install -y rtl-sdr alsa-utils cage chromium curl ca-certificates wlrctl
+sudo apt-get install -y rtl-sdr alsa-utils cage chromium curl ca-certificates wlrctl \
+  cmake pkg-config libfftw3-dev nlohmann-json3-dev libasound2-dev librtlsdr-dev
 
 echo "[setup] Ensuring a SYSTEM Node >=24 at /usr/bin/node (NodeSource)..."
 # The systemd unit runs ExecStart=/usr/bin/node, which must exist independent of
@@ -76,6 +77,8 @@ fi
 sudo usermod -aG audio,plugdev,video,render kerchunk
 
 echo "[setup] Building the app (using whatever node is on PATH for the build)..."
+# Now also compiles kerchunk-dsp (cmake, native/) — the packages above are its
+# build deps (same apt names as Ubuntu; this is Debian-based).
 ( cd "$REPO_DIR" && npm ci && npm run build )
 
 echo "[setup] Installing to $INSTALL_DIR..."

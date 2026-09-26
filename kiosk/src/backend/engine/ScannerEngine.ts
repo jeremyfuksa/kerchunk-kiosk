@@ -25,6 +25,8 @@ export interface ScanConfig {
   groupDwellMs?: number;
   openAboveFloorDb?: number;
   noiseQuietDb?: number;
+  // Native engine only: quieting threshold on kerchunk-dsp's scale (see schema).
+  nativeQuietDb?: number;
   // Monitor mode (weather-only): hold the channel open and audible with NO
   // squelch. A lone continuously-keyed station (NOAA) can't be squelched
   // against its own carrier — and the operator chose to listen to exactly

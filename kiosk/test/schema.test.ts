@@ -38,6 +38,21 @@ describe("configSchema", () => {
     expect(() => configSchema.parse(defaultConfig())).not.toThrow();
   });
 
+  it("accepts scan.nativeQuietDb (native engine's own dB scale, keeps the value)", () => {
+    const cfg = configSchema.parse({ ...defaultConfig(), scan: { ...defaultConfig().scan, nativeQuietDb: -6 } });
+    expect(cfg.scan.nativeQuietDb).toBe(-6);
+  });
+
+  it("accepts a positive scan.nativeQuietDb (native scale may be positive)", () => {
+    const cfg = configSchema.parse({ ...defaultConfig(), scan: { ...defaultConfig().scan, nativeQuietDb: 3.5 } });
+    expect(cfg.scan.nativeQuietDb).toBe(3.5);
+  });
+
+  it("rejects a non-number scan.nativeQuietDb", () => {
+    const bad = { ...defaultConfig(), scan: { ...defaultConfig().scan, nativeQuietDb: "x" } };
+    expect(() => configSchema.parse(bad)).toThrow();
+  });
+
   it("accepts radios addressed by serial, by port, or both", () => {
     const withRadios = (radios: unknown[]) => ({ ...defaultConfig(), radios });
     expect(() => configSchema.parse(withRadios([{ serial: "KIOSK01", role: "scan" }]))).not.toThrow();

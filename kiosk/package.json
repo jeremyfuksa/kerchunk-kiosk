@@ -9,7 +9,7 @@
   "scripts": {
     "dev:backend": "tsx watch src/backend/index.ts",
     "dev:frontend": "vite",
-    "build": "npm run build:frontend && npm run build:backend",
+    "build": "npm run build:frontend && npm run build:backend && npm run build:native:dist",
     "build:frontend": "vite build",
     "build:backend": "tsc -p tsconfig.json && cp src/backend/engine/wideband_helper.py src/backend/engine/wideband_dsp_math.py dist/backend/engine/",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.frontend.json --noEmit",
@@ -17,6 +17,7 @@
     "test": "vitest run",
     "test:py": "/usr/bin/python3 test/wideband_dsp_math_test.py",
     "build:native": "cmake -S native -B native/build && cmake --build native/build --parallel 2",
+    "build:native:dist": "cmake -S native -B native/build && cmake --build native/build --parallel 2 --target kerchunk-dsp && cp native/build/kerchunk-dsp dist/backend/engine/",
     "test:native": "npm run build:native && native/build/kerchunk-dsp-tests",
     "test:watch": "vitest"
   },

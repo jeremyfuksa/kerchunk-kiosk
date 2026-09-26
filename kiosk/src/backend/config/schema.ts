@@ -93,6 +93,12 @@ export const configSchema = z.object({
     // (rejects spurs/AGC pumping/broadband bursts — non-voice junk). Bench
     // default in the DSP helper: -86 (static ~-82, voice carrier -94..-96).
     noiseQuietDb: z.number().negative().optional(),
+    // Quieting threshold for the NATIVE engine (KERCHUNK_ENGINE=native), on
+    // kerchunk-dsp's own scale: dB of discriminator HF-noise power, lower =
+    // more quieted; dead channels read ~-2, steady carriers ~-30. NOT the GR
+    // scale of noiseQuietDb above (~90 dB apart) -- that value is never sent
+    // to the native helper. Omitted = the helper's QUIET_DB_DEFAULT (-6).
+    nativeQuietDb: z.number().optional(),
     // Close Call: discover strong transmissions in the tuned window on
     // non-configured frequencies. Plays them (priority preempt) and auto-adds
     // them as DISABLED channels for operator review. Default ON (wideband).

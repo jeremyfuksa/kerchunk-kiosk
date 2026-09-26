@@ -6,6 +6,9 @@
 #   - rtl-sdr suite + SoapySDR + GNU Radio (apt; gr-soapy ships inside the
 #     `gnuradio` package, Python bindings land in system /usr/bin/python3
 #     dist-packages — the engine spawns the helper with that interpreter);
+#   - cmake + libfftw3-dev/nlohmann-json3-dev/libasound2-dev/librtlsdr-dev +
+#     pkg-config: build deps for kerchunk-dsp, the native (C++) engine
+#     (KERCHUNK_ENGINE=native) — `npm run build` below compiles it;
 #   - blacklists the DVB-TV kernel modules so they never claim the dongle
 #     (librtlsdr can detach them, but the appliance shouldn't depend on that).
 #
@@ -36,7 +39,8 @@ sudo apt-get update
 sudo apt-get install -y \
   rtl-sdr soapysdr-tools soapysdr-module-rtlsdr gnuradio python3-numpy \
   alsa-utils \
-  cage wlrctl curl ca-certificates
+  cage wlrctl curl ca-certificates \
+  cmake pkg-config libfftw3-dev nlohmann-json3-dev libasound2-dev librtlsdr-dev
 
 echo "[setup] Ensuring a SYSTEM Node >=24 at /usr/bin/node (NodeSource)..."
 # The systemd unit runs ExecStart=/usr/bin/node, and the history store imports
