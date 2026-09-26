@@ -82,6 +82,19 @@ void Engine::tune(const TuneCmd& t) {
   tuned_ = true;
 }
 
+void Engine::note_gap(long long n, bool dropped) {
+  if (n <= 0) return;
+  samples_ += n;
+  pushed_ += n;
+  if (tuned_) ch_.reset_stream();
+  if (!dropped) return;
+  drops_since_power_ += n;
+  if (now() - last_drop_log_ >= DROP_LOG_EVERY_S) {
+    last_drop_log_ = now();
+    emit_({{"ev", "log"}, {"msg", "dropped " + std::to_string(n) + " IQ samples (DSP overrun)"}});
+  }
+}
+
 void Engine::push_u8(const uint8_t* iq, size_t nsamples) {
   pushed_ += (long long)nsamples;
   if (!tuned_) { samples_ += (long long)nsamples; return; }
@@ -137,8 +150,11 @@ void Engine::poll() {
     readings_[i] = {power_[i].fast_db(), power_[i].slow_db(), quiet_[i].db(), quiet_[i].ready()};
   sc_.poll(now(), readings_, spk_.speech_db());
   sync_speaker();
-  if (polls_ % POWER_EVERY_POLLS == 0)
-    emit_({{"ev", "power"}, {"levels", sc_.power_levels(readings_)}, {"noise", sc_.noise_levels(readings_)}});
+  if (polls_ % POWER_EVERY_POLLS == 0) {
+    json p = {{"ev", "power"}, {"levels", sc_.power_levels(readings_)}, {"noise", sc_.noise_levels(readings_)}};
+    if (drops_since_power_ > 0) { p["drops"] = drops_since_power_; drops_since_power_ = 0; }
+    emit_(p);
+  }
   if (cc_on_ && polls_ % CC_EVERY_POLLS == 0) {
     if (auto hit = cc_->check(now(), sc_.assigned_freqs())) {
       // Window check first: raster rounding can push an edge-bin hit past the lane limit, and a
