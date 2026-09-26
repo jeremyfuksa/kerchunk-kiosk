@@ -27,6 +27,14 @@ void Engine::sync_speaker() {
   const int a = sc_.audible();
   spk_.set_source(a, a >= 0 && sc_.lane(a).am);
   spk_.set_gain(sc_.gate());
+  sync_active();
+}
+
+void Engine::sync_active() {
+  // Parked slots skip their channelizer extract + IFFT -- except a parked slot the speaker is
+  // still fading out (on_hop keeps its discriminator running on the old channel's samples).
+  const int f = spk_.feeding_lane();
+  for (int i = 0; i < MAX_LANES; i++) ch_.set_lane_active(i, !sc_.lane(i).parked() || i == f);
 }
 
 void Engine::command(const Command& c) {
@@ -171,6 +179,7 @@ void Engine::poll() {
         if (s >= 0) {
           ch_.set_lane_offset(s, off);
           reset_lane(s);
+          sync_active();
         }
       }
     }

@@ -66,12 +66,17 @@ class Channelizer {
   void reset_stream();
   // Re-point one lane without disturbing the others (Close Call lane assignment).
   void set_lane_offset(int i, double offset_hz);
+  // An inactive lane skips its extract + inverse FFT and outputs zeros (its residual NCO still
+  // advances, so re-activating it has no phase step). set_lanes/set_lane_offset make lanes active.
+  void set_lane_active(int i, bool on);
 
  private:
   struct Lane {
     int k0;        // center bin (signed)
     cf nco{1, 0};  // residual-offset rotator state
     cf nco_step{1, 0};
+    cf nco_hop{1, 0};   // nco_step^kLaneSamplesPerHop: one hop's rotation, applied while inactive
+    bool active = true;
   };
   void run_hop();          // FFT + per-lane extract into out_, advances block_
   void advance_hop();      // slide history, fill_ = 0
