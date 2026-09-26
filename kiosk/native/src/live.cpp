@@ -18,12 +18,24 @@ bool LiveLoop::step() {
       pending_ = *t;
       settle_left_ = settle_samples_;
     } else {
+      // A `known` command that lands while a tune is pending would otherwise apply to the engine's
+      // *current* (soon-to-be-replaced) window, then get silently clobbered the moment the pending
+      // tune's own (older) knownHz applies -- fold it into the pending tune so the new list survives
+      // past the retune. Still forward it to the engine too: harmless for the window that's on its
+      // way out, and it keeps `known` behaving immediately for anyone not mid-retune.
+      if (pending_) {
+        if (auto* k = std::get_if<KnownCmd>(&c)) pending_->known_hz = k->known_hz;
+      }
       eng_.command(c);
     }
   }
   if (const uint64_t d = src_.take_dropped()) eng_.note_gap((long long)d, true);
   return src_.consume([this](const IqBlock& b) {
-    const long long n = b.n / 2;
+    // Defensive clamp: never trust a producer's block size blindly (a garbled/stale block should
+    // degrade to "fewer samples", never read past `data`, and never leave n odd -- 2 bytes/sample).
+    uint32_t bytes = b.n > (uint32_t)b.data.size() ? (uint32_t)b.data.size() : b.n;
+    bytes &= ~1u;
+    const long long n = bytes / 2;
     if (pending_) {
       if (b.gen < want_gen_) { eng_.note_gap(n, false); return; }     // old center
       if (settle_left_ > 0) { settle_left_ -= n; eng_.note_gap(n, false); return; }   // in-flight USB
