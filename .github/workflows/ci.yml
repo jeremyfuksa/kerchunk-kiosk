@@ -61,7 +61,7 @@ jobs:
       - name: Typecheck (backend + frontend)
         run: npm run typecheck
 
-      - name: Build backend (tsc emit + DSP helper copy)
+      - name: Build backend (tsc emit)
         run: npm run build:backend
 
       - name: Test (vitest)

@@ -432,13 +432,13 @@ describe("HTTP API", () => {
 });
 
 describe("wideband config passthrough", () => {
-  it("passes scan.windowBandwidthHz/groupDwellMs/openAboveFloorDb through to engine.start", async () => {
+  it("passes scan.windowBandwidthHz/groupDwellMs/openAboveFloorDb/nativeQuietDb through to engine.start", async () => {
     const { server, engine } = makeApp();
     const cfg = (await request(server).get("/api/config")).body;
     cfg.scan.windowBandwidthHz = 1_500_000;
     cfg.scan.groupDwellMs = 4000;
     cfg.scan.openAboveFloorDb = 12;
-    cfg.scan.noiseQuietDb = -84;
+    cfg.scan.nativeQuietDb = -8;
     expect((await request(server).put("/api/config").send(cfg)).status).toBe(200);
 
     let lastStart: any = null;
@@ -448,7 +448,7 @@ describe("wideband config passthrough", () => {
     expect(lastStart.windowBandwidthHz).toBe(1_500_000);
     expect(lastStart.groupDwellMs).toBe(4000);
     expect(lastStart.openAboveFloorDb).toBe(12);
-    expect(lastStart.noiseQuietDb).toBe(-84);
+    expect(lastStart.nativeQuietDb).toBe(-8);
   });
 });
 
@@ -1405,7 +1405,7 @@ describe("thermal self-protect restart", () => {
 
 describe("config mutation serialization", () => {
   it("never overlaps engine stop/start across concurrent scan-relevant PUTs", async () => {
-    // A GNU Radio restart takes ~1s on hardware; an admin double-click lands a
+    // A helper restart takes real time on hardware; an admin double-click lands a
     // second scan-relevant PUT inside the first one's engine restart. Without
     // serialization the interleaving can become stopA stopB startA startB —
     // two concurrent start() calls, i.e. two helpers contending for the SDR.

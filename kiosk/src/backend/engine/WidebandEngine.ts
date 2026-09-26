@@ -6,14 +6,14 @@ import type {
 } from "./ScannerEngine.js";
 import type { Channel } from "../config/schema.js";
 import { groupChannels, sweepCenters, type ChannelGroup } from "./grouping.js";
-import { computeLanePlan, lanePlanArgs, planFits, type LanePlan } from "./lanePlan.js";
 import { setVolume as amixerVolume, setMuted as amixerMuted } from "../audio.js";
 
 // Wideband group-hop scanner.
 //
-// ONE persistent GNU Radio helper (wideband_helper.py) owns the SDR for the
-// engine's whole lifetime. It samples a ~2.4 MHz I/Q window, demodulates every
-// channel in the window simultaneously, does squelch detection against an
+// ONE persistent native DSP helper (kerchunk-dsp, C++, kiosk/native/) owns the
+// SDR for the engine's whole lifetime. It samples a ~2.4 MHz I/Q window, runs a
+// fixed 12-slot channelizer that demodulates every channel in the window
+// simultaneously, does squelch detection against an
 // adaptive noise floor, picks the audible channel (first-active-wins), and
 // plays audio straight to ALSA. Node owns grouping + group-hop timing and
 // talks line-JSON over the helper's stdin/stdout. Hopping = writing a "tune"
@@ -21,11 +21,12 @@ import { setVolume as amixerVolume, setMuted as amixerMuted } from "../audio.js"
 // class of failures; see bench/RESULTS-2026-06-04-wideband-spike.md).
 
 export interface WidebandEngineOptions {
-  /** Helper argv override (tests point this at a fake). Default: system python + dist helper. */
+  /** Helper argv override (tests point this at a fake). Default: the
+   *  kerchunk-dsp binary next to this file in dist/. */
   helperCmd?: string[];
   /** Extra env for the helper (tests drive fake scenarios through this). */
   helperEnv?: Record<string, string>;
-  /** RTL-SDR EEPROM serial (multi-SDR). Preferred over rtlIndex: SoapySDR
+  /** RTL-SDR EEPROM serial (multi-SDR). Preferred over rtlIndex: the helper
    *  resolves it to the exact dongle regardless of enumeration order. */
   rtlSerial?: string;
   /** Front-end sample rate (Hz). Omitted = the helper's wideband default. A
@@ -37,10 +38,10 @@ export interface WidebandEngineOptions {
    *  the spike). Needed for a dedicated single-channel radio at a narrow rate. */
   centerOffsetHz?: number;
   /** Spawn the helper at this `nice` value (CPU scheduling priority). The
-   *  weather radio (decode-only, latency-tolerant) runs LOW priority so its
-   *  ~300 GR threads can't steal scheduling from the scanner's real-time audio
-   *  thread — equal priority caused choppy scanner audio. New threads inherit
-   *  the process nice at creation, so this covers the whole flowgraph. */
+   *  weather radio (decode-only, latency-tolerant) runs LOW priority so it
+   *  keeps the scanner's real-time audio thread first — equal priority caused
+   *  choppy scanner audio. New threads inherit the process nice at creation,
+   *  so this covers every helper thread. */
   niceness?: number;
   /** Resolve the librtlsdr device index at spawn time (multi-SDR fallback when
    *  no serial: devnums change on every replug, so this runs fresh per spawn).
@@ -50,12 +51,12 @@ export interface WidebandEngineOptions {
   /** Delay before the FIRST respawn after an unexpected exit. Each consecutive
    *  failure doubles it, up to maxRestartDelayMs. */
   restartDelayMs?: number;
-  /** Ceiling on the respawn backoff (default 30 s). Every spawn rebuilds a GNU
-   *  Radio flowgraph, so a helper that can't open its device must not respawn at
-   *  a fixed 1 Hz — the weather SDR being absent at boot did exactly that for
-   *  2.5 minutes, ~2.7 cores of repeated graph construction on a box that runs
-   *  1 C under its thermal trip. Capped rather than given up on: an SDR the
-   *  operator replugs later has to be picked up without a service restart. */
+  /** Ceiling on the respawn backoff (default 30 s). A helper that can't open
+   *  its device must not respawn at a fixed 1 Hz — the weather SDR being absent
+   *  at boot once did exactly that for 2.5 minutes of pointless device churn on
+   *  a box that runs close to its thermal trip. Capped rather than given up on:
+   *  an SDR the operator replugs later has to be picked up without a service
+   *  restart. */
   maxRestartDelayMs?: number;
   /** Per-group dwell override; otherwise config.groupDwellMs, else 3000. */
   groupDwellMs?: number;
@@ -71,21 +72,17 @@ export interface WidebandEngineOptions {
    *  to console.warn so the breadcrumb lands in the journal on the appliance. */
   log?: (msg: string) => void;
   now?: () => number;
-  /** Spawn the native C++ helper (kerchunk-dsp, KERCHUNK_ENGINE=native)
-   *  instead of the GNU Radio one. Native: fixed 12 lane slots (no lane-plan
-   *  respawns), --quiet-db only from nativeQuietDb, liveness watchdogs. */
-  native?: boolean;
-  /** Native only: treat the helper as dead if it hasn't said "ready" this long
+  /** Treat the helper as dead if it hasn't said "ready" this long
    *  after spawn (device/ALSA wedged before ready). Default 10 s. */
   readyTimeoutMs?: number;
-  /** Native only: treat the helper as dead if it prints nothing for this long
+  /** Treat the helper as dead if it prints nothing for this long
    *  after "ready" (it emits power every 200 ms once tuned). Default 5 s. */
   silenceTimeoutMs?: number;
 }
 
 const DEFAULT_WINDOW_HZ = 2_000_000;
-// Must match MAX_CHANS in wideband_helper.py (its channelizer lane count).
-// Grouping splits oversized clusters so the helper never truncates.
+// Must match kerchunk-dsp's fixed lane-slot count (kiosk/native). Grouping
+// splits oversized clusters so the helper never truncates.
 const MAX_CHANNELS_PER_GROUP = 12;
 const DEFAULT_GROUP_DWELL_MS = 3000;
 // Signal events drive the dashboard meter; the helper's power telemetry
@@ -107,13 +104,10 @@ const HELPER_LOG_WINDOW_MS = 60_000;
 const DEFAULT_READY_TIMEOUT_MS = 10_000;
 const DEFAULT_SILENCE_TIMEOUT_MS = 5_000;
 
-// GNU Radio is only importable from the system python; mise/pyenv interpreters
-// shadow it. The helper ships next to this file in dist/ (build copy step).
-// The native helper (kerchunk-dsp) is a standalone binary built by
-// build:native:dist, also copied next to this file.
-function defaultHelperCmd(native: boolean): string[] {
-  if (native) return [fileURLToPath(new URL("./kerchunk-dsp", import.meta.url))];   // built by build:native:dist
-  return ["/usr/bin/python3", fileURLToPath(new URL("./wideband_helper.py", import.meta.url))];
+// The helper (kerchunk-dsp) is a standalone binary built by build:native:dist
+// and copied next to this file in dist/.
+function defaultHelperCmd(): string[] {
+  return [fileURLToPath(new URL("./kerchunk-dsp", import.meta.url))];
 }
 
 interface HelperEvent {
@@ -141,11 +135,6 @@ export class WidebandEngine implements ScannerEngine {
 
   private config: ScanConfig | null = null;
   private groups: Array<ChannelGroup<ScanChannel>> = [];
-  // The lane plan the LIVE helper was spawned with. retune() compares the new
-  // config against it: a config that fits re-points cheaply; one that needs
-  // more lanes or an absent demod path must respawn (the lane topology is a
-  // spawn arg, not something the `tune` command can change).
-  private spawnedPlan: LanePlan | null = null;
   private sweeps: number[] = [];
   private audioListeners = new Set<(chunk: Buffer) => void>();
   private sweepIndex = 0;
@@ -192,7 +181,6 @@ export class WidebandEngine implements ScannerEngine {
   private readonly niceness: number | undefined;
   private readonly maxHoldMs: number;
   private readonly log: (msg: string) => void;
-  private readonly native: boolean;
   private readonly readyTimeoutMs: number;
   private readonly silenceTimeoutMs: number;
   private logWindowStart = 0;
@@ -207,10 +195,9 @@ export class WidebandEngine implements ScannerEngine {
     this.sampleRateHz = opts.sampleRateHz;
     this.centerOffsetHz = opts.centerOffsetHz ?? 0;
     this.niceness = opts.niceness;
-    this.native = opts.native ?? false;
     this.readyTimeoutMs = opts.readyTimeoutMs ?? DEFAULT_READY_TIMEOUT_MS;
     this.silenceTimeoutMs = opts.silenceTimeoutMs ?? DEFAULT_SILENCE_TIMEOUT_MS;
-    this.helperCmd = opts.helperCmd ?? defaultHelperCmd(this.native);
+    this.helperCmd = opts.helperCmd ?? defaultHelperCmd();
     this.helperEnv = opts.helperEnv ?? {};
     this.autoRestart = opts.autoRestart ?? true;
     // The thrash lesson: the DEFAULT restart delay must be >=1s. Tests may
@@ -319,31 +306,18 @@ export class WidebandEngine implements ScannerEngine {
   }
 
   /**
-   * Re-point the LIVE flowgraph at a new config — a hop, not a restart. Used
+   * Re-point the LIVE helper at a new config — a hop, not a restart. Used
    * for mode switches (weather break-in ⇄ scan) and channel edits so the
-   * operator never sees the warm-up overlay or hears the 300-thread cold-start
-   * chop. The helper's `tune` command re-centers the SDR and re-assigns the
-   * EXISTING lanes; no respawn, no `booting`/`warmup` events.
+   * operator never sees the warm-up overlay or hears a cold-start chop. The
+   * helper's `tune` command re-centers the SDR and re-assigns the EXISTING
+   * lanes; no respawn, no `booting`/`warmup` events.
    *
-   * But the lane COUNT and per-lane demod paths are fixed at spawn (GR) — the
-   * tune command cannot grow lanes or add a demod path. So a re-point is only
-   * valid when the new config FITS the spawned lane plan (planFits): no more
-   * lanes than were built, every slot's needed FM/AM path already present, and
-   * at least one channel. A config that does not fit — a channel ADDED past a
-   * group's spawned lane count (the helper would silently truncate it), an AM
-   * edit/audition landing on an FM-only lane (it would mis-demodulate to
-   * silence), or an emptied channel set (the helper must be torn down to
-   * release the SDR, not left hot on a deleted window) — falls back to a full
-   * start(), which respawns with a correctly-sized channelizer. That is the
-   * ONLY case that re-shows the overlay, and only when the DSP topology must
-   * genuinely change; a rename/retag/priority/enable edit still re-points.
-   *
-   * Native (kerchunk-dsp) has a fixed 12 lane slots built at spawn regardless
-   * of config, so it never needs a bigger/different channelizer: ANY topology
-   * change (more channels, an AM lane, …) just re-points. The only case that
-   * still respawns is an emptied channel set — same as GR, and for the same
-   * reason: release the SDR rather than leave the helper hot on nothing.
-   * If the helper isn't live there is no graph to re-point — also a full start.
+   * kerchunk-dsp has a fixed 12 lane slots built at spawn regardless of
+   * config, so ANY topology change (more channels, an AM lane, …) just
+   * re-points. The only case that respawns is an emptied channel set: the
+   * helper must be torn down to release the SDR, not left hot on a deleted
+   * window. If the helper isn't live there is nothing to re-point — also a
+   * full start.
    */
   async retune(config: ScanConfig): Promise<void> {
     if (this._state !== "running" || !this.child?.stdin?.writable) {
@@ -354,13 +328,9 @@ export class WidebandEngine implements ScannerEngine {
       config.windowBandwidthHz ?? DEFAULT_WINDOW_HZ,
       MAX_CHANNELS_PER_GROUP,
     );
-    // GR sizes its channelizer at spawn, so a new topology needs a respawn.
-    // Native has fixed 12 slots: only an emptied channel set (release the SDR)
-    // takes the full start() path.
-    const mustRespawn = this.native
-      ? newGroups.length === 0
-      : !this.spawnedPlan || !planFits(this.spawnedPlan, newGroups, MAX_CHANNELS_PER_GROUP);
-    if (mustRespawn) return this.start(config);
+    // Fixed 12 slots: only an emptied channel set (release the SDR) takes the
+    // full start() path.
+    if (newGroups.length === 0) return this.start(config);
     this.config = config;
     this.groups = newGroups;
     this.groupIndex = 0;
@@ -391,7 +361,6 @@ export class WidebandEngine implements ScannerEngine {
     // Narrow front-end for a single-channel radio (weather): 10x cheaper than
     // the 2.4 MHz wideband default — the front-end dominates the helper's cost.
     if (this.sampleRateHz !== undefined) args.push("--rate", String(this.sampleRateHz));
-    if (!this.native && cfg.detectVia !== undefined) args.push("--detect-via", cfg.detectVia);
     // Close Call FFT: built on unless explicitly disabled (matches the per-tune
     // `closeCall ?? true`). Off => the helper skips the 2048-pt FFT entirely.
     // A closeCall config change respawns the helper, so this stays in sync.
@@ -409,25 +378,10 @@ export class WidebandEngine implements ScannerEngine {
     // multimon-ng process and no last-lane tap.
     if (cfg.sameEnable) args.push("--same-enable");
     if (cfg.gain !== "auto") args.push("--gain", String(cfg.gain));
-    // Quieting squelch threshold. Native (decision C, 2026-09-25): kerchunk-dsp
-    // has its own dB scale (~90 dB from GR's), so it gets ONLY nativeQuietDb --
-    // never the GR-scale noiseQuietDb, which would stop anything from opening.
-    if (this.native) {
-      if (cfg.nativeQuietDb !== undefined) args.push("--quiet-db", String(cfg.nativeQuietDb));
-      // AM vs FM loudness balance (airband ran hot vs FM on native, 2026-09-26).
-      if (cfg.nativeAmGainDb !== undefined) args.push("--am-gain-db", String(cfg.nativeAmGainDb));
-    } else if (cfg.noiseQuietDb !== undefined) {
-      args.push("--quiet-db", String(cfg.noiseQuietDb));
-    }
-    // Lane-fit (spec 2026-06-09): size the helper's channelizer to this config
-    // — N = busiest group's channel count (<= MAX), each lane built with only
-    // the demod path it needs. `this.groups` is set before every spawn (start/
-    // reconfigure); an empty config yields a safe 1-lane plan. The weather
-    // engine rides the same path: its lone NWR channel collapses to one lane.
-    // Native has fixed 12 lane slots and ignores this — no --lanes/--lane-modes.
-    const plan = computeLanePlan(this.groups, MAX_CHANNELS_PER_GROUP);
-    this.spawnedPlan = plan;   // remember what we built so retune() can fit-check
-    if (!this.native) args.push(...lanePlanArgs(plan));
+    // Quieting squelch threshold on kerchunk-dsp's own dB scale (default -6).
+    if (cfg.nativeQuietDb !== undefined) args.push("--quiet-db", String(cfg.nativeQuietDb));
+    // AM vs FM loudness balance (airband ran hot vs FM, 2026-09-26).
+    if (cfg.nativeAmGainDb !== undefined) args.push("--am-gain-db", String(cfg.nativeAmGainDb));
     return args;
   }
 
@@ -438,7 +392,7 @@ export class WidebandEngine implements ScannerEngine {
     this.lastSpawnAt = this.now();
     const base = [...this.helperCmd, ...this.helperArgs()];
     // Low-priority spawn (weather radio): `nice` execs the helper so all of its
-    // GR threads inherit the nice value from birth. Lowering own priority needs
+    // threads inherit the nice value from birth. Lowering own priority needs
     // no privilege.
     const argv = this.niceness !== undefined
       ? ["nice", "-n", String(this.niceness), ...base]
@@ -446,7 +400,7 @@ export class WidebandEngine implements ScannerEngine {
     const child = spawn(argv[0]!, argv.slice(1), {
       // fd 3: the helper tees the speaker feed (s16 PCM) for remote
       // listening. The engine ALWAYS drains it — an unread pipe would
-      // stall the GR audio thread.
+      // stall the helper's audio thread.
       stdio: ["pipe", "pipe", "pipe", "pipe"],
       env: { ...process.env, ...this.helperEnv },
     });
@@ -460,10 +414,8 @@ export class WidebandEngine implements ScannerEngine {
     this.audibleId = null;
     this.holdStartedAt = 0;
     this.lastStderrLine = "";
-    if (this.native) {
-      this.readyTimer = setTimeout(
-        () => this.watchdogFire(child, `no "ready" within ${this.readyTimeoutMs} ms`), this.readyTimeoutMs);
-    }
+    this.readyTimer = setTimeout(
+      () => this.watchdogFire(child, `no "ready" within ${this.readyTimeoutMs} ms`), this.readyTimeoutMs);
 
     const out = createInterface({ input: child.stdout! });
     this.childStdout = out;
@@ -475,7 +427,7 @@ export class WidebandEngine implements ScannerEngine {
       // thread can still emit periodic log lines forever, which would starve
       // the silence watchdog of the timeout it exists to enforce. Only a
       // non-"log" event (tune/open/close/etc.) counts as liveness.
-      if (this.native && this.silenceTimer && ev.ev !== "log") this.armSilence(child);
+      if (this.silenceTimer && ev.ev !== "log") this.armSilence(child);
       this.handleHelperEvent(ev);
     });
     out.on("error", () => { /* non-fatal */ });
@@ -516,10 +468,8 @@ export class WidebandEngine implements ScannerEngine {
     }
     switch (ev.ev) {
       case "ready":
-        if (this.native) {
-          if (this.readyTimer) { clearTimeout(this.readyTimer); this.readyTimer = null; }
-          if (this.child) this.armSilence(this.child);
-        }
+        if (this.readyTimer) { clearTimeout(this.readyTimer); this.readyTimer = null; }
+        if (this.child) this.armSilence(this.child);
         this.sendTune();
         this.startDwellTimer();
         break;
@@ -657,7 +607,6 @@ export class WidebandEngine implements ScannerEngine {
         // Per-channel squelch profile (ROADMAP Idea 7) — omitted = the
         // helper's global defaults. Resolved from banks by the server.
         ...(c.openAboveFloorDb !== undefined ? { openDb: c.openAboveFloorDb } : {}),
-        ...(c.noiseQuietDb !== undefined ? { quietDb: c.noiseQuietDb } : {}),
         ...(c.hangMs !== undefined ? { hangMs: c.hangMs } : {}),
       })),
       monitor: this.config?.monitor ?? false,
@@ -770,7 +719,7 @@ export class WidebandEngine implements ScannerEngine {
     if (this.silenceTimer) { clearTimeout(this.silenceTimer); this.silenceTimer = null; }
   }
 
-  // A wedged native helper (ALSA/USB stuck before "ready", or a hung DSP
+  // A wedged helper (ALSA/USB stuck before "ready", or a hung DSP
   // thread afterwards) stays alive and silent -- no exit, so the normal
   // escalation never fires. These timers turn that into an exit.
   private watchdogFire(child: ChildProcess, why: string): void {
@@ -821,11 +770,11 @@ export class WidebandEngine implements ScannerEngine {
     if (this.child) {
       const child = this.child;
       this.child = null; // null first: its own exit hits the stale-guard
-      // Ask nicely (the helper tears the flowgraph down on "quit"/EOF), then
+      // Ask nicely (the helper shuts down cleanly on "quit"/EOF), then
       // make sure after a grace period. The timer is PER CHILD on purpose:
       // a shared class slot let an overlapping teardown (rapid bank toggles
       // = stop/start cycles) CANCEL the previous helper's pending SIGKILL —
-      // a helper wedged in GNU Radio teardown then held the SDR forever and
+      // a helper wedged in teardown then held the SDR forever and
       // every respawn errored on-screen until timing luck freed it
       // (operator-replicated).
       try { child.stdin?.write('{"cmd":"quit"}\n'); } catch { /* ignore */ }
@@ -872,8 +821,8 @@ export class WidebandEngine implements ScannerEngine {
       this.clearRestartTimer();
       // Exponential backoff on CONSECUTIVE failures (exitFailures resets once a
       // spawn proves healthy). Without it a helper that cannot open its device
-      // respawned at a flat 1 Hz forever, rebuilding a GNU Radio flowgraph every
-      // second — pure thermal load with no chance of a different outcome.
+      // respawned at a flat 1 Hz forever — pure device churn with no chance of
+      // a different outcome.
       const delay = Math.min(
         this.restartDelayMs * 2 ** Math.max(0, this.exitFailures - 1),
         this.maxRestartDelayMs,

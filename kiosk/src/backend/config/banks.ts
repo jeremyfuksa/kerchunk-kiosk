@@ -42,12 +42,11 @@ export function isAudible(channel: Channel, _banks: Bank[]): boolean {
 // bank enabled/audible fields do not affect membership or channel state.
 export interface BankProfile {
   openAboveFloorDb?: number;
-  noiseQuietDb?: number;
   hangMs?: number;
   dwellWeight?: number;
 }
 
-const PROFILE_KEYS = ["openAboveFloorDb", "noiseQuietDb", "hangMs", "dwellWeight"] as const;
+const PROFILE_KEYS = ["openAboveFloorDb", "hangMs", "dwellWeight"] as const;
 
 export function profileFor(channel: Channel, banks: Bank[]): BankProfile {
   const out: BankProfile = {};

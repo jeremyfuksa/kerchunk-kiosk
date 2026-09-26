@@ -82,7 +82,7 @@ export const configSchema = z.object({
     maxHoldMs: z.number().int().positive().optional(),
     // Ceiling on the DSP helper's respawn backoff (default 30 s). Consecutive
     // failed spawns double the delay up to this; a helper whose SDR is absent
-    // must not rebuild its flowgraph every second. Also engine-construction
+    // must not respawn every second. Also engine-construction
     // time — needs a backend restart.
     maxRestartDelayMs: z.number().int().positive().optional(),
     // Squelch: open when channel power exceeds its learned noise floor by
@@ -90,19 +90,15 @@ export const configSchema = z.object({
     openAboveFloorDb: z.number().positive().optional(),
     // Quieting squelch: discriminator HF-noise level (dB) BELOW which a
     // channel counts as carrier-quieted. Power without quieting never opens
-    // (rejects spurs/AGC pumping/broadband bursts — non-voice junk). Bench
-    // default in the DSP helper: -86 (static ~-82, voice carrier -94..-96).
-    noiseQuietDb: z.number().negative().optional(),
-    // Quieting threshold for the NATIVE engine (KERCHUNK_ENGINE=native), on
-    // kerchunk-dsp's own scale: dB of discriminator HF-noise power, lower =
-    // more quieted; dead channels read ~-2, steady carriers ~-30. NOT the GR
-    // scale of noiseQuietDb above (~90 dB apart) -- that value is never sent
-    // to the native helper. Omitted = the helper's QUIET_DB_DEFAULT (-6).
+    // (rejects spurs/AGC pumping/broadband bursts — non-voice junk). On
+    // kerchunk-dsp's own scale: lower = more quieted; dead channels read ~-2,
+    // keyed carriers ~-30. Passed as --quiet-db. Omitted = the helper's
+    // QUIET_DB_DEFAULT (-6). (Legacy configs may still carry the retired
+    // GNU-Radio-scale `noiseQuietDb` — the schema strips it on load.)
     nativeQuietDb: z.number().optional(),
-    // AM speaker gain offset (dB) for the NATIVE engine: balances airband
-    // loudness against FM by ear (normalized AM audio vs de-emphasized FM
-    // don't naturally match). Passed as --am-gain-db. Omitted = 0 dB (the
-    // helper's AM_GAIN). GR ignores it.
+    // AM speaker gain offset (dB): balances airband loudness against FM by
+    // ear (normalized AM audio vs de-emphasized FM don't naturally match).
+    // Passed as --am-gain-db. Omitted = 0 dB (the helper's AM_GAIN).
     nativeAmGainDb: z.number().min(-30).max(20).optional(),
     // Close Call: discover strong transmissions in the tuned window on
     // non-configured frequencies. Plays them (priority preempt) and auto-adds
@@ -130,12 +126,6 @@ export const configSchema = z.object({
     // Capped so a typo can't hand the sweep a budget the state partition
     // cannot honour.
     closeCallSampleMaxMb: z.number().positive().max(2_000).optional(),
-    // Power-detection source (ROADMAP DSP-efficiency): "lane" (default) reads
-    // power from the 12 per-lane probes; "fft" derives it from the Close Call
-    // FFT, shedding the per-lane power front-end (~0.5-0.7 cores). Quieting and
-    // demod are unchanged in both. Default flips to "fft" only after the bench
-    // A/B (see specs/2026-06-08-fft-detect-power-design.md).
-    detectVia: z.enum(["lane", "fft"]).optional(),
     // Close Call band-sweep ranges (stretch phase 2): one empty-window
     // stop per rotation hunts inside these. Empty/absent = no sweeping.
     sweepRanges: z.array(z.object({
@@ -154,7 +144,7 @@ export const configSchema = z.object({
     // the helper builds no PCM tee — the post-limiter float->s16 conversion and
     // fd-write are skipped, saving idle CPU on every box. Opt-in because the
     // feed is rarely listened to. Toggling it respawns the helper (the tee is a
-    // flowgraph block, built at spawn).
+    // helper spawn arg).
     remoteListening: z.boolean().default(false),
     // ALSA mixer target for volume/mute. amixer addresses controls by card
     // INDEX or NAME + control NAME, which differ per device (e.g. HDMI exposes
@@ -185,11 +175,10 @@ export const configSchema = z.object({
     tags: z.array(z.string().min(1)).optional(),
     // Per-bank scan profile (ROADMAP Idea 7) — overrides the global scan
     // block for this bank's channels. Resolution: field-wise first-match
-    // in config order among enabled banks; absent = global. Squelch trio
-    // applies per CHANNEL (windows can mix banks); dwellWeight applies
+    // in config order among enabled banks; absent = global. Squelch pair
+    // (openAboveFloorDb/hangMs) applies per CHANNEL (windows can mix banks); dwellWeight applies
     // per WINDOW (max across its channels — the busiest bank dominates).
     openAboveFloorDb: z.number().positive().optional(),
-    noiseQuietDb: z.number().negative().optional(),
     hangMs: z.number().positive().optional(),
     dwellWeight: z.number().positive().optional(),
   })).optional(),
@@ -257,7 +246,7 @@ export const configSchema = z.object({
     trails: z.boolean().default(false),
   }).optional(),
   // Multi-SDR (ROADMAP Idea 10): role assignments by device identity.
-  // Prefer SERIAL (e.g. "KIOSK01") — SoapySDR resolves it to the exact dongle
+  // Prefer SERIAL (e.g. "KIOSK01") — the helper resolves it to the exact dongle
   // regardless of librtlsdr enumeration order, which the USB PORT->index map
   // got wrong with two dongles on a hub. PORT ("1-1.2") remains as a fallback
   // for dongles with no usable serial. At least one of serial/port is required.

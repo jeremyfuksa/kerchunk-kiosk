@@ -5,7 +5,6 @@ import type { Channel } from "../config/schema.js";
 // engine/helper never see banks — only these concrete numbers.
 export type ScanChannel = Channel & {
   openAboveFloorDb?: number;
-  noiseQuietDb?: number;
   hangMs?: number;
   dwellWeight?: number;
   /** Continuous-carrier decoder feed (NWR/SAME): demodulated on the SAME
@@ -24,10 +23,9 @@ export interface ScanConfig {
   windowBandwidthHz?: number;
   groupDwellMs?: number;
   openAboveFloorDb?: number;
-  noiseQuietDb?: number;
-  // Native engine only: quieting threshold on kerchunk-dsp's scale (see schema).
+  // Quieting threshold on kerchunk-dsp's dB scale (see schema).
   nativeQuietDb?: number;
-  // Native engine only: AM speaker gain offset in dB (see schema).
+  // AM speaker gain offset in dB (see schema).
   nativeAmGainDb?: number;
   // Monitor mode (weather-only): hold the channel open and audible with NO
   // squelch. A lone continuously-keyed station (NOAA) can't be squelched
@@ -46,8 +44,6 @@ export interface ScanConfig {
   // Frequencies Close Call must never fire on (channels + discoveries +
   // lockouts). Computed by the server, which owns all three lists.
   knownHz?: number[];
-  // Power-detection source for the wideband engine ("lane" | "fft"). Others ignore it.
-  detectVia?: "lane" | "fft";
   // Remote listening: when true the wideband helper builds the PCM streaming
   // tee (--audio-fd) that /api/stream.wav drains. Off => no tee, no idle cost.
   remoteListening?: boolean;
@@ -145,10 +141,10 @@ export interface ScannerEngine {
   /** Alert pull-in: open a see-only channel's audio for holdSeconds (its lane is already demodulating — this just routes it to the speaker). Optional. */
   alertUnmute?(channelId: string, holdSeconds: number): void;
   /**
-   * Apply a new scan config to the LIVE flowgraph without a restart: re-center
+   * Apply a new scan config to the LIVE DSP helper without a restart: re-center
    * the SDR and re-point the existing lanes (a hop, not a cold start), so a
    * mode switch (e.g. a weather break-in) doesn't replay the warm-up overlay or
-   * the cold-start audio chop. Optional — engines without a live flowgraph
+   * the cold-start audio chop. Optional — engines without a persistent helper
    * (RtlFm) omit it and callers fall back to stop()+start().
    */
   retune?(config: ScanConfig): Promise<void>;

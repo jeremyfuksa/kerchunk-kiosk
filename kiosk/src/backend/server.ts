@@ -116,7 +116,6 @@ export function toScanConfig(
     windowBandwidthHz: cfg.scan.windowBandwidthHz,
     groupDwellMs: cfg.scan.groupDwellMs,
     openAboveFloorDb: cfg.scan.openAboveFloorDb,
-    noiseQuietDb: cfg.scan.noiseQuietDb,
     nativeQuietDb: cfg.scan.nativeQuietDb,
     nativeAmGainDb: cfg.scan.nativeAmGainDb,
     sweepRanges: cfg.scan.sweepRanges,
@@ -134,7 +133,6 @@ export function toScanConfig(
     closeCall: cfg.scan.closeCall,
     closeCallDb: cfg.scan.closeCallDb,
     lockoutHz: cfg.scan.lockoutHz,
-    detectVia: cfg.scan.detectVia,
     // PCM tee gate: the helper builds --audio-fd when remote listening OR
     // close call recording wants it. recordCloseCalls is deliberately part of
     // scan config (not audio) so the PUT handler's scanChanged diff restarts
@@ -770,7 +768,7 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
   }
 
   // Mutating API requests run one at a time. Handlers await engine restarts
-  // (~1s of GNU Radio teardown/spawn on hardware) mid-request, and a second
+  // (helper teardown/spawn on hardware) mid-request, and a second
   // mutation landing inside that window can interleave stop/start into two
   // concurrent start() calls — two helpers contending for the SDR. GETs
   // (including the long-lived /stream.wav) stay concurrent.

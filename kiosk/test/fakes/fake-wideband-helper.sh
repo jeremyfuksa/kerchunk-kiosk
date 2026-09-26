@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Fake wideband_helper.py for WidebandEngine tests. Speaks the line-JSON
+# Fake kerchunk-dsp helper for WidebandEngine tests. Speaks the line-JSON
 # protocol on stdin/stdout. Scenarios via env:
 #   FAKE_WB_ARGS_FILE   - append "$@" on launch (spawn counting)
 #   FAKE_WB_PID_FILE    - append $$ on launch (orphan detection, fake-sink.sh pattern)
@@ -10,10 +10,10 @@
 #   FAKE_WB_MODE        - "nodevice" -> print device error to stderr, exit 1
 #                         "crash"    -> emit ready, then exit 2 after 100ms
 #                         "wedge"    -> emit ready, then IGNORE quit/EOF and
-#                                       linger (simulates GNU Radio teardown
+#                                       linger (simulates helper teardown
 #                                       hanging while holding the device)
-#                         "noready"  -> never says ready (native helper wedged
-#                                       before device/ALSA open)
+#                         "noready"  -> never says ready (helper wedged before
+#                                       device/ALSA open)
 #                         "silent"   -> says ready, then emits nothing ever
 #                                       again (hung DSP thread)
 #   FAKE_WB_STDERR      - printed to stderr before any mode-specific behavior
@@ -24,11 +24,11 @@
 [ -n "${FAKE_WB_PID_FILE:-}" ] && echo "$$" >> "$FAKE_WB_PID_FILE"
 [ -n "${FAKE_WB_STDERR:-}" ] && echo "$FAKE_WB_STDERR" >&2
 if [ "${FAKE_WB_MODE:-}" = "nodevice" ]; then
-  echo "RuntimeError: failed to open SoapySDR device" >&2
+  echo "failed to open RTL-SDR device" >&2
   exit 1
 fi
 if [ "${FAKE_WB_MODE:-}" = "noready" ]; then
-  # Never says ready (native helper wedged before device/ALSA open).
+  # Never says ready (helper wedged before device/ALSA open).
   cat > /dev/null
   exit 0
 fi

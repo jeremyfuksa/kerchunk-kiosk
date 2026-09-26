@@ -196,19 +196,21 @@ describe("mixerCard by name", () => {
   });
 });
 
-describe("noiseQuietDb", () => {
-  it("accepts a negative dB quieting threshold and preserves it", () => {
-    const cfg = structuredClone(defaultConfig()) as Record<string, unknown> & { scan: Record<string, unknown> };
+describe("retired GNU Radio keys (legacy configs)", () => {
+  it("a config still holding noiseQuietDb (scan + bank) and detectVia parses; the keys are stripped", () => {
+    const cfg = structuredClone(defaultConfig()) as Record<string, unknown> & {
+      scan: Record<string, unknown>; banks?: Array<Record<string, unknown>>;
+    };
     cfg.scan.noiseQuietDb = -86;
+    cfg.scan.detectVia = "fft";
+    cfg.banks = [{ id: "b1", name: "Ham", enabled: true, noiseQuietDb: -90, hangMs: 1500 }];
     const parsed = configSchema.safeParse(cfg);
     expect(parsed.success).toBe(true);
-    if (parsed.success) expect(parsed.data.scan.noiseQuietDb).toBe(-86);
-  });
-
-  it("rejects a positive value (it is a below-threshold in dB)", () => {
-    const cfg = structuredClone(defaultConfig()) as Record<string, unknown> & { scan: Record<string, unknown> };
-    cfg.scan.noiseQuietDb = 10;
-    expect(configSchema.safeParse(cfg).success).toBe(false);
+    if (!parsed.success) return;
+    expect(parsed.data.scan).not.toHaveProperty("noiseQuietDb");
+    expect(parsed.data.scan).not.toHaveProperty("detectVia");
+    expect(parsed.data.banks?.[0]).not.toHaveProperty("noiseQuietDb");
+    expect(parsed.data.banks?.[0]?.hangMs).toBe(1500);    // live profile keys survive
   });
 });
 

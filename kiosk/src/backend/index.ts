@@ -28,18 +28,14 @@ const CONFIG_PATH = process.env.KERCHUNK_CONFIG ?? "/var/lib/kerchunk-kiosk/conf
 const STATIC_DIR = process.env.KERCHUNK_STATIC
   ?? join(fileURLToPath(new URL("../frontend", import.meta.url)));
 // Engine selection: KERCHUNK_ENGINE=wideband|native|rtlfm|fake. USE_FAKE_ENGINE=1
-// is honored as the legacy spelling of "fake". Default is the wideband (GNU
-// Radio) engine — burned in on the appliance (simultaneous multi-channel, zero
-// device re-opens); native is the kerchunk-dsp (C++) replacement under A/B;
-// rtlfm remains selectable as the fallback for Pi-class hardware without GNU
-// Radio.
+// is honored as the legacy spelling of "fake". Default is the wideband engine
+// (WidebandEngine driving the native kerchunk-dsp helper: simultaneous
+// multi-channel, zero device re-opens). "native" is an alias for "wideband" —
+// kept because the appliance's systemd drop-in still sets it from the A/B era.
+// rtlfm remains selectable as the sequential fallback.
 const engineKind = process.env.KERCHUNK_ENGINE
   ?? (process.env.USE_FAKE_ENGINE === "1" ? "fake" : "wideband");
-const nativeEngine = engineKind === "native";
-// Both the GR and native helpers are the same multi-channel WidebandEngine
-// (native just flips its `native` flag) — anywhere the check means "the
-// multi-channel helper engine", treat wideband and native alike.
-const widebandFamily = engineKind === "wideband" || nativeEngine;
+const widebandFamily = engineKind === "wideband" || engineKind === "native";
 // A typo'd KERCHUNK_ENGINE (e.g. "Native", "gr") silently falls through to
 // rtlfm below — warn so it shows up in the boot log instead of just quietly
 // running the wrong engine.
@@ -56,7 +52,7 @@ const wsHub = new WsHub();
 // Multi-SDR (Idea 10): roles bind to USB PORTS (these clones ignore EEPROM
 // serials). The librtlsdr index is resolved fresh at every helper spawn —
 // devnums shuffle on replug, the port never does.
-// Per-role device selection: prefer the dongle's SERIAL (SoapySDR resolves it
+// Per-role device selection: prefer the dongle's SERIAL (the helper resolves it
 // to the exact device regardless of enumeration order), fall back to the USB
 // PORT->index map for dongles without a usable serial. {} = first device found.
 const scanRadio = config.radios?.find((r) => r.role === "scan");
@@ -81,7 +77,6 @@ const maxHold = config.scan.maxHoldMs !== undefined ? { maxHoldMs: config.scan.m
 const engine =
   engineKind === "fake" ? new FakeEngine()
   : widebandFamily ? new WidebandEngine({
-      ...(nativeEngine ? { native: true } : {}),
       ...deviceOpts(scanRadio),
       ...restartBackoffOpts,
       ...maxHold,
@@ -95,35 +90,31 @@ const engine =
 // sink — no speaker claim until the cross-device arbiter exists). SAME
 // jumps from the visiting-slot tier to gold: every burst is heard.
 //
-// It watches ONE channel, so it runs a NARROW front-end (240 kHz = 5x the
-// 48 kHz quad rate, a valid RTL rate) instead of the scanner's 2.4 MHz — ~10x
-// cheaper, which keeps a second helper inside this box's tight thermal budget.
-// The window is parked 60 kHz off the channel so 162.55 doesn't sit on the RTL
-// DC spike (the channel filter then removes the spike at +60 kHz baseband).
-// Native lanes must land on a multiple of 50 kHz; GR's quad-rate front-end
-// must land on a multiple of 48 kHz — 240 kHz (GR) and 250 kHz (native) are
-// each the smallest rate that satisfies their engine's constraint while still
-// being a valid RTL sample rate.
-const WEATHER_RATE_HZ = nativeEngine ? 250_000 : 240_000;
+// It watches ONE channel, so it runs a NARROW front-end (250 kHz) instead of
+// the scanner's 2.4 MHz — ~10x cheaper, which keeps a second helper inside
+// this box's tight thermal budget. kerchunk-dsp lanes must land on a multiple
+// of 50 kHz; 250 kHz is the smallest such rate that is also a valid RTL sample
+// rate. The window is parked 60 kHz off the channel so 162.55 doesn't sit on
+// the RTL DC spike (the channel filter then removes the spike at +60 kHz
+// baseband).
+const WEATHER_RATE_HZ = 250_000;
 const WEATHER_CENTER_OFFSET_HZ = 60_000;
 const weatherEngine = widebandFamily && weatherRadio && config.weatherChannel
   ? new WidebandEngine({
-      ...(nativeEngine ? { native: true } : {}),
       ...deviceOpts(weatherRadio),
       ...restartBackoffOpts,
       sampleRateHz: WEATHER_RATE_HZ,
       centerOffsetHz: WEATHER_CENTER_OFFSET_HZ,
-      // Decode-only and latency-tolerant: run it at the lowest priority so its
-      // ~300 GR threads never steal scheduling from the scanner's real-time
-      // audio thread (equal priority made the active repeater sound choppy).
+      // Decode-only and latency-tolerant: run it at the lowest priority to keep
+      // the scanner's real-time audio thread first (equal priority made the
+      // active repeater sound choppy).
       niceness: 19,
     })
   : undefined;
 
-// Weather-stagger: the NWR/SAME lane is a SECOND GNU Radio flowgraph. Starting
-// it at the same instant as the main engine made both graphs construct at once,
-// stacking the cold-start CPU spike. We defer it until the main engine's first
-// `tuned` (graph built + scheduler running), with a fallback timer below in
+// Weather-stagger: the NWR/SAME lane is a SECOND DSP helper. Starting it at the
+// same instant as the main engine stacks both cold starts (and both SDR opens).
+// We defer it until the main engine's first `tuned` (helper up and acked), with a fallback timer below in
 // case the main engine never tunes (empty config). Boots through the SAME
 // payload shape as before — a hand-built payload once omitted knownHz and made
 // every reboot re-discover all filed frequencies (review finding).
@@ -310,7 +301,7 @@ server.listen(PORT, () => {
 });
 
 // Stop BOTH engines on shutdown: leaving the weather helper running orphans a
-// second GNU Radio process holding the weather SDR, which then blocks the next
+// second DSP helper process holding the weather SDR, which then blocks the next
 // start from opening the device (systemd's cgroup kill masks this only in the
 // service path).
 const shutdown = async (): Promise<void> => {

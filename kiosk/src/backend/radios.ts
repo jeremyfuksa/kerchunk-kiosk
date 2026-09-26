@@ -4,7 +4,7 @@ import { readFileSync, readdirSync } from "node:fs";
 //
 // SERIAL is the preferred identity now (see config schema `radios[].serial`):
 // the dongles in service carry flashed EEPROM serials (KIOSK01/KIOSK03) and
-// SoapySDR resolves `serial=KIOSK03` to the exact device. This PORT->index
+// the helper resolves `--rtl-serial KIOSK03` to the exact device. This PORT->index
 // resolver is the FALLBACK for dongles with no usable serial.
 //
 // Why serial won: the port->index assumption below (sysfs port order ==
