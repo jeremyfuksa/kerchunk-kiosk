@@ -110,3 +110,57 @@ TEST(to_s16_clamps_and_scales) {
   kc::to_s16(x, 4, 32767.f, o);
   CHECK(o.size() == 4 && o[0] == 0 && o[1] == 16384 && o[2] == 32767 && o[3] == -32768);
 }
+
+TEST(speaker_cut_ramps_held_sample_to_zero) {
+  // Retune cut: GR faded out before a retune; a hard reset() would step from full scale to 0.
+  kc::SpeakerPath sp;
+  sp.set_source(0, false);
+  sp.set_gain(1.0f);
+  auto x = sig::fm_tone(kc::LANE_RATE, kc::LANE_RATE / 2, 0, 3000, 1000, 0.3);
+  auto y = run(sp, x, 0);
+  float steady = 0;   // max |delta| between consecutive samples in steady state
+  for (size_t i = 4801; i < y.size(); i++) steady = std::max(steady, std::fabs(y[i] - y[i - 1]));
+  // Cut on a sample well away from a zero crossing so a hard cut would be a real step.
+  std::vector<float> disc(64);
+  kc::FmDiscriminator d;
+  size_t k = 0;
+  while (std::fabs(y.back()) < 0.3f && k + 64 <= x.size()) {
+    for (int j = 0; j < 64; j++) disc[j] = d.step(x[k + j]);
+    sp.process(&x[k], disc.data(), 64, y);
+    k += 64;
+  }
+  const float last = y.back();
+  CHECK(std::fabs(last) >= 0.3f);
+  sp.cut();
+  CHECK(sp.feeding_lane() == -1);
+  std::vector<float> out;
+  for (int i = 0; i < 20; i++) sp.process(nullptr, nullptr, 64, out);
+  CHECK(out.size() > (size_t)kc::FADE_SAMPLES + 100);
+  CHECK(std::fabs(out[0] - last) <= std::max(steady, std::fabs(last) / kc::FADE_SAMPLES * 2));
+  float worst = std::fabs(out[0] - last);
+  for (int i = 1; i < kc::FADE_SAMPLES; i++) worst = std::max(worst, std::fabs(out[i] - out[i - 1]));
+  CHECK(worst <= std::fabs(last) / kc::FADE_SAMPLES * 1.01f);
+  bool zero = true;
+  for (size_t i = kc::FADE_SAMPLES; i < out.size(); i++) zero = zero && out[i] == 0.f;
+  CHECK(zero);
+}
+
+TEST(speaker_lpf_knob_passes_or_cuts_hf) {
+  // 10 kHz tone straight into the discriminator input: GR-parity 20 kHz LPF passes it, a
+  // voiceband 3.5 kHz knob setting removes it.
+  std::vector<float> disc(kc::LANE_RATE / 2);
+  for (size_t i = 0; i < disc.size(); i++) disc[i] = 0.5f * (float)std::sin(2 * M_PI * 10000 * i / kc::LANE_RATE);
+  std::vector<kc::cf> x(disc.size());
+  auto hf_rms = [&](kc::SpeakerPath& sp) {
+    sp.set_source(0, false);
+    sp.set_gain(1.0f);
+    std::vector<float> out;
+    for (size_t i = 0; i + 64 <= disc.size(); i += 64) sp.process(&x[i], &disc[i], 64, out);
+    return sig::rms(out.data() + 4800, out.size() - 4800);
+  };
+  kc::SpeakerPath wide, narrow(3500);
+  CHECK(hf_rms(wide) > 0.01);     // de-emphasized ~-13.6 dB but present (~0.074 rms)
+  CHECK(hf_rms(narrow) < 0.002);
+  CHECK_THROWS(kc::SpeakerPath(0));
+  CHECK_THROWS(kc::SpeakerPath(kc::LANE_RATE / 2));
+}

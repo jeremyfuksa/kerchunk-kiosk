@@ -40,6 +40,16 @@ int main(int argc, char** argv) {
     else if (k == "--open-db") o.squelch.open_db = std::atof(val().c_str());
     else if (k == "--quiet-db") o.squelch.quiet_db = std::atof(val().c_str());   // native scale only
     else if (k == "--hang-ms") o.squelch.hang_ms = std::atof(val().c_str());
+    else if (k == "--audio-lpf-hz") {
+      const std::string v = val();
+      char* end = nullptr;
+      const double hz = std::strtod(v.c_str(), &end);
+      if (end == v.c_str() || *end != '\0' || !(hz >= 1000 && hz <= 24000)) {
+        std::fprintf(stderr, "kerchunk-dsp: --audio-lpf-hz must be a number in [1000, 24000]\n");
+        return 2;
+      }
+      o.speaker_lpf_hz = hz;
+    }
     else if (k == "--close-call") o.close_call = true;
     else if (k == "--same-enable") o.same = true;
     else if (k == "--audio-out") audio_out = val();

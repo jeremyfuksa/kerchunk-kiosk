@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <stdexcept>
 
 namespace kc {
 
@@ -13,13 +14,26 @@ void to_s16(const float* x, int n, float scale, std::vector<int16_t>& out) {
   }
 }
 
-SpeakerPath::SpeakerPath()
-    : lpf_(design_lowpass(LANE_RATE, AUDIO_LPF_HZ, AUDIO_LPF_TRANSITION_HZ)),
+namespace {
+std::vector<float> speaker_lpf(double hz) {
+  if (!(hz > 0 && hz < LANE_RATE / 2.0)) throw std::invalid_argument("SpeakerPath: lpf_hz must be in (0, LANE_RATE/2)");
+  return design_lowpass(LANE_RATE, hz, SPEAKER_LPF_TRANSITION_HZ);
+}
+}  // namespace
+
+SpeakerPath::SpeakerPath(double lpf_hz)
+    : lpf_(speaker_lpf(lpf_hz)),
       speech_(SPEECH_WINDOW),
       rs_(24, 25, LANE_RATE, SPEAKER_RS_CUTOFF_HZ, SPEAKER_RS_TRANSITION_HZ) {
   a50_.resize(256);
   a48_.resize(256);
 }
+
+// The edge logic (fade, then switch_now() at the end of process()) assumes a fade completes
+// within one engine poll: a set_gain()/set_source() issued at the next poll must never land
+// mid-fade. FADE_SAMPLES of 48 kHz audio must be shorter than one CHUNK_SAMPLES poll at 50 kHz.
+static_assert((long long)FADE_SAMPLES * LANE_RATE < (long long)CHUNK_SAMPLES * AUDIO_RATE,
+              "SpeakerPath fade must finish before the next poll");
 
 void SpeakerPath::apply_target(float t) {
   if (t == target_) return;
@@ -73,6 +87,15 @@ void SpeakerPath::reset() {
   want_target_ = 0.f;
   switch_now();
   rs_.reset();
+  hold_left_ = 0;
+  last_out_ = 0;
+}
+
+void SpeakerPath::cut() {
+  const float held = last_out_;
+  reset();
+  hold_ = held;
+  hold_left_ = held != 0.f ? FADE_SAMPLES : 0;
 }
 
 void SpeakerPath::process(const cf* x, const float* disc, int n, std::vector<float>& out48) {
@@ -93,13 +116,16 @@ void SpeakerPath::process(const cf* x, const float* disc, int n, std::vector<flo
       gain_ += ramp_step_;
       if (--ramp_left_ == 0) gain_ = target_;
     }
-    out48.push_back(std::clamp(a48_[i] * gain_, -RAIL, RAIL));
+    float v = a48_[i] * gain_;
+    if (hold_left_ > 0) v += hold_ * (float)--hold_left_ / FADE_SAMPLES;   // reaches exactly 0
+    last_out_ = std::clamp(v, -RAIL, RAIL);
+    out48.push_back(last_out_);
   }
   if (switching_ && ramp_left_ == 0 && gain_ == 0.f) switch_now();
 }
 
 SamePath::SamePath()
-    : lpf_(design_lowpass(LANE_RATE, AUDIO_LPF_HZ, AUDIO_LPF_TRANSITION_HZ)),
+    : lpf_(design_lowpass(LANE_RATE, SAME_LPF_HZ, SAME_LPF_TRANSITION_HZ)),
       rs_(441, 1000, LANE_RATE, SAME_RS_CUTOFF_HZ, SAME_RS_TRANSITION_HZ) {}
 
 void SamePath::push(const float* disc, int n, std::vector<int16_t>& out) {

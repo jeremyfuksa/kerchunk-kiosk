@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <vector>
 
 #include "check.hpp"
@@ -260,4 +261,43 @@ TEST(engine_same_pcm_only_for_background_lane_when_enabled) {
     r.feed(x);
     CHECK(r.same_pcm.empty());
   }
+}
+
+// Skipping an audible Close Call lane parks its slot at once; the speaker must still fade the
+// parked lane's real audio out (not zeros) or the skip is a hard cut -- an audible click.
+TEST(engine_skip_audible_cc_lane_fades_without_click) {
+  kc::EngineOptions o; o.rate = RATE; o.close_call = true;
+  Rig r(o);
+  r.tune(CC_TUNE);
+  auto x = scene(3.0, 9);
+  auto fm = sig::fm_tone(RATE, x.size(), 87'500, 3000, 1000, 0.2);
+  for (size_t i = (size_t)(0.6 * RATE); i < x.size(); i++) x[i] += fm[i];
+  r.feed(x, 0, 2.0);
+  CHECK(r.of("closecall").size() == 1);
+  CHECK(!r.of("audible").empty() && r.of("audible").back()["id"] == "cc_146087500");
+  // Cut on a loud sample: advance in single hops until the last emitted sample is well off zero.
+  auto iq = to_u8(x);
+  size_t pos = (size_t)(2.0 * RATE);
+  const size_t hop = RATE / kc::LANE_RATE * kc::Channelizer::kLaneSamplesPerHop;
+  while (!r.pcm.empty() && std::abs(r.pcm.back()) < 3000 && pos + hop < (size_t)(2.5 * RATE)) {
+    r.e.push_u8(&iq[2 * pos], hop);
+    pos += hop;
+  }
+  const size_t n0 = r.pcm.size();
+  CHECK(n0 > 4800 && std::abs(r.pcm.back()) >= 3000);
+  int steady = 0;
+  for (size_t i = n0 - 4800; i < n0; i++) steady = std::max(steady, std::abs(r.pcm[i] - r.pcm[i - 1]));
+  r.cmd(R"({"cmd":"skip","holdoffS":10})");
+  CHECK(r.of("audible").back()["id"].is_null());
+  r.feed(x, (double)pos / RATE, 3.0);
+  CHECK(r.pcm.size() > n0 + 4800);
+  int across = 0;
+  for (size_t i = n0; i < n0 + kc::FADE_SAMPLES + 64 && i < r.pcm.size(); i++)
+    across = std::max(across, std::abs(r.pcm[i] - r.pcm[i - 1]));
+  std::printf("  skip: steady max|d|=%d across-skip max|d|=%d last=%d\n", steady, across, (int)r.pcm[n0 - 1]);
+  CHECK(steady > 0 && across <= 2 * steady);
+  // Silent within the fade plus one hop of audio, and it stays silent.
+  bool zero = true;
+  for (size_t i = n0 + kc::FADE_SAMPLES + 64; i < r.pcm.size(); i++) zero = zero && r.pcm[i] == 0;
+  CHECK(zero);
 }

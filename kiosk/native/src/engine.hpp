@@ -20,6 +20,7 @@ struct EngineOptions {
   Scanner::Params squelch{};
   bool close_call = false;
   bool same = false;
+  double speaker_lpf_hz = SPEAKER_LPF_HZ;   // speaker audio LPF cutoff (CLI --audio-lpf-hz)
 };
 
 class Engine {

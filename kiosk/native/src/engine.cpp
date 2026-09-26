@@ -9,7 +9,7 @@ using nlohmann::json;
 
 Engine::Engine(const EngineOptions& o, Emit emit, Pcm speaker, Pcm tee, Pcm same)
     : opt_(o), emit_(std::move(emit)), speaker_(std::move(speaker)), tee_(std::move(tee)), same_(std::move(same)),
-      ch_(o.rate), sc_(o.squelch, [this](const json& j) { emit_(j); }),
+      ch_(o.rate), sc_(o.squelch, [this](const json& j) { emit_(j); }), spk_(o.speaker_lpf_hz),
       power_(MAX_LANES), disc_(MAX_LANES), quiet_(MAX_LANES),
       disc_buf_(MAX_LANES, std::vector<float>(Channelizer::kLaneSamplesPerHop)), readings_(MAX_LANES) {
   if (o.close_call) cc_ = std::make_unique<CloseCall>(o.rate);   // FFTW planning on this (the DSP) thread
@@ -67,7 +67,7 @@ void Engine::tune(const TuneCmd& t) {
   ch_.reset_stream();
   ch_.set_lanes(offsets);
   for (int i = 0; i < MAX_LANES; i++) reset_lane(i);
-  spk_.reset();   // retune: hard cut is fine, there is no audio context to preserve
+  spk_.cut();   // retune: fade the last emitted sample out (GR faded before a retune), no step
   same_path_.reset();
   if (cc_) {
     cc_->reset(center_);
@@ -108,7 +108,16 @@ void Engine::on_hop(const cf* lanes, int per, const cf* raw, int raw_n) {
   }
   out48_.clear();
   const int f = spk_.feeding_lane();
-  if (f >= 0 && !sc_.lane(f).parked()) spk_.process(lanes + f * per, disc_buf_[f].data(), per, out48_);
+  if (f >= 0 && sc_.lane(f).parked()) {
+    // Scanner::skip parks an audible Close Call slot at once, but the speaker is still fading it
+    // out. Parking doesn't move the channelizer offset, so the slot's samples are still the old
+    // channel: keep its discriminator running (no meters) so the fade runs on real audio, not
+    // zeros -- a fade over zeros is a hard cut, an audible click.
+    const cf* y = lanes + f * per;
+    float* db = disc_buf_[f].data();
+    for (int d = 0; d < per; d++) db[d] = disc_[f].step(y[d]);
+  }
+  if (f >= 0) spk_.process(lanes + f * per, disc_buf_[f].data(), per, out48_);
   else spk_.process(nullptr, nullptr, per, out48_);
   if (!out48_.empty()) {
     if (speaker_) { to_s16(out48_.data(), (int)out48_.size(), SPEAKER_S16_SCALE, s16_); speaker_(s16_.data(), (int)s16_.size()); }
