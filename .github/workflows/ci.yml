@@ -33,7 +33,7 @@ jobs:
       # No `npm ci` here: `npm run test:native` only needs package.json (cmake +
       # the compiled test binary), not node_modules.
       - name: Install native build deps
-        run: sudo apt-get update && sudo apt-get install -y cmake libfftw3-dev pkg-config
+        run: sudo apt-get update && sudo apt-get install -y cmake libfftw3-dev pkg-config nlohmann-json3-dev
 
       - name: Test (native DSP core)
         run: npm run test:native

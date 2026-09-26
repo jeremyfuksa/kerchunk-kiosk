@@ -20,11 +20,12 @@ find_package(Threads REQUIRED)
 
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(FFTW3F REQUIRED IMPORTED_TARGET fftw3f)
+find_package(nlohmann_json 3.2 REQUIRED)
 
 file(GLOB KC_SRC CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp)
 add_library(kcdsp STATIC ${KC_SRC})
 target_include_directories(kcdsp PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_libraries(kcdsp PUBLIC PkgConfig::FFTW3F m)
+target_link_libraries(kcdsp PUBLIC PkgConfig::FFTW3F nlohmann_json::nlohmann_json m)
 
 file(GLOB KC_TESTS CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/test/*.cpp)
 add_executable(kerchunk-dsp-tests ${KC_TESTS})
