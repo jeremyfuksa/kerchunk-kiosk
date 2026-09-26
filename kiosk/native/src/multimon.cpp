@@ -51,6 +51,7 @@ bool Multimon::spawn(std::string& err) {
   }
   if (pid == 0) {
     // Child: async-signal-safe calls only, until execvp (or _exit on failure).
+    setpgid(0, 0);   // its own process group -- so stop() can signal it *and* any grandchildren (e.g. a `sleep` inside a shell loop) together
     std::signal(SIGPIPE, SIG_DFL);   // the parent process ignores SIGPIPE; the child must not inherit that
     dup2(in[0], 0);
     dup2(out[1], 1);
@@ -60,6 +61,7 @@ bool Multimon::spawn(std::string& err) {
     execvp(a[0], a.data());
     _exit(127);
   }
+  setpgid(pid, pid);   // also from the parent: closes the race where stop() could signal before the child's own setpgid runs
   close(in[0]);
   close(out[1]);
   pid_ = pid;
@@ -127,22 +129,22 @@ void Multimon::stop() {
     std::lock_guard<std::mutex> g(life_m_);
     running_.store(false, std::memory_order_relaxed);
     pid_to_reap = pid_;
-    if (pid_to_reap > 0) kill(pid_to_reap, SIGTERM);
+    if (pid_to_reap > 0) kill(-pid_to_reap, SIGTERM);   // whole process group: a grandchild (e.g. `sleep`) must not outlive the shell that spawned it
   }
   pump_.stop();                          // idempotent; closes whatever fd it currently owns -> EOF
   if (pid_to_reap > 0) {
     // Bounded wait for a clean exit; escalate to SIGKILL rather than let a wedged/TERM-ignoring
     // child (or a stale pid) hang shutdown. This must run *before* joining the reader thread
     // below: the reader is blocked in a plain read() on the child's stdout, which only unblocks
-    // once every fd referencing that pipe's write end is closed -- i.e. once the child actually
-    // dies (by TERM, or by the KILL here). Joining first would deadlock against a child that
-    // ignores SIGTERM.
+    // once every fd referencing that pipe's write end is closed -- i.e. once every process
+    // holding it open (the child, and any grandchild it spawned) actually dies. Joining first
+    // would deadlock against a child that ignores SIGTERM.
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(300);
     for (;;) {
       const pid_t r = waitpid(pid_to_reap, nullptr, WNOHANG);
       if (r == pid_to_reap || r < 0) break;
       if (std::chrono::steady_clock::now() >= deadline) {
-        kill(pid_to_reap, SIGKILL);
+        kill(-pid_to_reap, SIGKILL);   // whole group -- see the SIGTERM above
         waitpid(pid_to_reap, nullptr, 0);
         break;
       }

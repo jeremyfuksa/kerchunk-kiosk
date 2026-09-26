@@ -98,13 +98,33 @@ TEST(fd_pump_handoff_switches_fd_and_closes_previous) {
   close(b[0]);
 }
 
+TEST(fd_pump_set_fd_closes_unabsorbed_pending_fd) {
+  int a[2], b[2];
+  CHECK(pipe(a) == 0);
+  CHECK(pipe(b) == 0);
+  kc::FdPump pump(1 << 16, [](const std::string&) {}, "test");
+  pump.set_fd(a[1]);   // pending; the pump is never started, so this is never adopted
+  pump.set_fd(b[1]);   // must close a[1] itself before overwriting the still-pending slot
+  char extra;
+  CHECK(read(a[0], &extra, 1) == 0);   // EOF: a[1] was closed by set_fd, not leaked
+  close(a[0]);
+  pump.stop();          // never started; must still not leak the still-pending, owned b[1]
+  char extra_b;
+  CHECK(read(b[0], &extra_b, 1) == 0);   // EOF: b[1] closed by stop()
+  close(b[0]);
+}
+
 TEST(alsa_policy_reads_when_a_full_period_is_queued) {
   CHECK(kc::AlsaPolicy::decide(kc::ALSA_PERIOD, false, 0) == kc::AlsaPolicy::Action::Read);
   CHECK(kc::AlsaPolicy::decide(kc::ALSA_PERIOD + 37, false, 0) == kc::AlsaPolicy::Action::Read);
 }
 
-TEST(alsa_policy_empty_ring_declares_underrun_immediately) {
-  CHECK(kc::AlsaPolicy::decide(0, false, 0) == kc::AlsaPolicy::Action::Silence);
+TEST(alsa_policy_empty_ring_while_flowing_gets_wait_grace_then_underrun) {
+  // A producer that happens to drain the ring to exactly 0 between ticks gets the same ~5ms
+  // grace as a partial period before this is treated as an underrun.
+  CHECK(kc::AlsaPolicy::decide(0, false, 0) == kc::AlsaPolicy::Action::Wait);
+  CHECK(kc::AlsaPolicy::decide(0, false, 4.9) == kc::AlsaPolicy::Action::Wait);
+  CHECK(kc::AlsaPolicy::decide(0, false, 5.0) == kc::AlsaPolicy::Action::Silence);
 }
 
 TEST(alsa_policy_partial_waits_then_declares_underrun) {

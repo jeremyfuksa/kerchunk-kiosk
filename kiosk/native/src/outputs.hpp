@@ -103,9 +103,10 @@ struct AlsaPolicy {
       return queued >= (size_t)(2 * ALSA_PERIOD) ? Action::Read : Action::Silence;
     }
     if (queued >= (size_t)ALSA_PERIOD) return Action::Read;
-    if (queued == 0) return Action::Silence;
-    // 0 < queued < ALSA_PERIOD while flowing: give the producer a few ms to catch up before
-    // declaring an underrun (a stutter, not silence, is what a hair-trigger threshold buys you).
+    // 0 <= queued < ALSA_PERIOD while flowing (including an exact-zero ring): give the producer a
+    // few ms to catch up before declaring an underrun -- a producer that happens to drain the ring
+    // to exactly 0 between ticks is not yet an underrun, any more than a partial period is (a
+    // stutter, not silence, is what a hair-trigger threshold buys you).
     return waited_ms >= 5.0 ? Action::Silence : Action::Wait;
   }
 };

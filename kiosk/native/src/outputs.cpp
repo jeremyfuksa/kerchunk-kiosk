@@ -57,6 +57,9 @@ void EventOut::stop() {
 void FdPump::set_fd(int fd, bool owned) {
   if (fd >= 0) fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK);
   std::lock_guard<std::mutex> g(fd_m_);
+  if (pending_.load(std::memory_order_relaxed) && pending_owned_ && pending_fd_ >= 0 && pending_fd_ != fd) {
+    ::close(pending_fd_);   // never adopted by the pump thread, so closing it here is safe
+  }
   pending_fd_ = fd;
   pending_owned_ = owned;
   pending_.store(true, std::memory_order_release);
@@ -68,10 +71,15 @@ void FdPump::start() {
 }
 
 void FdPump::stop() {
-  if (!running_.exchange(false)) return;
-  t_.join();
-  // The pump thread has exited; touching cur_*/pending_* here is safe (no concurrent producer of
-  // fd changes -- set_fd from another thread after stop() would be a caller bug).
+  // Not gated on "was running_ true at entry": a pump that was never start()ed can still have an
+  // owned pending fd sitting unclosed (set_fd() was called, but no thread ever ran to adopt it),
+  // and stop() -- called explicitly, or from the destructor -- must not leak it. t_.joinable()
+  // (rather than the exchange result) is what decides whether there's a thread to join.
+  running_.store(false, std::memory_order_relaxed);
+  if (t_.joinable()) t_.join();
+  // The pump thread has exited (or never ran); touching cur_*/pending_* here is safe (no
+  // concurrent producer of fd changes -- set_fd from another thread after stop() would be a
+  // caller bug).
   if (cur_owned_ && cur_fd_ >= 0) { ::close(cur_fd_); cur_fd_ = -1; }
   std::lock_guard<std::mutex> g(fd_m_);
   if (pending_.exchange(false) && pending_owned_ && pending_fd_ >= 0 && pending_fd_ != cur_fd_) {
