@@ -13,12 +13,16 @@ LiveLoop::LiveLoop(Engine& e, IqSource& src, SpscQueue<Command>& cmds, int rate)
       settle_samples_((long long)RTL_BUF_LEN / 2 + (long long)std::llround(rate * RETUNE_SETTLE_MS / 1000.0)) {}
 
 bool LiveLoop::step() {
+  if (failed_) return false;
   // Commands drain here, between pushes -- never inside a hop -- so a retune can't reset the
   // channelizer underneath an in-progress hop.
   Command c;
   while (cmds_.try_pop(c)) {
     if (auto* t = std::get_if<TuneCmd>(&c)) {
-      src_.set_center(t->center_hz);        // retune now; samples from the old center are still in flight
+      // Retune now; samples from the old center are still in flight. A refused retune leaves the
+      // SDR on the old window -- demodulating that as the new one would silently scan the wrong
+      // frequencies, so fail instead and let the respawn reopen the device.
+      if (!src_.set_center(t->center_hz)) { failed_ = true; return false; }
       want_gen_ = src_.generation();
       pending_ = *t;
       settle_left_ = settle_samples_;

@@ -67,7 +67,8 @@ struct FakeSource : kc::IqSource {
     q.pop_front();
     return true;
   }
-  void set_center(double hz) override { centers.push_back(hz); gen++; }
+  bool refuse = false;   // simulate the device rejecting every retune
+  bool set_center(double hz) override { centers.push_back(hz); if (refuse) return false; gen++; return true; }
   uint32_t generation() const override { return gen; }
   uint64_t take_dropped() override { auto d = dropped; dropped = 0; return d; }
 };
@@ -219,4 +220,16 @@ TEST(live_known_command_folds_into_pending_tune) {
     for (auto& j : r.ev) if (j["ev"] == "closecall" && j["freqHz"].get<long long>() == 146087500) saw = true;
     CHECK(saw);
   }
+}
+
+TEST(live_refused_retune_fails_the_loop_instead_of_scanning_the_old_window) {
+  Rig r;
+  r.src.add(3, 0);
+  r.src.refuse = true;
+  r.send(TUNE);
+  r.src.add(10, 0);
+  r.run();
+  CHECK(r.loop->failed());
+  CHECK(r.count("tuned") == 0);     // the tune never applied to samples from the old center
+  CHECK(!r.loop->step());           // stays failed
 }

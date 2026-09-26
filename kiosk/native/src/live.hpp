@@ -32,7 +32,9 @@ class IqSource {
  public:
   virtual ~IqSource() = default;
   virtual bool consume(const std::function<void(const IqBlock&)>& use) = 0;
-  virtual void set_center(double hz) = 0;
+  // false = the device refused the new center (after its own retries): the loop fails rather than
+  // demodulate the old window as if it were the new one.
+  virtual bool set_center(double hz) = 0;
   virtual uint32_t generation() const = 0;
   virtual uint64_t take_dropped() = 0;
 };
@@ -42,6 +44,7 @@ class LiveLoop {
   LiveLoop(Engine& e, IqSource& src, SpscQueue<Command>& cmds, int rate);
   bool step();
   bool quit() const { return eng_.quit(); }
+  bool failed() const { return failed_; }   // a retune failed: the caller exits (3) so Node respawns
 
  private:
   Engine& eng_;
@@ -50,6 +53,7 @@ class LiveLoop {
   std::optional<TuneCmd> pending_;
   uint32_t want_gen_ = 0;
   long long settle_left_ = 0;
+  bool failed_ = false;
   const long long settle_samples_;
 };
 }  // namespace kc
