@@ -83,6 +83,13 @@ export const configSchema = z.object({
     // must not respawn every second. Also engine-construction
     // time — needs a backend restart.
     maxRestartDelayMs: z.number().int().positive().optional(),
+    // Helper liveness watchdogs (both helpers). Ready: no "ready" this long
+    // after spawn = wedged device open (default 10 s). Silence: no helper
+    // event other than a log line this long after ready = hung DSP (default
+    // 5 s; the helper emits power every 200 ms). Either kills + respawns the
+    // helper. Engine-construction time — needs a backend restart.
+    helperReadyTimeoutMs: z.number().int().min(1000).max(120_000).optional(),
+    helperSilenceTimeoutMs: z.number().int().min(1000).max(120_000).optional(),
     // Squelch: open when channel power exceeds its learned noise floor by
     // this many dB (close threshold sits 3 dB lower for hysteresis).
     openAboveFloorDb: z.number().positive().optional(),

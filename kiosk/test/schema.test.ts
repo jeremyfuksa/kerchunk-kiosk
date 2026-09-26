@@ -38,6 +38,15 @@ describe("configSchema", () => {
     expect(() => configSchema.parse(defaultConfig())).not.toThrow();
   });
 
+  it("accepts helper watchdog timeouts in [1000, 120000] ms and rejects outside it", () => {
+    const base = defaultConfig();
+    const scan = (x: object) => configSchema.parse({ ...base, scan: { ...base.scan, ...x } }).scan;
+    expect(scan({ helperReadyTimeoutMs: 20000, helperSilenceTimeoutMs: 8000 })).toMatchObject({ helperReadyTimeoutMs: 20000, helperSilenceTimeoutMs: 8000 });
+    expect(() => scan({ helperReadyTimeoutMs: 999 })).toThrow();
+    expect(() => scan({ helperSilenceTimeoutMs: 120001 })).toThrow();
+    expect(() => scan({ helperSilenceTimeoutMs: 1500.5 })).toThrow();
+  });
+
   it("accepts scan.fmAudioLpfHz in [1000, 24000] and rejects outside it", () => {
     const base = defaultConfig();
     expect(configSchema.parse({ ...base, scan: { ...base.scan, fmAudioLpfHz: 3500 } }).scan.fmAudioLpfHz).toBe(3500);
