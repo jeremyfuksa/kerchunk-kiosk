@@ -115,3 +115,15 @@ Binary: kerchunk-dsp (P1b replay), 11 channels (the 2 m group), Close Call on, d
 - Audio for listening: /home/kiosk/kiosk-iq/2m-native.wav (48 kHz mono, 30.00 s, not in the repo)
 
 Not included: USB reader thread, ALSA write, fd-3 tee (P1c).
+
+## Known A/B deltas vs GNU Radio (P3 checklist)
+
+Things that will sound or read differently from the GR helper in the by-ear A/B, and what to do about each:
+
+- **Speaker LPF is now GR parity (20 kHz).** GR's `nbfm_rx` audio filter sat at ~22.5 kHz at 48 kHz, so GR's speaker (and its leveler meter) got wideband de-emphasized audio. Native now matches by default (`SPEAKER_LPF_HZ = 20000`, 4 kHz transition, `constants.hpp`); the SAME path keeps its voiceband 3.5 kHz filter (`SAME_LPF_HZ`). Runtime knob: `--audio-lpf-hz X` (1000–24000). The replay above and `2m-native.wav` were produced with the earlier 3.5 kHz cut — re-render before listening, and expect squelch tails/hiss to be brighter than that file.
+- **AM lanes are leveled on real AM audio.** GR's leveler measured the FM-discriminator audio even on AM lanes, so it effectively never leveled AM. Native measures the AM envelope audio it actually plays, so persisted AM `levelTrimDb` values will move — re-check airband loudness by ear.
+- **Close Call averages ~4 frames per 200 ms check** (20 fps averaged FFT) vs GR's single frame per check. The noise estimate is steadier, so `closeCallDb` 15 may be too permissive/strict — re-pick it during the A/B.
+- **`QUIET_DB_DEFAULT` (-6 dB) was calibrated on one non-voice 2 m source** (the capture above). Check airband, UHF and real voice traffic by ear; tune live with `--quiet-db`.
+- **Persisted telemetry cross-contamination.** `levelTrimDb`/`rfDb` written by one engine are loaded by the other (the scales differ). Snapshot every `channels[].levelTrimDb` and `channels[].rfDb` from `config.json` before the A/B, and restore that snapshot on rollback to GR.
+- **GR-inherited floor drift during skip holdoff.** `skip` marks the lane closed while its carrier is often still keyed, so that lane's floor EMA runs and tracks up toward the carrier for the whole holdoff (GR behaviour, kept for parity). The open threshold uses the minimum floor across lanes, so this only bites when the skipped lane held that minimum — but a long holdoff on a hot lane can leave its floor elevated afterwards.
+- **`rf` telemetry reflects the floor on short bursts** (existing note above): the median over the open period is dominated by the hang, so a short burst reports floor power. GR behaviour, not an engine defect.
