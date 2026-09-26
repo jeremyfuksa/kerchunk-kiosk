@@ -7,6 +7,10 @@ class Resampler {
  public:
   Resampler(int up, int down, double in_rate, double cutoff_hz, double transition_hz);
   int push(const float* x, int n, std::vector<float>& out);
+  // Allocation-free variant for the real-time path. Writes at most `cap` outputs to `out`
+  // (size it with max_out(n)); returns the number written.
+  int push(const float* x, int n, float* out, int cap);
+  int max_out(int n) const { return (int)(((long long)n * up_) / down_) + 2; }
   void reset();
   int taps_per_phase() const { return tpp_; }
 

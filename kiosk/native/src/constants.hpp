@@ -24,4 +24,45 @@ inline constexpr double SPEAKER_RS_CUTOFF_HZ = 20000;      // 50k->48k resampler
 inline constexpr double SPEAKER_RS_TRANSITION_HZ = 4000;   // 50k->48k resampler transition width
 inline constexpr double SAME_RS_CUTOFF_HZ = 10000;         // 50k->22.05k resampler -6 dB point
 inline constexpr double SAME_RS_TRANSITION_HZ = 1000;      // 50k->22.05k resampler transition width
+
+// ---- Engine (P1b). GR ran 20 ms polls; the native engine decides every 10 ms chunk, so the
+// per-poll rates below are GR's re-timed to the same wall-clock time constants.
+inline constexpr int MAX_LANES = 12;               // fixed lane slots; background/SAME lane = last slot
+inline constexpr int POLL_MS = 10;                 // one squelch decision per lane chunk
+inline constexpr int OPEN_POLLS = 10;              // 100 ms sustained above threshold to open
+inline constexpr double WARMUP_MS = 500;           // per-lane settle time after (re)assignment
+inline constexpr int POWER_EVERY_POLLS = 20;       // power telemetry every 200 ms
+inline constexpr int CC_EVERY_POLLS = 20;          // Close Call check every 200 ms
+inline constexpr double CLOSE_HYST_DB = 3.0;
+inline constexpr double GATE_HYST_DB = 1.0;
+inline constexpr double QUIET_HYST_DB = 2.0;
+inline constexpr double FLOOR_ALPHA_UP = 0.01005;  // GR 0.02 per 20 ms
+inline constexpr double FLOOR_ALPHA_DOWN = 0.1056; // GR 0.2 per 20 ms
+inline constexpr double LEVEL_REF_DB = -14;
+inline constexpr double LEVEL_MIN_DB = -40;
+inline constexpr double LEVEL_MAX_DB = 12;
+inline constexpr double LEVEL_SLEW_DOWN = 0.04;    // dB per poll (~4 dB/s)
+inline constexpr double LEVEL_SLEW_UP = 0.02;      // dB per poll (~2 dB/s)
+inline constexpr double LEVEL_EMA_ALPHA = 0.01511; // GR 0.03 per 20 ms (~0.7 s)
+inline constexpr double LEVEL_DEADBAND_DB = 4.0;
+inline constexpr double LEVEL_EMIT_STEP_DB = 0.5;
+inline constexpr double SKIP_HOLDOFF_S = 10.0;
+inline constexpr int RF_MAX_SAMPLES = 6000;        // ~60 s of open-power samples
+inline constexpr int RF_MIN_SAMPLES = 50;          // ~0.5 s before an rf estimate is emitted
+inline constexpr int FADE_SAMPLES = 288;           // 6 ms at 48 kHz; only on silence edges
+inline constexpr float RAIL = 0.8f;                // hard speaker guard
+inline constexpr float AM_GAIN = 0.7f;
+inline constexpr float SPEAKER_S16_SCALE = 32767.f;
+inline constexpr float TEE_S16_SCALE = 28000.f;
+inline constexpr float SAME_S16_SCALE = 16384.f;
+inline constexpr int CC_FFT = 2048;
+inline constexpr int CC_FPS = 20;
+inline constexpr int CC_CONFIRM = 2;
+inline constexpr double CC_COOLDOWN_S = 300;
+inline constexpr double CC_RASTER_HZ = 12500;
+inline constexpr double CC_IMAGE_REJECT_DB = 6.0;
+inline constexpr double CC_GUARD_HZ = 12500;
+inline constexpr double CC_DC_FRAC = 0.02;
+inline constexpr double CC_EDGE_FRAC = 0.10;
+inline constexpr double CC_DB_DEFAULT = 15.0;
 }  // namespace kc

@@ -37,57 +37,47 @@ Channelizer::Channelizer(int rate) : rate_(rate) {
   std::memset(fin_.get(), 0, sizeof(fftwf_complex) * n_);
 }
 
-void Channelizer::set_lanes(const std::vector<double>& offsets_hz) {
+Channelizer::Lane Channelizer::make_lane(double off) const {
   const double binw = (double)rate_ / n_;
-  // Beyond this, an offset wraps through the `% n_` bin arithmetic below and silently
-  // demodulates a different (aliased) frequency instead of the requested one.
   const double limit = rate_ / 2.0 - LANE_RATE / 2.0;
-  for (double off : offsets_hz) {
-    if (!std::isfinite(off))
-      throw std::invalid_argument("Channelizer::set_lanes: offset " + std::to_string(off) + " Hz is not finite");
-    if (std::fabs(off) > limit)
-      throw std::invalid_argument("Channelizer::set_lanes: offset " + std::to_string(off) +
-                                  " Hz exceeds the +-" + std::to_string(limit) +
-                                  " Hz limit (rate/2 - LANE_RATE/2) at rate " + std::to_string(rate_));
-  }
-  // Build into a local vector first: all offsets are already validated above, but this also
-  // keeps the strong exception guarantee if a future change adds a throwing step here — a
-  // throwing set_lanes must leave the previously-installed lanes untouched.
+  if (!std::isfinite(off))
+    throw std::invalid_argument("Channelizer: offset " + std::to_string(off) + " Hz is not finite");
+  if (std::fabs(off) > limit)
+    throw std::invalid_argument("Channelizer: offset " + std::to_string(off) + " Hz exceeds the +-" +
+                                std::to_string(limit) + " Hz limit (rate/2 - LANE_RATE/2) at rate " + std::to_string(rate_));
+  Lane l;
+  l.k0 = (int)std::lround(off / binw);
+  double resid = off - l.k0 * binw;
+  double w = -2 * M_PI * resid / LANE_RATE;
+  l.nco_step = cf((float)std::cos(w), (float)std::sin(w));
+  return l;
+}
+
+void Channelizer::set_lanes(const std::vector<double>& offsets_hz) {
+  // Build into a local vector first: all offsets are validated by make_lane before any
+  // mutation, keeping the strong exception guarantee — a throwing set_lanes must leave the
+  // previously-installed lanes untouched.
   std::vector<Lane> lanes;
   lanes.reserve(offsets_hz.size());
-  for (double off : offsets_hz) {
-    Lane l;
-    l.k0 = (int)std::lround(off / binw);
-    double resid = off - l.k0 * binw;
-    double w = -2 * M_PI * resid / LANE_RATE;
-    l.nco_step = cf((float)std::cos(w), (float)std::sin(w));
-    lanes.push_back(l);
-  }
+  for (double off : offsets_hz) lanes.push_back(make_lane(off));   // throws before any mutation
   lanes_ = std::move(lanes);
   out_.assign(lanes_.size() * kLaneSamplesPerHop, cf(0, 0));
   block_ = 0;
 }
 
-void Channelizer::push_u8(const uint8_t* iq, size_t nsamples, const HopSink& sink) {
-  const int hop = n_ / 2;
-  for (size_t i = 0; i < nsamples; i++) {
-    fin_[hop + fill_][0] = lut_[iq[2 * i]];
-    fin_[hop + fill_][1] = lut_[iq[2 * i + 1]];
-    if (++fill_ == hop) run_hop(sink);
-  }
+void Channelizer::set_lane_offset(int i, double off) {
+  if (i < 0 || i >= (int)lanes_.size()) throw std::out_of_range("Channelizer::set_lane_offset: bad lane index");
+  lanes_[i] = make_lane(off);
 }
 
-void Channelizer::push_cf(const cf* x, size_t nsamples, const HopSink& sink) {
-  const int hop = n_ / 2;
-  for (size_t i = 0; i < nsamples; i++) {
-    fin_[hop + fill_][0] = x[i].real();
-    fin_[hop + fill_][1] = x[i].imag();
-    if (++fill_ == hop) run_hop(sink);
-  }
+void Channelizer::reset_stream() {
+  std::memset(fin_.get(), 0, sizeof(fftwf_complex) * n_);
+  fill_ = 0;
+  block_ = 0;
 }
 
-void Channelizer::run_hop(const HopSink& sink) {
-  const int hop = n_ / 2, keep = kLaneSamplesPerHop, M = LANE_BINS;
+void Channelizer::run_hop() {
+  const int keep = kLaneSamplesPerHop, M = LANE_BINS;
   const float scale = 1.0f / n_;
   fftwf_execute(pf_.get());
   const cf* X = reinterpret_cast<const cf*>(fout_.get());
@@ -111,7 +101,10 @@ void Channelizer::run_hop(const HopSink& sink) {
     l.nco /= std::abs(l.nco);  // renormalize once per hop so float drift can't grow
   }
   block_++;
-  sink(out_.data(), (int)lanes_.size(), keep, reinterpret_cast<const cf*>(fin_.get() + hop), hop);
+}
+
+void Channelizer::advance_hop() {
+  const int hop = n_ / 2;
   std::memmove(fin_.get(), fin_.get() + hop, sizeof(fftwf_complex) * hop);
   fill_ = 0;
 }

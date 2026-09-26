@@ -13,6 +13,10 @@ endif()
 # CMAKE_CXX_FLAGS_RELEASE isn't clobbered.
 string(APPEND CMAKE_CXX_FLAGS_RELEASE " -O3 -march=native")
 add_compile_options(-Wall -Wextra -Wpedantic)
+# Complex multiply without the C99 inf/NaN recovery path (__mulsc3): only changes results for
+# inf/NaN operands, which the DSP never produces, and lets the lane loops vectorize.
+add_compile_options(-fcx-limited-range)
+find_package(Threads REQUIRED)
 
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(FFTW3F REQUIRED IMPORTED_TARGET fftw3f)
@@ -24,7 +28,7 @@ target_link_libraries(kcdsp PUBLIC PkgConfig::FFTW3F m)
 
 file(GLOB KC_TESTS CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/test/*.cpp)
 add_executable(kerchunk-dsp-tests ${KC_TESTS})
-target_link_libraries(kerchunk-dsp-tests PRIVATE kcdsp)
+target_link_libraries(kerchunk-dsp-tests PRIVATE kcdsp Threads::Threads)
 
 if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/tools/cost_bench.cpp)
   add_executable(kc-cost-bench ${CMAKE_CURRENT_SOURCE_DIR}/tools/cost_bench.cpp)

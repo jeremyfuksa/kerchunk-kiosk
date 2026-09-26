@@ -46,10 +46,15 @@ FirFilter::FirFilter(std::vector<float> taps) : n_((int)taps.size()) {
 float FirFilter::step(float x) {
   buf_[pos_] = x;
   buf_[pos_ + n_] = x;
-  // Oldest-to-newest window of the last n samples is buf_[pos_+1 .. pos_+n_].
   const float* w = &buf_[pos_ + 1];
-  float acc = 0.f;
-  for (int j = 0; j < n_; j++) acc += rev_[j] * w[j];
+  // 8 independent partial sums: without -ffast-math the compiler may not reassociate a single
+  // accumulator, so one sum is a serial add chain; 8 lanes vectorize into one ymm accumulator.
+  float a[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+  int j = 0;
+  for (; j + 8 <= n_; j += 8)
+    for (int k = 0; k < 8; k++) a[k] += rev_[j + k] * w[j + k];
+  float acc = ((a[0] + a[1]) + (a[2] + a[3])) + ((a[4] + a[5]) + (a[6] + a[7]));
+  for (; j < n_; j++) acc += rev_[j] * w[j];
   pos_ = pos_ + 1 == n_ ? 0 : pos_ + 1;
   return acc;
 }
