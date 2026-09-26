@@ -12,13 +12,27 @@
 #                         "wedge"    -> emit ready, then IGNORE quit/EOF and
 #                                       linger (simulates GNU Radio teardown
 #                                       hanging while holding the device)
+#                         "noready"  -> never says ready (native helper wedged
+#                                       before device/ALSA open)
+#                         "silent"   -> says ready, then emits nothing ever
+#                                       again (hung DSP thread)
 [ -n "${FAKE_WB_ARGS_FILE:-}" ] && echo "$@" >> "$FAKE_WB_ARGS_FILE"
 [ -n "${FAKE_WB_PID_FILE:-}" ] && echo "$$" >> "$FAKE_WB_PID_FILE"
 if [ "${FAKE_WB_MODE:-}" = "nodevice" ]; then
   echo "RuntimeError: failed to open SoapySDR device" >&2
   exit 1
 fi
+if [ "${FAKE_WB_MODE:-}" = "noready" ]; then
+  # Never says ready (native helper wedged before device/ALSA open).
+  cat > /dev/null
+  exit 0
+fi
 echo '{"ev":"ready"}'
+if [ "${FAKE_WB_MODE:-}" = "silent" ]; then
+  # Says ready, then emits nothing ever again (hung DSP thread).
+  cat > /dev/null
+  exit 0
+fi
 if [ "${FAKE_WB_MODE:-}" = "crash" ]; then sleep 0.1; exit 2; fi
 if [ "${FAKE_WB_MODE:-}" = "wedge" ]; then
   # Swallow stdin (incl. quit) and refuse to die politely.

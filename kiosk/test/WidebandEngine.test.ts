@@ -640,6 +640,99 @@ describe("retune fit-check (re-point vs respawn)", () => {
     await engine.stop();
     expect(lines(args).length).toBe(2);
   });
+
+  describe("native mode", () => {
+    it("never forwards the GR-scale noiseQuietDb; forwards nativeQuietDb; omits GR-only args", async () => {
+      const args = tmpFile("args");
+      const { engine } = makeEngine({ FAKE_WB_ARGS_FILE: args }, { native: true });
+      await engine.start(cfg([VHF_A, VHF_B], { noiseQuietDb: -86, nativeQuietDb: -7.5, detectVia: "lane" }));
+      await waitFor(() => lines(args).length >= 1, 1000);
+      await engine.stop();
+      const a = lines(args)[0] ?? "";
+      expect(a).toContain("--quiet-db -7.5");
+      expect(a).not.toContain("-86");
+      expect(a).not.toContain("--detect-via");
+      expect(a).not.toContain("--lanes");
+      expect(a).not.toContain("--lane-modes");
+    });
+
+    it("omits --quiet-db entirely when nativeQuietDb is unset (helper default applies)", async () => {
+      const args = tmpFile("args");
+      const { engine } = makeEngine({ FAKE_WB_ARGS_FILE: args }, { native: true });
+      await engine.start(cfg([VHF_A], { noiseQuietDb: -86 }));
+      await waitFor(() => lines(args).length >= 1, 1000);
+      await engine.stop();
+      expect(lines(args)[0] ?? "").not.toContain("--quiet-db");
+    });
+
+    it("GR mode is unchanged: still forwards noiseQuietDb and lane args", async () => {
+      const args = tmpFile("args");
+      const { engine } = makeEngine({ FAKE_WB_ARGS_FILE: args });
+      await engine.start(cfg([VHF_A], { noiseQuietDb: -86, nativeQuietDb: -7.5 }));
+      await waitFor(() => lines(args).length >= 1, 1000);
+      await engine.stop();
+      const a = lines(args)[0] ?? "";
+      expect(a).toContain("--quiet-db -86");
+      expect(a).toContain("--lanes");
+    });
+
+    it("retune never respawns for a topology change (fixed 12 slots)", async () => {
+      const args = tmpFile("args");
+      const tunes = tmpFile("tunes");
+      const { engine } = makeEngine({ FAKE_WB_ARGS_FILE: args, FAKE_WB_TUNES_FILE: tunes }, { native: true, groupDwellMs: 60_000 });
+      await engine.start(cfg([VHF_A]));
+      await waitFor(() => lines(tunes).length >= 1, 1000);
+      // More channels + an AM lane: GR would need a bigger/different channelizer and respawn.
+      const many = Array.from({ length: 10 }, (_, i) => ch(146_000_000 + i * 25_000, i === 3 ? { mode: "am" } : {}));
+      await engine.retune(cfg(many));
+      await waitFor(() => lines(tunes).length >= 2, 1000);
+      await engine.stop();
+      expect(lines(args)).toHaveLength(1);
+      expect(lines(tunes).length).toBeGreaterThanOrEqual(2);
+    });
+
+    it("respawns when the helper never says ready (ready watchdog)", async () => {
+      const args = tmpFile("args");
+      const { engine } = makeEngine({ FAKE_WB_ARGS_FILE: args, FAKE_WB_MODE: "noready" }, { native: true, readyTimeoutMs: 200 });
+      await engine.start(cfg([VHF_A]));
+      const respawned = await waitFor(() => lines(args).length >= 2, 3000);
+      await engine.stop();
+      expect(respawned).toBe(true);
+    });
+
+    it("respawns when the helper goes silent after ready (silence watchdog)", async () => {
+      const args = tmpFile("args");
+      const logs: string[] = [];
+      const { engine } = makeEngine({ FAKE_WB_ARGS_FILE: args, FAKE_WB_MODE: "silent" },
+        { native: true, silenceTimeoutMs: 200, log: (m: string) => logs.push(m) });
+      await engine.start(cfg([VHF_A]));
+      const respawned = await waitFor(() => lines(args).length >= 2, 3000);
+      await engine.stop();
+      expect(respawned).toBe(true);
+    });
+
+    it("GR mode arms no watchdogs (a silent GR helper is left alone)", async () => {
+      const args = tmpFile("args");
+      const { engine } = makeEngine({ FAKE_WB_ARGS_FILE: args, FAKE_WB_MODE: "silent" }, { readyTimeoutMs: 100, silenceTimeoutMs: 100 });
+      await engine.start(cfg([VHF_A]));
+      await new Promise((r) => setTimeout(r, 600));
+      await engine.stop();
+      expect(lines(args)).toHaveLength(1);
+    });
+  });
+
+  it("forwards helper log events, rate-limited (both engines)", async () => {
+    const logs: string[] = [];
+    const script = Array.from({ length: 15 }, (_, i) => `{"ev":"log","msg":"m${i}"}`).join("\n");
+    const { engine } = makeEngine({ FAKE_WB_SCRIPT: script }, { log: (m: string) => logs.push(m), groupDwellMs: 60_000 });
+    await engine.start(cfg([VHF_A]));
+    await waitFor(() => logs.filter((l) => l.startsWith("[helper] m")).length >= 10, 2000);
+    await new Promise((r) => setTimeout(r, 200));
+    await engine.stop();
+    const helperLines = logs.filter((l) => l.startsWith("[helper] m"));
+    expect(helperLines).toHaveLength(10);                 // burst cap
+    expect(helperLines[0]).toBe("[helper] m0");
+  });
 });
 
 describe("PCM tee gating", () => {
