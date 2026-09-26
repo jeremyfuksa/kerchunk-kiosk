@@ -422,9 +422,9 @@ public-safety might warrant tighter Close Call. Once banks exist (Idea 1),
 attach settings *per bank* instead of only the single global `scan` block.
 
 **What we have.** `configSchema.scan` is one global block (`squelchLevel`, `gain`,
-`dwellMs`, `openAboveFloorDb`, `noiseQuietDb`, Close Call knobs). Channels carry a
-learned per-channel `levelTrimDb` already, so per-group audio normalization has
-precedent — but squelch/gain/dwell are global today.
+`dwellMs`, `openAboveFloorDb`, `noiseQuietDb`, Close Call knobs). Loudness is
+normalized per transmission by the helper's speaker AGC (the per-channel
+`levelTrimDb` learner was retired) — squelch/gain/dwell are global today.
 
 **Build shape.**
 1. Optional per-bank overrides: `{ squelch?, gain?, volume?, priority?,

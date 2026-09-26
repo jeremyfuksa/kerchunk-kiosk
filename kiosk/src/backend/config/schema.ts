@@ -47,13 +47,11 @@ export const channelSchema = z.object({
   // the speaker. An archived channel is never demodulated, so it cannot alert.
   alert: z.boolean().optional(),
   // Median received RF power (dB, helper units), EMA over transmissions —
-  // the ERP estimator's measurement input. Telemetry like levelTrimDb.
+  // the ERP estimator's measurement input. Server-owned telemetry.
   rfDb: z.number().optional(),
-  // Learned loudness trim (dB) from the per-channel leveler. Persisted by the
-  // server from helper telemetry so trims survive group hops and restarts —
-  // without this the first ~second of every transmission after a hop played
-  // unleveled ("audio jumps", operator-reported).
-  levelTrimDb: z.number().optional(),
+  // (levelTrimDb — the retired per-channel loudness trim — is gone: the
+  // helper's speaker AGC levels every transmission instead. Old config files
+  // that still carry it parse fine; zod strips the unknown key.)
   // Service tags — the operator-defined axis banks pivot on ("air", "rail").
   tags: z.array(z.string().min(1)).optional(),
   location: locationSchema.optional(),
@@ -150,6 +148,27 @@ export const configSchema = z.object({
     // feed is rarely listened to. Toggling it respawns the helper (the tee is a
     // helper spawn arg).
     remoteListening: z.boolean().default(false),
+    // Speaker loudness (kerchunk-dsp's AGC/compressor + peak limiter; they
+    // replaced the per-channel level trims). All optional: omitted = the
+    // helper's defaults (native/src/constants.hpp). Scanner helper only — the
+    // weather helper has no speaker. Changing any of them respawns the scanner
+    // helper (they are spawn args); volume/mute stay live.
+    // Output level the AGC steers every talker to (mean-square dBFS). Default -18.
+    agcTargetDb: z.number().min(-40).max(-3).optional(),
+    // Most boost for a quiet talker / weak AM (dB). Default 15.
+    agcMaxGainDb: z.number().min(0).max(30).optional(),
+    // Most cut for a hot talker (dB). Default -20.
+    agcMinGainDb: z.number().min(-40).max(0).optional(),
+    // Envelope time constant while the level rises / falls (ms). Defaults 10 / 400.
+    agcAttackMs: z.number().min(1).max(200).optional(),
+    agcReleaseMs: z.number().min(20).max(5000).optional(),
+    // Below this short-term level (dBFS) the AGC treats audio as a pause and
+    // freezes, so gaps between words never pump the gain up. Default -50.
+    agcHoldBelowDb: z.number().min(-90).max(-20).optional(),
+    // Peak limiter ceiling (linear full scale, <= the 0.8 hard rail) and its
+    // release (ms). Defaults 0.7 / 50.
+    limiterCeiling: z.number().gt(0).max(0.8).optional(),
+    limiterReleaseMs: z.number().min(5).max(1000).optional(),
     // ALSA mixer target for volume/mute. amixer addresses controls by card
     // INDEX or NAME + control NAME, which differ per device (e.g. HDMI exposes
     // no volume control; the Pi headphone jack is card 2 / "PCM"). Prefer the

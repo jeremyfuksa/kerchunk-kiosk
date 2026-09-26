@@ -132,8 +132,15 @@ replays the warm-up overlay on the wall.
   `build:backend` leaves `dist/` without (or with a stale) helper. Squelch
   defaults live in `kiosk/native/src/constants.hpp`; the operator-facing
   knobs are `config.scan.nativeQuietDb` (`--quiet-db`) and
-  `config.scan.nativeAmGainDb` (`--am-gain-db`), and
+  `config.scan.nativeAmGainDb` (`--am-gain-db`, the AM pre-gain into the AGC),
   `config.scan.fmAudioLpfHz` (`--audio-lpf-hz`, FM weak-signal hiss).
+  Speaker loudness is a per-transmission AGC + peak limiter in the helper
+  (the per-channel `levelTrimDb` learner is gone; old configs strip it):
+  `config.audio.agcTargetDb` (−18) / `agcMaxGainDb` (15) / `agcMinGainDb`
+  (−20) / `agcAttackMs` (10) / `agcReleaseMs` (400) / `agcHoldBelowDb` (−50)
+  / `limiterCeiling` (0.7) / `limiterReleaseMs` (50) → `--agc-*` /
+  `--limiter-*`, scanner helper only. Changing one via `PUT /api/config`
+  respawns only the scanner helper; volume/mute stay live.
 - **ALSA is addressed by name** (`plughw:CARD=PCH,DEV=0`) — card indices swap
   across boots. The sink is exclusive (no dmix): exactly one process owns
   audio.

@@ -660,26 +660,37 @@ describe("close call RepeaterBook enrichment", () => {
   });
 });
 
-describe("leveler trim persistence (server)", () => {
-  it("a level event saves the channel's trim WITHOUT restarting the engine", async () => {
+describe("speaker AGC knobs (config.audio)", () => {
+  it("changing an AGC/limiter knob restarts the scanner helper with the new value", async () => {
     const { server, engine } = makeApp();
-    const created = (await request(server).post("/api/channels")
-      .send({ freq: 464275000, alphaTag: "WOF", mode: "nfm", enabled: true })).body;
-    let starts = 0;
-    const realStart = engine.start.bind(engine);
-    engine.start = async (sc) => { starts++; return realStart(sc); };
-    engine.emitLevel(created.id, -8.5);
-    await new Promise((r) => setTimeout(r, 20));
-    const channels = (await request(server).get("/api/channels")).body;
-    expect(channels[0].levelTrimDb).toBe(-8.5);
-    expect(starts).toBe(0);
+    const cfg = (await request(server).get("/api/config")).body;
+    const before = engine.starts.length;
+    const res = await request(server).put("/api/config")
+      .send({ ...cfg, audio: { ...cfg.audio, agcTargetDb: -20, limiterCeiling: 0.6 } });
+    expect(res.status).toBe(200);
+    expect(engine.starts.length).toBe(before + 1);
+    const sc = engine.starts[engine.starts.length - 1]!;
+    expect(sc.speakerAgc?.agcTargetDb).toBe(-20);
+    expect(sc.speakerAgc?.limiterCeiling).toBe(0.6);
+    expect(sc.speakerAgc?.agcReleaseMs).toBeUndefined();
   });
 
-  it("ignores level events for unknown channels (cc lanes)", async () => {
+  it("volume and mute stay live: no helper restart", async () => {
     const { server, engine } = makeApp();
-    engine.emitLevel("cc_462887500", -3);
-    await new Promise((r) => setTimeout(r, 20));
-    expect((await request(server).get("/api/channels")).body).toEqual([]);
+    const cfg = (await request(server).get("/api/config")).body;
+    const before = engine.starts.length;
+    await request(server).put("/api/config").send({ ...cfg, audio: { ...cfg.audio, volume: 42, muted: true } });
+    await request(server).post("/api/audio/volume").send({ percent: 55 });
+    await request(server).post("/api/audio/mute").send({ muted: false });
+    expect(engine.starts.length).toBe(before);
+  });
+
+  it("rejects an out-of-range knob", async () => {
+    const { server } = makeApp();
+    const cfg = (await request(server).get("/api/config")).body;
+    const res = await request(server).put("/api/config")
+      .send({ ...cfg, audio: { ...cfg.audio, limiterCeiling: 0.95 } });
+    expect(res.status).toBe(400);
   });
 });
 

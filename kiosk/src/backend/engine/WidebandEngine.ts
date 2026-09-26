@@ -3,10 +3,23 @@ import { createInterface, type Interface as ReadlineInterface } from "node:readl
 import { fileURLToPath } from "node:url";
 import type {
   ScannerEngine, ScanConfig, EngineState, EngineEvent, EngineListener, ScanChannel,
+  SpeakerAgcConfig,
 } from "./ScannerEngine.js";
 import type { Channel } from "../config/schema.js";
 import { groupChannels, sweepCenters, type ChannelGroup } from "./grouping.js";
 import { setVolume as amixerVolume, setMuted as amixerMuted } from "../audio.js";
+
+/** config.audio speaker-loudness knob -> kerchunk-dsp flag (AGC + limiter). */
+export const SPEAKER_AGC_FLAGS: ReadonlyArray<readonly [keyof SpeakerAgcConfig, string]> = [
+  ["agcTargetDb", "--agc-target-db"],
+  ["agcMaxGainDb", "--agc-max-gain-db"],
+  ["agcMinGainDb", "--agc-min-gain-db"],
+  ["agcAttackMs", "--agc-attack-ms"],
+  ["agcReleaseMs", "--agc-release-ms"],
+  ["agcHoldBelowDb", "--agc-hold-below-db"],
+  ["limiterCeiling", "--limiter-ceiling"],
+  ["limiterReleaseMs", "--limiter-release-ms"],
+];
 
 // Wideband group-hop scanner.
 //
@@ -384,6 +397,14 @@ export class WidebandEngine implements ScannerEngine {
     if (cfg.nativeAmGainDb !== undefined) args.push("--am-gain-db", String(cfg.nativeAmGainDb));
     // FM speaker audio low-pass (weak-signal hiss vs voice brightness).
     if (cfg.fmAudioLpfHz !== undefined) args.push("--audio-lpf-hz", String(cfg.fmAudioLpfHz));
+    // Speaker AGC + limiter (config.audio). Omitted knobs = the helper's defaults.
+    const agc = cfg.speakerAgc;
+    if (agc) {
+      for (const [key, flag] of SPEAKER_AGC_FLAGS) {
+        const v = agc[key];
+        if (v !== undefined) args.push(flag, String(v));
+      }
+    }
     return args;
   }
 
@@ -499,11 +520,6 @@ export class WidebandEngine implements ScannerEngine {
           this.groupStartedAt = this.now();
         }
         break;
-      case "level":
-        if (typeof ev.id === "string" && typeof ev.db === "number") {
-          this.emit({ type: "level", channelId: ev.id, db: ev.db, ts: this.now() });
-        }
-        break;
       case "rf":
         if (typeof ev.id === "string" && typeof ev.db === "number") {
           this.emit({ type: "rf", channelId: ev.id, db: ev.db, ts: this.now() });
@@ -602,7 +618,6 @@ export class WidebandEngine implements ScannerEngine {
       centerHz: group.centerHz + this.centerOffsetHz,
       channels: group.channels.map((c) => ({
         id: c.id, freqHz: c.freq, priority: c.priority ?? false,
-        levelDb: c.levelTrimDb ?? 0,
         mode: c.mode,
         audible: c.audible !== false,
         ...(c.background ? { background: true } : {}),

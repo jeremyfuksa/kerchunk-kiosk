@@ -15,8 +15,8 @@ boot lid-closed straight into a fullscreen dashboard on an external monitor.
   re-open thrash that kills `rtl_fm`-style scanners is structurally gone.
 - **Real squelch**: per-channel power over an adaptive group noise floor AND
   FM quieting detection (power without a quieted carrier never opens — rejects
-  spurs, AGC pumping, data bursts). ~30 ms audio gate with fade ramps, hard
-  limiter, per-channel loudness leveler.
+  spurs, AGC pumping, data bursts). ~30 ms audio gate with fade ramps, a
+  speaker AGC/compressor that levels every transmission, and a peak limiter.
 - **Close Call**: an FFT watches the whole tuned window for strong
   transmissions on non-configured frequencies; discoveries preempt the
   speaker, get identified against RepeaterBook / RadioReference, and are filed

@@ -119,6 +119,20 @@ export function toScanConfig(
     nativeQuietDb: cfg.scan.nativeQuietDb,
     nativeAmGainDb: cfg.scan.nativeAmGainDb,
     fmAudioLpfHz: cfg.scan.fmAudioLpfHz,
+    // Speaker AGC + limiter knobs (config.audio). In the scan config so the
+    // PUT handler's scanChanged diff respawns the helper when one changes —
+    // the same path audio.remoteListening takes. Volume/mute are NOT here, so
+    // they stay live (amixer) with no respawn.
+    speakerAgc: {
+      agcTargetDb: cfg.audio.agcTargetDb,
+      agcMaxGainDb: cfg.audio.agcMaxGainDb,
+      agcMinGainDb: cfg.audio.agcMinGainDb,
+      agcAttackMs: cfg.audio.agcAttackMs,
+      agcReleaseMs: cfg.audio.agcReleaseMs,
+      agcHoldBelowDb: cfg.audio.agcHoldBelowDb,
+      limiterCeiling: cfg.audio.limiterCeiling,
+      limiterReleaseMs: cfg.audio.limiterReleaseMs,
+    },
     sweepRanges: cfg.scan.sweepRanges,
     // Weather-only AND direct-tune both hold the lone channel open/audible
     // with no squelch — the operator chose to listen to exactly this.
@@ -181,8 +195,8 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
   const configBootId = randomUUID().slice(0, 8);
   const configEtag = (): string => `W/"cfg-${configBootId}-${configRev}"`;
   function saveConfig(cfg: Config, opts: { telemetry?: boolean } = {}): void {
-    // Telemetry persists (levelTrimDb, rfDb — server-owned EMAs on debounces of
-    // 10 s and 30 s) deliberately do NOT advance the revision. They carry no
+    // Telemetry persists (rfDb — a server-owned EMA on a 30 s debounce)
+    // deliberately do NOT advance the revision. They carry no
     // operator-visible state and a client round-trips them unchanged, so
     // bumping would have let the radio's own housekeeping reject the
     // operator's edit on any busy band — a worse failure than the one this
@@ -384,33 +398,9 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
   // Saved WITHOUT persistAndReload: a disabled channel doesn't affect
   // scanning, and an engine restart here would kill the live discovery audio
   // (the helper is playing the find on a spare lane right now).
-  // Leveler trims: persist so they survive hops/restarts. Saved WITHOUT
-  // reload — a trim is telemetry, not a scan-config change. cc lanes have no
-  // config channel and are skipped.
-  // Trim updates land in memory immediately but persist on a trailing
-  // debounce: during an initial loudness correction the helper emits one
-  // event per ~0.5 dB (~25/s) and each save() is a .bak copy + atomic write —
-  // unthrottled, that's needless SSD wear for telemetry.
-  let levelSaveTimer: NodeJS.Timeout | null = null;
-  engine.on((ev) => {
-    if (ev.type !== "level") return;
-    const ch = config.channels.find((c) => c.id === ev.channelId);
-    if (!ch || ch.levelTrimDb === ev.db) return;
-    config = {
-      ...config,
-      channels: config.channels.map((c) =>
-        c.id === ev.channelId ? { ...c, levelTrimDb: ev.db } : c),
-    };
-    if (levelSaveTimer) clearTimeout(levelSaveTimer);
-    levelSaveTimer = setTimeout(() => {
-      levelSaveTimer = null;
-      saveConfig(config, { telemetry: true });
-    }, 10_000);
-    levelSaveTimer.unref?.();
-  });
 
   // RF telemetry tee: per-transmission median received power -> channel.rfDb
-  // (EMA, persisted on a trailing debounce like the leveler trims). This is
+  // (EMA, persisted on a trailing debounce). This is
   // the ERP estimator's measurement input.
   let rfSaveTimer: NodeJS.Timeout | null = null;
   engine.on((ev) => {

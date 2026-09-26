@@ -28,7 +28,7 @@ export function completeness(c: Channel): number {
   if (c.tags && c.tags.length > 0) s += 1;
   if (c.priority === true) s += 1;
   if (c.alert === true) s += 1;
-  if (c.levelTrimDb !== undefined || c.rfDb !== undefined) s += 1;
+  if (c.rfDb !== undefined) s += 1;
   return s;
 }
 

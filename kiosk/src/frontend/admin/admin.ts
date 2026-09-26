@@ -119,7 +119,7 @@ type LockoutCfg = {
  *  Archiving, not deleting: schema.ts already defines enabled:false as
  *  "identity/location remain, but the channel stops consuming scanner
  *  capacity" — exactly what a lockout wants. Deleting threw away the alphaTag,
- *  location, rfDb and learned levelTrimDb the lookup chain paid API calls to
+ *  location and rfDb the lookup chain paid API calls to
  *  build, and left `unlockFreq` with nothing to restore. */
 export function lockoutFreqIn<T extends LockoutCfg>(cfg: T, freq: number): T {
   return {
@@ -1513,7 +1513,6 @@ export function renderAdmin(root: HTMLElement): void {
         <dt>power</dt><dd>${c.location?.powerWatts
           ? `${c.location.powerWatts} W${c.location.antennaHaatM ? ` @ ${c.location.antennaHaatM} m` : ""} <span class="dwVia">${c.location.powerEstimated ? "RF estimate" : "FCC license"}</span>`
           : c.rfDb != null ? `<span class="dwVia">measured ${c.rfDb} dB — awaiting estimate</span>` : "—"}</dd>
-        <dt>level trim</dt><dd>${c.levelTrimDb != null ? `${c.levelTrimDb > 0 ? "+" : ""}${c.levelTrimDb} dB` : "learning"}</dd>
         <dt>looked up</dt><dd>${c.lookedUpAt ? new Date(c.lookedUpAt).toLocaleString() : "never"}</dd>
         <dt>id</dt><dd>${esc(c.id)}</dd>
       </dl>` : ""}`;

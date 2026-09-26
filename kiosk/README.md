@@ -41,8 +41,10 @@ for the frontend-only reload path and the restart-cost caveats.
 ## Squelch tuning
 
 Squelch is per-channel power over an adaptive group noise floor **and** FM
-quieting detection, with fade ramps, a hard limiter, and a per-channel
-loudness leveler. The defaults (thresholds, hang times, fade/level constants)
-live in `native/src/constants.hpp`; the operator knobs are
-`scan.openAboveFloorDb`, `scan.nativeQuietDb` (quieting, default −6 on the
-helper's own dB scale; lower = stricter) and `scan.nativeAmGainDb` in config.
+quieting detection, with fade ramps, a speaker AGC/compressor that levels
+every transmission, and a peak limiter. The defaults (thresholds, hang times,
+fade/AGC/limiter constants) live in `native/src/constants.hpp`; the operator
+knobs are `scan.openAboveFloorDb`, `scan.nativeQuietDb` (quieting, default −6
+on the helper's own dB scale; lower = stricter), `scan.nativeAmGainDb`, and
+the `audio.agc*` / `audio.limiter*` loudness knobs (see
+[`docs/DEPLOY.md`](../docs/DEPLOY.md)) in config.

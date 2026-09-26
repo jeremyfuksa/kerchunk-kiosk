@@ -426,6 +426,37 @@ describe("WidebandEngine", () => {
       expect(lines(plainArgs)[0] ?? "").not.toContain("--audio-lpf-hz");
     });
 
+    it("forwards speaker AGC/limiter knobs as flags; omits unset ones", async () => {
+      const args = tmpFile("args");
+      const { engine } = makeEngine({ FAKE_WB_ARGS_FILE: args });
+      await engine.start(cfg([VHF_A], { speakerAgc: {
+        agcTargetDb: -20, agcMaxGainDb: 12, agcMinGainDb: -10, agcAttackMs: 5,
+        agcReleaseMs: 800, agcHoldBelowDb: -60, limiterCeiling: 0.6, limiterReleaseMs: 80,
+      } }));
+      await waitFor(() => lines(args).length >= 1, 1000);
+      await engine.stop();
+      const a = lines(args)[0] ?? "";
+      for (const f of ["--agc-target-db -20", "--agc-max-gain-db 12", "--agc-min-gain-db -10",
+        "--agc-attack-ms 5", "--agc-release-ms 800", "--agc-hold-below-db -60",
+        "--limiter-ceiling 0.6", "--limiter-release-ms 80"]) expect(a).toContain(f);
+      const partArgs = tmpFile("args");
+      const part = makeEngine({ FAKE_WB_ARGS_FILE: partArgs });
+      await part.engine.start(cfg([VHF_A], { speakerAgc: { agcReleaseMs: 600 } }));
+      await waitFor(() => lines(partArgs).length >= 1, 1000);
+      await part.engine.stop();
+      const p = lines(partArgs)[0] ?? "";
+      expect(p).toContain("--agc-release-ms 600");
+      expect(p).not.toContain("--agc-target-db");
+      expect(p).not.toContain("--limiter-ceiling");
+      // The weather helper's config never carries speakerAgc: no AGC flags at all.
+      const wxArgs = tmpFile("args");
+      const wx = makeEngine({ FAKE_WB_ARGS_FILE: wxArgs });
+      await wx.engine.start(cfg([VHF_A]));
+      await waitFor(() => lines(wxArgs).length >= 1, 1000);
+      await wx.engine.stop();
+      expect(lines(wxArgs)[0] ?? "").not.toMatch(/--agc-|--limiter-/);
+    });
+
     it("omits --quiet-db entirely when nativeQuietDb is unset (helper default applies)", async () => {
       const args = tmpFile("args");
       const { engine } = makeEngine({ FAKE_WB_ARGS_FILE: args });
@@ -732,27 +763,25 @@ describe("skip + lockout", () => {
   });
 });
 
-describe("leveler trim persistence", () => {
-  it("tune seeds each channel's levelDb from config (trims survive hops/restarts)", async () => {
+describe("per-channel leveler retired", () => {
+  it("tune sends no levelDb, even for a config still carrying levelTrimDb", async () => {
     const tunes = tmpFile("tunes");
     const { engine } = makeEngine({ FAKE_WB_TUNES_FILE: tunes });
-    await engine.start(cfg([{ ...VHF_A, levelTrimDb: -8.5 }, VHF_B]));
+    await engine.start(cfg([{ ...VHF_A, levelTrimDb: -8.5 } as typeof VHF_A, VHF_B]));
     await waitFor(() => lines(tunes).length >= 1, 1000);
     await engine.stop();
     const first = JSON.parse(lines(tunes)[0]!);
-    expect(first.channels.map((c: { levelDb: number }) => c.levelDb)).toEqual([-8.5, 0]);
+    for (const c of first.channels) expect(c).not.toHaveProperty("levelDb");
   });
 
-  it("helper level events surface as level EngineEvents", async () => {
+  it("a stray helper level event is ignored (not surfaced)", async () => {
     const { engine, events } = makeEngine({
       FAKE_WB_SCRIPT: `{"ev":"level","id":"${VHF_A.id}","db":-6.3}`,
     });
     await engine.start(cfg([VHF_A, VHF_B]));
-    await waitFor(() => events.some((e) => e.type === "level"), 1000);
+    await new Promise((r) => setTimeout(r, 200));
     await engine.stop();
-    const lv = events.find((e) => e.type === "level");
-    expect(lv && lv.type === "level" && lv.channelId).toBe(VHF_A.id);
-    expect(lv && lv.type === "level" && lv.db).toBe(-6.3);
+    expect(events.some((e) => (e as { type: string }).type === "level")).toBe(false);
   });
 });
 
