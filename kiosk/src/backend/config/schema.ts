@@ -99,6 +99,11 @@ export const configSchema = z.object({
     // scale of noiseQuietDb above (~90 dB apart) -- that value is never sent
     // to the native helper. Omitted = the helper's QUIET_DB_DEFAULT (-6).
     nativeQuietDb: z.number().optional(),
+    // AM speaker gain offset (dB) for the NATIVE engine: balances airband
+    // loudness against FM by ear (normalized AM audio vs de-emphasized FM
+    // don't naturally match). Passed as --am-gain-db. Omitted = 0 dB (the
+    // helper's AM_GAIN). GR ignores it.
+    nativeAmGainDb: z.number().min(-30).max(20).optional(),
     // Close Call: discover strong transmissions in the tuned window on
     // non-configured frequencies. Plays them (priority preempt) and auto-adds
     // them as DISABLED channels for operator review. Default ON (wideband).

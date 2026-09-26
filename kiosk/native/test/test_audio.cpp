@@ -164,3 +164,21 @@ TEST(speaker_lpf_knob_passes_or_cuts_hf) {
   CHECK_THROWS(kc::SpeakerPath(0));
   CHECK_THROWS(kc::SpeakerPath(kc::LANE_RATE / 2));
 }
+
+// The AM gain knob scales AM speaker audio linearly (FM is untouched by it).
+TEST(speaker_am_gain_scales_am_audio) {
+  auto run_am = [](float am_gain) {
+    kc::SpeakerPath sp(kc::SPEAKER_LPF_HZ, am_gain);
+    sp.set_source(0, true);
+    sp.set_gain(1.0f);
+    std::vector<sig::cf> x(kc::LANE_RATE);
+    for (size_t i = 0; i < x.size(); i++)
+      x[i] = sig::cf((float)(0.2 * (1 + 0.4 * std::sin(2 * M_PI * 800 * i / kc::LANE_RATE))), 0.f);
+    std::vector<float> out, disc(64, 0.f);
+    for (size_t i = 0; i + 64 <= x.size(); i += 64) sp.process(&x[i], disc.data(), 64, out);
+    return sig::rms(out.data() + 9600, out.size() - 9600);
+  };
+  const double full = run_am(kc::AM_GAIN), half = run_am(kc::AM_GAIN * 0.5f);
+  CHECK(full > 0.05);
+  CHECK_NEAR(half / full, 0.5, 0.01);
+}

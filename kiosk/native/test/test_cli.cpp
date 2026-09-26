@@ -28,6 +28,8 @@ TEST(cli_rejects_bad_values_and_unknown) {
   CHECK(!parse({"--rate", "2048000"}, c, err));
   CHECK(!parse({"--rate", "abc"}, c, err));
   CHECK(!parse({"--audio-lpf-hz", "999"}, c, err));
+  CHECK(!parse({"--am-gain-db", "25"}, c, err));
+  CHECK(!parse({"--am-gain-db", "abc"}, c, err));
   CHECK(!parse({"--audio-fd", "x"}, c, err));
   CHECK(!parse({"--sink"}, c, err));          // missing value
   CHECK(!err.empty());
@@ -47,6 +49,9 @@ TEST(cli_rtl_index_gain_and_numeric_ranges) {
     CHECK(parse({"--rtl-index", "1", "--gain", "38.6", "--audio-lpf-hz", "3500", "--rate", "250000"}, c, err));
     CHECK(c.rtl_index == 1 && c.gain == "38.6" && c.eng.rate == 250000);
     CHECK_NEAR(c.eng.speaker_lpf_hz, 3500, 0);
+    kc::Cli c2;
+    CHECK(parse({"--am-gain-db", "-6"}, c2, err));
+    CHECK_NEAR(c2.eng.am_gain_db, -6, 0);
   }
   const std::vector<std::vector<const char*>> bad = {
       {"--rtl-index", "-1"},

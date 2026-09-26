@@ -397,6 +397,21 @@ describe("WidebandEngine", () => {
       expect(a).not.toContain("--lane-modes");
     });
 
+    it("forwards nativeAmGainDb as --am-gain-db (native only)", async () => {
+      const args = tmpFile("args");
+      const { engine } = makeEngine({ FAKE_WB_ARGS_FILE: args }, { native: true });
+      await engine.start(cfg([VHF_A], { nativeAmGainDb: -6 }));
+      await waitFor(() => lines(args).length >= 1, 1000);
+      await engine.stop();
+      expect(lines(args)[0] ?? "").toContain("--am-gain-db -6");
+      const grArgs = tmpFile("args");
+      const gr = makeEngine({ FAKE_WB_ARGS_FILE: grArgs });
+      await gr.engine.start(cfg([VHF_A], { nativeAmGainDb: -6 }));
+      await waitFor(() => lines(grArgs).length >= 1, 1000);
+      await gr.engine.stop();
+      expect(lines(grArgs)[0] ?? "").not.toContain("--am-gain-db");
+    });
+
     it("omits --quiet-db entirely when nativeQuietDb is unset (helper default applies)", async () => {
       const args = tmpFile("args");
       const { engine } = makeEngine({ FAKE_WB_ARGS_FILE: args }, { native: true });
@@ -447,6 +462,15 @@ describe("WidebandEngine", () => {
       await waitFor(() => lines(args).length >= 2, 2000);
       await engine.stop();
       expect(lines(args).length).toBe(2);
+    });
+
+    it("journals the reason for a FIRST (soft-path) unexpected exit", async () => {
+      const logs: string[] = [];
+      const { engine } = makeEngine({ FAKE_WB_MODE: "noready" }, { native: true, readyTimeoutMs: 150, log: (m: string) => logs.push(m) });
+      await engine.start(cfg([VHF_A]));
+      await waitFor(() => logs.some((l) => l.startsWith("[wideband]") && l.includes('no "ready" within')), 2000);
+      await engine.stop();
+      expect(logs.some((l) => l.startsWith("[wideband]") && l.includes('no "ready" within'))).toBe(true);
     });
 
     it("respawns when the helper never says ready (ready watchdog)", async () => {

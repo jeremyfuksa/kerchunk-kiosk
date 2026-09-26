@@ -17,7 +17,7 @@
     "test": "vitest run",
     "test:py": "/usr/bin/python3 test/wideband_dsp_math_test.py",
     "build:native": "cmake -S native -B native/build && cmake --build native/build --parallel 2",
-    "build:native:dist": "cmake -S native -B native/build && cmake --build native/build --parallel 2 --target kerchunk-dsp && cp native/build/kerchunk-dsp dist/backend/engine/",
+    "build:native:dist": "cmake -S native -B native/build && cmake --build native/build --parallel 2 --target kerchunk-dsp && cp native/build/kerchunk-dsp dist/backend/engine/kerchunk-dsp.new && mv -f dist/backend/engine/kerchunk-dsp.new dist/backend/engine/kerchunk-dsp",
     "test:native": "npm run build:native && native/build/kerchunk-dsp-tests",
     "test:watch": "vitest"
   },

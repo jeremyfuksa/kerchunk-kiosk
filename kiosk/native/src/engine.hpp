@@ -21,6 +21,8 @@ struct EngineOptions {
   bool close_call = false;
   bool same = false;
   double speaker_lpf_hz = SPEAKER_LPF_HZ;   // speaker audio LPF cutoff (CLI --audio-lpf-hz)
+  double am_gain_db = 0.0;                   // AM speaker gain offset vs AM_GAIN, dB (CLI --am-gain-db;
+                                             // balances airband loudness against FM by ear)
 };
 
 class Engine {

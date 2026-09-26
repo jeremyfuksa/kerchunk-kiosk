@@ -414,6 +414,8 @@ export class WidebandEngine implements ScannerEngine {
     // never the GR-scale noiseQuietDb, which would stop anything from opening.
     if (this.native) {
       if (cfg.nativeQuietDb !== undefined) args.push("--quiet-db", String(cfg.nativeQuietDb));
+      // AM vs FM loudness balance (airband ran hot vs FM on native, 2026-09-26).
+      if (cfg.nativeAmGainDb !== undefined) args.push("--am-gain-db", String(cfg.nativeAmGainDb));
     } else if (cfg.noiseQuietDb !== undefined) {
       args.push("--quiet-db", String(cfg.noiseQuietDb));
     }
@@ -848,6 +850,11 @@ export class WidebandEngine implements ScannerEngine {
       : `${exited}${this.autoRestart ? "; restarting" : ""}`;
 
     this.exitFailures += 1;
+    // Journal every unexpected exit with its reason, soft path included: the
+    // soft path emits only a "starting" status, so a one-off helper death used
+    // to leave no trace of WHY (seen live 2026-09-26: an unexplained native
+    // respawn with nothing in the journal).
+    this.log(`[wideband] ${message}`);
     if (this.autoRestart && this.exitFailures === 1) {
       // Soft path: expected during reconfiguration. The dashboard renders
       // state "starting" as "retuning…" instead of a red error.

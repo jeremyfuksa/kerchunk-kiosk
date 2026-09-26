@@ -16,7 +16,8 @@ void to_s16(const float* x, int n, float scale, std::vector<int16_t>& out);
 class SpeakerPath {
  public:
   // lpf_hz: speaker audio LPF cutoff (0 < lpf_hz < LANE_RATE/2, else std::invalid_argument).
-  explicit SpeakerPath(double lpf_hz = SPEAKER_LPF_HZ);
+  // am_gain: linear gain on normalized AM audio (default AM_GAIN; the engine applies --am-gain-db).
+  explicit SpeakerPath(double lpf_hz = SPEAKER_LPF_HZ, float am_gain = AM_GAIN);
   void set_source(int lane, bool am);
   void set_gain(float target);
   void reset();   // hard cut: drops the source and zeroes all state (the next sample may step)
@@ -36,6 +37,7 @@ class SpeakerPath {
   int ramp_left_ = 0;
   float last_out_ = 0, hold_ = 0;   // last emitted sample; held value decaying after cut()
   int hold_left_ = 0;
+  float am_gain_;
   Deemphasis de_;
   FirFilter lpf_;
   AmEnvelope am_;

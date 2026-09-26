@@ -154,6 +154,9 @@ Notes:
   GR's quad-rate front-end on a multiple of 48 kHz.
 - The tuning knob is `scan.nativeQuietDb` (native's own dB scale, default −6
   — never mixed with GR's `noiseQuietDb`).
+- `scan.nativeAmGainDb` (dB, −30…+20, default 0) balances airband/AM loudness
+  against FM by ear; passed to the helper as `--am-gain-db`. Changing either
+  knob via `PUT /api/config` restarts only the cheap native helper.
 - The two liveness watchdogs (no `"ready"` within `readyTimeoutMs`, and no
   helper event other than a log line within `silenceTimeoutMs`) are native-
   only and live as `DEFAULT_READY_TIMEOUT_MS`/`DEFAULT_SILENCE_TIMEOUT_MS` in
