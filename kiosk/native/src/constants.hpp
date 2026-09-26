@@ -98,6 +98,8 @@ inline constexpr int IQ_RING_BLOCKS = 64;          // ~640 ms of IQ buffering be
 inline constexpr int RTL_BUF_NUM = 4;              // librtlsdr async buffers (small: bounds in-flight samples on retune)
 inline constexpr int RTL_BUF_LEN = 16384;          // bytes per async buffer (~3.4 ms at 2.4 Msps; multiple of 512)
 inline constexpr double RETUNE_SETTLE_MS = 20;     // PLL margin discarded after a retune, ON TOP of one full RTL_BUF_LEN USB transfer (LiveLoop)
+inline constexpr int RETUNE_ATTEMPTS = 3;         // rtlsdr_set_center_freq tries before the helper gives up (exit 3)
+inline constexpr int RETUNE_RETRY_MS = 5;          // pause between those tries
 inline constexpr double STALL_S = 2.0;             // no samples this long = SDR loss -> exit 3
 inline constexpr double BUSY_RETRY_S = 3.0;        // retry rtlsdr_open this long (previous helper releasing)
 inline constexpr int ALSA_PERIOD = 480;            // 10 ms at 48 kHz

@@ -180,6 +180,11 @@ static int run_live(const kc::Cli& c) {
   int rc = 0;
   while (!g_stop && !loop.quit()) {
     if (!loop.step()) {
+      if (loop.failed()) {
+        std::fprintf(stderr, "kerchunk-dsp: SDR retune failed after %d tries\n", kc::RETUNE_ATTEMPTS);
+        rc = 3;
+        break;
+      }
       if (src.seconds_since_rx() > kc::STALL_S) {
         std::fprintf(stderr, "kerchunk-dsp: SDR stalled (no samples for %.1f s)\n", kc::STALL_S);
         rc = 3;

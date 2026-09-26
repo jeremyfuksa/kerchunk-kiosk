@@ -25,7 +25,7 @@ class RtlSource : public IqSource {
   void stop();
   double seconds_since_rx() const;
   bool consume(const std::function<void(const IqBlock&)>& use) override { return ring_.try_consume(use); }
-  void set_center(double hz) override;
+  bool set_center(double hz) override;   // RETUNE_ATTEMPTS tries; false = every one failed
   uint32_t generation() const override { return gen_.load(); }
   uint64_t take_dropped() override { return dropped_.exchange(0); }
   // librtlsdr's async callback (USB thread). Public so tests can drive it with fake buffers on a

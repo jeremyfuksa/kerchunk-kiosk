@@ -120,14 +120,20 @@ void RtlSource::stop() {
   if (dev_) { rtlsdr_close(dev_); dev_ = nullptr; }
 }
 
-void RtlSource::set_center(double hz) {
+bool RtlSource::set_center(double hz) {
   if (dev_) {
-    const int rc = rtlsdr_set_center_freq(dev_, (uint32_t)std::llround(hz));
-    // The generation still bumps: LiveLoop's pending tune applies either way, so the failure must
-    // at least be visible.
-    if (rc < 0) log_("rtlsdr_set_center_freq(" + std::to_string((long long)std::llround(hz)) + ") failed: rc=" + std::to_string(rc));
+    const auto f = (uint32_t)std::llround(hz);
+    int rc = -1;
+    for (int i = 0; i < RETUNE_ATTEMPTS && rc < 0; i++) {
+      if (i) std::this_thread::sleep_for(std::chrono::milliseconds(RETUNE_RETRY_MS));
+      rc = rtlsdr_set_center_freq(dev_, f);
+      if (rc < 0) log_("rtlsdr_set_center_freq(" + std::to_string(f) + ") failed: rc=" + std::to_string(rc) +
+                       " (try " + std::to_string(i + 1) + "/" + std::to_string(RETUNE_ATTEMPTS) + ")");
+    }
+    if (rc < 0) return false;   // generation untouched: nothing new is coming from this center
   }
   gen_.fetch_add(1, std::memory_order_acq_rel);
+  return true;
 }
 
 double RtlSource::seconds_since_rx() const { return (mono_ns() - last_rx_ns_.load()) / 1e9; }
