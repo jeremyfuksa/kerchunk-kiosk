@@ -16,8 +16,13 @@
 #                                       before device/ALSA open)
 #                         "silent"   -> says ready, then emits nothing ever
 #                                       again (hung DSP thread)
+#   FAKE_WB_STDERR      - printed to stderr before any mode-specific behavior
+#                         (e.g. pair with FAKE_WB_MODE=noready to simulate a
+#                         helper that logs a real device error, then wedges
+#                         before "ready" instead of exiting on it)
 [ -n "${FAKE_WB_ARGS_FILE:-}" ] && echo "$@" >> "$FAKE_WB_ARGS_FILE"
 [ -n "${FAKE_WB_PID_FILE:-}" ] && echo "$$" >> "$FAKE_WB_PID_FILE"
+[ -n "${FAKE_WB_STDERR:-}" ] && echo "$FAKE_WB_STDERR" >&2
 if [ "${FAKE_WB_MODE:-}" = "nodevice" ]; then
   echo "RuntimeError: failed to open SoapySDR device" >&2
   exit 1

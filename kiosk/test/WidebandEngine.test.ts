@@ -381,6 +381,167 @@ describe("WidebandEngine", () => {
     );
     expect(dead).toBe(true);
   });
+
+  describe("native mode", () => {
+    it("never forwards the GR-scale noiseQuietDb; forwards nativeQuietDb; omits GR-only args", async () => {
+      const args = tmpFile("args");
+      const { engine } = makeEngine({ FAKE_WB_ARGS_FILE: args }, { native: true });
+      await engine.start(cfg([VHF_A, VHF_B], { noiseQuietDb: -86, nativeQuietDb: -7.5, detectVia: "lane" }));
+      await waitFor(() => lines(args).length >= 1, 1000);
+      await engine.stop();
+      const a = lines(args)[0] ?? "";
+      expect(a).toContain("--quiet-db -7.5");
+      expect(a).not.toContain("-86");
+      expect(a).not.toContain("--detect-via");
+      expect(a).not.toContain("--lanes");
+      expect(a).not.toContain("--lane-modes");
+    });
+
+    it("omits --quiet-db entirely when nativeQuietDb is unset (helper default applies)", async () => {
+      const args = tmpFile("args");
+      const { engine } = makeEngine({ FAKE_WB_ARGS_FILE: args }, { native: true });
+      await engine.start(cfg([VHF_A], { noiseQuietDb: -86 }));
+      await waitFor(() => lines(args).length >= 1, 1000);
+      await engine.stop();
+      expect(lines(args)[0] ?? "").not.toContain("--quiet-db");
+    });
+
+    it("GR mode is unchanged: still forwards noiseQuietDb and lane args", async () => {
+      const args = tmpFile("args");
+      const { engine } = makeEngine({ FAKE_WB_ARGS_FILE: args });
+      await engine.start(cfg([VHF_A], { noiseQuietDb: -86, nativeQuietDb: -7.5 }));
+      await waitFor(() => lines(args).length >= 1, 1000);
+      await engine.stop();
+      const a = lines(args)[0] ?? "";
+      expect(a).toContain("--quiet-db -86");
+      expect(a).toContain("--lanes");
+    });
+
+    it("retune never respawns for a topology change (fixed 12 slots)", async () => {
+      const args = tmpFile("args");
+      const tunes = tmpFile("tunes");
+      const { engine } = makeEngine({ FAKE_WB_ARGS_FILE: args, FAKE_WB_TUNES_FILE: tunes }, { native: true, groupDwellMs: 60_000 });
+      await engine.start(cfg([VHF_A]));
+      await waitFor(() => lines(tunes).length >= 1, 1000);
+      // More channels + an AM lane: GR would need a bigger/different channelizer and respawn.
+      const many = Array.from({ length: 10 }, (_, i) => ch(146_000_000 + i * 25_000, i === 3 ? { mode: "am" } : {}));
+      await engine.retune(cfg(many));
+      await waitFor(() => lines(tunes).length >= 2, 1000);
+      await engine.stop();
+      expect(lines(args)).toHaveLength(1);
+      expect(lines(tunes).length).toBeGreaterThanOrEqual(2);
+    });
+
+    it("retune RESPAWNS when the channel set is emptied (native releases the SDR)", async () => {
+      const args = tmpFile("args");
+      const { engine } = makeEngine({ FAKE_WB_ARGS_FILE: args }, { native: true });
+      await engine.start(cfg([VHF_A]));                     // 1 helper
+      await waitFor(() => lines(args).length >= 1, 1000);
+      await engine.retune(cfg([]));                          // empty: must NOT re-point onto nothing
+      // No new helper spawned for the empty set (same as GR: start() with
+      // zero groups runs with no helper at all — see start()'s early return)...
+      expect(lines(args).length).toBe(1);
+      // ...and the prior helper was released: a later real config must SPAWN
+      // afresh (if it were still alive, retune would have re-pointed it instead).
+      await engine.retune(cfg([VHF_A]));
+      await waitFor(() => lines(args).length >= 2, 2000);
+      await engine.stop();
+      expect(lines(args).length).toBe(2);
+    });
+
+    it("respawns when the helper never says ready (ready watchdog)", async () => {
+      const args = tmpFile("args");
+      const { engine } = makeEngine({ FAKE_WB_ARGS_FILE: args, FAKE_WB_MODE: "noready" }, { native: true, readyTimeoutMs: 200 });
+      await engine.start(cfg([VHF_A]));
+      const respawned = await waitFor(() => lines(args).length >= 2, 3000);
+      await engine.stop();
+      expect(respawned).toBe(true);
+    });
+
+    it("keeps the helper's real stderr on a ready-watchdog trip (NO_DEVICE diagnosis survives)", async () => {
+      // Regression: watchdogFire used to overwrite lastStderrLine with its own
+      // synthetic "no ready within..." reason, losing the helper's real stderr
+      // (e.g. "failed to open RTL-SDR...") -- the operator's only diagnostic,
+      // and also what the NO_DEVICE classifier regex matches against.
+      const args = tmpFile("args");
+      const { engine, events } = makeEngine(
+        {
+          FAKE_WB_ARGS_FILE: args,
+          FAKE_WB_MODE: "noready",
+          FAKE_WB_STDERR: "RuntimeError: failed to open RTL-SDR (serial KIOSK01): busy",
+        },
+        { native: true, readyTimeoutMs: 100, restartDelayMs: 50 },
+      );
+      await engine.start(cfg([VHF_A]));
+      // Escalation (handleUnexpectedExit): failure #1 is a soft status:starting;
+      // only a SECOND consecutive failure (still wedged before ready) emits the
+      // hard "error" event that carries the reason text.
+      await waitFor(() => lines(args).length >= 2, 3000);
+      const gotError = await waitFor(
+        () => events.some((e) => e.type === "error" && e.code === "NO_DEVICE"),
+        3000,
+      );
+      await engine.stop();
+      expect(gotError).toBe(true);
+      const err = events.find((e) => e.type === "error" && e.code === "NO_DEVICE");
+      const message = err && err.type === "error" ? err.message : "";
+      expect(message).toContain('no "ready" within');
+      expect(message).toContain("failed to open");
+    });
+
+    it("respawns when the helper goes silent after ready (silence watchdog); reason names the silence", async () => {
+      const args = tmpFile("args");
+      const { engine, events } = makeEngine(
+        { FAKE_WB_ARGS_FILE: args, FAKE_WB_MODE: "silent" },
+        { native: true, silenceTimeoutMs: 200, restartDelayMs: 50 },
+      );
+      await engine.start(cfg([VHF_A]));
+      const respawned = await waitFor(() => lines(args).length >= 2, 3000);
+      // Escalation: the first silence trip is a soft respawn; only the SECOND
+      // consecutive one (still silent after respawn) emits the hard error
+      // that carries the reason text.
+      await waitFor(() => lines(args).length >= 3, 5000);
+      const gotError = await waitFor(
+        () => events.some((e) => e.type === "error" && e.message.includes("helper silent for")),
+        3000,
+      );
+      await engine.stop();
+      expect(respawned).toBe(true);
+      expect(gotError).toBe(true);
+    });
+
+    it("GR mode arms no watchdogs (a silent GR helper is left alone)", async () => {
+      const args = tmpFile("args");
+      const { engine } = makeEngine({ FAKE_WB_ARGS_FILE: args, FAKE_WB_MODE: "silent" }, { readyTimeoutMs: 100, silenceTimeoutMs: 100 });
+      await engine.start(cfg([VHF_A]));
+      await new Promise((r) => setTimeout(r, 600));
+      await engine.stop();
+      expect(lines(args)).toHaveLength(1);
+    });
+  });
+
+  it("forwards helper log events, rate-limited (both engines)", async () => {
+    const logs: string[] = [];
+    const script = Array.from({ length: 15 }, (_, i) => `{"ev":"log","msg":"m${i}"}`).join("\n");
+    const { engine } = makeEngine({ FAKE_WB_SCRIPT: script }, { log: (m: string) => logs.push(m), groupDwellMs: 60_000 });
+    await engine.start(cfg([VHF_A]));
+    await waitFor(() => logs.filter((l) => l.startsWith("[helper] m")).length >= 10, 2000);
+    await new Promise((r) => setTimeout(r, 200));
+    await engine.stop();
+    const helperLines = logs.filter((l) => l.startsWith("[helper] m"));
+    expect(helperLines).toHaveLength(10);                 // burst cap
+    expect(helperLines[0]).toBe("[helper] m0");
+  });
+
+  it("flushes a pending log-suppression summary on stop (killChild), not just on the next window", async () => {
+    const logs: string[] = [];
+    const script = Array.from({ length: 15 }, (_, i) => `{"ev":"log","msg":"m${i}"}`).join("\n");
+    const { engine } = makeEngine({ FAKE_WB_SCRIPT: script }, { log: (m: string) => logs.push(m), groupDwellMs: 60_000 });
+    await engine.start(cfg([VHF_A]));
+    await waitFor(() => logs.filter((l) => l.startsWith("[helper] m")).length >= 10, 2000);
+    await engine.stop();
+    expect(logs).toContain("[helper] 5 more log lines suppressed");
+  });
 });
 
 describe("audible passthrough", () => {
@@ -639,99 +800,6 @@ describe("retune fit-check (re-point vs respawn)", () => {
     await waitFor(() => lines(args).length >= 2, 2000);
     await engine.stop();
     expect(lines(args).length).toBe(2);
-  });
-
-  describe("native mode", () => {
-    it("never forwards the GR-scale noiseQuietDb; forwards nativeQuietDb; omits GR-only args", async () => {
-      const args = tmpFile("args");
-      const { engine } = makeEngine({ FAKE_WB_ARGS_FILE: args }, { native: true });
-      await engine.start(cfg([VHF_A, VHF_B], { noiseQuietDb: -86, nativeQuietDb: -7.5, detectVia: "lane" }));
-      await waitFor(() => lines(args).length >= 1, 1000);
-      await engine.stop();
-      const a = lines(args)[0] ?? "";
-      expect(a).toContain("--quiet-db -7.5");
-      expect(a).not.toContain("-86");
-      expect(a).not.toContain("--detect-via");
-      expect(a).not.toContain("--lanes");
-      expect(a).not.toContain("--lane-modes");
-    });
-
-    it("omits --quiet-db entirely when nativeQuietDb is unset (helper default applies)", async () => {
-      const args = tmpFile("args");
-      const { engine } = makeEngine({ FAKE_WB_ARGS_FILE: args }, { native: true });
-      await engine.start(cfg([VHF_A], { noiseQuietDb: -86 }));
-      await waitFor(() => lines(args).length >= 1, 1000);
-      await engine.stop();
-      expect(lines(args)[0] ?? "").not.toContain("--quiet-db");
-    });
-
-    it("GR mode is unchanged: still forwards noiseQuietDb and lane args", async () => {
-      const args = tmpFile("args");
-      const { engine } = makeEngine({ FAKE_WB_ARGS_FILE: args });
-      await engine.start(cfg([VHF_A], { noiseQuietDb: -86, nativeQuietDb: -7.5 }));
-      await waitFor(() => lines(args).length >= 1, 1000);
-      await engine.stop();
-      const a = lines(args)[0] ?? "";
-      expect(a).toContain("--quiet-db -86");
-      expect(a).toContain("--lanes");
-    });
-
-    it("retune never respawns for a topology change (fixed 12 slots)", async () => {
-      const args = tmpFile("args");
-      const tunes = tmpFile("tunes");
-      const { engine } = makeEngine({ FAKE_WB_ARGS_FILE: args, FAKE_WB_TUNES_FILE: tunes }, { native: true, groupDwellMs: 60_000 });
-      await engine.start(cfg([VHF_A]));
-      await waitFor(() => lines(tunes).length >= 1, 1000);
-      // More channels + an AM lane: GR would need a bigger/different channelizer and respawn.
-      const many = Array.from({ length: 10 }, (_, i) => ch(146_000_000 + i * 25_000, i === 3 ? { mode: "am" } : {}));
-      await engine.retune(cfg(many));
-      await waitFor(() => lines(tunes).length >= 2, 1000);
-      await engine.stop();
-      expect(lines(args)).toHaveLength(1);
-      expect(lines(tunes).length).toBeGreaterThanOrEqual(2);
-    });
-
-    it("respawns when the helper never says ready (ready watchdog)", async () => {
-      const args = tmpFile("args");
-      const { engine } = makeEngine({ FAKE_WB_ARGS_FILE: args, FAKE_WB_MODE: "noready" }, { native: true, readyTimeoutMs: 200 });
-      await engine.start(cfg([VHF_A]));
-      const respawned = await waitFor(() => lines(args).length >= 2, 3000);
-      await engine.stop();
-      expect(respawned).toBe(true);
-    });
-
-    it("respawns when the helper goes silent after ready (silence watchdog)", async () => {
-      const args = tmpFile("args");
-      const logs: string[] = [];
-      const { engine } = makeEngine({ FAKE_WB_ARGS_FILE: args, FAKE_WB_MODE: "silent" },
-        { native: true, silenceTimeoutMs: 200, log: (m: string) => logs.push(m) });
-      await engine.start(cfg([VHF_A]));
-      const respawned = await waitFor(() => lines(args).length >= 2, 3000);
-      await engine.stop();
-      expect(respawned).toBe(true);
-    });
-
-    it("GR mode arms no watchdogs (a silent GR helper is left alone)", async () => {
-      const args = tmpFile("args");
-      const { engine } = makeEngine({ FAKE_WB_ARGS_FILE: args, FAKE_WB_MODE: "silent" }, { readyTimeoutMs: 100, silenceTimeoutMs: 100 });
-      await engine.start(cfg([VHF_A]));
-      await new Promise((r) => setTimeout(r, 600));
-      await engine.stop();
-      expect(lines(args)).toHaveLength(1);
-    });
-  });
-
-  it("forwards helper log events, rate-limited (both engines)", async () => {
-    const logs: string[] = [];
-    const script = Array.from({ length: 15 }, (_, i) => `{"ev":"log","msg":"m${i}"}`).join("\n");
-    const { engine } = makeEngine({ FAKE_WB_SCRIPT: script }, { log: (m: string) => logs.push(m), groupDwellMs: 60_000 });
-    await engine.start(cfg([VHF_A]));
-    await waitFor(() => logs.filter((l) => l.startsWith("[helper] m")).length >= 10, 2000);
-    await new Promise((r) => setTimeout(r, 200));
-    await engine.stop();
-    const helperLines = logs.filter((l) => l.startsWith("[helper] m"));
-    expect(helperLines).toHaveLength(10);                 // burst cap
-    expect(helperLines[0]).toBe("[helper] m0");
   });
 });
 

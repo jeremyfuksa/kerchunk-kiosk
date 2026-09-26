@@ -99,6 +99,11 @@ const HEALTHY_AFTER_MS = 10_000;
 // flapping condition can't flood the journal; the overflow is summarized.
 const HELPER_LOG_BURST = 10;
 const HELPER_LOG_WINDOW_MS = 60_000;
+// Keep <= HEALTHY_AFTER_MS: handleHelperEvent resets exitFailures once the
+// spawn is older than HEALTHY_AFTER_MS, on ANY event (ready included). A ready
+// timeout longer than that window would let a helper that's merely slow (not
+// wedged) get treated as freshly healthy right as its own watchdog is about
+// to fire, defeating the backoff escalation on repeat failures.
 const DEFAULT_READY_TIMEOUT_MS = 10_000;
 const DEFAULT_SILENCE_TIMEOUT_MS = 5_000;
 
@@ -320,11 +325,11 @@ export class WidebandEngine implements ScannerEngine {
    * chop. The helper's `tune` command re-centers the SDR and re-assigns the
    * EXISTING lanes; no respawn, no `booting`/`warmup` events.
    *
-   * But the lane COUNT and per-lane demod paths are fixed at spawn — the tune
-   * command cannot grow lanes or add a demod path. So a re-point is only valid
-   * when the new config FITS the spawned lane plan (planFits): no more lanes
-   * than were built, every slot's needed FM/AM path already present, and at
-   * least one channel. A config that does not fit — a channel ADDED past a
+   * But the lane COUNT and per-lane demod paths are fixed at spawn (GR) — the
+   * tune command cannot grow lanes or add a demod path. So a re-point is only
+   * valid when the new config FITS the spawned lane plan (planFits): no more
+   * lanes than were built, every slot's needed FM/AM path already present, and
+   * at least one channel. A config that does not fit — a channel ADDED past a
    * group's spawned lane count (the helper would silently truncate it), an AM
    * edit/audition landing on an FM-only lane (it would mis-demodulate to
    * silence), or an emptied channel set (the helper must be torn down to
@@ -332,6 +337,12 @@ export class WidebandEngine implements ScannerEngine {
    * start(), which respawns with a correctly-sized channelizer. That is the
    * ONLY case that re-shows the overlay, and only when the DSP topology must
    * genuinely change; a rename/retag/priority/enable edit still re-points.
+   *
+   * Native (kerchunk-dsp) has a fixed 12 lane slots built at spawn regardless
+   * of config, so it never needs a bigger/different channelizer: ANY topology
+   * change (more channels, an AM lane, …) just re-points. The only case that
+   * still respawns is an emptied channel set — same as GR, and for the same
+   * reason: release the SDR rather than leave the helper hot on nothing.
    * If the helper isn't live there is no graph to re-point — also a full start.
    */
   async retune(config: ScanConfig): Promise<void> {
@@ -421,6 +432,7 @@ export class WidebandEngine implements ScannerEngine {
   private spawnHelper(): void {
     if (!this.config) return;
 
+    this.clearWatchdogs(); // cheap insurance: no stale timer from a prior child
     this.lastSpawnAt = this.now();
     const base = [...this.helperCmd, ...this.helperArgs()];
     // Low-priority spawn (weather radio): `nice` execs the helper so all of its
@@ -757,7 +769,10 @@ export class WidebandEngine implements ScannerEngine {
   // escalation never fires. These timers turn that into an exit.
   private watchdogFire(child: ChildProcess, why: string): void {
     if (this.child !== child || this.stopping) return;
-    this.lastStderrLine = why;
+    // Don't clobber real stderr the helper already printed (e.g. "failed to
+    // open RTL-SDR…") — that's the operator's only diagnostic and also what
+    // the NO_DEVICE classifier regex matches against below.
+    this.lastStderrLine = this.lastStderrLine ? `${why}; last stderr: ${this.lastStderrLine}` : why;
     this.handleUnexpectedExit(null);
   }
 
@@ -776,6 +791,14 @@ export class WidebandEngine implements ScannerEngine {
 
   private killChild(): void {
     this.clearWatchdogs();
+    // Flush any pending suppression summary rather than losing it silently —
+    // a stop/respawn mid-burst must not drop "N more log lines suppressed".
+    if (this.logSuppressed > 0) {
+      this.log(`[helper] ${this.logSuppressed} more log lines suppressed`);
+      this.logSuppressed = 0;
+    }
+    this.logWindowStart = 0;
+    this.logCount = 0;
     this.clearDwellTimer();
     // Cancel any pending warm-up settle timer: without this it would survive a
     // crash and fire a false "ready" (clearing the overlay + marking warmed)
