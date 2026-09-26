@@ -388,7 +388,7 @@ export function renderAdmin(root: HTMLElement): void {
           <label><span>Group dwell <small>Time spent on each frequency group</small></span><span class="inputUnit"><input id="tGroupDwell" type="number" min="500" step="100" placeholder="3000" /><b>ms</b></span></label>
           <label><span>Hang time <small>Wait after a transmission ends</small></span><span class="inputUnit"><input id="tHang" type="number" min="100" step="100" placeholder="2000" /><b>ms</b></span></label>
           <label><span>Squelch open <small>Signal level above the noise floor</small></span><span class="inputUnit"><input id="tOpenDb" type="number" min="1" step="0.5" placeholder="9" /><b>dB</b></span></label>
-          <label><span>Quieting threshold <small>Absolute noise threshold</small></span><span class="inputUnit"><input id="tQuietDb" type="number" max="-1" step="0.5" placeholder="-86" /><b>dB</b></span></label>
+          <label><span>Quieting threshold <small>Lower = stricter (dead channel ≈ −2, keyed carrier ≈ −30)</small></span><span class="inputUnit"><input id="tQuietDb" type="number" step="0.5" placeholder="-6" /><b>dB</b></span></label>
           <label class="switchRow"><span>Close Call <small>Find strong nearby signals outside your channel list</small></span><input id="tCloseCall" type="checkbox" /></label>
           <label><span>Close Call threshold <small>Higher values reduce false discoveries</small></span><span class="inputUnit"><input id="tCloseCallDb" type="number" min="5" step="1" placeholder="15" /><b>dB</b></span></label>
           <label class="switchRow"><span>Record samples <small>Keep a clip of each discovery so you can judge it by ear — changing this restarts the scanner</small></span><input id="tCcRecord" type="checkbox" /></label>
@@ -1135,7 +1135,6 @@ export function renderAdmin(root: HTMLElement): void {
     if (b.dwellWeight !== undefined) bits.push(`dwell ×${b.dwellWeight}`);
     if (b.hangMs !== undefined) bits.push(`hang ${b.hangMs / 1000} s`);
     if (b.openAboveFloorDb !== undefined) bits.push(`open ${b.openAboveFloorDb} dB`);
-    if (b.noiseQuietDb !== undefined) bits.push(`quiet ${b.noiseQuietDb} dB`);
     return bits.join(" · ");
   }
 
@@ -1586,7 +1585,6 @@ export function renderAdmin(root: HTMLElement): void {
         <div class="dwSection">Scan profile</div>
         <p class="dwHelp">Overrides for this bank's channels. Empty fields inherit the global scanning settings.</p>
         <label class="dwRow"><span>Squelch open <small>dB over the noise floor</small></span><input id="bpOpen" type="number" min="1" step="0.5" value="${num(b.openAboveFloorDb)}" placeholder="global" /></label>
-        <label class="dwRow"><span>Quieting threshold <small>dB</small></span><input id="bpQuiet" type="number" max="-1" step="0.5" value="${num(b.noiseQuietDb)}" placeholder="global" /></label>
         <label class="dwRow"><span>Hang time <small>ms after a transmission ends</small></span><input id="bpHang" type="number" min="100" step="100" value="${num(b.hangMs)}" placeholder="global" /></label>
         <label class="dwRow"><span>Dwell weight <small>2 = twice the park time, 0.5 = half</small></span><input id="bpDwell" type="number" min="0.1" step="0.1" value="${num(b.dwellWeight)}" placeholder="1" /></label>
         <div class="dwFooter"><button id="bpSave" class="primary">Save profile</button></div>
@@ -1604,11 +1602,10 @@ export function renderAdmin(root: HTMLElement): void {
         const cfg = await api.getConfig();
         cfg.banks = (cfg.banks ?? []).map((x) => {
           if (x.id !== b.id) return x;
-          const { openAboveFloorDb: _o, noiseQuietDb: _q, hangMs: _h, dwellWeight: _d, ...rest } = x;
+          const { openAboveFloorDb: _o, hangMs: _h, dwellWeight: _d, ...rest } = x;
           return {
             ...rest,
             ...(val("#bpOpen") !== undefined ? { openAboveFloorDb: val("#bpOpen") } : {}),
-            ...(val("#bpQuiet") !== undefined ? { noiseQuietDb: val("#bpQuiet") } : {}),
             ...(val("#bpHang") !== undefined ? { hangMs: val("#bpHang") } : {}),
             ...(val("#bpDwell") !== undefined ? { dwellWeight: val("#bpDwell") } : {}),
           };
@@ -2520,7 +2517,7 @@ export function renderAdmin(root: HTMLElement): void {
     tGroupDwell.value = cfg.scan.groupDwellMs != null ? String(cfg.scan.groupDwellMs) : "";
     tHang.value = String(cfg.scan.dwellMs);
     tOpenDb.value = cfg.scan.openAboveFloorDb != null ? String(cfg.scan.openAboveFloorDb) : "";
-    tQuietDb.value = cfg.scan.noiseQuietDb != null ? String(cfg.scan.noiseQuietDb) : "";
+    tQuietDb.value = cfg.scan.nativeQuietDb != null ? String(cfg.scan.nativeQuietDb) : "";
     tMapsKey.value = cfg.display?.googleMapsApiKey ?? "";
     tMapsMapId.value = cfg.display?.googleMapsMapId ?? "";
     tAlertCool.value = cfg.alerts?.cooldownMinutes != null ? String(cfg.alerts.cooldownMinutes) : "";
@@ -2564,7 +2561,7 @@ export function renderAdmin(root: HTMLElement): void {
       const cfg = await api.getConfig();
       cfg.scan.groupDwellMs = numOrU(tGroupDwell);
       cfg.scan.openAboveFloorDb = numOrU(tOpenDb);
-      cfg.scan.noiseQuietDb = numOrU(tQuietDb);
+      cfg.scan.nativeQuietDb = numOrU(tQuietDb);
       cfg.scan.closeCall = tCloseCall.checked;
       cfg.scan.closeCallDb = numOrU(tCloseCallDb);
       // Flipping recording is an ENGINE RESTART — it changes a helper spawn

@@ -1,7 +1,7 @@
 # Kerchunk Kiosk
 
 A software-defined radio scanner appliance. A repurposed laptop running Ubuntu,
-an RTL-SDR dongle, and GNU Radio monitor **every channel in a 2 MHz window
+an RTL-SDR dongle, and a native C++ DSP engine monitor **every channel in a 2 MHz window
 simultaneously** — no scan latency, no missed bursts inside a band group — and
 boot lid-closed straight into a fullscreen dashboard on an external monitor.
 
@@ -9,7 +9,7 @@ boot lid-closed straight into a fullscreen dashboard on an external monitor.
 
 ## What it does
 
-- **Wideband engine**: one persistent GNU Radio flowgraph samples a 2.4 MS/s
+- **Wideband engine**: one persistent C++ DSP helper (`kerchunk-dsp`) samples a 2.4 MS/s
   I/Q window and demodulates up to 12 channels at once; the SDR is opened once
   per boot and retuned live between band groups (group-hop) — the USB
   re-open thrash that kills `rtl_fm`-style scanners is structurally gone.
@@ -47,7 +47,8 @@ sudo bash kiosk/scripts/setup-kiosk-ubuntu.sh
 sudo reboot
 ```
 
-Installs the SDR toolchain (GNU Radio + SoapySDR + rtl-sdr via apt),
+Installs the SDR toolchain (rtl-sdr, multimon-ng, and the C++ build deps for
+the `kerchunk-dsp` helper via apt), builds the app,
 blacklists the DVB kernel modules, configures the kiosk session (cage + snap
 Chromium on tty1, lid ignored, sleep masked, internal panel off), seeds a
 NOAA config, and enables the systemd units. After reboot: dashboard on the
@@ -58,8 +59,8 @@ restart kerchunk-kiosk`.
 
 ## Layout
 
-- [`kiosk/`](kiosk/) — the application (TypeScript backend + frontends, GNU
-  Radio DSP helper, systemd units, setup scripts, tests)
+- [`kiosk/`](kiosk/) — the application (TypeScript backend + frontends, C++
+  DSP helper under `kiosk/native/`, systemd units, setup scripts, tests)
 - [`docs/superpowers/specs/`](docs/superpowers/specs/) — design specs
   (wideband engine, Close Call, …)
 - [`docs/Kerchunk Vision.md`](docs/Kerchunk%20Vision.md) — the original
@@ -76,14 +77,14 @@ restart kerchunk-kiosk`.
 cd kiosk
 npm install
 npm test                 # vitest, no hardware needed (fake engine/helper)
+npm run test:native      # C++ DSP unit tests (needs cmake + the native build deps)
 USE_FAKE_ENGINE=1 KERCHUNK_CONFIG=/tmp/kc.json npm run dev:backend
 npm run dev:frontend     # vite dev server, proxies /api + /ws
 ```
 
-Engine selection: `KERCHUNK_ENGINE=wideband|rtlfm|fake` (default `wideband`;
-`rtlfm` is the sequential fallback for Pi-class hardware without GNU Radio).
-The DSP helper requires the SYSTEM python (`/usr/bin/python3`) — GNU Radio's
-bindings are not visible to pyenv/mise interpreters.
+Engine selection: `KERCHUNK_ENGINE=wideband|native|rtlfm|fake` (default
+`wideband`; `native` is an alias for it; `rtlfm` is the sequential fallback).
+`npm run build` compiles the `kerchunk-dsp` helper with cmake.
 
 ## Post-MVP backlog
 

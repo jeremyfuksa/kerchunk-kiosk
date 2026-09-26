@@ -27,6 +27,14 @@ The pieces these ideas plug into already exist:
   user-facing category — important for the "banks" idea below.
 - **Two front-ends**: the fullscreen kiosk dashboard (HDMI) and the web admin
   (any device). Both are vanilla TS + Vite, no framework.
+- **DSP engine**: `kerchunk-dsp`, a native C++ helper (`kiosk/native/`) with a
+  fixed 12-slot channelizer, spawned by `WidebandEngine`. It replaced the GNU
+  Radio helper (`wideband_helper.py`) in Sep 2026 (spec
+  `docs/superpowers/specs/2026-09-25-native-dsp-engine-design.md`); the GR path
+  is removed. Mentions of `wideband_helper.py`, GR flowgraphs, `lanePlan.ts`,
+  `noiseQuietDb` or `detectVia` below are historical — the quieting knob is now
+  `scan.nativeQuietDb`, and per-bank quieting was dropped (the native helper
+  has no per-channel quiet threshold).
 
 ---
 
@@ -1027,6 +1035,9 @@ All four highest-return items are now shipped:
    idle-suspend.
 Distinct from the parked polyphase-channelizer rewrite below — these were
 in-place wins on the current helper, not a DSP re-architecture.
+**Superseded (Sep 2026):** the GNU Radio helper these items tuned is gone; the
+native `kerchunk-dsp` engine (fixed 12 slots, parked slots skip their
+extract+IFFT) replaced it — lane-fit and `detectVia` were removed with it.
 
 ### Tabled by operator (2026-06-06 — don't re-pitch; he'll return to them)
 - **Idea 13 — ADS-B, RF path only**: the map layer itself SHIPPED 2026-06-18

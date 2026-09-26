@@ -1,8 +1,8 @@
 # Kerchunk Kiosk — application
 
 The scanner application: TypeScript backend (engine control, HTTP/WS API,
-config), kiosk dashboard + web admin frontends, and the GNU Radio DSP helper
-(`src/backend/engine/wideband_helper.py`). The default **wideband engine**
+config), kiosk dashboard + web admin frontends, and the C++ DSP helper
+`kerchunk-dsp` (`native/`, built by `npm run build`). The default **wideband engine**
 demodulates every channel in a 2 MHz window simultaneously behind the
 `ScannerEngine` interface; the original sequential `rtl_fm` engine remains as
 `KERCHUNK_ENGINE=rtlfm` for Pi-class hardware.
@@ -26,7 +26,8 @@ Open the Vite URL; `/` is the dashboard, `/admin` is the admin.
 ## Test
 
 ```sh
-cd kiosk && npm test
+cd kiosk && npm test      # vitest (fake engine/helper, no hardware)
+npm run test:native       # C++ DSP unit tests
 ```
 
 ## Deploy
@@ -41,5 +42,7 @@ for the frontend-only reload path and the restart-cost caveats.
 
 Squelch is per-channel power over an adaptive group noise floor **and** FM
 quieting detection, with fade ramps, a hard limiter, and a per-channel
-loudness leveler. The tuning knobs (thresholds, hang times, fade/level
-constants) live at the top of `src/backend/engine/wideband_helper.py`.
+loudness leveler. The defaults (thresholds, hang times, fade/level constants)
+live in `native/src/constants.hpp`; the operator knobs are
+`scan.openAboveFloorDb`, `scan.nativeQuietDb` (quieting, default −6 on the
+helper's own dB scale; lower = stricter) and `scan.nativeAmGainDb` in config.

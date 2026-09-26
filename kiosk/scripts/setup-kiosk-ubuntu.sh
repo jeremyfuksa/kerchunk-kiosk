@@ -3,12 +3,10 @@
 # Provision the Ubuntu laptop appliance (Intel MacBook Pro, Ubuntu 26.04):
 #
 # SDR/DSP layer (wideband engine):
-#   - rtl-sdr suite + SoapySDR + GNU Radio (apt; gr-soapy ships inside the
-#     `gnuradio` package, Python bindings land in system /usr/bin/python3
-#     dist-packages — the engine spawns the helper with that interpreter);
+#   - rtl-sdr suite (rtl_test etc.) + multimon-ng (the helper's SAME decoder);
 #   - cmake + libfftw3-dev/nlohmann-json3-dev/libasound2-dev/librtlsdr-dev +
-#     pkg-config: build deps for kerchunk-dsp, the native (C++) engine
-#     (KERCHUNK_ENGINE=native) — `npm run build` below compiles it;
+#     pkg-config: build deps for kerchunk-dsp, the native (C++) DSP helper the
+#     wideband engine spawns — `npm run build` below compiles it;
 #   - blacklists the DVB-TV kernel modules so they never claim the dongle
 #     (librtlsdr can detach them, but the appliance shouldn't depend on that).
 #
@@ -37,7 +35,7 @@ AUDIO_SINK="plughw:CARD=${AUDIO_CARD},DEV=0"
 echo "[setup] Installing SDR toolchain packages..."
 sudo apt-get update
 sudo apt-get install -y \
-  rtl-sdr soapysdr-tools soapysdr-module-rtlsdr gnuradio python3-numpy \
+  rtl-sdr multimon-ng \
   alsa-utils \
   cage wlrctl curl ca-certificates \
   cmake pkg-config libfftw3-dev nlohmann-json3-dev libasound2-dev librtlsdr-dev
@@ -157,8 +155,7 @@ if ! sudo test -f "$STATE_DIR/config.json"; then
   echo "[setup] Seeding default config (audio sink $AUDIO_SINK, all 7 NOAA WX channels)..."
   # ALL SEVEN WX channels, not just one: they fit a single wideband group, and
   # the wideband squelch needs quiet neighbors to learn the noise floor — a
-  # single continuously-keyed NOAA channel alone can never open (documented
-  # limitation in wideband_helper.py). Seven also makes a great first-boot
+  # single continuously-keyed NOAA channel alone can never open. Seven also makes a great first-boot
   # demo: the live stations open, the rest hold the floor.
   sudo mkdir -p "$STATE_DIR"
   sudo tee "$STATE_DIR/config.json" >/dev/null <<JSON
@@ -213,9 +210,10 @@ sudo systemctl enable --now kerchunk-kiosk.service
 sudo systemctl enable kerchunk-display.service kerchunk-cursor-park.service
 
 echo "[setup] Verifying the toolchain..."
-/usr/bin/python3 -c "import gnuradio, gnuradio.soapy" \
-  && echo "[setup]   GNU Radio + gr-soapy: OK ($(gnuradio-config-info --version))"
-if rtl_test -t >/dev/null 2>&1 || SoapySDRUtil --find 2>/dev/null | grep -q rtlsdr; then
+[ -x "$REPO_DIR/dist/backend/engine/kerchunk-dsp" ] \
+  && echo "[setup]   kerchunk-dsp (native DSP helper): OK" \
+  || echo "[setup]   kerchunk-dsp: MISSING (npm run build did not produce dist/backend/engine/kerchunk-dsp)"
+if rtl_test -t >/dev/null 2>&1; then
   echo "[setup]   RTL-SDR device: OK"
 else
   echo "[setup]   RTL-SDR device: NOT FOUND (plug in the dongle and re-run rtl_test)"

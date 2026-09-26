@@ -5,7 +5,8 @@
 #     this machine is both the dev box and the appliance, so "deploy" is
 #     `git pull && npm run build && systemctl restart kerchunk-kiosk`;
 #   - KERCHUNK_ENGINE=wideband: this appliance exists to run the wideband
-#     engine (the in-repo default stays rtlfm for the Pi fallback);
+#     engine (WidebandEngine + the native kerchunk-dsp helper; "native" is
+#     accepted as an alias). rtlfm stays selectable as the sequential fallback;
 #   - /usr/bin/node is Ubuntu's archive nodejs (>=20 satisfied by 22.x).
 #
 # Installed by setup-kiosk-ubuntu.sh as /etc/systemd/system/kerchunk-kiosk.service.

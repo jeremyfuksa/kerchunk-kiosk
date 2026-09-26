@@ -8,10 +8,11 @@ that are easy to get wrong.
 ## What you're standing on
 
 Kerchunk is an SDR scanner **appliance**: a lid-closed Ubuntu 26.04 laptop
-(i7-4770HQ MacBook Pro), RTL-SDR dongles, and a persistent GNU Radio flowgraph
-that demodulates every channel in a ~2 MHz window at once. Stack: TypeScript
-(Node ≥24, ESM) backend + vanilla-TS/Vite frontends, a Python DSP helper under
-GNU Radio, zod-validated config, systemd. **No frontend framework — vanilla TS
+(i7-4770HQ MacBook Pro), RTL-SDR dongles, and a persistent native C++ DSP
+helper (`kerchunk-dsp`, `kiosk/native/`) that demodulates every channel in a
+~2 MHz window at once. Stack: TypeScript (Node ≥24, ESM) backend +
+vanilla-TS/Vite frontends, the C++ DSP helper (cmake; librtlsdr, FFTW, ALSA),
+zod-validated config, systemd. **No frontend framework — vanilla TS
 only.** Icons are `lucide-static` only, never hand-rolled SVG (operator
 mandate).
 
@@ -78,25 +79,27 @@ Pi-class install; see [`docs/DEPLOY.md`](docs/DEPLOY.md)).
 
 ```sh
 npm test                 # vitest, no hardware needed (FakeEngine + fake helper)
-npm run test:py          # DSP-math tests — runs /usr/bin/python3 (system python)
 npm run test:native      # C++ DSP unit tests — builds native/build/kerchunk-dsp-tests
-npm run build            # build:frontend (vite) + build:backend (tsc + copy helpers) + build:native:dist (cmake)
+npm run build            # build:frontend (vite) + build:backend (tsc) + build:native:dist (cmake → dist/backend/engine/kerchunk-dsp)
 npm run typecheck        # BOTH tsconfigs; vite does NOT typecheck (see below)
 npm run dev:frontend     # vite dev server, proxies /api + /ws to :8080
 USE_FAKE_ENGINE=1 KERCHUNK_CONFIG=/tmp/kc.json npm run dev:backend
 ```
 
-`npm run build` now also compiles the native engine (`build:native:dist`,
+`npm run build` also compiles the DSP helper (`build:native:dist`,
 `kiosk/native/`) via cmake/C++ at `--parallel 2`. On the appliance that's a
-real compile, not just `tsc`/`vite` — a thermal cost like any other build.
+real compile, not just `tsc`/`vite` — a thermal cost like any other build. The
+binary is installed into `dist/` via temp file + `mv`, so rebuilding under a
+running helper is safe.
 
 ## Deploy & restart discipline
 
 Full deploy on the appliance:
 `git pull && (cd kiosk && npm run build) && sudo systemctl restart kerchunk-kiosk`
 (`sudo` is passwordless here). But **only restart the service for backend
-changes** — every restart respawns the GNU Radio helper (~2.7 cores of
-flowgraph rebuild), spikes thermals, and interrupts live audio.
+changes** — the native helper restarts cheaply (well under a core, no
+multi-second graph build), but every restart still interrupts live audio and
+replays the warm-up overlay on the wall.
 
 - **Frontend-only change:** `npm run build` (or at least `build:frontend` +
   `npm run typecheck` — vite/esbuild does no type checking, and a type error
@@ -124,13 +127,12 @@ flowgraph rebuild), spikes thermals, and interrupts live audio.
   (`import { createServer } from "./server.js"`). Omitting it breaks the build.
 - **`tsconfig` is `strict` + `noUncheckedIndexedAccess`.** Indexed access
   (`arr[i]`, `map[key]`) is typed `T | undefined`; handle the undefined case.
-- **`build:backend` is more than `tsc`.** It also copies
-  `src/backend/engine/wideband_helper.py` *and* `wideband_dsp_math.py` into
-  `dist/`. The DSP helpers are not TypeScript and won't be emitted by the
-  compiler — run the npm script, not bare `tsc`.
-- **GNU Radio needs the system python** (`/usr/bin/python3`), not a
-  pyenv/mise interpreter — the bindings aren't visible elsewhere. Squelch
-  tuning knobs live at the top of `wideband_helper.py`.
+- **The DSP helper is not TypeScript.** `kerchunk-dsp` is built by
+  `build:native:dist` (part of `npm run build`), not `tsc` — a bare
+  `build:backend` leaves `dist/` without (or with a stale) helper. Squelch
+  defaults live in `kiosk/native/src/constants.hpp`; the operator-facing
+  knobs are `config.scan.nativeQuietDb` (`--quiet-db`) and
+  `config.scan.nativeAmGainDb` (`--am-gain-db`).
 - **ALSA is addressed by name** (`plughw:CARD=PCH,DEV=0`) — card indices swap
   across boots. The sink is exclusive (no dmix): exactly one process owns
   audio.
@@ -147,20 +149,21 @@ do not "simplify" them away:
   *same* `toScanConfig` path the API uses — a hand-built boot payload once
   dropped `knownHz` and made every reboot re-discover all filed frequencies.
 - **SAME break-in is a `retune()`, never `stop()+start()`.** The weather
-  break-in re-points the live flowgraph; a restart replays the warm-up
+  break-in re-points the live helper; a restart replays the warm-up
   overlay, chops audio, and wipes the alert banner.
 - **The `breakIn` guard in `server.ts` stays.** While a break-in holds the
   scanner on NWR, safetyMode logs temperature but must not bounce the engine —
   the restart cold-start spikes *caused* the overheating oscillation it tried
   to cure.
-- **The weather helper runs at `niceness: 19`.** At equal priority its ~300 GR
-  threads starve the scanner's audio thread and the live repeater sounds
-  choppy. Any additional radio helper gets niced down too.
+- **The weather helper runs at `niceness: 19`** — keep the scanner's audio
+  thread first. At equal priority a second helper competed with it and the
+  live repeater sounded choppy. Any additional radio helper gets niced down
+  too.
 - **WirePlumber is disabled on the scanner's audio card.**
   `kiosk/systemd/wireplumber-kerchunk-scanner-card.conf` (installed to
   `/etc/wireplumber/wireplumber.conf.d/`) sets `device.disabled` on the PCH
   card. Without it PipeWire claims the card at login — winning the boot race
-  while the helper is still building its flowgraph — and writes its default
+  against the backend and its helper — and writes its default
   route volume (0.064 → −23.5 dB) over the ALSA `Master` control the backend
   owns, so the admin volume slider and the hardware disagree after every boot.
 - **The engine must always drain the helper's fd-3 audio tee** (feeds
@@ -172,7 +175,7 @@ do not "simplify" them away:
 
 ## Verifying changes
 
-- **Logic:** `npm test` (and `npm run test:py` when touching the DSP math).
+- **Logic:** `npm test` (and `npm run test:native` when touching `kiosk/native/`).
   Unit-test pure accumulator/loop logic headless-safe.
 - **Anything audible/RF:** prove it on the live appliance by ear; the operator
   verifies within minutes.
@@ -192,7 +195,7 @@ do not "simplify" them away:
 
 A change is finished when all of these hold — report each honestly:
 
-1. `npm test` passes (and `test:py` if DSP math changed).
+1. `npm test` passes, and `npm run test:native` passes (C++ DSP unit tests).
 2. `npm run typecheck` is clean (vite won't catch it, and neither tsconfig
    covers the other — the script runs both).
 3. Full `npm run build` succeeds.
@@ -204,23 +207,21 @@ A change is finished when all of these hold — report each honestly:
 
 What CI actually runs (`.github/workflows/ci.yml`, every PR and push to
 `main`, GitHub-hosted Linux): `npm ci`, `npm run typecheck` (both tsconfigs),
-`npm run build:backend` (`tsc` emit plus the helper copies), `npm test`
-(vitest), and `npm run build:frontend`. It does **not** run `test:py` (needs numpy on the
-system python) and never touches hardware — so 1's `test:py` and 4 remain on
-you even with green checks.
+`npm run build:backend` (`tsc` emit), `npm test` (vitest), and
+`npm run build:frontend`; a separate job installs the native build deps and
+runs `npm run test:native`. CI never touches hardware — so 4 remains on you
+even with green checks.
 
 ## Architecture notes
 
 - **Engine abstraction.** Everything runs behind the `ScannerEngine` interface
-  (`src/backend/engine/`), with four implementations: `WidebandEngine` in GR
-  mode (default, GNU Radio) or native mode (`KERCHUNK_ENGINE=native`, spawns
-  `kerchunk-dsp`, the C++ DSP replacement under A/B), plus `RtlFmEngine`
-  (sequential fallback) and `FakeEngine` (tests). Native mode differs from GR
-  mode in three ways: fixed 12 slots with no lane-plan respawns; `--quiet-db`
-  taken only from `scan.nativeQuietDb` (native's own dB scale, default −6,
-  never mixed with GR's `noiseQuietDb`); and liveness watchdogs (ready-timeout
-  and silence-timeout) that GR mode doesn't need. Selected via
-  `KERCHUNK_ENGINE=wideband|native|rtlfm|fake`. Because tests use `FakeEngine`,
+  (`src/backend/engine/`), with three implementations: `WidebandEngine`
+  (default; spawns the `kerchunk-dsp` C++ helper), `RtlFmEngine` (sequential
+  fallback) and `FakeEngine` (tests). `WidebandEngine` passes `--quiet-db` from
+  `scan.nativeQuietDb` (kerchunk-dsp's own dB scale, default −6) and runs
+  liveness watchdogs (ready-timeout and silence-timeout) on the helper.
+  Selected via `KERCHUNK_ENGINE=wideband|native|rtlfm|fake` — `native` is an
+  alias for `wideband` (the appliance's systemd drop-in still sets it). Because tests use `FakeEngine`,
   the whole suite runs with no SDR attached.
 - **The engine never sees banks.** The server resolves per-channel scan
   overrides into a concrete `ScanChannel` before handing config to the engine.
@@ -231,13 +232,13 @@ you even with green checks.
   validated shape (`src/backend/config/schema.ts`). The server owns the
   derived `knownHz`/lockout lists (channels + discoveries + lockouts) and
   Close Call suppression.
-- **Lane-fit DSP.** The helper sizes its channelizer to the config and builds
-  only each lane's needed demod path (`engine/lanePlan.ts` — assignment is
-  positional, background channels pin to the last lane). Power detection is
-  switchable via `config.scan.detectVia: "lane" | "fft"` (default lane;
-  passed to the helper as `--detect-via`).
+- **Fixed 12-slot channelizer.** `kerchunk-dsp` builds 12 lane slots at spawn
+  regardless of config (a slot's FM/AM demod is chosen per `tune`; parked slots
+  skip their extract+IFFT). Channel edits, AM lanes and break-ins therefore
+  always `retune()` in place — only an emptied channel set respawns (to
+  release the SDR).
 - **Two engine instances can run at once:** the scanner (serial KIOSK01) and a
-  low-rate (240 kHz) decode-only weather monitor (KIOSK03) watching NWR for
+  low-rate (250 kHz) decode-only weather monitor (KIOSK03) watching NWR for
   SAME. Both share one antenna via a splitter; only the scanner owns audio.
   Roles bind in `config.radios` (`scan`/`weather`/`adsb`). During a SAME
   break-in, EOM (`NNNN`) resumes scanning after an 8 s grace window
