@@ -321,6 +321,11 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
     // active/closecall start it, release/idle end it; TX_TTL_MS is a safety cap
     // if a release is ever missed.
     const TX_GROW_MS = 420;      // quick (300-500ms) ease-out expand on the hit
+    // Extra delay after each rAF while a ring is growing. 0 = every display
+    // frame (smooth ease). It was 40 ms (~18 fps) when the GNU Radio engine
+    // left the box ~1 C under its thermal trip; the native engine freed ~2
+    // cores, and full rate only runs for the 420 ms grow, not while held.
+    const GROW_FRAME_DELAY_MS = 0;
     // Safety cap if a `release` is ever missed; the audible channel re-arms it
     // on every `signal`, so a continuous carrier doesn't expire mid-transmission.
     const TX_TTL_MS = 60_000;
@@ -651,17 +656,20 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
       // Quiet map: stop scheduling entirely so the WebGL compositor can deep-
       // idle (it shares the CPU/iGPU envelope with the DSP). wake() resumes.
       if (alive.length === 0 && liveTx.size === 0) { ticking = false; return; }
-      if (liveTx.size) {
+      let growing = false;
+      for (const tx of liveTx.values()) if (now - tx.born < TX_GROW_MS) { growing = true; break; }
+      if (growing) {
         // rAF gives the rings their smooth grow — but it must NEVER be the SOLE
         // re-arm: if the compositor defers/drops the rAF (deep idle), a wall-clock
         // fallback still continues the loop, so `ticking` can't get stranded true
         // and freeze the map. `ran` guards against double-firing.
         let ran = false;
         const go = (): void => { if (ran) return; ran = true; tick(); };
-        requestAnimationFrame(() => setTimeout(go, 40));
+        requestAnimationFrame(() => (GROW_FRAME_DELAY_MS > 0 ? setTimeout(go, GROW_FRAME_DELAY_MS) : go()));
         setTimeout(go, 250);
       } else {
-        // Blip decay alone is fine on a bare timer — rAF would just force a frame.
+        // Held rings (dirty-checked: no re-upload) and blip decay are fine on a
+        // bare timer — rAF would just force frames for nothing.
         setTimeout(tick, 150);
       }
     }
