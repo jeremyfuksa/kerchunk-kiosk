@@ -19,7 +19,7 @@ void Scanner::assign(int i, const ChannelCmd& c) {
   L.open_db = c.open_db;
   L.hang_ms = c.hang_ms;
   L.level_db = L.level_emitted = c.level_db;
-  L.warmup_s = WARMUP_MS / 1000.0;
+  L.warmup_polls = (int)WARMUP_MS / POLL_MS;
   lanes_[i] = std::move(L);
 }
 
@@ -106,16 +106,15 @@ void Scanner::flush_rf(LaneState& L) {
 
 void Scanner::poll(double now, const std::vector<LaneReading>& r, float speech_db) {
   if (monitor_) return;
-  const double poll_s = POLL_MS / 1000.0;
+  if (r.size() != lanes_.size()) return;   // malformed reading vector: skip this poll, don't crash
   const int n = (int)lanes_.size();
   std::vector<std::optional<double>> rd(n);
   for (int i = 0; i < n; i++) {
     LaneState& L = lanes_[i];
     if (L.parked()) continue;
     const double db = r[i].slow_db;
-    if (L.warmup_s > 0) {
-      L.warmup_s -= poll_s;
-      if (L.warmup_s <= 1e-9) L.floor_db = db;   // first trusted reading seeds the floor
+    if (L.warmup_polls > 0) {
+      if (--L.warmup_polls == 0) L.floor_db = db;   // first trusted reading seeds the floor
       continue;
     }
     rd[i] = db;
@@ -162,6 +161,7 @@ void Scanner::poll(double now, const std::vector<LaneReading>& r, float speech_d
           L.below_since = -1;
           emit_({{"ev", "open"}, {"id", L.id}, {"db", round1(db)}});
           if (!L.allow_audio) {
+            // see-only: report, never speak
           } else if (audible_ < 0) {
             set_audible(i);
           } else if (L.priority && !lanes_[audible_].priority) {

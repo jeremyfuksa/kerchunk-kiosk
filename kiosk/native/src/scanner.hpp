@@ -27,7 +27,8 @@ struct LaneState {
   std::optional<double> floor_db;
   bool open = false, carrier = false, quiet = false;
   int above = 0;
-  double below_since = -1, skip_until = 0, warmup_s = 0;
+  int warmup_polls = 0;   // GR-style integer poll countdown, not a wall-clock timer
+  double below_since = -1, skip_until = 0;
   std::vector<float> rf;
   bool parked() const { return id.empty(); }
 };
@@ -43,6 +44,9 @@ class Scanner {
   Scanner(Params p, Emit emit);
 
   void tune(double center_hz, std::vector<ChannelCmd> channels, bool monitor);
+  // speech_db must be the AUDIBLE lane's pre-gate, pre-level mean-square dB of its demodulated
+  // audio (GR's chain.audio_db(), measured before the speaker gate/leveler are applied) -- if the
+  // caller instead measures post-gate/post-level audio, the leveler sees its own gain and hunts.
   void poll(double now, const std::vector<LaneReading>& r, float speech_db);
   long long skip(double holdoff_s, double now);
   void alert_unmute(const std::string& id, double hold_s, double now);
