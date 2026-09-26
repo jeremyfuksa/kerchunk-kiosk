@@ -411,6 +411,21 @@ describe("WidebandEngine", () => {
       expect(lines(plainArgs)[0] ?? "").not.toContain("--am-gain-db");
     });
 
+    it("forwards fmAudioLpfHz as --audio-lpf-hz; omits it when unset", async () => {
+      const args = tmpFile("args");
+      const { engine } = makeEngine({ FAKE_WB_ARGS_FILE: args });
+      await engine.start(cfg([VHF_A], { fmAudioLpfHz: 3500 }));
+      await waitFor(() => lines(args).length >= 1, 1000);
+      await engine.stop();
+      expect(lines(args)[0] ?? "").toContain("--audio-lpf-hz 3500");
+      const plainArgs = tmpFile("args");
+      const plain = makeEngine({ FAKE_WB_ARGS_FILE: plainArgs });
+      await plain.engine.start(cfg([VHF_A]));
+      await waitFor(() => lines(plainArgs).length >= 1, 1000);
+      await plain.engine.stop();
+      expect(lines(plainArgs)[0] ?? "").not.toContain("--audio-lpf-hz");
+    });
+
     it("omits --quiet-db entirely when nativeQuietDb is unset (helper default applies)", async () => {
       const args = tmpFile("args");
       const { engine } = makeEngine({ FAKE_WB_ARGS_FILE: args });

@@ -118,6 +118,7 @@ export function toScanConfig(
     openAboveFloorDb: cfg.scan.openAboveFloorDb,
     nativeQuietDb: cfg.scan.nativeQuietDb,
     nativeAmGainDb: cfg.scan.nativeAmGainDb,
+    fmAudioLpfHz: cfg.scan.fmAudioLpfHz,
     sweepRanges: cfg.scan.sweepRanges,
     // Weather-only AND direct-tune both hold the lone channel open/audible
     // with no squelch — the operator chose to listen to exactly this.

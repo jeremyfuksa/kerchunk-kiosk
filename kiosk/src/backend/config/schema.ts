@@ -100,6 +100,10 @@ export const configSchema = z.object({
     // ear (normalized AM audio vs de-emphasized FM don't naturally match).
     // Passed as --am-gain-db. Omitted = 0 dB (the helper's AM_GAIN).
     nativeAmGainDb: z.number().min(-30).max(20).optional(),
+    // FM speaker audio low-pass cutoff (Hz). FM hiss rises with frequency, so
+    // this is the weak-signal hiss knob: lower = less hiss, duller voice.
+    // Passed as --audio-lpf-hz. Omitted = 2700 (GR nbfm_rx parity).
+    fmAudioLpfHz: z.number().min(1000).max(24000).optional(),
     // Close Call: discover strong transmissions in the tuned window on
     // non-configured frequencies. Plays them (priority preempt) and auto-adds
     // them as DISABLED channels for operator review. Default ON (wideband).

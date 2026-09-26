@@ -16,12 +16,13 @@ inline constexpr double NOISE_HPF_TRANSITION_HZ = 2000;
 inline constexpr int NOISE_WINDOW = CHUNK_SAMPLES;          // quieting meter window (10 ms)
 inline constexpr int SPEECH_WINDOW = 10 * CHUNK_SAMPLES;    // leveler speech meter window (100 ms)
 inline constexpr double AM_CARRIER_TAU_S = 0.04;   // AM carrier tracker (~40 ms)
-// Speaker audio LPF (after de-emphasis, before 50k->48k). GR parity: nbfm_rx's audio filter sat
-// at ~22.5 kHz at 48 kHz, so GR's speaker -- and the leveler's speech meter, which reads this same
-// signal -- got wideband de-emphasized audio; a 3.5 kHz cut would make squelch tails/hiss sound
-// softer than GR in the by-ear A/B and shift leveler readings. Runtime knob: --audio-lpf-hz.
-inline constexpr double SPEAKER_LPF_HZ = 20000;
-inline constexpr double SPEAKER_LPF_TRANSITION_HZ = 4000;
+// FM speaker audio LPF (after de-emphasis, before 50k->48k). GR parity: nbfm_rx low-passes its
+// audio at 2.7 kHz with a 0.5 kHz transition (gnuradio/analog/nbfm_rx.py). FM discriminator noise
+// rises with frequency, so everything above the voiceband is hiss on a weak signal -- a 20 kHz cut
+// here made weak channels audibly hissier than GR (2026-09-26 A/B, bench hiss-ab). AM bypasses it.
+// Runtime knob: --audio-lpf-hz (config scan.fmAudioLpfHz).
+inline constexpr double SPEAKER_LPF_HZ = 2700;
+inline constexpr double SPEAKER_LPF_TRANSITION_HZ = 500;
 // SAME path LPF: multimon-ng's EAS decoder only needs the voiceband (AFSK 1562.5/2083.3 Hz).
 inline constexpr double SAME_LPF_HZ = 3500;
 inline constexpr double SAME_LPF_TRANSITION_HZ = 1500;

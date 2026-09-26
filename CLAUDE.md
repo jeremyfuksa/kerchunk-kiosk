@@ -132,7 +132,8 @@ replays the warm-up overlay on the wall.
   `build:backend` leaves `dist/` without (or with a stale) helper. Squelch
   defaults live in `kiosk/native/src/constants.hpp`; the operator-facing
   knobs are `config.scan.nativeQuietDb` (`--quiet-db`) and
-  `config.scan.nativeAmGainDb` (`--am-gain-db`).
+  `config.scan.nativeAmGainDb` (`--am-gain-db`), and
+  `config.scan.fmAudioLpfHz` (`--audio-lpf-hz`, FM weak-signal hiss).
 - **ALSA is addressed by name** (`plughw:CARD=PCH,DEV=0`) — card indices swap
   across boots. The sink is exclusive (no dmix): exactly one process owns
   audio.

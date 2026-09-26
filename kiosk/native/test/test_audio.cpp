@@ -146,21 +146,23 @@ TEST(speaker_cut_ramps_held_sample_to_zero) {
 }
 
 TEST(speaker_lpf_knob_passes_or_cuts_hf) {
-  // 10 kHz tone straight into the discriminator input: GR-parity 20 kHz LPF passes it, a
-  // voiceband 3.5 kHz knob setting removes it.
-  std::vector<float> disc(kc::LANE_RATE / 2);
-  for (size_t i = 0; i < disc.size(); i++) disc[i] = 0.5f * (float)std::sin(2 * M_PI * 10000 * i / kc::LANE_RATE);
-  std::vector<kc::cf> x(disc.size());
-  auto hf_rms = [&](kc::SpeakerPath& sp) {
+  // Tones straight into the discriminator input. The GR-parity default (2.7 kHz, like nbfm_rx)
+  // passes voice (1 kHz) and removes hiss-band tones (4 kHz, 10 kHz); a wide knob setting passes 10 kHz.
+  auto rms_at = [](kc::SpeakerPath& sp, double hz) {
+    std::vector<float> disc(kc::LANE_RATE / 2);
+    for (size_t i = 0; i < disc.size(); i++) disc[i] = 0.5f * (float)std::sin(2 * M_PI * hz * i / kc::LANE_RATE);
+    std::vector<kc::cf> x(disc.size());
     sp.set_source(0, false);
     sp.set_gain(1.0f);
     std::vector<float> out;
     for (size_t i = 0; i + 64 <= disc.size(); i += 64) sp.process(&x[i], &disc[i], 64, out);
     return sig::rms(out.data() + 4800, out.size() - 4800);
   };
-  kc::SpeakerPath wide, narrow(3500);
-  CHECK(hf_rms(wide) > 0.01);     // de-emphasized ~-13.6 dB but present (~0.074 rms)
-  CHECK(hf_rms(narrow) < 0.002);
+  kc::SpeakerPath d1, d4, d10, wide(20000);
+  CHECK(rms_at(d1, 1000) > 0.1);      // voice passes
+  CHECK(rms_at(d4, 4000) < 0.002);    // hiss band gone
+  CHECK(rms_at(d10, 10000) < 0.002);
+  CHECK(rms_at(wide, 10000) > 0.01);  // knob opened wide: de-emphasized (~0.074 rms) but present
   CHECK_THROWS(kc::SpeakerPath(0));
   CHECK_THROWS(kc::SpeakerPath(kc::LANE_RATE / 2));
 }
