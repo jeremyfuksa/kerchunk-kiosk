@@ -14,6 +14,30 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  native:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: kiosk
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: kiosk/package-lock.json
+
+      # Native DSP core (kiosk/native): C++17 + FFTW. Built with -march=native
+      # on the runner that tests it — the artifact is never shipped from CI.
+      # No `npm ci` here: `npm run test:native` only needs package.json (cmake +
+      # the compiled test binary), not node_modules.
+      - name: Install native build deps
+        run: sudo apt-get update && sudo apt-get install -y cmake libfftw3-dev pkg-config
+
+      - name: Test (native DSP core)
+        run: npm run test:native
+
   build-and-test:
     runs-on: ubuntu-latest
     defaults:
