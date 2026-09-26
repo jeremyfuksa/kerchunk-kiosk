@@ -34,3 +34,8 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/tools/cost_bench.cpp)
   add_executable(kc-cost-bench ${CMAKE_CURRENT_SOURCE_DIR}/tools/cost_bench.cpp)
   target_link_libraries(kc-cost-bench PRIVATE kcdsp)
 endif()
+
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/tools/quiet_survey.cpp)
+  add_executable(kc-quiet-survey ${CMAKE_CURRENT_SOURCE_DIR}/tools/quiet_survey.cpp)
+  target_link_libraries(kc-quiet-survey PRIVATE kcdsp)
+endif()
