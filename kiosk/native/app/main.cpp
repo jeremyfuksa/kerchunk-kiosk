@@ -202,5 +202,13 @@ int main(int argc, char** argv) {
     std::fprintf(stderr, "kerchunk-dsp: %s\n", err.c_str());
     return 2;
   }
-  return c.iq_file.empty() ? run_live(c) : run_replay(c);
+  if (!c.iq_file.empty()) return run_replay(c);
+  const int rc = run_live(c);   // every live teardown (devices, pumps, events) has run by now
+  // Never return through exit() from the live path: the detached stdin reader is parked inside a
+  // blocking std::getline(std::cin) holding stdin's stream lock, and exit()'s stdio flush/cleanup
+  // waits on that lock -- so a SIGTERM'd helper lingered until the parent closed stdin (measured
+  // live 2026-09-26: 24 987 ms). Flush what we own and leave immediately.
+  std::fflush(stdout);
+  std::fflush(stderr);
+  std::_Exit(rc);
 }
