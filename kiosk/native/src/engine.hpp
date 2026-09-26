@@ -22,7 +22,11 @@ struct EngineOptions {
   bool same = false;
   double speaker_lpf_hz = SPEAKER_LPF_HZ;   // speaker audio LPF cutoff (CLI --audio-lpf-hz)
   double am_gain_db = 0.0;                   // AM speaker gain offset vs AM_GAIN, dB (CLI --am-gain-db;
-                                             // balances airband loudness against FM by ear)
+                                             // balances airband loudness against FM by ear;
+                                             // it is the AM pre-gain INTO the speaker AGC)
+  AgcParams agc{};                           // speaker AGC (CLI --agc-*)
+  double limiter_ceiling = LIMITER_CEILING;        // speaker peak limiter (CLI --limiter-ceiling)
+  double limiter_release_ms = LIMITER_RELEASE_MS;  // (CLI --limiter-release-ms)
 };
 
 class Engine {

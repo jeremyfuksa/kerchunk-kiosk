@@ -12,6 +12,17 @@ export type ScanChannel = Channel & {
   background?: boolean;
 };
 
+export interface SpeakerAgcConfig {
+  agcTargetDb?: number;
+  agcMaxGainDb?: number;
+  agcMinGainDb?: number;
+  agcAttackMs?: number;
+  agcReleaseMs?: number;
+  agcHoldBelowDb?: number;
+  limiterCeiling?: number;
+  limiterReleaseMs?: number;
+}
+
 export interface ScanConfig {
   channels: ScanChannel[];
   sampleRate: number;
@@ -25,10 +36,13 @@ export interface ScanConfig {
   openAboveFloorDb?: number;
   // Quieting threshold on kerchunk-dsp's dB scale (see schema).
   nativeQuietDb?: number;
-  // AM speaker gain offset in dB (see schema).
+  // AM speaker gain offset in dB (see schema) — the AM pre-gain into the AGC.
   nativeAmGainDb?: number;
   // FM speaker audio low-pass cutoff in Hz (see schema).
   fmAudioLpfHz?: number;
+  // Speaker AGC + limiter knobs (config.audio, see schema). Only the scanner
+  // helper gets these; the weather helper's hand-built config omits them.
+  speakerAgc?: SpeakerAgcConfig;
   // Monitor mode (weather-only): hold the channel open and audible with NO
   // squelch. A lone continuously-keyed station (NOAA) can't be squelched
   // against its own carrier — and the operator chose to listen to exactly
@@ -93,9 +107,6 @@ export type EngineEvent =
   // tuned window. The server persists it as a disabled channel; any audio
   // from it arrives via normal active/audible events (synthesized channel).
   | { type: "closecall"; freqHz: number; ts: number }
-  // Leveler telemetry: a channel's learned loudness trim changed. The server
-  // persists it (channel.levelTrimDb) so trims survive hops and restarts.
-  | { type: "level"; channelId: string; db: number; ts: number }
   // Median received RF power over one closed transmission (helper telemetry)
   // — feeds the ERP estimator (channel.rfDb -> location.powerWatts).
   | { type: "rf"; channelId: string; db: number; ts: number }

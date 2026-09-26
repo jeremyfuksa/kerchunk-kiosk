@@ -14,7 +14,6 @@ inline constexpr double DEEMPH_TAU_S = 75e-6;
 inline constexpr double NOISE_HPF_HZ = 8000;       // quieting band lower edge (lane Nyquist is the top)
 inline constexpr double NOISE_HPF_TRANSITION_HZ = 2000;
 inline constexpr int NOISE_WINDOW = CHUNK_SAMPLES;          // quieting meter window (10 ms)
-inline constexpr int SPEECH_WINDOW = 10 * CHUNK_SAMPLES;    // leveler speech meter window (100 ms)
 inline constexpr double AM_CARRIER_TAU_S = 0.04;   // AM carrier tracker (~40 ms)
 // FM speaker audio LPF (after de-emphasis, before 50k->48k). GR parity: nbfm_rx low-passes its
 // audio at 2.7 kHz with a 0.5 kHz transition (gnuradio/analog/nbfm_rx.py). FM discriminator noise
@@ -57,19 +56,27 @@ inline constexpr double QUIET_HYST_DB = 2.0;
 inline constexpr double QUIET_DB_DEFAULT = -6.0;
 inline constexpr double FLOOR_ALPHA_UP = 0.01005;  // GR 0.02 per 20 ms
 inline constexpr double FLOOR_ALPHA_DOWN = 0.1056; // GR 0.2 per 20 ms
-inline constexpr double LEVEL_REF_DB = -14;
-inline constexpr double LEVEL_MIN_DB = -40;
-inline constexpr double LEVEL_MAX_DB = 12;
-inline constexpr double LEVEL_SLEW_DOWN = 0.04;    // dB per poll (~4 dB/s)
-inline constexpr double LEVEL_SLEW_UP = 0.02;      // dB per poll (~2 dB/s)
-inline constexpr double LEVEL_EMA_ALPHA = 0.01511; // GR 0.03 per 20 ms (~0.7 s)
-inline constexpr double LEVEL_DEADBAND_DB = 4.0;
-inline constexpr double LEVEL_EMIT_STEP_DB = 0.5;
 inline constexpr double SKIP_HOLDOFF_S = 10.0;
 inline constexpr int RF_MAX_SAMPLES = 6000;        // ~60 s of open-power samples
 inline constexpr int RF_MIN_SAMPLES = 50;          // ~0.5 s before an rf estimate is emitted
 inline constexpr int FADE_SAMPLES = 288;           // 6 ms at 48 kHz; only on silence edges
-inline constexpr float RAIL = 0.8f;                // hard speaker guard
+inline constexpr float RAIL = 0.8f;                // hard speaker guard (last resort, after the limiter)
+// ---- Speaker loudness (replaced the per-channel level-trim learner). Every default below is a
+// runtime knob: --agc-* / --limiter-* on the CLI, config.audio.agc* / limiter* in Node.
+// AGC: feed-forward, per sample at LANE_RATE right after the demod. Levels are mean-square dBFS
+// of the demodulated audio (a full-scale sine is -3 dB).
+inline constexpr double AGC_TARGET_DB = -18;       // output level the AGC steers every talker to
+inline constexpr double AGC_MAX_GAIN_DB = 15;      // most boost (quiet talker / weak AM)
+inline constexpr double AGC_MIN_GAIN_DB = -20;     // most cut (hot talker)
+inline constexpr double AGC_ATTACK_MS = 10;        // envelope tau while the level rises
+inline constexpr double AGC_RELEASE_MS = 400;      // envelope tau while it falls
+inline constexpr double AGC_HOLD_BELOW_DB = -50;   // short-term level below this = pause: freeze
+inline constexpr double AGC_DETECT_MS = 5;         // envelope's short-term mean-square detector tau (not a CLI knob)
+inline constexpr double AGC_PAUSE_DETECT_MS = 1;   // faster detector for the pause-hold test only (not a CLI knob)
+inline constexpr int AGC_BLOCK = 32;               // gain decision every 32 samples (0.64 ms); glided between
+// Peak limiter at AUDIO_RATE after the gate gain + fade, before the RAIL clamp.
+inline constexpr double LIMITER_CEILING = 0.7;     // linear; must be <= RAIL
+inline constexpr double LIMITER_RELEASE_MS = 50;
 inline constexpr float AM_GAIN = 0.7f;
 inline constexpr float SPEAKER_S16_SCALE = 32767.f;
 inline constexpr float TEE_S16_SCALE = 28000.f;

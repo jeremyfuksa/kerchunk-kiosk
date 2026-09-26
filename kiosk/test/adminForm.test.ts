@@ -82,7 +82,7 @@ describe("lockout / unlock round trip", () => {
   const arrowhead = {
     id: "ch_1", freq: 463562500, alphaTag: "Kansas City Chiefs Arrowhead",
     mode: "nfm" as const, enabled: true, audible: false,
-    rfDb: -4.2, levelTrimDb: 2.7, tags: ["business"],
+    rfDb: -4.2, tags: ["business"],
     location: { lat: 39.04886, lon: -94.48389, city: "Kansas City", state: "MO", source: "fccprox" },
     lookedUpAt: 1780689240771,
   };
@@ -105,7 +105,6 @@ describe("lockout / unlock round trip", () => {
     expect(ch.alphaTag).toBe("Kansas City Chiefs Arrowhead");
     expect(ch.location).toEqual(arrowhead.location);
     expect(ch.rfDb).toBe(-4.2);
-    expect(ch.levelTrimDb).toBe(2.7);
     expect(ch.lookedUpAt).toBe(1780689240771);
   });
 

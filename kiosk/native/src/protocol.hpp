@@ -14,11 +14,11 @@ struct ChannelCmd {
   std::string id;
   double freq_hz = 0;
   bool priority = false;
-  double level_db = 0;
   std::string mode = "nfm";
   bool audible = true;
   bool background = false;
-  std::optional<double> open_db, hang_ms;   // quietDb is parsed and ignored (decision C: GR scale)
+  std::optional<double> open_db, hang_ms;   // quietDb is parsed and ignored (decision C: GR scale);
+                                            // a legacy levelDb is ignored too (speaker AGC replaced it)
 };
 struct TuneCmd {
   double center_hz = 0;

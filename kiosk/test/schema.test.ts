@@ -309,14 +309,36 @@ describe("lookup.radioReference config", () => {
   });
 });
 
-describe("channel levelTrimDb", () => {
-  it("accepts a learned loudness trim", () => {
+describe("retired channel levelTrimDb", () => {
+  it("a live config still carrying it parses, and the key is stripped", () => {
     const cfg = { ...defaultConfig(), channels: [
       { id: "c1", freq: 464275000, alphaTag: "WOF", mode: "nfm", enabled: true, levelTrimDb: -8.5 },
     ] };
     const parsed = configSchema.safeParse(cfg);
     expect(parsed.success).toBe(true);
-    if (parsed.success) expect(parsed.data.channels[0]!.levelTrimDb).toBe(-8.5);
+    if (parsed.success) expect("levelTrimDb" in parsed.data.channels[0]!).toBe(false);
+  });
+});
+
+describe("audio speaker AGC knobs", () => {
+  const withAudio = (extra: Record<string, unknown>) => {
+    const d = defaultConfig();
+    return configSchema.safeParse({ ...d, audio: { ...d.audio, ...extra } });
+  };
+  it("are optional and accept in-range values", () => {
+    expect(withAudio({}).success).toBe(true);
+    expect(withAudio({
+      agcTargetDb: -18, agcMaxGainDb: 15, agcMinGainDb: -20, agcAttackMs: 10,
+      agcReleaseMs: 400, agcHoldBelowDb: -50, limiterCeiling: 0.7, limiterReleaseMs: 50,
+    }).success).toBe(true);
+  });
+  it("reject values outside the helper's CLI ranges", () => {
+    for (const bad of [
+      { agcTargetDb: -2 }, { agcTargetDb: -41 }, { agcMaxGainDb: 31 }, { agcMaxGainDb: -1 },
+      { agcMinGainDb: 1 }, { agcMinGainDb: -41 }, { agcAttackMs: 0.5 }, { agcAttackMs: 201 },
+      { agcReleaseMs: 19 }, { agcReleaseMs: 5001 }, { agcHoldBelowDb: -19 }, { agcHoldBelowDb: -91 },
+      { limiterCeiling: 0 }, { limiterCeiling: 0.81 }, { limiterReleaseMs: 4 }, { limiterReleaseMs: 1001 },
+    ]) expect(withAudio(bad).success, JSON.stringify(bad)).toBe(false);
   });
 });
 

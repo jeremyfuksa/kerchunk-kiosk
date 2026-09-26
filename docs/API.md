@@ -167,7 +167,7 @@ additionally removes orphans (recorded on a hit that never filed) and enforces
 
 One JSON message per event, `EngineEvent` union
 (`kiosk/src/backend/engine/ScannerEngine.ts`): `active`, `audible`,
-`release`, `idle`, `closecall`, `level`, `rf`, `same`, `signal`, `tuned`,
+`release`, `idle`, `closecall`, `rf`, `same`, `signal`, `tuned`,
 `alert`, `aircraft`, `status`, `warmup`, `reload`, `error`. Late joiners get
 the last now-playing event and last non-empty aircraft snapshot replayed;
 stuck clients (>512 KB buffered) get events dropped, not queued.

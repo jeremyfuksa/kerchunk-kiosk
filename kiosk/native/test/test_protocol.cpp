@@ -17,7 +17,7 @@ TEST(protocol_parses_full_tune) {
   CHECK(t.channels[0].id == "a" && t.channels[0].priority && t.channels[0].mode == "am" && !t.channels[0].audible);
   CHECK_NEAR(*t.channels[0].open_db, 12, 0);
   CHECK_NEAR(*t.channels[0].hang_ms, 1500, 0);
-  CHECK_NEAR(t.channels[0].level_db, -2.5, 0);
+  // levelDb (the retired per-channel trim) still parses -- an older Node may send it -- but is ignored.
   CHECK(t.channels[1].background && !t.channels[1].open_db);
   CHECK(t.close_call && t.known_hz.size() == 2);
   CHECK_NEAR(t.close_call_db, 18, 0);

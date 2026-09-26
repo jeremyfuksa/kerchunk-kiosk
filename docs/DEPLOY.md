@@ -81,6 +81,30 @@ Notes:
 - `scan.fmAudioLpfHz` (Hz, 1000…24000, default 2700 — GNU Radio `nbfm_rx`
   parity) is the FM speaker low-pass: the weak-signal hiss knob. Lower = less
   hiss, duller voice; passed as `--audio-lpf-hz`. Same helper-only restart.
+- **Speaker loudness** is a feed-forward AGC/compressor on the demodulated
+  audio (every transmission starts at 0 dB and is steered to a target; pauses
+  below a hold level freeze it so gaps never pump the gain up) followed by a
+  peak limiter ahead of the 0.8 hard rail. It replaced the per-channel
+  `levelTrimDb` learner — configs still carrying that field parse fine (the
+  schema strips it). Knobs, all optional under `config.audio` (omitted = the
+  helper default in `kiosk/native/src/constants.hpp`):
+
+  | `config.audio` | helper flag | default | range |
+  | --- | --- | --- | --- |
+  | `agcTargetDb` | `--agc-target-db` | −18 dBFS (mean square) | −40…−3 |
+  | `agcMaxGainDb` | `--agc-max-gain-db` | 15 dB | 0…30 |
+  | `agcMinGainDb` | `--agc-min-gain-db` | −20 dB | −40…0 |
+  | `agcAttackMs` | `--agc-attack-ms` | 10 ms | 1…200 |
+  | `agcReleaseMs` | `--agc-release-ms` | 400 ms | 20…5000 |
+  | `agcHoldBelowDb` | `--agc-hold-below-db` | −50 dBFS | −90…−20 |
+  | `limiterCeiling` | `--limiter-ceiling` | 0.7 (linear FS) | >0…0.8 |
+  | `limiterReleaseMs` | `--limiter-release-ms` | 50 ms | 5…1000 |
+
+  They reach the scanner helper only (the weather helper has no speaker).
+  Changing any of them via `PUT /api/config` respawns only the scanner helper,
+  like `audio.remoteListening`; volume/mute stay live with no respawn.
+  Setting `agcMaxGainDb` and `agcMinGainDb` both to 0 pins the AGC at unity
+  (effectively off). `scan.nativeAmGainDb` remains the AM pre-gain into it.
 - The two liveness watchdogs (no `"ready"` within `readyTimeoutMs`, and no
   helper event other than a log line within `silenceTimeoutMs`) live as
   `DEFAULT_READY_TIMEOUT_MS`/`DEFAULT_SILENCE_TIMEOUT_MS` in

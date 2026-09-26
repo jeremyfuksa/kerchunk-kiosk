@@ -22,8 +22,6 @@ struct LaneState {
   bool priority = false, am = false, allow_audio = true, audible_cfg = true, background = false;
   std::optional<double> open_db, hang_ms;
   double alert_until = -1;
-  double level_db = 0, level_emitted = 0;
-  std::optional<double> speech_db;
   std::optional<double> floor_db;
   bool open = false, carrier = false, quiet = false;
   int above = 0;
@@ -44,16 +42,13 @@ class Scanner {
   Scanner(Params p, Emit emit);
 
   void tune(double center_hz, std::vector<ChannelCmd> channels, bool monitor);
-  // speech_db must be the AUDIBLE lane's pre-gate, pre-level mean-square dB of its demodulated
-  // audio (GR's chain.audio_db(), measured before the speaker gate/leveler are applied) -- if the
-  // caller instead measures post-gate/post-level audio, the leveler sees its own gain and hunts.
-  void poll(double now, const std::vector<LaneReading>& r, float speech_db);
+  void poll(double now, const std::vector<LaneReading>& r);
   long long skip(double holdoff_s, double now);
   void alert_unmute(const std::string& id, double hold_s, double now);
   int assign_cc(long long freq_hz);
 
   int audible() const { return audible_; }
-  float gate() const { return gate_; }
+  float gate() const { return gate_; }   // 1 = speaker open, 0 = closed (loudness is the AGC's job)
   bool monitor() const { return monitor_; }
   const LaneState& lane(int i) const { return lanes_[i]; }
   std::vector<double> assigned_freqs() const;
@@ -65,8 +60,6 @@ class Scanner {
   void park(int i) { lanes_[i] = LaneState{}; }
   void set_audible(int i);
   int next_open() const;
-  void level(LaneState& L, float speech_db);
-  static float level_gain(const LaneState& L);
   void flush_rf(LaneState& L);
 
   Params p_;

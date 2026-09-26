@@ -70,3 +70,37 @@ TEST(cli_rtl_index_gain_and_numeric_ranges) {
     CHECK(!err.empty());
   }
 }
+
+TEST(cli_speaker_agc_and_limiter_knobs) {
+  kc::Cli c;
+  std::string err;
+  CHECK(parse({"--agc-target-db", "-20", "--agc-max-gain-db", "12", "--agc-min-gain-db", "-10", "--agc-attack-ms", "5",
+               "--agc-release-ms", "800", "--agc-hold-below-db", "-60", "--limiter-ceiling", "0.6",
+               "--limiter-release-ms", "80"}, c, err));
+  CHECK_NEAR(c.eng.agc.target_db, -20, 0);
+  CHECK_NEAR(c.eng.agc.max_gain_db, 12, 0);
+  CHECK_NEAR(c.eng.agc.min_gain_db, -10, 0);
+  CHECK_NEAR(c.eng.agc.attack_ms, 5, 0);
+  CHECK_NEAR(c.eng.agc.release_ms, 800, 0);
+  CHECK_NEAR(c.eng.agc.hold_below_db, -60, 0);
+  CHECK_NEAR(c.eng.limiter_ceiling, 0.6, 0);
+  CHECK_NEAR(c.eng.limiter_release_ms, 80, 0);
+  kc::Cli d;   // defaults when omitted
+  CHECK(parse({}, d, err));
+  CHECK_NEAR(d.eng.agc.target_db, kc::AGC_TARGET_DB, 0);
+  CHECK_NEAR(d.eng.limiter_ceiling, kc::LIMITER_CEILING, 0);
+  const std::vector<std::vector<const char*>> bad = {
+      {"--agc-target-db", "-2"},        {"--agc-target-db", "-41"},     {"--agc-max-gain-db", "31"},
+      {"--agc-max-gain-db", "-1"},      {"--agc-min-gain-db", "1"},     {"--agc-min-gain-db", "-41"},
+      {"--agc-attack-ms", "0.5"},       {"--agc-attack-ms", "201"},     {"--agc-release-ms", "19"},
+      {"--agc-release-ms", "5001"},     {"--agc-hold-below-db", "-19"}, {"--agc-hold-below-db", "-91"},
+      {"--limiter-ceiling", "0"},       {"--limiter-ceiling", "0.81"},  {"--limiter-release-ms", "4"},
+      {"--limiter-release-ms", "1001"}, {"--agc-target-db", "abc"},     {"--limiter-ceiling"},
+  };
+  for (const auto& a : bad) {
+    kc::Cli e;
+    std::string m;
+    CHECK(!parse(a, e, m));
+    CHECK(m.find(a[0]) != std::string::npos);
+  }
+}

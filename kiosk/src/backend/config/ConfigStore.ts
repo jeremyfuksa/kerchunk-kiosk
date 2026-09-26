@@ -42,7 +42,7 @@ export class ConfigStore {
     try { renameSync(p, p + ".rejected"); } catch { /* best-effort */ }
   }
 
-  // opts.telemetry: a high-frequency rfDb/levelTrim EMA save (~100x/hr). These
+  // opts.telemetry: a high-frequency rfDb EMA save. These
   // skip the full re-validate AND the .bak copy — the in-memory config was
   // validated at load and these paths only nudge known-numeric fields, so
   // re-parsing + duplicating a ~60KB file every few seconds is pure SSD churn

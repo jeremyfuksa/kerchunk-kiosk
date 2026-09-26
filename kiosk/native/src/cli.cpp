@@ -3,6 +3,7 @@
 #include <cerrno>
 #include <climits>
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
 
 namespace kc {
@@ -31,6 +32,18 @@ bool parse_cli(int argc, const char* const* argv, Cli& c, std::string& err) {
       return true;
     };
     std::string v;
+    // Closed-range numeric knob: "--flag must be a number in [lo, hi]" on any failure.
+    auto ranged = [&](std::string& sv, double lo, double hi, double& out) {
+      double x;
+      if (!val(sv) || !to_double(sv, x) || !(x >= lo && x <= hi)) {
+        char b[96];
+        std::snprintf(b, sizeof b, " must be a number in [%g, %g]", lo, hi);
+        err = k + b;
+        return false;
+      }
+      out = x;
+      return true;
+    };
     double d;
     int n;
     if (k == "--close-call") c.eng.close_call = true;
@@ -61,6 +74,17 @@ bool parse_cli(int argc, const char* const* argv, Cli& c, std::string& err) {
       if (!val(v) || !to_double(v, d) || !(d >= -30 && d <= 20)) { err = "--am-gain-db must be a number in [-30, 20]"; return false; }
       c.eng.am_gain_db = d;
     }
+    else if (k == "--agc-target-db") { if (!ranged(v, -40, -3, c.eng.agc.target_db)) return false; }
+    else if (k == "--agc-max-gain-db") { if (!ranged(v, 0, 30, c.eng.agc.max_gain_db)) return false; }
+    else if (k == "--agc-min-gain-db") { if (!ranged(v, -40, 0, c.eng.agc.min_gain_db)) return false; }
+    else if (k == "--agc-attack-ms") { if (!ranged(v, 1, 200, c.eng.agc.attack_ms)) return false; }
+    else if (k == "--agc-release-ms") { if (!ranged(v, 20, 5000, c.eng.agc.release_ms)) return false; }
+    else if (k == "--agc-hold-below-db") { if (!ranged(v, -90, -20, c.eng.agc.hold_below_db)) return false; }
+    else if (k == "--limiter-ceiling") {
+      if (!val(v) || !to_double(v, d) || !(d > 0 && d <= 0.8)) { err = "--limiter-ceiling must be a number in (0, 0.8]"; return false; }
+      c.eng.limiter_ceiling = d;
+    }
+    else if (k == "--limiter-release-ms") { if (!ranged(v, 5, 1000, c.eng.limiter_release_ms)) return false; }
     else { err = "unknown arg " + k; return false; }
   }
   return true;
