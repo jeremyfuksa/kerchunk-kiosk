@@ -32,6 +32,10 @@ class Engine {
   void push_u8(const uint8_t* iq, size_t nsamples);
   double now() const { return (double)samples_ / opt_.rate; }
   bool quit() const { return quit_; }
+  // Input the DSP never saw (ring overrun, or retune discard): advance the clock by n samples and,
+  // if a window is live, restart the channelizer stream so the gap can't smear across hops.
+  // dropped=true counts toward power.drops and the rate-limited overrun log.
+  void note_gap(long long nsamples, bool dropped);
 
  private:
   void tune(const TuneCmd& t);
@@ -61,5 +65,7 @@ class Engine {
   // input sample, including a partial hop that a retune discards -- tune() resyncs samples_ to it.
   long long samples_ = 0, pushed_ = 0, lane_samples_ = 0, next_poll_ = CHUNK_SAMPLES;
   long polls_ = 0;
+  long long drops_since_power_ = 0;
+  double last_drop_log_ = -1e9;
 };
 }  // namespace kc

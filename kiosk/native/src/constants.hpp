@@ -83,4 +83,32 @@ inline constexpr double CC_GUARD_HZ = 12500;
 inline constexpr double CC_DC_FRAC = 0.02;
 inline constexpr double CC_EDGE_FRAC = 0.10;
 inline constexpr double CC_DB_DEFAULT = 15.0;
+
+// ---- Live I/O (P1c)
+inline constexpr int IQ_BLOCK_BYTES = 48000;       // max 10 ms of u8 IQ at 2.4 Msps (blocks are <= 10 ms at any rate)
+inline constexpr int IQ_RING_BLOCKS = 64;          // ~640 ms of IQ buffering between USB and DSP (RtlSource coalesces USB transfers into 10 ms blocks)
+inline constexpr int RTL_BUF_NUM = 4;              // librtlsdr async buffers (small: bounds in-flight samples on retune)
+inline constexpr int RTL_BUF_LEN = 16384;          // bytes per async buffer (~3.4 ms at 2.4 Msps; multiple of 512)
+inline constexpr double RETUNE_SETTLE_MS = 20;     // PLL margin discarded after a retune, ON TOP of one full RTL_BUF_LEN USB transfer (LiveLoop)
+inline constexpr double STALL_S = 2.0;             // no samples this long = SDR loss -> exit 3
+inline constexpr double BUSY_RETRY_S = 3.0;        // retry rtlsdr_open this long (previous helper releasing)
+inline constexpr int ALSA_PERIOD = 480;            // 10 ms at 48 kHz
+inline constexpr unsigned ALSA_LATENCY_US = 60000; // requested device buffer latency
+// A busy hw/plughw device makes a blocking snd_pcm_open sleep in the kernel indefinitely (and
+// SIGTERM can't break it: SA_RESTART). Open non-blocking and retry -EBUSY/-EAGAIN this long,
+// every ALSA_BUSY_RETRY_MS, before failing (the previous helper may still be releasing the card).
+inline constexpr double ALSA_BUSY_RETRY_S = 3.0;
+inline constexpr int ALSA_BUSY_RETRY_MS = 100;
+// Upper bound on the whole live teardown once the main loop exits (src/ALSA/pump/multimon stops
+// run sequentially, and a sick USB device or sound card can wedge any of them -- exactly on the
+// stall/exit-3 path). A watchdog _Exit(4)s past this. Node SIGKILLs after 500 ms on a respawn,
+// but a plain service stop may not, so the helper bounds itself.
+inline constexpr int SHUTDOWN_DEADLINE_MS = 1500;
+inline constexpr int AUDIO_RING = 32768;           // speaker ring (~680 ms)
+inline constexpr int AUDIO_MAX_LAT = 7200;         // above 150 ms queued, trim ...
+inline constexpr int AUDIO_TARGET_LAT = 2400;      // ... down to 50 ms (SDR vs ALSA clock drift)
+inline constexpr int TEE_RING = 96000;             // fd-3 tee ring (2 s)
+inline constexpr int SAME_RING = 44100;            // multimon ring (2 s at 22.05 kHz)
+inline constexpr double DROP_LOG_EVERY_S = 10.0;   // rate limit for the IQ-drop log line
+inline constexpr int CMD_QUEUE = 256;
 }  // namespace kc
