@@ -40,6 +40,12 @@ const nativeEngine = engineKind === "native";
 // (native just flips its `native` flag) — anywhere the check means "the
 // multi-channel helper engine", treat wideband and native alike.
 const widebandFamily = engineKind === "wideband" || nativeEngine;
+// A typo'd KERCHUNK_ENGINE (e.g. "Native", "gr") silently falls through to
+// rtlfm below — warn so it shows up in the boot log instead of just quietly
+// running the wrong engine.
+if (!["wideband", "native", "rtlfm", "fake"].includes(engineKind)) {
+  console.warn(`[index] unknown KERCHUNK_ENGINE=${JSON.stringify(engineKind)}; falling back to rtlfm`);
+}
 
 const configStore = new ConfigStore(CONFIG_PATH);
 const config = configStore.load();
