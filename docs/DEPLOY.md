@@ -78,6 +78,9 @@ Notes:
 - `scan.nativeAmGainDb` (dB, −30…+20, default 0) balances airband/AM loudness
   against FM by ear; passed to the helper as `--am-gain-db`. Changing either
   knob via `PUT /api/config` restarts only the (cheap) helper.
+- `scan.fmAudioLpfHz` (Hz, 1000…24000, default 2700 — GNU Radio `nbfm_rx`
+  parity) is the FM speaker low-pass: the weak-signal hiss knob. Lower = less
+  hiss, duller voice; passed as `--audio-lpf-hz`. Same helper-only restart.
 - The two liveness watchdogs (no `"ready"` within `readyTimeoutMs`, and no
   helper event other than a log line within `silenceTimeoutMs`) live as
   `DEFAULT_READY_TIMEOUT_MS`/`DEFAULT_SILENCE_TIMEOUT_MS` in

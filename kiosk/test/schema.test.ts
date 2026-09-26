@@ -38,6 +38,13 @@ describe("configSchema", () => {
     expect(() => configSchema.parse(defaultConfig())).not.toThrow();
   });
 
+  it("accepts scan.fmAudioLpfHz in [1000, 24000] and rejects outside it", () => {
+    const base = defaultConfig();
+    expect(configSchema.parse({ ...base, scan: { ...base.scan, fmAudioLpfHz: 3500 } }).scan.fmAudioLpfHz).toBe(3500);
+    expect(() => configSchema.parse({ ...base, scan: { ...base.scan, fmAudioLpfHz: 999 } })).toThrow();
+    expect(() => configSchema.parse({ ...base, scan: { ...base.scan, fmAudioLpfHz: 24001 } })).toThrow();
+  });
+
   it("accepts scan.nativeAmGainDb in [-30, 20] and rejects outside it", () => {
     const base = defaultConfig();
     expect(configSchema.parse({ ...base, scan: { ...base.scan, nativeAmGainDb: -6 } }).scan.nativeAmGainDb).toBe(-6);

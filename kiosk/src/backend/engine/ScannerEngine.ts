@@ -27,6 +27,8 @@ export interface ScanConfig {
   nativeQuietDb?: number;
   // AM speaker gain offset in dB (see schema).
   nativeAmGainDb?: number;
+  // FM speaker audio low-pass cutoff in Hz (see schema).
+  fmAudioLpfHz?: number;
   // Monitor mode (weather-only): hold the channel open and audible with NO
   // squelch. A lone continuously-keyed station (NOAA) can't be squelched
   // against its own carrier — and the operator chose to listen to exactly
