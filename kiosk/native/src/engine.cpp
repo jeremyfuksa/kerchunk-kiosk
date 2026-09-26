@@ -9,7 +9,7 @@ using nlohmann::json;
 
 Engine::Engine(const EngineOptions& o, Emit emit, Pcm speaker, Pcm tee, Pcm same)
     : opt_(o), emit_(std::move(emit)), speaker_(std::move(speaker)), tee_(std::move(tee)), same_(std::move(same)),
-      ch_(o.rate), sc_(o.squelch, [this](const json& j) { emit_(j); }), spk_(o.speaker_lpf_hz),
+      ch_(o.rate), sc_(o.squelch, [this](const json& j) { emit_(j); }), spk_(o.speaker_lpf_hz, (float)(AM_GAIN * std::pow(10.0, o.am_gain_db / 20.0))),
       power_(MAX_LANES), disc_(MAX_LANES), quiet_(MAX_LANES),
       disc_buf_(MAX_LANES, std::vector<float>(Channelizer::kLaneSamplesPerHop)), readings_(MAX_LANES) {
   if (o.close_call) cc_ = std::make_unique<CloseCall>(o.rate);   // FFTW planning on this (the DSP) thread

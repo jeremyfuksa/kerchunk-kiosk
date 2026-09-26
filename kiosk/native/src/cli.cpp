@@ -57,6 +57,10 @@ bool parse_cli(int argc, const char* const* argv, Cli& c, std::string& err) {
       if (!val(v) || !to_double(v, d) || !(d >= 1000 && d <= 24000)) { err = "--audio-lpf-hz must be a number in [1000, 24000]"; return false; }
       c.eng.speaker_lpf_hz = d;
     }
+    else if (k == "--am-gain-db") {
+      if (!val(v) || !to_double(v, d) || !(d >= -30 && d <= 20)) { err = "--am-gain-db must be a number in [-30, 20]"; return false; }
+      c.eng.am_gain_db = d;
+    }
     else { err = "unknown arg " + k; return false; }
   }
   return true;

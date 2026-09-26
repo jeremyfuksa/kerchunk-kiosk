@@ -21,8 +21,9 @@ std::vector<float> speaker_lpf(double hz) {
 }
 }  // namespace
 
-SpeakerPath::SpeakerPath(double lpf_hz)
-    : lpf_(speaker_lpf(lpf_hz)),
+SpeakerPath::SpeakerPath(double lpf_hz, float am_gain)
+    : am_gain_(am_gain),
+      lpf_(speaker_lpf(lpf_hz)),
       speech_(SPEECH_WINDOW),
       rs_(24, 25, LANE_RATE, SPEAKER_RS_CUTOFF_HZ, SPEAKER_RS_TRANSITION_HZ) {
   a50_.resize(256);
@@ -103,7 +104,7 @@ void SpeakerPath::process(const cf* x, const float* disc, int n, std::vector<flo
   for (int i = 0; i < n; i++) {
     float a = 0.f;
     if (cur_lane_ >= 0 && x && disc) {
-      a = cur_am_ ? am_.step(x[i]) * AM_GAIN : lpf_.step(de_.step(disc[i]));
+      a = cur_am_ ? am_.step(x[i]) * am_gain_ : lpf_.step(de_.step(disc[i]));
       speech_.push(a);
     }
     a50_[i] = a;

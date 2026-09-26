@@ -38,6 +38,13 @@ describe("configSchema", () => {
     expect(() => configSchema.parse(defaultConfig())).not.toThrow();
   });
 
+  it("accepts scan.nativeAmGainDb in [-30, 20] and rejects outside it", () => {
+    const base = defaultConfig();
+    expect(configSchema.parse({ ...base, scan: { ...base.scan, nativeAmGainDb: -6 } }).scan.nativeAmGainDb).toBe(-6);
+    expect(() => configSchema.parse({ ...base, scan: { ...base.scan, nativeAmGainDb: 25 } })).toThrow();
+    expect(() => configSchema.parse({ ...base, scan: { ...base.scan, nativeAmGainDb: -31 } })).toThrow();
+  });
+
   it("accepts scan.nativeQuietDb (native engine's own dB scale, keeps the value)", () => {
     const cfg = configSchema.parse({ ...defaultConfig(), scan: { ...defaultConfig().scan, nativeQuietDb: -6 } });
     expect(cfg.scan.nativeQuietDb).toBe(-6);
