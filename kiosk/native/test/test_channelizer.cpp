@@ -211,3 +211,32 @@ TEST(mean_square_window) {
   CHECK(ms.ready());
   CHECK_NEAR(ms.db(), 0.0, 1e-6);
 }
+
+// Inactive (parked) lanes skip their extract+IFFT and output zeros; active lanes are unaffected.
+TEST(channelizer_inactive_lane_outputs_zeros_and_spares_others) {
+  constexpr int R = 250'000;
+  auto x = sig::tone(R, R / 4, 50'000, 0.3);
+  sig::add(x, sig::tone(R, R / 4, -60'000, 0.3));
+  auto run = [&](bool deactivate) {
+    kc::Channelizer ch(R);
+    ch.set_lanes({50'000, -60'000});
+    if (deactivate) ch.set_lane_active(1, false);
+    std::vector<kc::cf> a, b;
+    ch.push_cf(x.data(), x.size(), [&](const kc::cf* out, int, int per, const kc::cf*, int) {
+      a.insert(a.end(), out, out + per);
+      b.insert(b.end(), out + per, out + 2 * per);
+    });
+    return std::make_pair(a, b);
+  };
+  auto [a_all, b_all] = run(false);
+  auto [a_one, b_off] = run(true);
+  CHECK(a_all.size() == a_one.size());
+  double worst = 0, energy = 0;
+  for (size_t i = 0; i < a_all.size() && i < a_one.size(); i++) worst = std::max(worst, (double)std::abs(a_all[i] - a_one[i]));
+  for (auto v : b_off) energy += std::norm(v);
+  CHECK(worst == 0.0);          // active lane bit-identical
+  CHECK(energy == 0.0);         // parked lane silent
+  kc::Channelizer ch(R);
+  ch.set_lanes({50'000});
+  CHECK_THROWS(ch.set_lane_active(1, true));
+}

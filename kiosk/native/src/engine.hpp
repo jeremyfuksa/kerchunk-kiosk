@@ -45,6 +45,7 @@ class Engine {
   void poll();
   void reset_lane(int i);
   void sync_speaker();   // point the speaker path at the scanner's current audible lane + gate
+  void sync_active();    // channelizer lane mask: parked slots off, except one the speaker still feeds
 
   EngineOptions opt_;
   Emit emit_;

@@ -1,5 +1,6 @@
 #include "channelizer.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <stdexcept>
@@ -50,6 +51,8 @@ Channelizer::Lane Channelizer::make_lane(double off) const {
   double resid = off - l.k0 * binw;
   double w = -2 * M_PI * resid / LANE_RATE;
   l.nco_step = cf((float)std::cos(w), (float)std::sin(w));
+  const double wh = w * kLaneSamplesPerHop;
+  l.nco_hop = cf((float)std::cos(wh), (float)std::sin(wh));
   return l;
 }
 
@@ -70,6 +73,11 @@ void Channelizer::set_lane_offset(int i, double off) {
   lanes_[i] = make_lane(off);
 }
 
+void Channelizer::set_lane_active(int i, bool on) {
+  if (i < 0 || i >= (int)lanes_.size()) throw std::out_of_range("Channelizer::set_lane_active: bad lane index");
+  lanes_[i].active = on;
+}
+
 void Channelizer::reset_stream() {
   std::memset(fin_.get(), 0, sizeof(fftwf_complex) * n_);
   fill_ = 0;
@@ -85,6 +93,12 @@ void Channelizer::run_hop() {
   const cf* yb = reinterpret_cast<const cf*>(lout_.get());
   for (size_t li = 0; li < lanes_.size(); li++) {
     Lane& l = lanes_[li];
+    if (!l.active) {
+      std::fill_n(&out_[li * keep], keep, cf(0, 0));
+      l.nco *= l.nco_hop;
+      l.nco /= std::abs(l.nco);
+      continue;
+    }
     for (int m = -M / 2; m < M / 2; m++) {
       int kx = ((l.k0 + m) % n_ + n_) % n_;
       int kh = (m + n_) % n_;
