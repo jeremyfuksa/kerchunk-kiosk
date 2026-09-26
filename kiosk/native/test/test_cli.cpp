@@ -39,3 +39,29 @@ TEST(cli_replay_flags) {
   CHECK(parse({"--iq-file", "/tmp/x.cu8", "--tune", "{}", "--realtime", "--audio-out", "/tmp/a"}, c, err));
   CHECK(c.iq_file == "/tmp/x.cu8" && c.realtime && c.audio_out == "/tmp/a");
 }
+
+TEST(cli_rtl_index_gain_and_numeric_ranges) {
+  {
+    kc::Cli c;
+    std::string err;
+    CHECK(parse({"--rtl-index", "1", "--gain", "38.6", "--audio-lpf-hz", "3500", "--rate", "250000"}, c, err));
+    CHECK(c.rtl_index == 1 && c.gain == "38.6" && c.eng.rate == 250000);
+    CHECK_NEAR(c.eng.speaker_lpf_hz, 3500, 0);
+  }
+  const std::vector<std::vector<const char*>> bad = {
+      {"--rtl-index", "-1"},
+      {"--rtl-index", "99999999999"},   // long -> int overflow
+      {"--rate", "4294967296"},         // overflow
+      {"--audio-fd", "3000000000"},     // overflow
+      {"--gain", "abc"},
+      {"--gain", "nan"},
+      {"--gain", "inf"},
+      {"--gain"},
+  };
+  for (const auto& a : bad) {
+    kc::Cli c;
+    std::string err;
+    CHECK(!parse(a, c, err));
+    CHECK(!err.empty());
+  }
+}

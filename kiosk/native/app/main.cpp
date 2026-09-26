@@ -104,6 +104,8 @@ static int run_live(const kc::Cli& c) {
   // `events` and `cmds` are touched by the detached stdin reader, which can outlive this function
   // (it is parked in getline until the parent closes stdin). Deliberately leaked so a late line or
   // EOF after shutdown never touches a destroyed object; the process exits right after we return.
+  // Early returns during init (failure, or g_stop) rely on the locals' destructors: RtlSource and
+  // AlsaSink close their devices; events was never started, so nothing reached stdout.
   auto* events_p = new kc::EventOut(stdout);
   auto* cmds_p = new kc::SpscQueue<kc::Command>(kc::CMD_QUEUE);
   kc::EventOut& events = *events_p;
@@ -125,13 +127,36 @@ static int run_live(const kc::Cli& c) {
     return 2;
   }
   kc::dsp_thread_init();
+  // stdin reader starts now (after FFTW planning) so a quit/EOF during the rest of init -- notably
+  // the <= BUSY_RETRY_S open retry -- is honoured promptly via g_stop, like SIGTERM/SIGINT.
+  std::thread in([events_p, cmds_p] {
+    std::string line;
+    while (std::getline(std::cin, line)) {
+      if (line.find_first_not_of(" \t\r") == std::string::npos) continue;
+      std::string perr;
+      auto cmd = kc::parse_command(line, perr);
+      if (!cmd) { events_p->log("bad command line: " + line.substr(0, 120)); continue; }
+      // quit also raises g_stop directly: it can never be lost to a full queue or to init not
+      // having reached the loop yet.
+      if (std::holds_alternative<kc::QuitCmd>(*cmd)) g_stop = true;
+      if (!cmds_p->try_push(*cmd)) events_p->log("command queue full; dropped a command");
+    }
+    g_stop = true;   // EOF = parent went away (a flag, not a queued quit: can't be dropped)
+  });
+  in.detach();   // blocked in getline; process exit ends it
   kc::RtlSource src({c.rtl_serial, c.rtl_index, c.eng.rate, c.gain}, log);
   std::string err;
-  if (!src.open(err)) { std::fprintf(stderr, "kerchunk-dsp: %s\n", err.c_str()); return 1; }
+  if (!src.open(err, [] { return g_stop.load(); })) {
+    if (g_stop) return 0;   // asked to stop while waiting for the dongle: a clean exit, not an error
+    std::fprintf(stderr, "kerchunk-dsp: %s\n", err.c_str());
+    return 1;
+  }
+  if (g_stop) return 0;
   if (c.sink != "none") {
     alsa = std::make_unique<kc::AlsaSink>(c.sink, log);
     if (!alsa->open(err)) { std::fprintf(stderr, "kerchunk-dsp: %s\n", err.c_str()); return 1; }
   }
+  if (g_stop) return 0;
   events.start();
   if (c.audio_fd >= 0) {
     tee = std::make_unique<kc::FdPump>(kc::TEE_RING, log, "audio tee");
@@ -146,18 +171,6 @@ static int run_live(const kc::Cli& c) {
   if (alsa) alsa->start();
   src.start();
   events.emit({{"ev", "ready"}});   // device open, threads up: Node sends its first tune now
-  std::thread in([events_p, cmds_p] {
-    std::string line;
-    while (std::getline(std::cin, line)) {
-      if (line.find_first_not_of(" \t\r") == std::string::npos) continue;
-      std::string perr;
-      auto cmd = kc::parse_command(line, perr);
-      if (!cmd) { events_p->log("bad command line: " + line.substr(0, 120)); continue; }
-      if (!cmds_p->try_push(*cmd)) events_p->log("command queue full; dropped a command");
-    }
-    cmds_p->try_push(kc::Command{kc::QuitCmd{}});   // EOF = parent went away
-  });
-  in.detach();   // blocked in getline; process exit ends it
   kc::LiveLoop loop(*eng, src, cmds, c.eng.rate);
   int rc = 0;
   while (!g_stop && !loop.quit()) {

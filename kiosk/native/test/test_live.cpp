@@ -11,6 +11,13 @@
 namespace {
 constexpr int RATE = 250'000;
 constexpr int BLOCK = RATE / 100 * 2;   // 10 ms of u8 IQ
+// Retune settle at 250 kHz: one full in-flight USB transfer (RTL_BUF_LEN/2 = 8192 samples, 32.8 ms)
+// plus the RETUNE_SETTLE_MS PLL margin (250000 * 20 / 1000 = 5000) = 13192 samples. LiveLoop discards
+// whole 2500-sample blocks while settle_left_ > 0: 13192 -> 10692 -> 8192 -> 5692 -> 3192 -> 692 -> <0,
+// i.e. exactly 6 blocks (60 ms).
+constexpr int SETTLE_BLOCKS = 6;
+static_assert((kc::RTL_BUF_LEN / 2 + RATE * (int)kc::RETUNE_SETTLE_MS / 1000 + BLOCK / 2 - 1) / (BLOCK / 2) == SETTLE_BLOCKS,
+              "settle derivation above");
 
 std::vector<uint8_t> to_u8(const std::vector<sig::cf>& x) {
   std::vector<uint8_t> iq(2 * x.size());
@@ -91,14 +98,14 @@ TEST(live_tune_waits_for_new_generation_and_settle) {
   Rig r;
   r.src.add(5, 0);                  // old-center blocks already queued
   r.send(TUNE);
-  r.src.add(5, 1);                  // new-generation blocks (first 2 = settle discard)
+  r.src.add(SETTLE_BLOCKS + 3, 1);  // new-generation blocks (first 6 = settle discard, then 3 real)
   r.run();
   CHECK(r.src.centers.size() == 1 && r.src.centers[0] == 146000000);
   CHECK(r.count("tuned") == 1);
   double tuned_t = -1;
   for (auto& j : r.ev) if (j["ev"] == "tuned") tuned_t = j["t"].get<double>();
-  CHECK_NEAR(tuned_t, 0.07, 1e-9);  // 5 old + 2 settle blocks (10 ms each) discarded before the tune applies
-  CHECK_NEAR(r.e->now(), 0.10, 0.0015);   // all 10 blocks counted on the clock (hop-granular)
+  CHECK_NEAR(tuned_t, 0.11, 1e-9);  // 5 old + 6 settle blocks (10 ms each) discarded before the tune applies
+  CHECK_NEAR(r.e->now(), 0.14, 0.0015);   // all 14 blocks counted on the clock (hop-granular)
   CHECK(r.count("log") == 0);       // retune discards (old-center, settle) are not drops
 }
 
@@ -115,22 +122,22 @@ TEST(live_non_tune_commands_apply_immediately_and_quit) {
 TEST(live_drops_advance_clock_and_report) {
   Rig r;
   r.send(TUNE);
-  r.src.add(3, 1);
+  r.src.add(SETTLE_BLOCKS + 1, 1);
   r.run();
   r.src.dropped = 2500;             // 10 ms lost in the ring
   r.loop->step();
   // note_gap resyncs samples_ to pushed_ (like tune()), so the gap can't lose the partial hop it
-  // discards off the clock: by this point 3 blocks have been consumed (2 settle-discarded + the one
-  // real push once the tune landed) = 3*2500 = 7500 samples, plus the 2500-sample gap just noted =
-  // 10000 samples exactly, no hop-granular slack.
-  CHECK_NEAR(r.e->now(), 10000.0 / RATE, 1e-9);
+  // discards off the clock: by this point 7 blocks have been consumed (6 settle-discarded + the one
+  // real push once the tune landed) = 7*2500 = 17500 samples, plus the 2500-sample gap just noted =
+  // 20000 samples exactly, no hop-granular slack.
+  CHECK_NEAR(r.e->now(), 20000.0 / RATE, 1e-9);
   r.src.add(40, 1);
   r.run();
   int drop_events = 0;
   for (auto& j : r.ev) if (j["ev"] == "power" && j.contains("drops")) { drop_events++; CHECK(j["drops"].get<long long>() == 2500); }
   CHECK(drop_events == 1);          // drops_since_power_ is reset on report -- exactly one power event carries it
   CHECK(r.count("log") == 1);       // rate-limited overrun log
-  CHECK_NEAR(r.e->now(), 0.44, 0.0015);
+  CHECK_NEAR(r.e->now(), 0.48, 0.0015);   // 7 + 1 (gap) + 40 blocks
 }
 
 TEST(live_retune_mid_stream_discards_old_generation) {
@@ -140,14 +147,14 @@ TEST(live_retune_mid_stream_discards_old_generation) {
   r.run();
   r.src.add(3, 1);                  // queued before the retune lands: old center
   r.send(R"({"cmd":"tune","centerHz":147000000,"channels":[{"id":"b","freqHz":147050000}]})");
-  r.src.add(4, 2);
+  r.src.add(SETTLE_BLOCKS + 2, 2);
   r.run();
   CHECK(r.count("tuned") == 2);
   CHECK(r.src.centers.size() == 2 && r.src.centers[1] == 147000000);
-  // 10 + 3 old-gen + 2 settle blocks (10 ms each) discarded before the second tune applies.
+  // 10 + 3 old-gen + 6 settle blocks (10 ms each) discarded before the second tune applies.
   double second_tuned_t = -1;
   for (auto& j : r.ev) if (j["ev"] == "tuned") second_tuned_t = j["t"].get<double>();
-  CHECK_NEAR(second_tuned_t, 0.15, 1e-9);
+  CHECK_NEAR(second_tuned_t, 0.19, 1e-9);
 }
 
 TEST(live_coalesces_multiple_pending_tunes) {
@@ -158,7 +165,7 @@ TEST(live_coalesces_multiple_pending_tunes) {
   r.send(TUNE);
   r.send(R"({"cmd":"tune","centerHz":147000000,"channels":[{"id":"b","freqHz":147050000}]})");
   r.src.add(5, 0);                  // stale pre-drain blocks (gen 0, from before either tune): discarded
-  r.src.add(3, 2);                  // gen 2 (both set_center calls already landed): 2 settle + 1 real
+  r.src.add(SETTLE_BLOCKS + 1, 2);  // gen 2 (both set_center calls already landed): 6 settle + 1 real
   r.run();
   CHECK(r.count("tuned") == 1);
   CHECK(r.src.centers.size() == 2 && r.src.centers[0] == 146000000 && r.src.centers[1] == 147000000);
@@ -169,11 +176,11 @@ TEST(live_coalesces_multiple_pending_tunes) {
   // A second tune arriving mid-settle (settle_left_ partially spent, not full and not zero) also
   // overrides cleanly: the in-progress settle countdown is discarded wholesale, not carried over.
   r.send(R"({"cmd":"tune","centerHz":148000000,"channels":[{"id":"c","freqHz":148050000}]})");
-  r.src.add(1, 3);                  // 1 of 2 settle blocks lands before the next tune arrives
+  r.src.add(1, 3);                  // 1 of 6 settle blocks lands before the next tune arrives
   r.run();
   r.send(R"({"cmd":"tune","centerHz":149000000,"channels":[{"id":"d","freqHz":149050000}]})");
   r.src.add(2, 3);                  // stale gen-3 remainder: now old-center (want_gen_ moved to 4)
-  r.src.add(3, 4);                  // gen 4: 2 settle + 1 real
+  r.src.add(SETTLE_BLOCKS + 1, 4);  // gen 4: 6 settle + 1 real
   r.run();
   CHECK(r.count("tuned") == 2);     // one more tuned overall -- the superseded 148 MHz never fired
   CHECK(r.src.centers.size() == 4 && r.src.centers.back() == 149000000);
@@ -187,7 +194,6 @@ TEST(live_known_command_folds_into_pending_tune) {
       R"({"cmd":"tune","centerHz":146000000,"channels":[{"id":"a","freqHz":146050000}],)"
       R"("closeCall":true,"closeCallDb":15,"knownHz":[]})";
   constexpr double TONE_HZ = 87'500;   // 146087500 absolute: not the channel, not masked by knownHz:[]
-  constexpr int SETTLE_BLOCKS = 2;     // 20 ms settle at 250 kHz / 2500-sample blocks
   constexpr int TONE_BLOCKS = 100;     // 1 s of carrier
 
   // Bug this proves fixed: a `known` command queued while a tune is pending used to apply to the

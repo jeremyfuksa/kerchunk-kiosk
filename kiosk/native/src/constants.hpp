@@ -86,10 +86,10 @@ inline constexpr double CC_DB_DEFAULT = 15.0;
 
 // ---- Live I/O (P1c)
 inline constexpr int IQ_BLOCK_BYTES = 48000;       // max 10 ms of u8 IQ at 2.4 Msps (blocks are <= 10 ms at any rate)
-inline constexpr int IQ_RING_BLOCKS = 64;          // ~640 ms of IQ buffering between USB and DSP
+inline constexpr int IQ_RING_BLOCKS = 64;          // ~640 ms of IQ buffering between USB and DSP (RtlSource coalesces USB transfers into 10 ms blocks)
 inline constexpr int RTL_BUF_NUM = 4;              // librtlsdr async buffers (small: bounds in-flight samples on retune)
 inline constexpr int RTL_BUF_LEN = 16384;          // bytes per async buffer (~3.4 ms at 2.4 Msps; multiple of 512)
-inline constexpr double RETUNE_SETTLE_MS = 20;     // new-generation samples discarded after a retune (in-flight USB)
+inline constexpr double RETUNE_SETTLE_MS = 20;     // PLL margin discarded after a retune, ON TOP of one full RTL_BUF_LEN USB transfer (LiveLoop)
 inline constexpr double STALL_S = 2.0;             // no samples this long = SDR loss -> exit 3
 inline constexpr double BUSY_RETRY_S = 3.0;        // retry rtlsdr_open this long (previous helper releasing)
 inline constexpr int ALSA_PERIOD = 480;            // 10 ms at 48 kHz

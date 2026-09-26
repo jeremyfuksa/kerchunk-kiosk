@@ -1,5 +1,8 @@
 #include "cli.hpp"
 
+#include <cerrno>
+#include <climits>
+#include <cmath>
 #include <cstdlib>
 
 namespace kc {
@@ -7,12 +10,13 @@ namespace {
 bool to_double(const std::string& s, double& v) {
   char* end = nullptr;
   v = std::strtod(s.c_str(), &end);
-  return end != s.c_str() && *end == '\0';
+  return end != s.c_str() && *end == '\0' && std::isfinite(v);   // nan/inf are never a valid knob
 }
 bool to_int(const std::string& s, int& v) {
   char* end = nullptr;
-  long x = std::strtol(s.c_str(), &end, 10);
-  if (end == s.c_str() || *end != '\0') return false;
+  errno = 0;
+  const long x = std::strtol(s.c_str(), &end, 10);
+  if (end == s.c_str() || *end != '\0' || errno == ERANGE || x < INT_MIN || x > INT_MAX) return false;
   v = (int)x;
   return true;
 }
@@ -40,7 +44,7 @@ bool parse_cli(int argc, const char* const* argv, Cli& c, std::string& err) {
     else if (k == "--audio-out") { if (!val(c.audio_out)) return false; }
     else if (k == "--same-out") { if (!val(c.same_out)) return false; }
     else if (k == "--detect-via" || k == "--lanes" || k == "--lane-modes") { if (!val(v)) return false; }   // GR-era: ignored
-    else if (k == "--rtl-index") { if (!val(v) || !to_int(v, c.rtl_index)) { err = "--rtl-index must be an integer"; return false; } }
+    else if (k == "--rtl-index") { if (!val(v) || !to_int(v, c.rtl_index) || c.rtl_index < 0) { err = "--rtl-index must be a non-negative integer"; return false; } }
     else if (k == "--audio-fd") { if (!val(v) || !to_int(v, c.audio_fd)) { err = "--audio-fd must be an integer"; return false; } }
     else if (k == "--rate") {
       if (!val(v) || !to_int(v, n) || n <= 0 || n % LANE_RATE != 0) { err = "--rate must be a positive multiple of 50000"; return false; }

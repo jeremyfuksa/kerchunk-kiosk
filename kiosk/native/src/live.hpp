@@ -13,7 +13,10 @@
 namespace kc {
 // A block is at most IQ_BLOCK_BYTES of raw u8 IQ (<= 10 ms at any configured rate), with `n` (bytes,
 // always even -- 2 bytes per complex sample) <= data.size(). A settle discard (LiveLoop::step)
-// drops a whole block at a time, so a source must hand back full ~10 ms blocks, not split ones.
+// drops a whole block at a time, and the ring depth (IQ_RING_BLOCKS) is counted in blocks, so a
+// source hands back full 10 ms blocks (RtlSource coalesces its ~3.4 ms USB transfers into them).
+// The one exception is a generation boundary: a partial block is flushed early so no block ever
+// mixes samples from two generations.
 // LiveLoop still clamps defensively rather than trusting this contract blindly -- see step().
 struct IqBlock {
   uint32_t gen = 0;

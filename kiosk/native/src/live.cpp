@@ -5,7 +5,12 @@
 namespace kc {
 
 LiveLoop::LiveLoop(Engine& e, IqSource& src, SpscQueue<Command>& cmds, int rate)
-    : eng_(e), src_(src), cmds_(cmds), settle_samples_((long long)std::llround(rate * RETUNE_SETTLE_MS / 1000.0)) {}
+    : eng_(e), src_(src), cmds_(cmds),
+      // Settle = one full in-flight USB transfer (RTL_BUF_LEN bytes = RTL_BUF_LEN/2 samples, captured
+      // at the old center but possibly tagged with the new generation) + the RETUNE_SETTLE_MS PLL
+      // margin. At 2.4 Msps: 8192 + 48000 = 56192 samples (23.4 ms); at 250 ksps the transfer alone
+      // is 32.8 ms, so a bare 20 ms settle would let old-center samples through.
+      settle_samples_((long long)RTL_BUF_LEN / 2 + (long long)std::llround(rate * RETUNE_SETTLE_MS / 1000.0)) {}
 
 bool LiveLoop::step() {
   // Commands drain here, between pushes -- never inside a hop -- so a retune can't reset the
