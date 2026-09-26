@@ -31,6 +31,9 @@ file(GLOB KC_TESTS CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/test/*.cpp)
 add_executable(kerchunk-dsp-tests ${KC_TESTS})
 target_link_libraries(kerchunk-dsp-tests PRIVATE kcdsp Threads::Threads)
 
+add_executable(kerchunk-dsp ${CMAKE_CURRENT_SOURCE_DIR}/app/main.cpp)
+target_link_libraries(kerchunk-dsp PRIVATE kcdsp Threads::Threads)
+
 if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/tools/cost_bench.cpp)
   add_executable(kc-cost-bench ${CMAKE_CURRENT_SOURCE_DIR}/tools/cost_bench.cpp)
   target_link_libraries(kc-cost-bench PRIVATE kcdsp)

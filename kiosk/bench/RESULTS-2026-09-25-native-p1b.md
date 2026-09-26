@@ -96,3 +96,21 @@ The GR-era `noiseQuietDb` (-86 default, per-bank overrides) does not apply to th
 
 The threshold is tunable live via `--quiet-db` (see `native/src/constants.hpp`) so the P3 by-ear
 pass can move it without a rebuild.
+
+## Engine replay on real RF
+
+Binary: kerchunk-dsp (P1b replay), 11 channels (the 2 m group), Close Call on, default squelch (open 9 dB, hang 2000 ms, QUIET_DB_DEFAULT).
+- Batch: `REPLAY iq_s=30.00 cpu_s=3.500 core_pct=11.7 realtime=0`
+- Real-time (--realtime): `REPLAY iq_s=30.00 cpu_s=4.522 core_pct=15.1 realtime=1`  ← the acceptance number; GNU Radio helper baseline 223–234%
+- Events: `Counter({'power': 149, 'audible': 9, 'open': 5, 'level': 5, 'rf': 4, 'close': 4, 'ready': 1, 'tuned': 1})`
+- Opens/closes/audible/closecall/log/rf (no closecall, no log):
+  - open c146625000 db -18.1 @3.200 → rf -33.9 n=248, close @5.681
+  - open c146625000 db -17.9 @10.200 → rf -33.9 n=247, close @12.671
+  - open c146625000 db -18.1 @16.201 → rf -34.0 n=248, close @18.680
+  - open c146625000 db -18.3 @22.200 → rf -33.9 n=248, close @24.681
+  - open c146625000 db -18.2 @28.201 (still open at end of capture)
+  - each open/close paired with `audible` c146625000 / null (9 audible events)
+  - Same single periodic source (6 s period, ~0.5 s keyed + 2 s hang) the quieting survey found on this lane; no other lane opened.
+- Audio for listening: /home/kiosk/kiosk-iq/2m-native.wav (48 kHz mono, 30.00 s, not in the repo)
+
+Not included: USB reader thread, ALSA write, fd-3 tee (P1c).
