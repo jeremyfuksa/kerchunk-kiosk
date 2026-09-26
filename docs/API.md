@@ -159,6 +159,7 @@ additionally removes orphans (recorded on a hit that never filed) and enforces
 | Method | Path | Purpose |
 | --- | --- | --- |
 | POST | `/api/kiosk/reload` | Broadcast `{ type: "reload" }` over WS — the wall page reloads itself (fresh bundle, no systemd). |
+| POST | `/api/kiosk/diag` | Wall-page render diagnostic, once per load: `{ renderingType, fps, p95Ms, maxMs }` → one `[kiosk]` journal line (`400` on a malformed body). |
 | POST | `/api/backend/restart` | `202`, then the backend exits for systemd to respawn (`503` when unavailable, e.g. tests). |
 | POST | `/api/system/power` | `{ "action": "reboot" \| "poweroff" }` → `202`, then the helpers stop and `sudo systemctl <action>` runs (`400` unknown action, `503` when unavailable, e.g. tests). |
 | POST | `/api/test/alert` | Fire a canned SAME alert banner for design/verification (`{ alphaTag }`; `{ "clear": true }` dismisses). |

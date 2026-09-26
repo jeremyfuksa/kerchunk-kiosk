@@ -1157,6 +1157,19 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
       return json(res, 200, { ok: true });
     }
 
+    if (method === "POST" && path === "/api/kiosk/diag") {
+      // Kiosk render diagnostic: the wall page reports its map renderer and
+      // frame pacing once per load (no devtools on the appliance). Journal only.
+      const b = await readBody(req);
+      const num = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
+      if (!b || typeof b.renderingType !== "string" || !num(b.fps) || !num(b.p95Ms) || !num(b.maxMs)) {
+        return json(res, 400, { error: "expected { renderingType, fps, p95Ms, maxMs }" });
+      }
+      const rt = b.renderingType.replace(/[^A-Z_]/gi, "").slice(0, 16);
+      console.error(`[kiosk] map rendering=${rt} display=${b.fps} fps p95=${b.p95Ms} ms max=${b.maxMs} ms`);
+      return json(res, 200, { ok: true });
+    }
+
     if (method === "POST" && path === "/api/backend/restart") {
       if (!deps.restartBackend) return json(res, 503, { error: "backend restart unavailable" });
       json(res, 202, { ok: true });

@@ -1151,6 +1151,15 @@ describe("kiosk reload", () => {
   });
 });
 
+describe("kiosk render diag", () => {
+  it("POST /api/kiosk/diag accepts a well-formed report and rejects junk", async () => {
+    const { server } = makeApp();
+    await request(server).post("/api/kiosk/diag").send({ renderingType: "VECTOR", fps: 59.9, p95Ms: 17.2, maxMs: 33.4 }).expect(200);
+    await request(server).post("/api/kiosk/diag").send({ renderingType: "VECTOR", fps: "fast" }).expect(400);
+    await request(server).post("/api/kiosk/diag").send({}).expect(400);
+  });
+});
+
 describe("backend restart", () => {
   it("POST /api/backend/restart requests a supervised process restart", async () => {
     dir = mkdtempSync(join(tmpdir(), "ksrv-"));
