@@ -510,6 +510,40 @@ describe("WidebandEngine", () => {
       expect(gotError).toBe(true);
     });
 
+    it("a helper that only emits log lines still trips the silence watchdog (log doesn't count as liveness)", async () => {
+      const args = tmpFile("args");
+      // Never says anything but "log" after ready — a wedged DSP thread that
+      // can still write heartbeat log lines. Spaced well inside
+      // silenceTimeoutMs so a naive "any line re-arms" implementation would
+      // never trip, but the total run outlasts silenceTimeoutMs so the
+      // watchdog must still fire on genuine non-log silence.
+      const script = [
+        `{"ev":"log","msg":"heartbeat"}`,
+        "sleep:60",
+        `{"ev":"log","msg":"heartbeat"}`,
+        "sleep:60",
+        `{"ev":"log","msg":"heartbeat"}`,
+        "sleep:60",
+        `{"ev":"log","msg":"heartbeat"}`,
+      ].join("\n");
+      const { engine, events } = makeEngine(
+        { FAKE_WB_ARGS_FILE: args, FAKE_WB_SCRIPT: script },
+        { native: true, silenceTimeoutMs: 150, restartDelayMs: 50 },
+      );
+      await engine.start(cfg([VHF_A]));
+      const respawned = await waitFor(() => lines(args).length >= 2, 3000);
+      // Escalation (as in the plain-silence test above): the first trip is a
+      // soft respawn, only the second consecutive one emits the hard error.
+      await waitFor(() => lines(args).length >= 3, 5000);
+      const gotError = await waitFor(
+        () => events.some((e) => e.type === "error" && e.message.includes("helper silent for")),
+        3000,
+      );
+      await engine.stop();
+      expect(respawned).toBe(true);
+      expect(gotError).toBe(true);
+    });
+
     it("GR mode arms no watchdogs (a silent GR helper is left alone)", async () => {
       const args = tmpFile("args");
       const { engine } = makeEngine({ FAKE_WB_ARGS_FILE: args, FAKE_WB_MODE: "silent" }, { readyTimeoutMs: 100, silenceTimeoutMs: 100 });

@@ -467,9 +467,13 @@ export class WidebandEngine implements ScannerEngine {
     this.childStdout = out;
     out.on("line", (line: string) => {
       if (this.child !== child) return; // superseded spawn; ignore
-      if (this.native && this.silenceTimer) this.armSilence(child);
       let ev: HelperEvent;
       try { ev = JSON.parse(line) as HelperEvent; } catch { return; }
+      // A helper that's merely logging isn't proven alive — a wedged DSP
+      // thread can still emit periodic log lines forever, which would starve
+      // the silence watchdog of the timeout it exists to enforce. Only a
+      // non-"log" event (tune/open/close/etc.) counts as liveness.
+      if (this.native && this.silenceTimer && ev.ev !== "log") this.armSilence(child);
       this.handleHelperEvent(ev);
     });
     out.on("error", () => { /* non-fatal */ });
