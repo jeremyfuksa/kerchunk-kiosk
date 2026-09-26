@@ -58,3 +58,27 @@ TEST(multimon_respawns_once_then_gives_up) {
   for (auto& l : s.logs) if (l == "multimon-ng exited: SAME decoding stopped") exited++;
   CHECK(exited == 2);
 }
+
+TEST(multimon_stop_during_in_flight_respawn_returns_promptly) {
+  Sink s;
+  kc::Multimon mm({"sh", "-c", "exit 0"}, s.emit(), s.log());
+  std::string err;
+  CHECK(mm.start(err));
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));   // land stop() mid respawn cycle
+  const auto t0 = std::chrono::steady_clock::now();
+  mm.stop();
+  const auto ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+  CHECK(ms < 1000);
+}
+
+TEST(multimon_stop_kills_unresponsive_child) {
+  Sink s;
+  kc::Multimon mm({"sh", "-c", "trap '' TERM; while true; do sleep 1; done"}, s.emit(), s.log());
+  std::string err;
+  CHECK(mm.start(err));
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  const auto t0 = std::chrono::steady_clock::now();
+  mm.stop();
+  const auto ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+  CHECK(ms < 1000);
+}

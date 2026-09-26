@@ -12,6 +12,7 @@
 #include <nlohmann/json.hpp>
 #include <string>
 #include <thread>
+#include <vector>
 
 #include "constants.hpp"
 #include "spsc.hpp"
@@ -44,11 +45,18 @@ struct JitterPolicy {
   }
 };
 
+// FdPump owns the lifetime of whatever fd it currently holds: set_fd only *publishes* a pending
+// fd (+ whether the pump should own/close it); the pump thread swaps it in -- and closes the
+// previous one, if it owned it -- itself, only ever between writes, never mid-write. Callers must
+// never close an fd they handed to the pump with owned=true (review fix: a caller-side close
+// racing the pump's in-flight write could hand the pump a recycled fd number and write PCM into
+// an unrelated file). A caller that lends the pump an fd it does not own (e.g. the tee's fd 3)
+// passes owned=false; the pump will drop that fd on handoff/stop without closing it.
 class FdPump {
  public:
   FdPump(size_t capacity, LogFn log, std::string name) : ring_(capacity), log_(std::move(log)), name_(std::move(name)) {}
   ~FdPump() { stop(); }
-  void set_fd(int fd);
+  void set_fd(int fd, bool owned = true);
   size_t write(const int16_t* x, size_t n) {
     const size_t w = ring_.write(x, n);
     if (w < n) dropped_.fetch_add(n - w, std::memory_order_relaxed);
@@ -63,11 +71,43 @@ class FdPump {
   SpscRing<int16_t> ring_;
   LogFn log_;
   std::string name_;
-  std::atomic<int> fd_{-1};
   std::atomic<bool> running_{false};
   std::atomic<uint64_t> dropped_{0};
+
+  // fd handoff: producer/other threads only ever touch the "pending" side under fd_m_; the pump
+  // thread alone reads/writes "cur_*" (and the byte-alignment carry), so no lock is needed there.
+  std::mutex fd_m_;
+  int pending_fd_ = -1;
+  bool pending_owned_ = false;
+  std::atomic<bool> pending_{false};
+  int cur_fd_ = -1;
+  bool cur_owned_ = false;
   bool failed_logged_ = false;
+  bool have_carry_ = false;   // one buffered byte from a chunk we had to abandon mid-sample
+  unsigned char carry_byte_ = 0;
   std::thread t_;
+};
+
+struct AlsaPolicy {
+  enum class Action { Read, Silence, Wait };
+  // Pure decision function (unit-tested in isolation): what should the ALSA writer thread do this
+  // period, given how many samples are queued, whether it's currently recovering from an
+  // underrun, and how long (ms) it has already spent in Wait for the current stretch of
+  // 0 < queued < ALSA_PERIOD. The caller owns the `underrun`/`waited_ms` state across calls; this
+  // function only reads them and reports what they should become (Read clears underrun and resets
+  // the wait clock, Silence sets underrun, Wait leaves both as-is for the caller to keep timing).
+  static Action decide(size_t queued, bool underrun, double waited_ms) {
+    if (underrun) {
+      // Don't resume until a full prebuffer exists -- resuming right at one period reopens the
+      // underrun on the very next tick if the producer is still catching up.
+      return queued >= (size_t)(2 * ALSA_PERIOD) ? Action::Read : Action::Silence;
+    }
+    if (queued >= (size_t)ALSA_PERIOD) return Action::Read;
+    if (queued == 0) return Action::Silence;
+    // 0 < queued < ALSA_PERIOD while flowing: give the producer a few ms to catch up before
+    // declaring an underrun (a stutter, not silence, is what a hair-trigger threshold buys you).
+    return waited_ms >= 5.0 ? Action::Silence : Action::Wait;
+  }
 };
 
 class AlsaSink {

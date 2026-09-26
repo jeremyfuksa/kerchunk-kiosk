@@ -3,6 +3,7 @@
 #include <sys/types.h>
 
 #include <atomic>
+#include <mutex>
 #include <nlohmann/json.hpp>
 #include <string>
 #include <thread>
@@ -23,17 +24,19 @@ class Multimon {
   static bool is_same_line(const std::string& l) { return l.find("ZCZC") != std::string::npos || l.find("NNNN") != std::string::npos; }
 
  private:
-  bool spawn(std::string& err);
+  bool spawn(std::string& err);   // caller must hold life_m_
   void reader();
   std::vector<std::string> argv_;
   Emit emit_;
   LogFn log_;
   FdPump pump_;
-  std::atomic<pid_t> pid_{-1};
-  std::atomic<int> out_fd_{-1};
+  pid_t pid_ = -1;                // guarded by life_m_ (only life_m_ holders touch pid_/out_fd_/respawns_)
+  std::atomic<int> out_fd_{-1};   // read separately (without the lock) by reader()'s blocking read()
   std::atomic<bool> running_{false};
   int respawns_ = 0;
-  int stdin_fd_ = -1;
+  // Serializes spawn()/stop()'s state transitions against reader()'s own respawn decision, so a
+  // stop() racing an in-flight respawn can never hang shutdown or SIGTERM a stale/wrong pid.
+  std::mutex life_m_;
   std::thread t_;
 };
 }  // namespace kc

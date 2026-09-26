@@ -1,4 +1,5 @@
 // kerchunk-dsp — P1b: replay mode only (--iq-file). Live SDR/ALSA/fd-3 arrive in P1c.
+#include <csignal>
 #include <sys/resource.h>
 
 #include <chrono>
@@ -25,6 +26,10 @@ static double cpu_seconds() {
 }
 
 int main(int argc, char** argv) {
+  // Process-wide: a reader that goes away (fd-3 tee, multimon-ng's stdin) must surface as EPIPE on
+  // the writing thread, never kill the helper. Installed once, here, rather than per-FdPump::start
+  // so it isn't repeatedly re-armed across start/stop cycles.
+  std::signal(SIGPIPE, SIG_IGN);
   kc::EngineOptions o;
   std::string iq_file, tune_json, audio_out, same_out;
   bool realtime = false;

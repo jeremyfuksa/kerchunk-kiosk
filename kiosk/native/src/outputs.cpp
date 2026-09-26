@@ -6,7 +6,6 @@
 #include <algorithm>
 #include <cerrno>
 #include <chrono>
-#include <csignal>
 #include <cstring>
 #include <vector>
 
@@ -55,13 +54,15 @@ void EventOut::stop() {
   running_ = false;
 }
 
-void FdPump::set_fd(int fd) {
+void FdPump::set_fd(int fd, bool owned) {
   if (fd >= 0) fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK);
-  fd_.store(fd);
+  std::lock_guard<std::mutex> g(fd_m_);
+  pending_fd_ = fd;
+  pending_owned_ = owned;
+  pending_.store(true, std::memory_order_release);
 }
 
 void FdPump::start() {
-  std::signal(SIGPIPE, SIG_IGN);   // a reader that went away must surface as EPIPE, never kill the helper
   running_ = true;
   t_ = std::thread([this] { run(); });
 }
@@ -69,27 +70,60 @@ void FdPump::start() {
 void FdPump::stop() {
   if (!running_.exchange(false)) return;
   t_.join();
+  // The pump thread has exited; touching cur_*/pending_* here is safe (no concurrent producer of
+  // fd changes -- set_fd from another thread after stop() would be a caller bug).
+  if (cur_owned_ && cur_fd_ >= 0) { ::close(cur_fd_); cur_fd_ = -1; }
+  std::lock_guard<std::mutex> g(fd_m_);
+  if (pending_.exchange(false) && pending_owned_ && pending_fd_ >= 0 && pending_fd_ != cur_fd_) {
+    ::close(pending_fd_);   // a set_fd() that arrived too late to ever be adopted must not leak
+  }
 }
 
 void FdPump::run() {
   std::vector<int16_t> chunk(4800);
+  std::vector<char> outbuf;
   while (running_) {
+    if (pending_.load(std::memory_order_acquire)) {
+      int nfd; bool nowned;
+      {
+        std::lock_guard<std::mutex> g(fd_m_);
+        nfd = pending_fd_;
+        nowned = pending_owned_;
+        pending_.store(false, std::memory_order_release);
+      }
+      if (cur_owned_ && cur_fd_ >= 0 && cur_fd_ != nfd) ::close(cur_fd_);   // never while writing: only here, between chunks
+      cur_fd_ = nfd;
+      cur_owned_ = nowned;
+      failed_logged_ = false;   // a failure on the new child/fd must be logged again
+      have_carry_ = false;      // a stray byte from the old stream must not bleed into the new one
+    }
     const size_t n = ring_.read(chunk.data(), chunk.size());
     if (n == 0) { std::this_thread::sleep_for(std::chrono::milliseconds(5)); continue; }
-    const int fd = fd_.load();
+    const int fd = cur_fd_;
     if (fd < 0) continue;   // discard
-    const char* p = (const char*)chunk.data();
-    size_t left = n * 2;
+
+    outbuf.clear();
+    if (have_carry_) { outbuf.push_back((char)carry_byte_); have_carry_ = false; }
+    const char* cp = (const char*)chunk.data();
+    outbuf.insert(outbuf.end(), cp, cp + n * 2);
+
+    const char* p = outbuf.data();
+    size_t left = outbuf.size();
     while (left > 0) {
       const ssize_t k = ::write(fd, p, left);
       if (k > 0) { p += k; left -= (size_t)k; continue; }
       if (k < 0 && errno == EINTR) continue;
-      if (k < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {   // reader slow: drop, never block
+      if (k < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+        // Reader slow: drop, never block -- but only ever in whole samples. Any odd trailing byte
+        // is held back as `carry_` and prepended to the next write so the receiver's int16 stream
+        // never loses alignment (dropping mid-sample would permanently byte-shift everything after).
         dropped_.fetch_add(left / 2, std::memory_order_relaxed);
+        if (left % 2) { have_carry_ = true; carry_byte_ = (unsigned char)p[left - 1]; }
         break;
       }
       if (!failed_logged_) { failed_logged_ = true; log_(name_ + " write failed: " + std::strerror(errno)); }
       dropped_.fetch_add(left / 2, std::memory_order_relaxed);
+      if (left % 2) { have_carry_ = true; carry_byte_ = (unsigned char)p[left - 1]; }
       break;
     }
   }
@@ -104,6 +138,7 @@ bool AlsaSink::open(std::string& err) {
 }
 
 void AlsaSink::start() {
+  if (!pcm_) return;   // open() never succeeded -- nothing to run
   running_ = true;
   t_ = std::thread([this] { run(); });
 }
@@ -118,12 +153,27 @@ void AlsaSink::stop() {
 
 void AlsaSink::run() {
   std::vector<int16_t> buf(ALSA_PERIOD);
+  bool underrun = false;
+  double waited_ms = 0;
   int consecutive_fail = 0;
   bool logged = false;
   while (running_) {
     ring_.discard(JitterPolicy::drop_for(ring_.size()));   // SDR clock vs sound-card clock drift
-    const size_t n = ring_.read(buf.data(), buf.size());
-    std::fill(buf.begin() + (long)n, buf.end(), (int16_t)0);  // underrun: play silence, never stall
+    const AlsaPolicy::Action act = AlsaPolicy::decide(ring_.size(), underrun, waited_ms);
+    if (act == AlsaPolicy::Action::Wait) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+      waited_ms += 1.0;
+      continue;
+    }
+    waited_ms = 0;
+    if (act == AlsaPolicy::Action::Silence) {
+      underrun = true;
+      std::fill(buf.begin(), buf.end(), (int16_t)0);
+    } else {   // Read: policy already guaranteed a full period is queued
+      underrun = false;
+      const size_t n = ring_.read(buf.data(), buf.size());
+      if (n < buf.size()) std::fill(buf.begin() + (long)n, buf.end(), (int16_t)0);   // defensive
+    }
     snd_pcm_sframes_t w = snd_pcm_writei(pcm_, buf.data(), buf.size());
     if (w < 0) w = snd_pcm_recover(pcm_, (int)w, 1);
     if (w < 0) {

@@ -61,8 +61,61 @@ TEST(fd_pump_delivers_and_drops_instead_of_blocking) {
   auto ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
   CHECK(ms < 50);
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
-  pump.stop();
+  pump.stop();   // pump owns p[1] (set_fd's default owned=true) and closes it here
   CHECK(pump.dropped() > 0);
   close(p[0]);
-  close(p[1]);
+}
+
+TEST(fd_pump_handoff_switches_fd_and_closes_previous) {
+  int a[2], b[2];
+  CHECK(pipe(a) == 0);
+  CHECK(pipe(b) == 0);
+  kc::FdPump pump(1 << 16, [](const std::string&) {}, "test");
+  pump.set_fd(a[1]);
+  pump.start();
+  std::vector<int16_t> x1{1, 2, 3, 4};
+  pump.write(x1.data(), x1.size());
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  pump.set_fd(b[1]);   // handoff: the pump must close a[1] itself, never mid-write, and never here
+  std::vector<int16_t> x2{5, 6, 7, 8};
+  pump.write(x2.data(), x2.size());
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  pump.stop();   // pump owns b[1] now and closes it here
+
+  std::vector<int16_t> got_a(4);
+  size_t bytes = 0;
+  while (bytes < 8) { ssize_t k = read(a[0], (char*)got_a.data() + bytes, 8 - bytes); if (k <= 0) break; bytes += (size_t)k; }
+  CHECK(bytes == 8 && got_a[0] == 1 && got_a[3] == 4);
+  char extra;
+  CHECK(read(a[0], &extra, 1) == 0);   // EOF: the pump, not the test, closed a[1] on handoff
+
+  std::vector<int16_t> got_b(4);
+  bytes = 0;
+  while (bytes < 8) { ssize_t k = read(b[0], (char*)got_b.data() + bytes, 8 - bytes); if (k <= 0) break; bytes += (size_t)k; }
+  CHECK(bytes == 8 && got_b[0] == 5 && got_b[3] == 8);
+
+  close(a[0]);
+  close(b[0]);
+}
+
+TEST(alsa_policy_reads_when_a_full_period_is_queued) {
+  CHECK(kc::AlsaPolicy::decide(kc::ALSA_PERIOD, false, 0) == kc::AlsaPolicy::Action::Read);
+  CHECK(kc::AlsaPolicy::decide(kc::ALSA_PERIOD + 37, false, 0) == kc::AlsaPolicy::Action::Read);
+}
+
+TEST(alsa_policy_empty_ring_declares_underrun_immediately) {
+  CHECK(kc::AlsaPolicy::decide(0, false, 0) == kc::AlsaPolicy::Action::Silence);
+}
+
+TEST(alsa_policy_partial_waits_then_declares_underrun) {
+  CHECK(kc::AlsaPolicy::decide(kc::ALSA_PERIOD / 2, false, 0) == kc::AlsaPolicy::Action::Wait);
+  CHECK(kc::AlsaPolicy::decide(kc::ALSA_PERIOD / 2, false, 4.9) == kc::AlsaPolicy::Action::Wait);
+  CHECK(kc::AlsaPolicy::decide(kc::ALSA_PERIOD / 2, false, 5.0) == kc::AlsaPolicy::Action::Silence);
+}
+
+TEST(alsa_policy_underrun_waits_for_prebuffer_then_resumes) {
+  CHECK(kc::AlsaPolicy::decide(0, true, 0) == kc::AlsaPolicy::Action::Silence);
+  CHECK(kc::AlsaPolicy::decide(kc::ALSA_PERIOD, true, 0) == kc::AlsaPolicy::Action::Silence);
+  CHECK(kc::AlsaPolicy::decide(2 * kc::ALSA_PERIOD - 1, true, 0) == kc::AlsaPolicy::Action::Silence);
+  CHECK(kc::AlsaPolicy::decide(2 * kc::ALSA_PERIOD, true, 0) == kc::AlsaPolicy::Action::Read);
 }
