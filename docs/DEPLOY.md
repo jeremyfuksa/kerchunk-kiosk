@@ -108,8 +108,10 @@ Notes:
 - The two liveness watchdogs (no `"ready"` within `readyTimeoutMs`, and no
   helper event other than a log line within `silenceTimeoutMs`) live as
   `DEFAULT_READY_TIMEOUT_MS`/`DEFAULT_SILENCE_TIMEOUT_MS` in
-  `kiosk/src/backend/engine/WidebandEngine.ts` (overridable per
-  `WidebandEngineOptions`, not currently exposed as a config knob).
+  `kiosk/src/backend/engine/WidebandEngine.ts` (10 s / 5 s). Operator knobs:
+  `scan.helperReadyTimeoutMs` / `scan.helperSilenceTimeoutMs` (ms, 1000…120000),
+  applied to both helpers at engine construction — a backend restart, not a
+  config PUT, picks them up.
 
 ## Legacy: remote Pi deploy
 

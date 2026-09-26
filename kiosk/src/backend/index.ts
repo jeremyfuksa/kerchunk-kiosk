@@ -71,6 +71,13 @@ function deviceOpts(radio: { serial?: string; port?: string } | undefined): {
 const restartBackoffOpts = config.scan.maxRestartDelayMs !== undefined
   ? { maxRestartDelayMs: config.scan.maxRestartDelayMs }
   : {};
+// Helper liveness watchdogs, shared by BOTH helpers. Operator knobs:
+// config.scan.helperReadyTimeoutMs / helperSilenceTimeoutMs; omitted = the
+// engine's 10 s / 5 s.
+const watchdogOpts = {
+  ...(config.scan.helperReadyTimeoutMs !== undefined ? { readyTimeoutMs: config.scan.helperReadyTimeoutMs } : {}),
+  ...(config.scan.helperSilenceTimeoutMs !== undefined ? { silenceTimeoutMs: config.scan.helperSilenceTimeoutMs } : {}),
+};
 
 // Operator knob: config.scan.maxHoldMs (omitted = the engine's 180 s).
 const maxHold = config.scan.maxHoldMs !== undefined ? { maxHoldMs: config.scan.maxHoldMs } : {};
@@ -79,6 +86,7 @@ const engine =
   : widebandFamily ? new WidebandEngine({
       ...deviceOpts(scanRadio),
       ...restartBackoffOpts,
+      ...watchdogOpts,
       ...maxHold,
     })
   : new RtlFmEngine({
@@ -103,6 +111,7 @@ const weatherEngine = widebandFamily && weatherRadio && config.weatherChannel
   ? new WidebandEngine({
       ...deviceOpts(weatherRadio),
       ...restartBackoffOpts,
+      ...watchdogOpts,
       sampleRateHz: WEATHER_RATE_HZ,
       centerOffsetHz: WEATHER_CENTER_OFFSET_HZ,
       // Decode-only and latency-tolerant: run it at the lowest priority to keep
