@@ -177,6 +177,15 @@ void AlsaSink::stop() {
   pcm_ = nullptr;
 }
 
+std::string AlsaSink::format_stats(const Stats& s, double window_s) {
+  if (!s.overflow && !s.drift && !s.underrun && !s.xruns) return "";
+  auto ms = [](uint64_t n) { return std::to_string((n * 1000 + AUDIO_RATE / 2) / AUDIO_RATE); };
+  char w[32];
+  std::snprintf(w, sizeof w, "%g", window_s);
+  return std::string("speaker output, last ") + w + " s: " + ms(s.overflow) + " ms overflowed, " + ms(s.drift) +
+         " ms drift-trimmed, " + ms(s.underrun) + " ms underrun silence, " + std::to_string(s.xruns) + " ALSA xruns";
+}
+
 void AlsaSink::run() {
   std::vector<int16_t> buf(ALSA_PERIOD);
   bool underrun = false;
@@ -184,7 +193,10 @@ void AlsaSink::run() {
   int consecutive_fail = 0;
   bool logged = false;
   while (running_) {
-    ring_.discard(JitterPolicy::drop_for(ring_.size()));   // SDR clock vs sound-card clock drift
+    if (const size_t d = JitterPolicy::drop_for(ring_.size())) {   // SDR clock vs sound-card clock drift
+      ring_.discard(d);
+      drift_.fetch_add(d, std::memory_order_relaxed);
+    }
     const AlsaPolicy::Action act = AlsaPolicy::decide(ring_.size(), underrun, waited_ms);
     if (act == AlsaPolicy::Action::Wait) {
       std::this_thread::sleep_for(std::chrono::milliseconds(1));
@@ -194,6 +206,7 @@ void AlsaSink::run() {
     waited_ms = 0;
     if (act == AlsaPolicy::Action::Silence) {
       underrun = true;
+      underrun_.fetch_add(buf.size(), std::memory_order_relaxed);
       std::fill(buf.begin(), buf.end(), (int16_t)0);
     } else {   // Read: policy already guaranteed a full period is queued
       underrun = false;
@@ -201,7 +214,10 @@ void AlsaSink::run() {
       if (n < buf.size()) std::fill(buf.begin() + (long)n, buf.end(), (int16_t)0);   // defensive
     }
     snd_pcm_sframes_t w = snd_pcm_writei(pcm_, buf.data(), buf.size());
-    if (w < 0) w = snd_pcm_recover(pcm_, (int)w, 1);
+    if (w < 0) {
+      xruns_.fetch_add(1, std::memory_order_relaxed);
+      w = snd_pcm_recover(pcm_, (int)w, 1);
+    }
     if (w < 0) {
       if (!logged) { logged = true; log_(std::string("ALSA write failed: ") + snd_strerror((int)w) + " (detection continues)"); }
       if (++consecutive_fail > 50) std::this_thread::sleep_for(std::chrono::milliseconds(10));

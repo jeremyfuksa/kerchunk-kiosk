@@ -178,7 +178,13 @@ static int run_live(const kc::Cli& c) {
   events.emit({{"ev", "ready"}});   // device open, threads up: Node sends its first tune now
   kc::LiveLoop loop(*eng, src, cmds, c.eng.rate);
   int rc = 0;
+  auto stats_at = std::chrono::steady_clock::now();
   while (!g_stop && !loop.quit()) {
+    if (alsa && std::chrono::steady_clock::now() - stats_at >= std::chrono::duration<double>(kc::AUDIO_STATS_EVERY_S)) {
+      stats_at = std::chrono::steady_clock::now();
+      const std::string line = kc::AlsaSink::format_stats(alsa->take_stats(), kc::AUDIO_STATS_EVERY_S);
+      if (!line.empty()) events.log(line);
+    }
     if (!loop.step()) {
       if (loop.failed()) {
         std::fprintf(stderr, "kerchunk-dsp: SDR retune failed after %d tries\n", kc::RETUNE_ATTEMPTS);

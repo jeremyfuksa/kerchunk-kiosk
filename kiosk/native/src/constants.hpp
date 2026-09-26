@@ -125,5 +125,6 @@ inline constexpr int MULTIMON_MAX_RESPAWNS = 3;
 inline constexpr double MULTIMON_HEALTHY_S = 60.0;
 inline constexpr int SAME_RING = 44100;            // multimon ring (2 s at 22.05 kHz)
 inline constexpr double DROP_LOG_EVERY_S = 10.0;   // rate limit for the IQ-drop log line
+inline constexpr double AUDIO_STATS_EVERY_S = 60.0; // speaker-output loss summary cadence (logged only if nonzero)
 inline constexpr int CMD_QUEUE = 256;
 }  // namespace kc

@@ -142,10 +142,24 @@ class AlsaSink {
   bool open(std::string& err, const std::function<bool()>& should_stop = {});
   void start();
   void stop();
-  size_t write(const int16_t* x, size_t n) { return ring_.write(x, n); }
+  size_t write(const int16_t* x, size_t n) {
+    const size_t w = ring_.write(x, n);
+    if (w < n) overflow_.fetch_add(n - w, std::memory_order_relaxed);
+    return w;
+  }
+  // Speaker-output losses since the last take_stats(): samples the full ring refused (DSP ahead of
+  // the card), samples trimmed for SDR-vs-card clock drift, silence samples padded in on underrun
+  // (card starved), and ALSA write errors (xruns) the writer recovered from.
+  struct Stats { uint64_t overflow = 0, drift = 0, underrun = 0, xruns = 0; };
+  Stats take_stats() {
+    return {overflow_.exchange(0), drift_.exchange(0), underrun_.exchange(0), xruns_.exchange(0)};
+  }
+  // One log line, or "" when nothing was lost (samples at AUDIO_RATE).
+  static std::string format_stats(const Stats& s, double window_s);
 
  private:
   void run();
+  std::atomic<uint64_t> overflow_{0}, drift_{0}, underrun_{0}, xruns_{0};
   std::string device_;
   LogFn log_;
   SpscRing<int16_t> ring_;
