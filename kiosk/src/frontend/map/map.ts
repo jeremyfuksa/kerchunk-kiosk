@@ -162,6 +162,12 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
     // idle loop. The layer is inert until the first snapshot arrives.
     const aircraft = new AircraftLayer(map, geo, cfg.aircraft?.trails ?? false);
 
+    // Kiosk render diagnostic (one journal line per page load): which renderer
+    // Google gave us -- VECTOR needs working WebGL, RASTER is its choppier
+    // fallback -- and the display's real frame pacing. Motion-smoothness work
+    // needs this, and the kiosk has no devtools.
+    if (!interactive) reportRenderDiag(map);
+
     // Edge glow: a hit with no honest map position has nowhere truthful to sit,
     // so instead of a synthetic dot we pulse the screen edges in the band's
     // color — "something on <service> just keyed up, location unknown".
@@ -692,3 +698,32 @@ const DARK_STYLE = [
   { featureType: "poi", stylers: [{ visibility: "off" }] },
   { featureType: "transit", elementType: "geometry", stylers: [{ color: "#262b34" }] },
 ];
+
+// Measure DIAG_MS of rAF pacing once the map has settled, then POST it. The
+// loop runs only for those 2 s (no standing rAF: thermal rule).
+const DIAG_SETTLE_MS = 8000;
+const DIAG_MS = 2000;
+function reportRenderDiag(map: { getRenderingType?: () => string }): void {
+  setTimeout(() => {
+    const gaps: number[] = [];
+    let last = 0;
+    const t0 = performance.now();
+    const step = (t: number): void => {
+      if (last) gaps.push(t - last);
+      last = t;
+      if (t - t0 < DIAG_MS) { requestAnimationFrame(step); return; }
+      if (!gaps.length) return;
+      gaps.sort((a, b) => a - b);
+      const mean = gaps.reduce((a, b) => a + b, 0) / gaps.length;
+      const body = {
+        renderingType: String(map.getRenderingType?.() ?? "UNKNOWN"),
+        fps: Math.round((1000 / mean) * 10) / 10,
+        p95Ms: Math.round((gaps[Math.floor(gaps.length * 0.95)] ?? mean) * 10) / 10,
+        maxMs: Math.round((gaps[gaps.length - 1] ?? mean) * 10) / 10,
+      };
+      void fetch("/api/kiosk/diag", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) })
+        .catch(() => { /* best-effort */ });
+    };
+    requestAnimationFrame(step);
+  }, DIAG_SETTLE_MS);
+}
