@@ -65,6 +65,7 @@ bool Multimon::spawn(std::string& err) {
   close(in[0]);
   close(out[1]);
   pid_ = pid;
+  spawned_at_ = std::chrono::steady_clock::now();
   out_fd_ = out[0];
   pump_.set_fd(in[1], /*owned=*/true);   // the pump now owns this fd; it closes the previous one itself
   return true;
@@ -110,7 +111,12 @@ void Multimon::reader() {
     if (of >= 0) close(of);
     if (pid_ > 0) { waitpid(pid_, nullptr, 0); pid_ = -1; }
     line.clear();
-    if (respawns_ >= 1) { pump_.set_fd(-1); running_ = false; return; }
+    const double ran_s = std::chrono::duration<double>(std::chrono::steady_clock::now() - spawned_at_).count();
+    if (ran_s >= healthy_s_) respawns_ = 0;   // it was healthy: this is a fresh failure, not a crash loop
+    if (respawns_ >= max_respawns_) {
+      log_("multimon-ng keeps exiting (" + std::to_string(respawns_) + " quick restarts): giving up, SAME decoding is OFF until the helper restarts");
+      pump_.set_fd(-1); running_ = false; return;
+    }
     respawns_++;
     std::string err;
     if (!spawn(err)) { log_("multimon-ng respawn failed: " + err); pump_.set_fd(-1); running_ = false; return; }

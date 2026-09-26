@@ -116,6 +116,11 @@ inline constexpr int AUDIO_RING = 32768;           // speaker ring (~680 ms)
 inline constexpr int AUDIO_MAX_LAT = 7200;         // above 150 ms queued, trim ...
 inline constexpr int AUDIO_TARGET_LAT = 2400;      // ... down to 50 ms (SDR vs ALSA clock drift)
 inline constexpr int TEE_RING = 96000;             // fd-3 tee ring (2 s)
+// multimon-ng (SAME) child restarts: a crash loop gives up after MULTIMON_MAX_RESPAWNS quick
+// restarts, but a child that ran at least MULTIMON_HEALTHY_S before dying earns the budget back --
+// otherwise one crash a day would end SAME decoding for the rest of the helper's life.
+inline constexpr int MULTIMON_MAX_RESPAWNS = 3;
+inline constexpr double MULTIMON_HEALTHY_S = 60.0;
 inline constexpr int SAME_RING = 44100;            // multimon ring (2 s at 22.05 kHz)
 inline constexpr double DROP_LOG_EVERY_S = 10.0;   // rate limit for the IQ-drop log line
 inline constexpr int CMD_QUEUE = 256;

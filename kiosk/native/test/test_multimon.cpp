@@ -44,19 +44,36 @@ TEST(multimon_pipes_lines_through_child) {
   CHECK(!s.ev.empty() && s.ev[0]["ev"] == "same" && s.ev[0]["raw"].get<std::string>().find("ZCZC") != std::string::npos);
 }
 
-TEST(multimon_respawns_once_then_gives_up) {
+TEST(multimon_crash_loop_gives_up_after_max_quick_respawns) {
   Sink s;
-  kc::Multimon mm({"sh", "-c", "echo 'EAS: NNNN'"}, s.emit(), s.log());
+  kc::Multimon mm({"sh", "-c", "echo 'EAS: NNNN'"}, s.emit(), s.log());   // default budget, 60 s healthy
   std::string err;
   CHECK(mm.start(err));
-  CHECK(s.wait_events(2, 3000));                 // first run + one respawn
+  CHECK(s.wait_events(1 + kc::MULTIMON_MAX_RESPAWNS, 3000));   // first run + every quick respawn
   std::this_thread::sleep_for(std::chrono::milliseconds(300));
   mm.stop();
   std::lock_guard<std::mutex> g(s.m);
-  CHECK(s.ev.size() == 2);
-  int exited = 0;
-  for (auto& l : s.logs) if (l == "multimon-ng exited: SAME decoding stopped") exited++;
-  CHECK(exited == 2);
+  CHECK(s.ev.size() == (size_t)(1 + kc::MULTIMON_MAX_RESPAWNS));
+  int exited = 0, gave_up = 0;
+  for (auto& l : s.logs) {
+    if (l == "multimon-ng exited: SAME decoding stopped") exited++;
+    if (l.find("giving up") != std::string::npos) gave_up++;
+  }
+  CHECK(exited == 1 + kc::MULTIMON_MAX_RESPAWNS);
+  CHECK(gave_up == 1);
+}
+
+TEST(multimon_healthy_run_refills_respawn_budget) {
+  // Each child lives 0.3 s -- longer than the 0.2 s healthy mark -- so every exit is a fresh
+  // failure: with a budget of 1 it keeps coming back well past one restart.
+  Sink s;
+  kc::Multimon mm({"sh", "-c", "sleep 0.3; echo 'EAS: NNNN'"}, s.emit(), s.log(), /*max_respawns=*/1, /*healthy_s=*/0.2);
+  std::string err;
+  CHECK(mm.start(err));
+  CHECK(s.wait_events(4, 4000));
+  mm.stop();
+  std::lock_guard<std::mutex> g(s.m);
+  for (auto& l : s.logs) CHECK(l.find("giving up") == std::string::npos);
 }
 
 TEST(multimon_stop_during_in_flight_respawn_returns_promptly) {
