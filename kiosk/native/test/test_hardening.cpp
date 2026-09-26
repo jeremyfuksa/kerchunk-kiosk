@@ -65,14 +65,30 @@ TEST(resampler_pointer_overload_matches_vector) {
 }
 
 TEST(dsp_thread_init_flushes_denormals) {
-  float out = -1;
+  // x*1.0f is a legal identity fold a compiler may perform even on a volatile operand (verified:
+  // GCC 15 folds it to the operand's known value with no mulss/vmulss emitted at all, at every -O
+  // level, independent of FTZ/DAZ) — that stimulus can't tell FTZ/DAZ from a no-op. Two runtime
+  // volatile operands whose product is subnormal cannot be constant-folded away.
+  float out_ftz = -1, out_daz = -1, control = -1;
   std::thread t([&] {
     kc::dsp_thread_init();
-    volatile float tiny = 1e-40f;   // subnormal
-    out = tiny * 1.0f;
+    volatile float a = 1e-30f, b = 1e-10f;    // product 1e-40: normal x normal -> subnormal result (FTZ)
+    out_ftz = a * b;
+    volatile float tiny = 1e-40f, two = 2.0f;  // subnormal input x non-identity factor (DAZ + FTZ)
+    out_daz = tiny * two;
   });
   t.join();
-  CHECK(out == 0.0f);
+  CHECK(out_ftz == 0.0f);
+  CHECK(out_daz == 0.0f);
+
+  // Control: the same a*b stimulus, in a thread that never calls dsp_thread_init(), must NOT be
+  // zero — otherwise the compiler folded it away and the checks above would pass vacuously.
+  std::thread c([&] {
+    volatile float a = 1e-30f, b = 1e-10f;
+    control = a * b;
+  });
+  c.join();
+  CHECK(control != 0.0f);
 }
 
 // Quieting anchor through the real channel filter (the calibration starting point).
