@@ -83,4 +83,22 @@ inline constexpr double CC_GUARD_HZ = 12500;
 inline constexpr double CC_DC_FRAC = 0.02;
 inline constexpr double CC_EDGE_FRAC = 0.10;
 inline constexpr double CC_DB_DEFAULT = 15.0;
+
+// ---- Live I/O (P1c)
+inline constexpr int IQ_BLOCK_BYTES = 48000;       // max 10 ms of u8 IQ at 2.4 Msps (blocks are <= 10 ms at any rate)
+inline constexpr int IQ_RING_BLOCKS = 64;          // ~640 ms of IQ buffering between USB and DSP
+inline constexpr int RTL_BUF_NUM = 4;              // librtlsdr async buffers (small: bounds in-flight samples on retune)
+inline constexpr int RTL_BUF_LEN = 16384;          // bytes per async buffer (~3.4 ms at 2.4 Msps; multiple of 512)
+inline constexpr double RETUNE_SETTLE_MS = 20;     // new-generation samples discarded after a retune (in-flight USB)
+inline constexpr double STALL_S = 2.0;             // no samples this long = SDR loss -> exit 3
+inline constexpr double BUSY_RETRY_S = 3.0;        // retry rtlsdr_open this long (previous helper releasing)
+inline constexpr int ALSA_PERIOD = 480;            // 10 ms at 48 kHz
+inline constexpr unsigned ALSA_LATENCY_US = 60000; // requested device buffer latency
+inline constexpr int AUDIO_RING = 32768;           // speaker ring (~680 ms)
+inline constexpr int AUDIO_MAX_LAT = 7200;         // above 150 ms queued, trim ...
+inline constexpr int AUDIO_TARGET_LAT = 2400;      // ... down to 50 ms (SDR vs ALSA clock drift)
+inline constexpr int TEE_RING = 96000;             // fd-3 tee ring (2 s)
+inline constexpr int SAME_RING = 44100;            // multimon ring (2 s at 22.05 kHz)
+inline constexpr double DROP_LOG_EVERY_S = 10.0;   // rate limit for the IQ-drop log line
+inline constexpr int CMD_QUEUE = 256;
 }  // namespace kc
