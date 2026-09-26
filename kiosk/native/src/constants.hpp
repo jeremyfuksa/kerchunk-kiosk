@@ -37,9 +37,16 @@ inline constexpr double CLOSE_HYST_DB = 3.0;
 inline constexpr double GATE_HYST_DB = 1.0;
 inline constexpr double QUIET_HYST_DB = 2.0;
 // Native quieting threshold (dB of discriminator HF-noise power; lower = more quieted). NOT the GR
-// scale (~90 dB apart): GR measured after nbfm_rx's audio LPF. Calibrated 2026-09-25 from
-// kiosk/bench/RESULTS-2026-09-25-native-p1b.md; re-checked by ear at the P3 A/B.
-inline constexpr double QUIET_DB_DEFAULT = -4.0;
+// scale (~90 dB apart): GR measured after nbfm_rx's audio LPF. Chosen, not the midpoint of the
+// 2026-09-25 real-RF survey (kiosk/bench/RESULTS-2026-09-25-native-p1b.md): that capture's only
+// keyed data was one lane's periodic ~15 dB-hot, likely-non-voice source (5 bursts, steady worst
+// -29.7 dB) -- no weak/fluttering/voice carrier was observed, so the midpoint isn't trustworthy.
+// -6 keeps every dead-window reading out (0/3172 dead rows below -5.0 dB, worst -4.68) while the
+// steady keyed reading (-29.7) and a hot +-5 kHz synthetic carrier (-18.9, test_hardening) sit well
+// inside it; biased permissive (vs. -7 or tighter) so a weak carrier doesn't get chopped as noise.
+// Validated by ear at the P3 A/B, the real check for a threshold this data-starved. Tune live via
+// --quiet-db.
+inline constexpr double QUIET_DB_DEFAULT = -6.0;
 inline constexpr double FLOOR_ALPHA_UP = 0.01005;  // GR 0.02 per 20 ms
 inline constexpr double FLOOR_ALPHA_DOWN = 0.1056; // GR 0.2 per 20 ms
 inline constexpr double LEVEL_REF_DB = -14;
