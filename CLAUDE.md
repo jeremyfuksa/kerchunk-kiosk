@@ -79,11 +79,16 @@ Pi-class install; see [`docs/DEPLOY.md`](docs/DEPLOY.md)).
 ```sh
 npm test                 # vitest, no hardware needed (FakeEngine + fake helper)
 npm run test:py          # DSP-math tests — runs /usr/bin/python3 (system python)
-npm run build            # build:frontend (vite) + build:backend (tsc + copy helpers)
+npm run test:native      # C++ DSP unit tests — builds native/build/kerchunk-dsp-tests
+npm run build            # build:frontend (vite) + build:backend (tsc + copy helpers) + build:native:dist (cmake)
 npm run typecheck        # BOTH tsconfigs; vite does NOT typecheck (see below)
 npm run dev:frontend     # vite dev server, proxies /api + /ws to :8080
 USE_FAKE_ENGINE=1 KERCHUNK_CONFIG=/tmp/kc.json npm run dev:backend
 ```
+
+`npm run build` now also compiles the native engine (`build:native:dist`,
+`kiosk/native/`) via cmake/C++ at `--parallel 2`. On the appliance that's a
+real compile, not just `tsc`/`vite` — a thermal cost like any other build.
 
 ## Deploy & restart discipline
 
@@ -207,10 +212,16 @@ you even with green checks.
 ## Architecture notes
 
 - **Engine abstraction.** Everything runs behind the `ScannerEngine` interface
-  (`src/backend/engine/`), with three implementations: `WidebandEngine`
-  (default, GNU Radio), `RtlFmEngine` (sequential fallback), and `FakeEngine`
-  (tests). Selected via `KERCHUNK_ENGINE=wideband|rtlfm|fake`. Because tests use
-  `FakeEngine`, the whole suite runs with no SDR attached.
+  (`src/backend/engine/`), with four implementations: `WidebandEngine` in GR
+  mode (default, GNU Radio) or native mode (`KERCHUNK_ENGINE=native`, spawns
+  `kerchunk-dsp`, the C++ DSP replacement under A/B), plus `RtlFmEngine`
+  (sequential fallback) and `FakeEngine` (tests). Native mode differs from GR
+  mode in three ways: fixed 12 slots with no lane-plan respawns; `--quiet-db`
+  taken only from `scan.nativeQuietDb` (native's own dB scale, default −6,
+  never mixed with GR's `noiseQuietDb`); and liveness watchdogs (ready-timeout
+  and silence-timeout) that GR mode doesn't need. Selected via
+  `KERCHUNK_ENGINE=wideband|native|rtlfm|fake`. Because tests use `FakeEngine`,
+  the whole suite runs with no SDR attached.
 - **The engine never sees banks.** The server resolves per-channel scan
   overrides into a concrete `ScanChannel` before handing config to the engine.
 - **Dependency injection.** `createServer(deps: ServerDeps)` takes every
@@ -257,5 +268,5 @@ you even with green checks.
 ## Other
 
 - Env vars: `PORT` (8080), `KERCHUNK_CONFIG`, `KERCHUNK_STATIC`,
-  `KERCHUNK_ENGINE`, `USE_FAKE_ENGINE`.
+  `KERCHUNK_ENGINE=wideband|native|rtlfm|fake`, `USE_FAKE_ENGINE`.
 - Deploy details (incl. the legacy SSH-to-Pi flow): [`docs/DEPLOY.md`](docs/DEPLOY.md).

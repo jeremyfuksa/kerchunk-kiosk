@@ -29,6 +29,58 @@ Two services: `kerchunk-kiosk` (backend) and `kerchunk-display` (the chromium
 wall session). A wedged/stale wall page is fixed with
 `sudo systemctl restart kerchunk-display` — don't bounce the backend for it.
 
+## Native engine (kerchunk-dsp)
+
+`WidebandEngine` has a second mode: instead of spawning GNU Radio's
+`wideband_helper.py`, it spawns `kerchunk-dsp`, a standalone C++ DSP helper
+(`kiosk/native/`) built with cmake. It's the GR replacement under A/B —
+same `ScannerEngine` interface, same config, selected by an env var.
+
+**Build deps** (apt): `cmake libfftw3-dev nlohmann-json3-dev libasound2-dev
+librtlsdr-dev`.
+
+`npm run build` now builds `kerchunk-dsp` (cmake, `--parallel 2`) and copies
+it to `dist/backend/engine/` alongside the existing JS build — no separate
+step needed, but it's a real C++ compile, not just `tsc`/`vite`: a thermal
+cost like any other build.
+
+**Switch to native:**
+
+```sh
+sudo systemctl edit kerchunk-kiosk
+```
+
+Add under `[Service]`:
+
+```
+Environment=KERCHUNK_ENGINE=native
+```
+
+Then:
+
+```sh
+sudo systemctl restart kerchunk-kiosk
+```
+
+**Before switching, snapshot the per-channel trims** — each engine persists
+levels the other loads, so switching without a snapshot risks losing the
+current engine's tuning. With `kerchunk-kiosk` stopped (hand-edit rule):
+
+```sh
+sudo cp /var/lib/kerchunk-kiosk/config.json /var/lib/kerchunk-kiosk/config.pre-native.json
+```
+
+**Rollback:** remove the drop-in (or set `Environment=KERCHUNK_ENGINE=wideband`)
+and restart.
+
+Notes:
+
+- Under native, the weather radio runs its narrow front-end at 250 kHz
+  (vs. 240 kHz under GR) — native lanes must land on a multiple of 50 kHz,
+  GR's quad-rate front-end on a multiple of 48 kHz.
+- The tuning knob is `scan.nativeQuietDb` (native's own dB scale, default −6
+  — never mixed with GR's `noiseQuietDb`).
+
 ## Legacy: remote Pi deploy
 
 `kiosk/scripts/deploy.sh` and the `.githooks/post-merge` auto-deploy hook are

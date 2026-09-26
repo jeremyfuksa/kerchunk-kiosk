@@ -27,13 +27,19 @@ const PORT = Number(process.env.PORT ?? 8080);
 const CONFIG_PATH = process.env.KERCHUNK_CONFIG ?? "/var/lib/kerchunk-kiosk/config.json";
 const STATIC_DIR = process.env.KERCHUNK_STATIC
   ?? join(fileURLToPath(new URL("../frontend", import.meta.url)));
-// Engine selection: KERCHUNK_ENGINE=wideband|rtlfm|fake. USE_FAKE_ENGINE=1 is
-// honored as the legacy spelling of "fake". Default is the wideband engine —
-// burned in on the appliance (simultaneous multi-channel, zero device
-// re-opens); rtlfm remains selectable as the fallback for Pi-class hardware
-// without GNU Radio.
+// Engine selection: KERCHUNK_ENGINE=wideband|native|rtlfm|fake. USE_FAKE_ENGINE=1
+// is honored as the legacy spelling of "fake". Default is the wideband (GNU
+// Radio) engine — burned in on the appliance (simultaneous multi-channel, zero
+// device re-opens); native is the kerchunk-dsp (C++) replacement under A/B;
+// rtlfm remains selectable as the fallback for Pi-class hardware without GNU
+// Radio.
 const engineKind = process.env.KERCHUNK_ENGINE
   ?? (process.env.USE_FAKE_ENGINE === "1" ? "fake" : "wideband");
+const nativeEngine = engineKind === "native";
+// Both the GR and native helpers are the same multi-channel WidebandEngine
+// (native just flips its `native` flag) — anywhere the check means "the
+// multi-channel helper engine", treat wideband and native alike.
+const widebandFamily = engineKind === "wideband" || nativeEngine;
 
 const configStore = new ConfigStore(CONFIG_PATH);
 const config = configStore.load();
@@ -64,13 +70,15 @@ const restartBackoffOpts = config.scan.maxRestartDelayMs !== undefined
   ? { maxRestartDelayMs: config.scan.maxRestartDelayMs }
   : {};
 
+// Operator knob: config.scan.maxHoldMs (omitted = the engine's 180 s).
+const maxHold = config.scan.maxHoldMs !== undefined ? { maxHoldMs: config.scan.maxHoldMs } : {};
 const engine =
   engineKind === "fake" ? new FakeEngine()
-  : engineKind === "wideband" ? new WidebandEngine({
+  : widebandFamily ? new WidebandEngine({
+      ...(nativeEngine ? { native: true } : {}),
       ...deviceOpts(scanRadio),
       ...restartBackoffOpts,
-      // Operator knob: config.scan.maxHoldMs (omitted = the engine's 180 s).
-      ...(config.scan.maxHoldMs !== undefined ? { maxHoldMs: config.scan.maxHoldMs } : {}),
+      ...maxHold,
     })
   : new RtlFmEngine({
       openThreshold: config.scan.squelchLevel,
@@ -86,10 +94,15 @@ const engine =
 // cheaper, which keeps a second helper inside this box's tight thermal budget.
 // The window is parked 60 kHz off the channel so 162.55 doesn't sit on the RTL
 // DC spike (the channel filter then removes the spike at +60 kHz baseband).
-const WEATHER_RATE_HZ = 240_000;
+// Native lanes must land on a multiple of 50 kHz; GR's quad-rate front-end
+// must land on a multiple of 48 kHz — 240 kHz (GR) and 250 kHz (native) are
+// each the smallest rate that satisfies their engine's constraint while still
+// being a valid RTL sample rate.
+const WEATHER_RATE_HZ = nativeEngine ? 250_000 : 240_000;
 const WEATHER_CENTER_OFFSET_HZ = 60_000;
-const weatherEngine = engineKind === "wideband" && weatherRadio && config.weatherChannel
+const weatherEngine = widebandFamily && weatherRadio && config.weatherChannel
   ? new WidebandEngine({
+      ...(nativeEngine ? { native: true } : {}),
       ...deviceOpts(weatherRadio),
       ...restartBackoffOpts,
       sampleRateHz: WEATHER_RATE_HZ,
