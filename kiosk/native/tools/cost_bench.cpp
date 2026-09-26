@@ -54,7 +54,7 @@ int main(int argc, char** argv) {
   std::vector<kc::QuietingMeter> quiet(L);
   std::vector<kc::MeanSquare> speech(L, kc::MeanSquare(kc::SPEECH_WINDOW));
   kc::Deemphasis de;
-  kc::FirFilter audio_lpf(kc::design_lowpass(kc::LANE_RATE, kc::AUDIO_LPF_HZ, kc::AUDIO_LPF_TRANSITION_HZ));
+  kc::FirFilter audio_lpf(kc::design_lowpass(kc::LANE_RATE, kc::SPEAKER_LPF_HZ, kc::SPEAKER_LPF_TRANSITION_HZ));
   kc::Resampler to48(24, 25, kc::LANE_RATE, kc::SPEAKER_RS_CUTOFF_HZ, kc::SPEAKER_RS_TRANSITION_HZ);
   std::vector<float> lane_audio(kc::Channelizer::kLaneSamplesPerHop), out48;
   const int demod_lanes = demod == "all" ? L : demod == "one" ? 1 : 0;

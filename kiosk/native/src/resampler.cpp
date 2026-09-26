@@ -19,7 +19,7 @@ Resampler::Resampler(int up, int down, double in_rate, double cutoff_hz, double 
   hist_.assign(2 * (size_t)tpp_, 0.f);
 }
 
-int Resampler::push(const float* x, int n, std::vector<float>& out) {
+int Resampler::push(const float* x, int n, float* out, int cap) {
   int emitted = 0;
   for (int i = 0; i < n; i++) {
     hist_[pos_] = x[i];
@@ -27,16 +27,28 @@ int Resampler::push(const float* x, int n, std::vector<float>& out) {
     const float* w = &hist_[pos_ + 1];  // oldest-first window of the last tpp inputs
     while (phase_ < up_) {
       const float* h = &poly_[(size_t)phase_ * tpp_];
-      float acc = 0.f;
-      for (int j = 0; j < tpp_; j++) acc += h[j] * w[j];
-      out.push_back(acc);
-      emitted++;
+      // 8 independent partial sums (see FirFilter::step for why this matters without -ffast-math).
+      float a[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+      int j = 0;
+      for (; j + 8 <= tpp_; j += 8)
+        for (int k = 0; k < 8; k++) a[k] += h[j + k] * w[j + k];
+      float acc = ((a[0] + a[1]) + (a[2] + a[3])) + ((a[4] + a[5]) + (a[6] + a[7]));
+      for (; j < tpp_; j++) acc += h[j] * w[j];
+      if (emitted < cap) out[emitted++] = acc;
       phase_ += down_;
     }
     phase_ -= up_;
     pos_ = pos_ + 1 == tpp_ ? 0 : pos_ + 1;
   }
   return emitted;
+}
+
+int Resampler::push(const float* x, int n, std::vector<float>& out) {
+  size_t old = out.size();
+  out.resize(old + (size_t)max_out(n));
+  int got = push(x, n, out.data() + old, max_out(n));
+  out.resize(old + (size_t)got);
+  return got;
 }
 
 void Resampler::reset() {
