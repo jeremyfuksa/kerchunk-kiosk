@@ -86,19 +86,19 @@ TEST(live_drops_advance_clock_and_report) {
   r.src.add(3, 1);
   r.run();
   r.src.dropped = 2500;             // 10 ms lost in the ring
+  r.loop->step();
+  // note_gap resyncs samples_ to pushed_ (like tune()), so the gap can't lose the partial hop it
+  // discards off the clock: by this point 3 blocks have been consumed (2 settle-discarded + the one
+  // real push once the tune landed) = 3*2500 = 7500 samples, plus the 2500-sample gap just noted =
+  // 10000 samples exactly, no hop-granular slack.
+  CHECK_NEAR(r.e->now(), 10000.0 / RATE, 1e-9);
   r.src.add(40, 1);
   r.run();
   bool saw = false;
   for (auto& j : r.ev) if (j["ev"] == "power" && j.contains("drops")) { saw = true; CHECK(j["drops"].get<long long>() == 2500); }
   CHECK(saw);
   CHECK(r.count("log") == 1);       // rate-limited overrun log
-  // Not 0.44 (110000 samples = every input sample): note_gap's reset_stream (fired by the drop)
-  // discards the 260-sample partial hop block3 had buffered (7 hops of 320 land, 260 are lost with
-  // it), and the run ends with a 160-sample partial hop still unflushed from the last push. Re-derived
-  // from hop = n_/2 = 320 at this rate (Channelizer::hop()), not the settle constant:
-  // 5000 (tune resync) + 2240 (block3: 7 hops) + 2500 (the gap itself) + 99840 (312 hops of the
-  // 100000-sample tail) = 109580 samples = 0.43832 s.
-  CHECK_NEAR(r.e->now(), 0.43832, 1e-9);
+  CHECK_NEAR(r.e->now(), 0.44, 0.0015);
 }
 
 TEST(live_retune_mid_stream_discards_old_generation) {

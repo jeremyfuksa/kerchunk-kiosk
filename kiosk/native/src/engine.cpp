@@ -84,8 +84,11 @@ void Engine::tune(const TuneCmd& t) {
 
 void Engine::note_gap(long long n, bool dropped) {
   if (n <= 0) return;
-  samples_ += n;
   pushed_ += n;
+  // Resync the clock to pushed_, same as tune(): reset_stream() below throws away whatever partial
+  // hop was buffered, and that partial hop's samples were already counted in pushed_ (by push_u8)
+  // before this gap landed, so leaving samples_ hop-lagged would lose them off the clock forever.
+  samples_ = pushed_;
   if (tuned_) ch_.reset_stream();
   if (!dropped) return;
   drops_since_power_ += n;
