@@ -1,5 +1,6 @@
 #include "engine.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <string>
 #include <type_traits>
@@ -91,9 +92,33 @@ void Engine::tune(const TuneCmd& t) {
   tuned_ = true;
 }
 
+void Engine::flush_audio() {
+  if (out48_.empty()) return;
+  if (speaker_) { to_s16(out48_.data(), (int)out48_.size(), SPEAKER_S16_SCALE, s16_); speaker_(s16_.data(), (int)s16_.size()); }
+  if (tee_) { to_s16(out48_.data(), (int)out48_.size(), TEE_S16_SCALE, s16_); tee_(s16_.data(), (int)s16_.size()); }
+}
+
+void Engine::speak_silence(long long n) {
+  // A gap (retune settle / old-center discard / IQ overrun) produces no hops, so without this the
+  // speaker ring starves for the gap's length every group hop (~20-35 ms; the audio-loss counter
+  // measured ~430 ms/min). Run the speaker path on silence for the same wall time instead: its
+  // filters decay naturally and the output clock stays continuous.
+  gap_lane_acc_ += n * LANE_RATE;
+  long long lane_n = gap_lane_acc_ / opt_.rate;
+  gap_lane_acc_ %= opt_.rate;
+  while (lane_n > 0) {
+    const int k = (int)std::min<long long>(lane_n, Channelizer::kLaneSamplesPerHop);
+    out48_.clear();
+    spk_.process(nullptr, nullptr, k, out48_);
+    flush_audio();
+    lane_n -= k;
+  }
+}
+
 void Engine::note_gap(long long n, bool dropped) {
   if (n <= 0) return;
   pushed_ += n;
+  if (tuned_) speak_silence(n);
   // Resync the clock to pushed_, same as tune(): reset_stream() below throws away whatever partial
   // hop was buffered, and that partial hop's samples were already counted in pushed_ (by push_u8)
   // before this gap landed, so leaving samples_ hop-lagged would lose them off the clock forever.
@@ -144,10 +169,7 @@ void Engine::on_hop(const cf* lanes, int per, const cf* raw, int raw_n) {
   }
   if (f >= 0) spk_.process(lanes + f * per, disc_buf_[f].data(), per, out48_);
   else spk_.process(nullptr, nullptr, per, out48_);
-  if (!out48_.empty()) {
-    if (speaker_) { to_s16(out48_.data(), (int)out48_.size(), SPEAKER_S16_SCALE, s16_); speaker_(s16_.data(), (int)s16_.size()); }
-    if (tee_) { to_s16(out48_.data(), (int)out48_.size(), TEE_S16_SCALE, s16_); tee_(s16_.data(), (int)s16_.size()); }
-  }
+  flush_audio();
   if (cc_on_) cc_->push_raw(raw, raw_n);
   lane_samples_ += per;
   while (lane_samples_ >= next_poll_) {
