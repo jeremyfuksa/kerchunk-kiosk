@@ -46,6 +46,14 @@ cost like any other build.
 
 **Switch to native:**
 
+If `kerchunk-dsp` has changed since the last build (native source edits,
+or you've never built on this checkout), build first — the binary that
+ships is whatever's in `dist/`:
+
+```sh
+cd kiosk && npm run build
+```
+
 ```sh
 sudo systemctl edit kerchunk-kiosk
 ```
@@ -63,15 +71,72 @@ sudo systemctl restart kerchunk-kiosk
 ```
 
 **Before switching, snapshot the per-channel trims** — each engine persists
-levels the other loads, so switching without a snapshot risks losing the
-current engine's tuning. With `kerchunk-kiosk` stopped (hand-edit rule):
+levels (`levelTrimDb`, `rfDb`) the other loads, so switching without a
+snapshot risks losing the current engine's tuning. With `kerchunk-kiosk`
+stopped (hand-edit rule):
 
 ```sh
 sudo cp /var/lib/kerchunk-kiosk/config.json /var/lib/kerchunk-kiosk/config.pre-native.json
 ```
 
-**Rollback:** remove the drop-in (or set `Environment=KERCHUNK_ENGINE=wideband`)
-and restart.
+**Verify it's native:**
+
+```sh
+pgrep -a kerchunk-dsp     # scanner + weather (weather shows --rate 250000 --same-enable); no wideband_helper.py
+journalctl -u kerchunk-kiosk -f | grep '\[helper\]'   # forwarded helper log lines
+```
+
+**Rollback:** the per-channel trims drift while native runs, so undo isn't
+just flipping the env var back — restore only `levelTrimDb`/`rfDb` from the
+snapshot into the *current* live config first, so any other config edits
+made during the A/B (new channels, banks, alerts, …) survive. With
+`kerchunk-kiosk` stopped (hand-edit rule):
+
+```sh
+jq --slurpfile snap /var/lib/kerchunk-kiosk/config.pre-native.json \
+   '($snap[0].channels | map({(.id): {levelTrimDb, rfDb}}) | add) as $snapTrims
+    | .channels |= map(
+        if $snapTrims[.id] then
+          .levelTrimDb = $snapTrims[.id].levelTrimDb
+          | .rfDb = $snapTrims[.id].rfDb
+          | (if $snapTrims[.id].levelTrimDb == null then del(.levelTrimDb) else . end)
+          | (if $snapTrims[.id].rfDb == null then del(.rfDb) else . end)
+        else . end)' \
+   /var/lib/kerchunk-kiosk/config.json > /tmp/config.post-native.json \
+&& sudo mv /tmp/config.post-native.json /var/lib/kerchunk-kiosk/config.json
+```
+
+(No `jq` on the box? Equivalent with the system python:
+
+```sh
+/usr/bin/python3 -c '
+import json
+live = json.load(open("/var/lib/kerchunk-kiosk/config.json"))
+snap = json.load(open("/var/lib/kerchunk-kiosk/config.pre-native.json"))
+trims = {c["id"]: {"levelTrimDb": c.get("levelTrimDb"), "rfDb": c.get("rfDb")} for c in snap["channels"]}
+for ch in live["channels"]:
+    t = trims.get(ch["id"])
+    if t is None:
+        continue
+    for field in ("levelTrimDb", "rfDb"):
+        if t[field] is None:
+            ch.pop(field, None)
+        else:
+            ch[field] = t[field]
+json.dump(live, open("/tmp/config.post-native.json", "w"), indent=2)
+'
+sudo mv /tmp/config.post-native.json /var/lib/kerchunk-kiosk/config.json
+```
+)
+
+Only channel ids present in **both** files are touched — a channel added or
+removed during the A/B keeps whatever it has in the live file. Then remove
+the drop-in (or set `Environment=KERCHUNK_ENGINE=wideband`) and restart:
+
+```sh
+sudo systemctl edit kerchunk-kiosk       # remove the Environment= line, or set it back to wideband
+sudo systemctl restart kerchunk-kiosk
+```
 
 Notes:
 
