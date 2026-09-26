@@ -3,6 +3,8 @@
 #include <alsa/asoundlib.h>
 
 #include <atomic>
+#include <cerrno>
+#include <chrono>
 #include <condition_variable>
 #include <cstdint>
 #include <cstdio>
@@ -111,11 +113,33 @@ struct AlsaPolicy {
   }
 };
 
+// Pure retry loop behind AlsaSink::open (unit-tested without a device). `attempt` returns 0 on
+// success or a negative errno. -EBUSY/-EAGAIN retry every `interval_ms` until `timeout_s` has
+// elapsed; any other error fails at once; `should_stop` (optional) is polled after each busy attempt.
+// `last_rc` receives the final attempt's return code.
+struct BusyRetry {
+  enum class Result { Ok, Failed, TimedOut, Aborted };
+  static Result run(const std::function<int()>& attempt, const std::function<bool()>& should_stop,
+                    double timeout_s, int interval_ms, int& last_rc) {
+    const auto t0 = std::chrono::steady_clock::now();
+    for (;;) {
+      last_rc = attempt();
+      if (last_rc >= 0) return Result::Ok;
+      if (last_rc != -EBUSY && last_rc != -EAGAIN) return Result::Failed;
+      if (should_stop && should_stop()) return Result::Aborted;
+      if (std::chrono::steady_clock::now() - t0 >= std::chrono::duration<double>(timeout_s)) return Result::TimedOut;
+      std::this_thread::sleep_for(std::chrono::milliseconds(interval_ms));
+    }
+  }
+};
+
 class AlsaSink {
  public:
   AlsaSink(std::string device, LogFn log) : device_(std::move(device)), log_(std::move(log)), ring_(AUDIO_RING) {}
   ~AlsaSink() { stop(); }
-  bool open(std::string& err);
+  // Non-blocking open with a bounded busy retry (see BusyRetry / ALSA_BUSY_RETRY_S); should_stop
+  // aborts the wait (err = "aborted"). Writes stay blocking once open.
+  bool open(std::string& err, const std::function<bool()>& should_stop = {});
   void start();
   void stop();
   size_t write(const int16_t* x, size_t n) { return ring_.write(x, n); }

@@ -94,6 +94,16 @@ inline constexpr double STALL_S = 2.0;             // no samples this long = SDR
 inline constexpr double BUSY_RETRY_S = 3.0;        // retry rtlsdr_open this long (previous helper releasing)
 inline constexpr int ALSA_PERIOD = 480;            // 10 ms at 48 kHz
 inline constexpr unsigned ALSA_LATENCY_US = 60000; // requested device buffer latency
+// A busy hw/plughw device makes a blocking snd_pcm_open sleep in the kernel indefinitely (and
+// SIGTERM can't break it: SA_RESTART). Open non-blocking and retry -EBUSY/-EAGAIN this long,
+// every ALSA_BUSY_RETRY_MS, before failing (the previous helper may still be releasing the card).
+inline constexpr double ALSA_BUSY_RETRY_S = 3.0;
+inline constexpr int ALSA_BUSY_RETRY_MS = 100;
+// Upper bound on the whole live teardown once the main loop exits (src/ALSA/pump/multimon stops
+// run sequentially, and a sick USB device or sound card can wedge any of them -- exactly on the
+// stall/exit-3 path). A watchdog _Exit(4)s past this. Node SIGKILLs after 500 ms on a respawn,
+// but a plain service stop may not, so the helper bounds itself.
+inline constexpr int SHUTDOWN_DEADLINE_MS = 1500;
 inline constexpr int AUDIO_RING = 32768;           // speaker ring (~680 ms)
 inline constexpr int AUDIO_MAX_LAT = 7200;         // above 150 ms queued, trim ...
 inline constexpr int AUDIO_TARGET_LAT = 2400;      // ... down to 50 ms (SDR vs ALSA clock drift)

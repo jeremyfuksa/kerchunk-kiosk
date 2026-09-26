@@ -137,9 +137,27 @@ void FdPump::run() {
   }
 }
 
-bool AlsaSink::open(std::string& err) {
-  int rc = snd_pcm_open(&pcm_, device_.c_str(), SND_PCM_STREAM_PLAYBACK, 0);
-  if (rc < 0) { err = "ALSA open " + device_ + ": " + snd_strerror(rc); pcm_ = nullptr; return false; }
+bool AlsaSink::open(std::string& err, const std::function<bool()>& should_stop) {
+  int rc = 0;
+  const auto res = BusyRetry::run(
+      [&] {
+        const int r = snd_pcm_open(&pcm_, device_.c_str(), SND_PCM_STREAM_PLAYBACK, SND_PCM_NONBLOCK);
+        if (r < 0) pcm_ = nullptr;
+        return r;
+      },
+      should_stop, ALSA_BUSY_RETRY_S, ALSA_BUSY_RETRY_MS, rc);
+  if (res == BusyRetry::Result::Aborted) { err = "aborted"; return false; }
+  if (res == BusyRetry::Result::TimedOut) {
+    char s[32];
+    std::snprintf(s, sizeof s, "%g", ALSA_BUSY_RETRY_S);
+    err = "ALSA device " + device_ + " busy for " + s + " s";
+    return false;
+  }
+  if (res == BusyRetry::Result::Failed) { err = "ALSA open " + device_ + ": " + snd_strerror(rc); return false; }
+  // Opened non-blocking only so a busy device can't hang open(); the writer thread wants blocking
+  // writes (it paces itself on the card).
+  rc = snd_pcm_nonblock(pcm_, 0);
+  if (rc < 0) { err = "ALSA nonblock(0) " + device_ + ": " + snd_strerror(rc); snd_pcm_close(pcm_); pcm_ = nullptr; return false; }
   rc = snd_pcm_set_params(pcm_, SND_PCM_FORMAT_S16_LE, SND_PCM_ACCESS_RW_INTERLEAVED, 1, AUDIO_RATE, 1, ALSA_LATENCY_US);
   if (rc < 0) { err = "ALSA params: " + std::string(snd_strerror(rc)); snd_pcm_close(pcm_); pcm_ = nullptr; return false; }
   return true;

@@ -2,6 +2,7 @@
 // plus the replay mode (--iq-file) used by benches and tests.
 #include <csignal>
 #include <sys/resource.h>
+#include <unistd.h>
 
 #include <atomic>
 #include <chrono>
@@ -154,7 +155,11 @@ static int run_live(const kc::Cli& c) {
   if (g_stop) return 0;
   if (c.sink != "none") {
     alsa = std::make_unique<kc::AlsaSink>(c.sink, log);
-    if (!alsa->open(err)) { std::fprintf(stderr, "kerchunk-dsp: %s\n", err.c_str()); return 1; }
+    if (!alsa->open(err, [] { return g_stop.load(); })) {
+      if (g_stop) return 0;   // asked to stop while waiting for a busy card: clean exit
+      std::fprintf(stderr, "kerchunk-dsp: %s\n", err.c_str());
+      return 1;
+    }
   }
   if (g_stop) return 0;
   events.start();
@@ -183,6 +188,18 @@ static int run_live(const kc::Cli& c) {
       std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
   }
+  // Bound the teardown: the stops below run sequentially and a sick SDR/sound card can wedge any
+  // of them (src.stop's cancel loop, the ALSA writer's join) -- precisely on the stall/exit-3 path.
+  // Past SHUTDOWN_DEADLINE_MS the watchdog leaves with exit 4. It uses ::write for its message and
+  // deliberately skips fflush(stdout): a wedged event thread (or a parent not draining the pipe)
+  // could hold stdout's lock, and blocking there would defeat the watchdog. EventOut already
+  // flushes after every line, so nothing buffered is lost.
+  std::thread([] {
+    std::this_thread::sleep_for(std::chrono::milliseconds(kc::SHUTDOWN_DEADLINE_MS));
+    static const char msg[] = "kerchunk-dsp: shutdown deadline exceeded\n";
+    [[maybe_unused]] const ssize_t w = ::write(2, msg, sizeof msg - 1);
+    std::_Exit(4);
+  }).detach();
   src.stop();
   if (mm) mm->stop();
   if (tee) tee->stop();
