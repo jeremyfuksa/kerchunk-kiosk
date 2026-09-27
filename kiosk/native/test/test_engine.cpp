@@ -6,6 +6,7 @@
 #include "check.hpp"
 #include "engine.hpp"
 #include "signals.hpp"
+#include "subaudio.hpp"
 
 namespace {
 constexpr int RATE = 250'000;
@@ -427,4 +428,97 @@ TEST(engine_untoned_channel_opens_as_before_and_reports_heard_tone) {
   if (!op.empty()) { CHECK(op[0]["t"].get<double>() > 1.08); CHECK(op[0]["t"].get<double>() < 1.2); }
   auto t = r.of("tone");
   CHECK(t.size() == 1 && t[0]["ctcssHz"] == 151.4);
+}
+
+namespace {
+// FM carrier at `off` Hz: a 1 kHz "voice" tone (3 kHz dev) plus DCS NRZ at 600 Hz deviation
+// (1 = +dev, LSB of the on-air word first), added into x over [t0, t1).
+void burst_fm_dcs(std::vector<sig::cf>& x, double off, double t0, double t1, kc::DcsCode c) {
+  const uint32_t w = kc::dcs_word(c);
+  double ph = 0;
+  for (size_t i = (size_t)(t0 * RATE); i < (size_t)(t1 * RATE) && i < x.size(); i++) {
+    const double t = (double)i / RATE;
+    const long long b = (long long)((t - t0) * kc::DCS_BITRATE);
+    const double f = off + 3000 * std::sin(2 * M_PI * 1000 * t) + (((w >> (b % 23)) & 1u) ? 600 : -600);
+    ph += 2 * M_PI * f / RATE;
+    x[i] += sig::cf((float)(0.2 * std::cos(ph)), (float)(0.2 * std::sin(ph)));
+  }
+}
+std::string dcs_tune(const std::string& extra) {
+  return std::string(R"({"cmd":"tune","centerHz":146000000,"channels":[{"id":"a","freqHz":146050000,"hangMs":500)") +
+         extra + R"(}],"closeCall":false})";
+}
+}  // namespace
+
+TEST(engine_dcs_right_code_opens_and_reports) {
+  kc::EngineOptions o; o.rate = RATE;
+  Rig r(o);
+  r.tune(dcs_tune(R"(,"dcs":"023N")").c_str());
+  auto x = scene(3.0, 14);
+  burst_fm_dcs(x, 50'000, 1.0, 2.5, {023, false});
+  r.feed(x);
+  auto op = r.of("open");
+  CHECK(op.size() == 1);
+  if (!op.empty()) CHECK(op[0]["t"].get<double>() < 1.7);
+  auto t = r.of("tone");
+  CHECK(t.size() == 1 && t[0]["id"] == "a" && t[0]["dcs"] == "023N" && !t[0].contains("ctcssHz"));
+  CHECK(r.pcm_rms(1.9, 2.4) > 0.05);
+}
+
+TEST(engine_dcs_wrong_code_polarity_or_ctcss_never_opens) {
+  for (int k = 0; k < 4; k++) {
+    kc::EngineOptions o; o.rate = RATE;
+    Rig r(o);
+    r.tune(dcs_tune(R"(,"dcs":"023N")").c_str());
+    auto x = scene(3.0, 15 + k);
+    if (k == 0) burst_fm_dcs(x, 50'000, 1.0, 2.8, {0754, false});   // another code
+    if (k == 1) burst_fm_dcs(x, 50'000, 1.0, 2.8, {023, true});     // right digits, inverted
+    if (k == 2) burst_fm_ctcss(x, 50'000, 1.0, 2.8, 100.0);         // a CTCSS user
+    if (k == 3) burst_fm_ctcss(x, 50'000, 1.0, 2.8, 0.0);           // plain carrier
+    r.feed(x);
+    CHECK(r.of("open").empty());
+    CHECK(r.pcm_rms(1.0, 3.0) < 1e-3);
+  }
+}
+
+TEST(engine_untoned_channel_reports_heard_dcs_not_a_ctcss_artifact) {
+  kc::EngineOptions o; o.rate = RATE;
+  Rig r(o);
+  r.tune(dcs_tune("").c_str());
+  auto x = scene(3.0, 19);
+  burst_fm_dcs(x, 50'000, 1.0, 2.5, {023, true});
+  r.feed(x);
+  CHECK(r.of("open").size() == 1);
+  auto t = r.of("tone");
+  CHECK(t.size() == 1 && t[0]["dcs"] == "047N" && !t[0].contains("ctcssHz"));
+}
+
+TEST(engine_ctcss_lane_ignores_a_dcs_user) {
+  // The CTCSS detector hears a DCS stream's spectral lines as tones. Premise: find the tones it
+  // reads off a 043N discriminator (a steady 88.5 Hz artifact); then a lane toned to each must never
+  // open on that DCS user (Engine drops CTCSS readings while DCS decodes).
+  const uint32_t w = kc::dcs_word({043, false});
+  std::vector<float> disc((size_t)(2 * kc::LANE_RATE));
+  for (size_t i = 0; i < disc.size(); i++)
+    disc[i] = ((w >> ((long long)((double)i / kc::LANE_RATE * kc::DCS_BITRATE) % 23)) & 1u) ? 0.12f : -0.12f;
+  kc::SubaudioDecimator dec;
+  kc::CtcssDetector ct;
+  std::vector<float> sub(kc::SubaudioDecimator::max_out(500));
+  std::vector<float> heard;
+  for (size_t i = 0; i < disc.size(); i += 500) {
+    ct.push(sub.data(), dec.push(&disc[i], 500, sub.data()));
+    if (ct.tone() && std::find(heard.begin(), heard.end(), *ct.tone()) == heard.end()) heard.push_back(*ct.tone());
+  }
+  CHECK(!heard.empty());
+  for (float hz : heard) {
+    kc::EngineOptions o; o.rate = RATE;
+    Rig r(o);
+    char tone[16];
+    std::snprintf(tone, sizeof tone, "%.1f", hz);
+    r.tune(toned_tune(tone));
+    auto x = scene(3.0, 20);
+    burst_fm_dcs(x, 50'000, 1.0, 2.8, {043, false});
+    r.feed(x);
+    CHECK(r.of("open").empty());
+  }
 }

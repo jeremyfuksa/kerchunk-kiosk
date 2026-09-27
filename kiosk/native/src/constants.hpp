@@ -74,15 +74,18 @@ inline constexpr int RF_MIN_SAMPLES = 50;          // ~0.5 s before an rf estima
 // Squelch-calibration txstat events (instrumentation only): per carrier episode, keep at most this
 // many per-poll quiet/power samples (30 s at POLL_MS); later polls still count, samples stop.
 inline constexpr int TX_MAX_SAMPLES = 3000;
-// ---- CTCSS tone squelch + tone reporting (CtcssDetector, ctcss.hpp). The detector runs only on
-// FM lanes that are open or have a carrier episode in progress (Scanner::wants_tone).
-// Decimation: block-average CTCSS_DECIM1 discriminator samples (50 kHz -> 2 kHz), low-pass at
-// CTCSS_LPF_HZ, keep every 2nd (-> CTCSS_RATE). Every CTCSS tone (67-254.1 Hz) sits in the passband;
-// voice folding onto the tone band on the 2:1 step (746-933 Hz) is in the LPF stopband.
-inline constexpr int CTCSS_DECIM1 = 25;                 // 50 kHz -> 2 kHz block average
-inline constexpr int CTCSS_RATE = LANE_RATE / CTCSS_DECIM1 / 2;   // 1 kHz Goertzel rate
-inline constexpr double CTCSS_LPF_HZ = 350;             // 2 kHz-rate FIR -6 dB point
-inline constexpr double CTCSS_LPF_TRANSITION_HZ = 200;  // -> 33 taps
+// ---- Sub-audible squelch: CTCSS tones + DCS codes, detection + gating (subaudio.hpp, ctcss.hpp,
+// dcs.hpp). The detectors run only on FM lanes that are open or have a carrier episode in progress
+// (Scanner::wants_tone), and share one decimator per lane (SubaudioDecimator):
+// block-average SUBAUDIO_DECIM1 discriminator samples (50 kHz -> 2 kHz), low-pass at
+// SUBAUDIO_LPF_HZ, keep every 2nd (-> SUBAUDIO_RATE). Every CTCSS tone (67-254.1 Hz) and the DCS
+// bitstream (134.4 bit/s NRZ, energy below ~135 Hz) sit in the passband; voice folding onto the
+// sub-audible band on the 2:1 step (746-933 Hz) is in the LPF stopband.
+inline constexpr int SUBAUDIO_DECIM1 = 25;              // 50 kHz -> 2 kHz block average
+inline constexpr int SUBAUDIO_RATE = LANE_RATE / SUBAUDIO_DECIM1 / 2;   // 1 kHz detector rate
+inline constexpr double SUBAUDIO_LPF_HZ = 350;          // 2 kHz-rate FIR -6 dB point
+inline constexpr double SUBAUDIO_LPF_TRANSITION_HZ = 200;  // -> 33 taps
+// -- CTCSS (CtcssDetector): every CTCSS_HOP_MS a Goertzel per standard tone over CTCSS_WINDOW_MS.
 inline constexpr int CTCSS_WINDOW_MS = 400;             // Goertzel window: 2.5 Hz resolution (tightest
                                                         // EIA spacing is 67.0/69.3 = 2.3 Hz)
 inline constexpr int CTCSS_HOP_MS = 100;                // one tone decision per 100 ms
@@ -97,6 +100,26 @@ inline constexpr double CTCSS_FLOOR_DB = -40.0;
 inline constexpr int CTCSS_STABLE_HOPS = 2;             // same tone on this many hops in a row = detected
 inline constexpr double CTCSS_MATCH_HZ = 1.0;           // detected tone must be within this of ctcssHz
 inline constexpr double CTCSS_LOSS_MS = 300;            // open tone channel: tone gone this long mutes the gate
+// -- DCS (DcsDetector): 23-bit Golay(23,12) word repeated back to back, NRZ at DCS_BITRATE. The
+// detector low-passes the 1 kHz stream again (voice that survived the shared LPF), removes DC with a
+// one-word moving average, recovers bit timing from zero crossings, integrates-and-dumps each bit
+// and matches the last 23 bits against every rotation of every standard code.
+inline constexpr double DCS_BITRATE = 134.4;            // bit/s (TIA-603 / ETSI TS 103 236)
+inline constexpr int DCS_WORD_BITS = 23;
+inline constexpr double DCS_LPF_HZ = 180;               // 1 kHz-rate FIR -6 dB point: keeps the NRZ
+inline constexpr double DCS_LPF_TRANSITION_HZ = 160;    // eye (<~135 Hz), stopband from ~260 Hz; 21 taps
+// Clock recovery: each zero crossing pulls the bit clock by this fraction of its phase error
+// (first-order loop; converges in a handful of transitions, tracks >1% encoder rate error).
+inline constexpr double DCS_CLOCK_GAIN = 0.2;
+// Detected = the same code matched exactly (no error correction) on this many consecutive 23-bit
+// periods (2 = ~0.34 s). A random bit stream confirms a false code about once per 1e9 bits.
+inline constexpr int DCS_MATCH_PERIODS = 2;
+// Once detected, a single exact 23-bit match of the same code keeps it; the lock is dropped after
+// this many bits without one (a new code must then confirm from scratch).
+inline constexpr int DCS_RELOCK_BITS = 2 * DCS_WORD_BITS;
+// Open DCS channel: code gone this long mutes the gate. One bit error blanks the exact match for
+// 23 bits (171 ms), so this rides through isolated errors under voice; longer than CTCSS_LOSS_MS.
+inline constexpr double DCS_LOSS_MS = 400;
 inline constexpr int FADE_SAMPLES = 288;           // 6 ms at 48 kHz; only on silence edges
 inline constexpr float RAIL = 0.8f;                // hard speaker guard (last resort, after the limiter)
 // ---- Speaker loudness (replaced the per-channel level-trim learner). Every default below is a

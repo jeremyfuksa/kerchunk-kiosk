@@ -10,10 +10,12 @@
 #include "channelizer.hpp"
 #include "closecall.hpp"
 #include "ctcss.hpp"
+#include "dcs.hpp"
 #include "demod.hpp"
 #include "meters.hpp"
 #include "protocol.hpp"
 #include "scanner.hpp"
+#include "subaudio.hpp"
 
 namespace kc {
 struct EngineOptions {
@@ -52,6 +54,7 @@ class Engine {
   void on_hop(const cf* lanes, int per, const cf* raw, int raw_n);
   void poll();
   void reset_lane(int i);
+  void reset_subaudio(int i);   // decimator + both sub-audible detectors (cheap when idle)
   void sync_speaker();   // point the speaker path at the scanner's current audible lane + gate
   void sync_active();
   void flush_audio();                // out48_ -> speaker + tee (s16)
@@ -68,7 +71,13 @@ class Engine {
   std::vector<ChunkPower> power_;
   std::vector<FmDiscriminator> disc_;
   std::vector<QuietingMeter> quiet_;
-  std::vector<CtcssDetector> ctcss_;   // fed only while Scanner::wants_tone(lane)
+  // Sub-audible squelch, fed only while Scanner::wants_tone(lane): one shared decimator per lane
+  // feeds both detectors.
+  std::vector<SubaudioDecimator> sub_;
+  std::vector<CtcssDetector> ctcss_;
+  std::vector<DcsDetector> dcs_;
+  std::vector<double> dcs_seen_;   // now() of the lane's last decoded DCS code (-1 = none since reset)
+  std::vector<float> sub_buf_;   // one hop of SUBAUDIO_RATE samples (reused per lane)
   std::vector<std::vector<float>> disc_buf_;
   std::vector<LaneReading> readings_;
   std::vector<float> out48_;

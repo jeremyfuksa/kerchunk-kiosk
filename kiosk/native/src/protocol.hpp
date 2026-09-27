@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "constants.hpp"
+#include "dcs.hpp"
 
 namespace kc {
 struct ChannelCmd {
@@ -18,6 +19,7 @@ struct ChannelCmd {
   bool audible = true;
   bool background = false;
   std::optional<double> ctcss_hz;           // CTCSS tone squelch: open only on this tone (FM, non-background)
+  std::optional<DcsCode> dcs;               // DCS squelch ("dcs":"023N"): open only on this code; never with ctcss_hz
   std::optional<double> open_db, hang_ms;   // quietDb is parsed and ignored (decision C: GR scale);
                                             // a legacy levelDb is ignored too (speaker AGC replaced it)
 };

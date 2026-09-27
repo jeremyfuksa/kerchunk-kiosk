@@ -25,6 +25,23 @@ TEST(protocol_parses_full_tune) {
   CHECK_NEAR(t.close_call_db, 18, 0);
 }
 
+TEST(protocol_parses_dcs_and_rejects_bad_or_conflicting) {
+  std::string err;
+  auto tune = [&](const std::string& ch) {
+    return kc::parse_command(R"({"cmd":"tune","centerHz":146000000,"channels":[{"id":"a","freqHz":146520000)" + ch + "}]}", err);
+  };
+  auto c = tune(R"(,"dcs":"023N")");
+  CHECK(c.has_value());
+  const auto& t = std::get<kc::TuneCmd>(*c);
+  CHECK(t.channels[0].dcs && *t.channels[0].dcs == (kc::DcsCode{023, false}) && !t.channels[0].ctcss_hz);
+  auto i = tune(R"(,"dcs":"754I")");
+  CHECK(i && std::get<kc::TuneCmd>(*i).channels[0].dcs->inverted);
+  CHECK(tune(R"(,"dcs":null)") && !std::get<kc::TuneCmd>(*tune(R"(,"dcs":null)")).channels[0].dcs);
+  CHECK(!tune(R"(,"dcs":"024N")") && err.find("bad dcs") != std::string::npos);   // not a standard code
+  CHECK(!tune(R"(,"dcs":"23N")"));
+  CHECK(!tune(R"(,"dcs":"023N","ctcssHz":100.0)") && err.find("mutually exclusive") != std::string::npos);
+}
+
 TEST(protocol_parses_small_commands_and_defaults) {
   std::string err;
   CHECK(std::holds_alternative<kc::QuitCmd>(*kc::parse_command(R"({"cmd":"quit"})", err)));

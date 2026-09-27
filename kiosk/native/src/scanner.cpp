@@ -57,7 +57,10 @@ void Scanner::assign(int i, const ChannelCmd& c) {
   L.background = c.background;
   L.open_db = c.open_db;
   L.hang_ms = c.hang_ms;
-  if (!L.am && !L.background) L.ctcss_hz = c.ctcss_hz;   // CTCSS is an FM thing; SAME never gates
+  if (!L.am && !L.background) {   // sub-audible squelch is an FM thing; SAME never gates
+    if (c.dcs) L.dcs = dcs_canonical(*c.dcs);
+    else L.ctcss_hz = c.ctcss_hz;
+  }
   L.warmup_polls = (int)WARMUP_MS / POLL_MS;
   // Only parked slots are (re)assigned, and park() already ended their episode; drop any
   // leftover rather than attribute it to the new id.
@@ -195,12 +198,14 @@ void Scanner::poll(double now, const std::vector<LaneReading>& r) {
       }
     }
 
-    // CTCSS: a toned channel needs its tone to open, and mutes (like losing quieting) once the tone
-    // has been gone CTCSS_LOSS_MS. tone_seen only counts within the current episode/open.
+    // Sub-audible squelch (CTCSS or DCS): a squelched channel needs its tone/code to open, and mutes
+    // (like losing quieting) once it has been gone the loss time. tone_seen only counts within the
+    // current episode/open.
     if (!L.open && !tx_[i].active) L.tone_seen = -1;
-    if (L.ctcss_hz) {
-      if (r[i].tone && std::fabs(*r[i].tone - *L.ctcss_hz) <= CTCSS_MATCH_HZ) L.tone_seen = now;
-      L.tone_ok = L.tone_seen >= 0 && now - L.tone_seen <= CTCSS_LOSS_MS / 1000.0;
+    if (L.sub_gated()) {
+      if (sub_match(L, r[i])) L.tone_seen = now;
+      const double loss_ms = L.dcs ? DCS_LOSS_MS : CTCSS_LOSS_MS;
+      L.tone_ok = L.tone_seen >= 0 && now - L.tone_seen <= loss_ms / 1000.0;
     }
 
     const double gate_thresh = *floor + open_db - CLOSE_HYST_DB;
@@ -246,12 +251,22 @@ void Scanner::poll(double now, const std::vector<LaneReading>& r) {
     } else {
       L.below_since = -1;
     }
-    // Tone report: once per open, the first stable tone an open FM lane hears (toned or not).
-    if (L.open && !L.tone_reported && r[i].tone && wants_tone(i)) {
+    // Tone report: once per open, the first stable CTCSS tone or DCS code an open FM lane hears
+    // (squelched or not).
+    if (L.open && !L.tone_reported && (r[i].tone || r[i].dcs) && wants_tone(i)) {
       L.tone_reported = true;
-      emit_({{"ev", "tone"}, {"id", L.id}, {"ctcssHz", round1(*r[i].tone)}});
+      json e = {{"ev", "tone"}, {"id", L.id}};
+      if (r[i].tone) e["ctcssHz"] = round1(*r[i].tone);
+      if (r[i].dcs) e["dcs"] = dcs_format(*r[i].dcs);
+      emit_(e);
     }
   }
+}
+
+bool Scanner::sub_match(const LaneState& L, const LaneReading& r) {
+  if (L.dcs) return r.dcs && *r.dcs == *L.dcs;   // both canonical
+  if (L.ctcss_hz) return r.tone && std::fabs(*r.tone - *L.ctcss_hz) <= CTCSS_MATCH_HZ;
+  return true;
 }
 
 bool Scanner::wants_tone(int i) const {

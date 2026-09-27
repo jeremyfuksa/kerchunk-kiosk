@@ -14,7 +14,8 @@ namespace kc {
 struct LaneReading {
   float fast_db = -200, slow_db = -200, quiet_db = 200;
   bool quiet_ready = false;
-  std::optional<float> tone;   // CtcssDetector::tone() -- only fed on lanes Scanner::wants_tone()
+  std::optional<float> tone;     // CtcssDetector::tone() -- only fed on lanes Scanner::wants_tone()
+  std::optional<DcsCode> dcs;    // DcsDetector::code() (canonical form) -- same lanes
 };
 
 struct LaneState {
@@ -22,10 +23,14 @@ struct LaneState {
   double freq_hz = 0;
   bool priority = false, am = false, allow_audio = true, audible_cfg = true, background = false;
   std::optional<double> open_db, hang_ms;
-  std::optional<double> ctcss_hz;   // tone squelch (never set on AM / background lanes)
-  double tone_seen = -1;            // last poll the configured tone matched (-1 = not this episode)
-  bool tone_ok = true;              // tone present within CTCSS_LOSS_MS (always true without ctcss_hz)
+  // Sub-audible squelch (never set on AM / background lanes; at most one of the two): CTCSS tone,
+  // or DCS code (stored canonical, so an inverted code matches its on-air identical normal code).
+  std::optional<double> ctcss_hz;
+  std::optional<DcsCode> dcs;
+  double tone_seen = -1;            // last poll the configured tone/code matched (-1 = not this episode)
+  bool tone_ok = true;              // tone/code present within its loss time (always true when unsquelched)
   bool tone_reported = false;       // "tone" event already emitted for this open
+  bool sub_gated() const { return ctcss_hz.has_value() || dcs.has_value(); }
   double alert_until = -1;
   std::optional<double> floor_db;
   bool open = false, carrier = false, quiet = false;
@@ -65,8 +70,8 @@ class Scanner {
   long long skip(double holdoff_s, double now);
   void alert_unmute(const std::string& id, double hold_s, double now);
   int assign_cc(long long freq_hz);
-  // Lane i needs its CTCSS detector fed: an FM, non-background, non-Close-Call lane that is open or
-  // has a carrier episode in progress. Everything else leaves the detector idle (and reset).
+  // Lane i needs its sub-audible (CTCSS + DCS) detectors fed: an FM, non-background, non-Close-Call
+  // lane that is open or has a carrier episode in progress. Everything else leaves them idle (reset).
   bool wants_tone(int i) const;
 
   int audible() const { return audible_; }
@@ -85,6 +90,8 @@ class Scanner {
   // Rejected (never-opened) episodes shorter than OPEN_POLLS are dropped as noise blips.
   void end_tx(int i);
   void set_audible(int i);
+  // The lane's configured tone/code is present in this reading (true for an unsquelched lane).
+  static bool sub_match(const LaneState& L, const LaneReading& r);
   int next_open() const;
   void flush_rf(LaneState& L);
 

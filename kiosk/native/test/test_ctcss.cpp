@@ -6,6 +6,7 @@
 #include "check.hpp"
 #include "constants.hpp"
 #include "ctcss.hpp"
+#include "subaudio.hpp"
 
 namespace {
 // Discriminator-scale signal (+-1.0 == FM_MAX_DEV_HZ) at LANE_RATE.
@@ -43,7 +44,8 @@ struct Disc {
   }
 };
 
-// Feed in 10 ms pieces; returns every tone() seen after each piece, plus when it first appeared.
+// Feed in 10 ms pieces through the shared decimator (as Engine does); returns every tone() seen
+// after each piece, plus when it first appeared.
 struct Run {
   std::vector<std::optional<float>> seen;
   double first = -1;
@@ -51,8 +53,11 @@ struct Run {
 Run run(kc::CtcssDetector& d, const Disc& s) {
   Run r;
   const int piece = kc::LANE_RATE / 100;
+  kc::SubaudioDecimator dec;
+  std::vector<float> sub(kc::SubaudioDecimator::max_out(piece));
   for (size_t i = 0; i < s.x.size(); i += piece) {
-    d.push(&s.x[i], (int)std::min<size_t>(piece, s.x.size() - i));
+    const int ns = dec.push(&s.x[i], (int)std::min<size_t>(piece, s.x.size() - i), sub.data());
+    d.push(sub.data(), ns);
     r.seen.push_back(d.tone());
     if (d.tone() && r.first < 0) r.first = (double)(i + piece) / kc::LANE_RATE;
   }

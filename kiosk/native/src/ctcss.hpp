@@ -1,13 +1,12 @@
-// CTCSS (sub-audible tone) detector for one FM lane: discriminator output at LANE_RATE in,
-// the stable EIA tone (Hz) out. Decimates to CTCSS_RATE, then every CTCSS_HOP_MS runs a Goertzel
-// per standard tone over the last CTCSS_WINDOW_MS. Knobs: constants.hpp (CTCSS_*).
+// CTCSS (sub-audible tone) detector for one FM lane: the lane's SubaudioDecimator output
+// (SUBAUDIO_RATE) in, the stable EIA tone (Hz) out. Every CTCSS_HOP_MS runs a Goertzel per
+// standard tone over the last CTCSS_WINDOW_MS. Knobs: constants.hpp (CTCSS_*).
 #pragma once
 #include <array>
 #include <optional>
 #include <vector>
 
 #include "constants.hpp"
-#include "fir.hpp"
 
 namespace kc {
 // The 50 standard EIA/TIA-603 CTCSS tones, Hz. Mirrored in Node: src/backend/config/ctcss.ts.
@@ -21,7 +20,8 @@ inline constexpr std::array<float, 50> CTCSS_TONES = {
 class CtcssDetector {
  public:
   CtcssDetector();
-  void push(const float* disc, int n);
+  // sub: n samples at SUBAUDIO_RATE (SubaudioDecimator::push output).
+  void push(const float* sub, int n);
   // The detected tone (a CTCSS_TONES value), once the same tone has passed CTCSS_STABLE_HOPS hops in
   // a row; cleared by the first hop that doesn't pass.
   std::optional<float> tone() const { return tone_; }
@@ -31,15 +31,11 @@ class CtcssDetector {
  private:
   void evaluate();
 
-  static constexpr int kWindow = CTCSS_RATE * CTCSS_WINDOW_MS / 1000;
-  static constexpr int kHop = CTCSS_RATE * CTCSS_HOP_MS / 1000;
-  FirFilter lpf_;
+  static constexpr int kWindow = SUBAUDIO_RATE * CTCSS_WINDOW_MS / 1000;
+  static constexpr int kHop = SUBAUDIO_RATE * CTCSS_HOP_MS / 1000;
   std::array<float, CTCSS_TONES.size()> coeff_{};
-  std::vector<float> ring_;   // kWindow samples at CTCSS_RATE, oldest at pos_
+  std::vector<float> ring_;   // kWindow samples at SUBAUDIO_RATE, oldest at pos_
   int pos_ = 0, fill_ = 0, since_hop_ = 0;
-  float acc_ = 0;
-  int acc_n_ = 0;
-  bool odd_ = false;          // 2 kHz -> 1 kHz: keep every 2nd LPF output
   int cand_ = -1, streak_ = 0;
   std::optional<float> tone_;
   bool dirty_ = false;
