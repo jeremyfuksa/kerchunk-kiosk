@@ -1429,6 +1429,12 @@ tr.bankRow .bkSummary {
 }
 .drawer .dwRow > span:first-child { display: grid; gap: 0.15rem; color: var(--ink); }
 .drawer .dwRow small { color: var(--dim); font-size: var(--t-micro); line-height: 1.35; }
+/* "Heard: 100.0 Hz" in the Tone hint: an inline text button that picks that tone. */
+.drawer .dwRow small .toneUse {
+  font: inherit; color: var(--blue); background: none; border: 0; padding: 0;
+  cursor: pointer; text-decoration: underline; text-underline-offset: 2px;
+}
+.drawer .dwRow small .toneUse:hover { color: var(--ink); }
 .drawer .dwRow input, .drawer .dwRow select { box-sizing: border-box; width: 100%; }
 .drawer .dwRow.switchRow { grid-template-columns: 1fr auto; }
 .drawer .dwRow.switchRow input { width: auto; }
