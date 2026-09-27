@@ -14,6 +14,7 @@
    (convention over concept). */
 import type { Channel, Config } from "../../backend/config/schema.js";
 import { NOAA_CHANNELS } from "../../backend/config/noaa.js";
+import { CTCSS_TONES } from "../../backend/config/ctcss.js";
 import { api } from "../lib/api.js";
 import { fmtFreq, esc } from "../lib/format.js";
 import { bandFor, matchesBank, serviceFor, groupChannelsByBank } from "../../backend/config/banks.js";
@@ -1130,6 +1131,11 @@ export function renderAdmin(root: HTMLElement): void {
       `<option value="${m}" ${m === selected ? "selected" : ""}>${m.toUpperCase()}</option>`).join("");
   }
 
+  function toneOptions(selected: number | undefined): string {
+    return `<option value="" ${selected === undefined ? "selected" : ""}>None</option>` + CTCSS_TONES.map((t) =>
+      `<option value="${t.toFixed(1)}" ${t === selected ? "selected" : ""}>${t.toFixed(1)} Hz</option>`).join("");
+  }
+
   function profileSummary(b: Bank): string {
     const bits: string[] = [];
     if (b.dwellWeight !== undefined) bits.push(`dwell ×${b.dwellWeight}`);
@@ -1490,6 +1496,7 @@ export function renderAdmin(root: HTMLElement): void {
         <label class="dwRow"><span>Freq <small>MHz</small></span><input id="dwMhz" value="${c ? fmtFreq(c.freq) : ""}" placeholder="145.130" /></label>
         <label class="dwRow"><span>Name</span><input id="dwTag" value="${c ? esc(c.alphaTag) : ""}" placeholder="KC0KW — Gibbs Rd" /></label>
         <label class="dwRow"><span>Mode</span><select id="dwMode">${modeOptions(c?.mode ?? "nfm")}</select></label>
+        <label class="dwRow"><span>Tone <small>${c?.heardCtcssHz != null ? `Heard: ${c.heardCtcssHz.toFixed(1)} Hz` : "Sub-audible CTCSS — only open on this tone"}</small></span><select id="dwTone">${toneOptions(c?.ctcssHz)}</select></label>
         <label class="dwRow"><span>Tags <small>Comma-separated — banks match on these</small></span><input id="dwTags" value="${esc((c ? c.tags ?? [] : drawerPresetTags).join(", "))}" placeholder="air, rail, ham" /></label>
         <label class="dwRow"><span>Site <small>Transmitter lat, lon — drives the map blip</small></span><input id="dwLoc" value="${c?.location?.lat != null ? `${c.location.lat}, ${c.location.lon}` : ""}" placeholder="39.1755, -94.4861" /></label>
         <div class="dwSection">Behavior</div>
@@ -1548,12 +1555,16 @@ export function renderAdmin(root: HTMLElement): void {
           enabled: !drawer.querySelector<HTMLInputElement>("#dwArchived")!.checked,
           audible: drawer.querySelector<HTMLInputElement>("#dwAudible")!.checked,
         };
+        // Tone squelch: "" = None. An edit sends null to CLEAR a set tone
+        // (an absent key would leave the old one in place on the merge).
+        const toneRaw = drawer.querySelector<HTMLSelectElement>("#dwTone")!.value;
+        const tone = toneRaw === "" ? undefined : Number(toneRaw);
         if (c) {
-          await api.updateChannel(c.id, patch);
+          await api.updateChannel(c.id, { ...patch, ctcssHz: tone ?? null });
           await refresh();
           setFieldStatus(err, "Saved", "ok", SAVED_MESSAGE_MS);
         } else {
-          await api.addChannel(patch);
+          await api.addChannel({ ...patch, ...(tone !== undefined ? { ctcssHz: tone } : {}) });
           closeDrawer();
           await refresh();
         }
