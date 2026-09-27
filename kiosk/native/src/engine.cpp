@@ -12,7 +12,8 @@ Engine::Engine(const EngineOptions& o, Emit emit, Pcm speaker, Pcm tee, Pcm same
     : opt_(o), emit_(std::move(emit)), speaker_(std::move(speaker)), tee_(std::move(tee)), same_(std::move(same)),
       ch_(o.rate), sc_(o.squelch, [this](const json& j) { emit_(j); }, o.lanes), spk_(o.speaker_lpf_hz, (float)(AM_GAIN * std::pow(10.0, o.am_gain_db / 20.0)), o.agc, o.limiter_ceiling,
            o.limiter_release_ms, o.speaker_hpf_hz),
-      power_(o.lanes), disc_(o.lanes), quiet_(o.lanes), ctcss_(o.lanes),
+      power_(o.lanes), disc_(o.lanes), quiet_(o.lanes), sub_(o.lanes), ctcss_(o.lanes), dcs_(o.lanes), dcs_seen_(o.lanes, -1.0),
+      sub_buf_(SubaudioDecimator::max_out(Channelizer::kLaneSamplesPerHop)),
       disc_buf_(o.lanes, std::vector<float>(Channelizer::kLaneSamplesPerHop)), readings_(o.lanes) {
   if (o.close_call) cc_ = std::make_unique<CloseCall>(o.rate);   // FFTW planning on this (the DSP) thread
   ch_.set_lanes(std::vector<double>(opt_.lanes, 0.0));
@@ -23,7 +24,14 @@ void Engine::reset_lane(int i) {
   power_[i].reset();
   disc_[i].reset();
   quiet_[i].reset();
+  reset_subaudio(i);
+}
+
+void Engine::reset_subaudio(int i) {
+  sub_[i].reset();
   ctcss_[i].reset();
+  dcs_[i].reset();
+  dcs_seen_[i] = -1;
 }
 
 void Engine::sync_speaker() {
@@ -151,8 +159,13 @@ void Engine::on_hop(const cf* lanes, int per, const cf* raw, int raw_n) {
       db[d] = disc_[i].step(y[d]);
       quiet_[i].push(db[d]);
     }
-    if (sc_.wants_tone(i)) ctcss_[i].push(db, per);
-    else ctcss_[i].reset();   // no-op unless it just went idle
+    if (sc_.wants_tone(i)) {
+      const int ns = sub_[i].push(db, per, sub_buf_.data());
+      ctcss_[i].push(sub_buf_.data(), ns);
+      dcs_[i].push(sub_buf_.data(), ns);
+    } else {
+      reset_subaudio(i);   // cheap unless the lane just went idle
+    }
     if (L.background && opt_.same) {
       same16_.clear();
       same_path_.push(db, per, same16_);
@@ -183,8 +196,16 @@ void Engine::on_hop(const cf* lanes, int per, const cf* raw, int raw_n) {
 
 void Engine::poll() {
   polls_++;
-  for (int i = 0; i < opt_.lanes; i++)
-    readings_[i] = {power_[i].fast_db(), power_[i].slow_db(), quiet_[i].db(), quiet_[i].ready(), ctcss_[i].tone()};
+  for (int i = 0; i < opt_.lanes; i++) {
+    // A DCS bitstream has spectral lines (multiples of 134.4/23 Hz) that pass for a CTCSS tone
+    // (the CTCSS detector "hears" one on ~all 208 synthetic codes). While a DCS code is decoded --
+    // or was within DCS_LOSS_MS, riding through bit errors -- any CTCSS reading is that artifact.
+    const auto dcs = dcs_[i].code();
+    if (dcs) dcs_seen_[i] = now();
+    const bool dcs_lane = dcs_seen_[i] >= 0 && now() - dcs_seen_[i] <= DCS_LOSS_MS / 1000.0;
+    readings_[i] = {power_[i].fast_db(), power_[i].slow_db(), quiet_[i].db(), quiet_[i].ready(),
+                    dcs_lane ? std::nullopt : ctcss_[i].tone(), dcs};
+  }
   sc_.poll(now(), readings_);
   sync_speaker();
   if (polls_ % POWER_EVERY_POLLS == 0) {

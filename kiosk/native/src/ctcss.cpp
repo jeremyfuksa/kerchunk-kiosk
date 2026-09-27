@@ -5,37 +5,25 @@
 
 namespace kc {
 
-CtcssDetector::CtcssDetector()
-    : lpf_(design_lowpass(LANE_RATE / CTCSS_DECIM1, CTCSS_LPF_HZ, CTCSS_LPF_TRANSITION_HZ)), ring_(kWindow, 0.f) {
+CtcssDetector::CtcssDetector() : ring_(kWindow, 0.f) {
   for (size_t k = 0; k < CTCSS_TONES.size(); k++)
-    coeff_[k] = (float)(2 * std::cos(2 * M_PI * CTCSS_TONES[k] / CTCSS_RATE));
+    coeff_[k] = (float)(2 * std::cos(2 * M_PI * CTCSS_TONES[k] / SUBAUDIO_RATE));
 }
 
 void CtcssDetector::reset() {
   if (!dirty_) return;
-  lpf_.reset();
   std::fill(ring_.begin(), ring_.end(), 0.f);
   pos_ = fill_ = since_hop_ = 0;
-  acc_ = 0;
-  acc_n_ = 0;
-  odd_ = false;
   cand_ = -1;
   streak_ = 0;
   tone_.reset();
   dirty_ = false;
 }
 
-void CtcssDetector::push(const float* disc, int n) {
+void CtcssDetector::push(const float* sub, int n) {
   dirty_ = true;
   for (int i = 0; i < n; i++) {
-    acc_ += disc[i];
-    if (++acc_n_ < CTCSS_DECIM1) continue;
-    const float y = lpf_.step(acc_ * (1.f / CTCSS_DECIM1));
-    acc_ = 0;
-    acc_n_ = 0;
-    odd_ = !odd_;
-    if (!odd_) continue;
-    ring_[pos_] = y;
+    ring_[pos_] = sub[i];
     pos_ = (pos_ + 1) % kWindow;
     if (fill_ < kWindow) fill_++;
     if (++since_hop_ >= kHop) {

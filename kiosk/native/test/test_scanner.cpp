@@ -15,9 +15,9 @@ struct Sim {
   std::vector<kc::LaneReading> r = std::vector<kc::LaneReading>(kc::DEFAULT_LANES);
   double t = 0;
   explicit Sim(kc::Scanner::Params p = {}) : s(p, [this](const nlohmann::json& e) { ev.push_back(e); }) {
-    for (auto& x : r) x = {FLOOR, FLOOR, NOISY, true, {}};
+    for (auto& x : r) x = {FLOOR, FLOOR, NOISY, true, {}, {}};
   }
-  void set(int i, float db, bool quiet) { r[i] = {db, db, quiet ? QUIET : NOISY, true, {}}; }
+  void set(int i, float db, bool quiet) { r[i] = {db, db, quiet ? QUIET : NOISY, true, {}, {}}; }
   void run(double seconds) {
     int n = (int)(seconds * 1000 / kc::POLL_MS + 0.5);
     for (int k = 0; k < n; k++) { t += kc::POLL_MS / 1000.0; s.poll(t, r); }
@@ -395,7 +395,7 @@ TEST(scanner_quiet_ready_false_blocks_open) {
   Sim m;
   m.s.tune(146e6, {ch("a")}, false);
   m.run(0.8);
-  m.r[0] = {KEYED, KEYED, QUIET, false, {}};                   // high power, low quiet_db, but not ready
+  m.r[0] = {KEYED, KEYED, QUIET, false, {}, {}};                   // high power, low quiet_db, but not ready
   m.run(1.0);
   CHECK(m.of("open").empty());
 }
@@ -468,7 +468,7 @@ TEST(scanner_txstat_quantiles_spread) {
   m.s.tune(146e6, {ch("a")}, false);
   m.run(0.8);
   for (int k = 0; k < 100; k++) {                            // quiet_db -30 .. -10.2, all quieted
-    m.r[0] = {KEYED, KEYED, -30.f + 0.2f * (float)k, true, {}};
+    m.r[0] = {KEYED, KEYED, -30.f + 0.2f * (float)k, true, {}, {}};
     m.run(0.01);
   }
   m.set(0, FLOOR, false);
@@ -513,7 +513,7 @@ TEST(scanner_txstat_omits_quiet_fields_without_ready_samples) {
   Sim m;
   m.s.tune(146e6, {ch("a")}, false);
   m.run(0.8);
-  m.r[0] = {KEYED, KEYED, QUIET, false, {}};                     // power, quiet meter not ready
+  m.r[0] = {KEYED, KEYED, QUIET, false, {}, {}};                     // power, quiet meter not ready
   m.run(0.2);
   m.set(0, FLOOR, false);
   m.run(0.01);
@@ -682,6 +682,90 @@ TEST(scanner_tone_reported_again_on_next_open) {
   CHECK(m.of("open").size() == 2);
   CHECK(m.of("tone").size() == 2);
   CHECK(!m.s.wants_tone(0));                      // closed, no episode: detector idle again
+}
+
+// ---- DCS squelch (the same sub-audible gate path as CTCSS)
+
+namespace {
+kc::ChannelCmd coded(const std::string& id, const char* dcs) { auto c = ch(id); c.dcs = kc::dcs_parse(dcs); return c; }
+const kc::DcsCode D023N{023, false}, D047N{047, false};
+}  // namespace
+
+TEST(scanner_dcs_wrong_code_tone_or_none_never_opens) {
+  Sim m;
+  m.s.tune(146e6, {coded("a", "023N"), coded("b", "023N"), coded("c", "023N")}, false);
+  m.run(0.8);
+  m.set(0, KEYED, true); m.r[0].dcs = D047N;      // co-channel user on another code (023I!)
+  m.set(1, KEYED, true); m.r[1].tone = 100.0f;    // a CTCSS user
+  m.set(2, KEYED, true);                          // carrier with nothing sub-audible
+  m.run(3.0);
+  CHECK(m.of("open").empty());
+  CHECK(m.of("tone").empty());
+}
+
+TEST(scanner_dcs_right_code_opens_and_reports_once) {
+  Sim m;
+  m.s.tune(146e6, {coded("a", "023N")}, false);
+  m.run(0.8);
+  m.set(0, KEYED, true);
+  m.run(0.5);
+  CHECK(m.of("open").empty());
+  m.r[0].dcs = D023N;
+  m.run(0.11);
+  CHECK(m.of("open").size() == 1 && m.s.gate() > 0.5f);
+  m.run(1.0);
+  auto t = m.of("tone");
+  CHECK(t.size() == 1 && t[0]["id"] == "a" && t[0]["dcs"] == "023N" && !t[0].contains("ctcssHz"));
+}
+
+TEST(scanner_dcs_inverted_config_matches_its_on_air_twin) {
+  Sim m;   // 047I is on air what 023N is; the detector reports the canonical 023N
+  m.s.tune(146e6, {coded("a", "047I")}, false);
+  CHECK(m.s.lane(0).dcs && *m.s.lane(0).dcs == D023N);
+  m.run(0.8);
+  m.set(0, KEYED, true); m.r[0].dcs = D023N;
+  m.run(0.2);
+  CHECK(m.of("open").size() == 1);
+}
+
+TEST(scanner_dcs_code_loss_mutes_after_loss_ms_and_returns) {
+  Sim m;
+  m.s.tune(146e6, {coded("a", "023N")}, false);
+  m.run(0.8);
+  m.set(0, KEYED, true); m.r[0].dcs = D023N;
+  m.run(0.5);
+  CHECK(m.s.gate() > 0.5f);
+  m.r[0].dcs.reset();
+  m.run(kc::DCS_LOSS_MS / 1000.0 - 0.05);
+  CHECK(m.s.gate() > 0.5f);                       // a bit-error blank rides through
+  m.run(0.1);
+  CHECK(m.s.gate() == 0.0f);
+  CHECK(m.of("close").empty());
+  m.r[0].dcs = D023N;
+  m.run(0.01);
+  CHECK(m.s.gate() > 0.5f);
+}
+
+TEST(scanner_untoned_channel_reports_heard_dcs) {
+  Sim m;
+  m.s.tune(146e6, {ch("a")}, false);
+  m.run(0.8);
+  m.set(0, KEYED, true); m.r[0].dcs = D047N;
+  m.run(0.5);
+  auto t = m.of("tone");
+  CHECK(m.of("open").size() == 1 && t.size() == 1 && t[0]["dcs"] == "047N");
+}
+
+TEST(scanner_dcs_ignored_on_am_and_background_lanes) {
+  Sim m;
+  auto am = coded("air", "023N"); am.mode = "am";
+  auto bg = coded("nwr", "023N"); bg.background = true;
+  m.s.tune(120e6, {am, bg}, false);
+  CHECK(!m.s.lane(0).dcs && !m.s.lane(kc::DEFAULT_LANES - 1).dcs);
+  m.run(0.8);
+  m.set(0, KEYED, true);
+  m.run(0.3);
+  CHECK(m.of("open").size() == 1);                // AM opens with no code
 }
 
 // A carrier that stays up after quieting is lost (an AM signal on an FM lane, data, a stuck

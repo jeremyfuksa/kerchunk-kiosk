@@ -3,7 +3,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join, normalize, extname } from "node:path";
 import { randomUUID } from "node:crypto";
-import { configSchema, channelSchema, type Config, type Channel } from "./config/schema.js";
+import { configSchema, channelObjectSchema, newChannelSchema, oneSubAudible, type Config, type Channel } from "./config/schema.js";
 import { ConfigStore } from "./config/ConfigStore.js";
 import { ActivityLog } from "./activityLog.js";
 import type { LookupProvider } from "./lookup.js";
@@ -68,7 +68,7 @@ const MIME: Record<string, string> = {
 // that survives a restart which completes between two polls.
 const STARTED_AT = Date.now();
 // Optional channel fields a PUT /api/channels/:id may clear by sending null.
-const CLEARABLE_CHANNEL_FIELDS = ["ctcssHz"] as const;
+const CLEARABLE_CHANNEL_FIELDS = ["ctcssHz", "dcsCode"] as const;
 
 export function toScanConfig(
   cfg: Config,
@@ -414,16 +414,21 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
     rfSaveTimer = setTimeout(() => { rfSaveTimer = null; saveConfig(config, { telemetry: true }); }, 30_000);
     rfSaveTimer.unref?.();
   }
-  // Heard CTCSS tone -> channel.heardCtcssHz, through the same telemetry
-  // save. Only a CHANGED tone touches config (every transmission reports).
+  // Heard CTCSS tone / DCS code -> channel.heardCtcssHz / heardDcs, through
+  // the same telemetry save. Only a CHANGED value touches config (every
+  // transmission reports).
   engine.on((ev) => {
     if (ev.type !== "tone") return;
     const ch = config.channels.find((c) => c.id === ev.channelId);
-    if (!ch || ch.heardCtcssHz === ev.ctcssHz) return;
+    if (!ch) return;
+    const patch: Partial<Channel> = {};
+    if (ev.ctcssHz !== undefined && ch.heardCtcssHz !== ev.ctcssHz) patch.heardCtcssHz = ev.ctcssHz;
+    if (ev.dcs !== undefined && ch.heardDcs !== ev.dcs) patch.heardDcs = ev.dcs;
+    if (!Object.keys(patch).length) return;
     config = {
       ...config,
       channels: config.channels.map((c) =>
-        c.id === ev.channelId ? { ...c, heardCtcssHz: ev.ctcssHz } : c),
+        c.id === ev.channelId ? { ...c, ...patch } : c),
     };
     scheduleTelemetrySave();
   });
@@ -876,7 +881,7 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
 
     if (method === "POST" && path === "/api/channels") {
       const body = await readBody(req);
-      const parsed = channelSchema.omit({ id: true }).safeParse(body);
+      const parsed = newChannelSchema.safeParse(body);
       if (!parsed.success) return json(res, 400, { error: "invalid channel", issues: parsed.error.issues });
       const conflict = config.channels.find((c) => collides(c, { ...parsed.data, id: "" }));
       if (conflict) return json(res, 409, {
@@ -920,7 +925,7 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
             if ((rest as Record<string, unknown>)[k] === null) { cleared.push(k); delete (rest as Record<string, unknown>)[k]; }
           }
         }
-        const parsed = channelSchema.partial().safeParse(rest);
+        const parsed = channelObjectSchema.partial().safeParse(rest);
         if (!parsed.success) return json(res, 400, { error: "invalid channel" });
         const existing = config.channels.find((c) => c.id === id)!;
         const strip = (c: Channel): Channel => {
@@ -930,6 +935,9 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
           return out;
         };
         const candidate = strip({ ...existing, ...parsed.data } as Channel);
+        // CTCSS and DCS are exclusive on the MERGED channel: switching schemes
+        // means sending null for the old one (the admin drawer does).
+        if (!oneSubAudible(candidate)) return json(res, 400, { error: "ctcssHz and dcsCode are mutually exclusive" });
         const conflict = config.channels.find((c) => c.id !== id && collides(c, candidate));
         if (conflict) return json(res, 409, {
           error: `frequency already used by ${conflict.alphaTag || `${(conflict.freq / 1e6).toFixed(4)} MHz`}`,
@@ -1012,7 +1020,7 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
     }
     if (method === "PUT" && path === "/api/weather-channel") {
       const body = await readBody(req);
-      const parsed = channelSchema.omit({ id: true }).safeParse(body);
+      const parsed = newChannelSchema.safeParse(body);
       if (!parsed.success) return json(res, 400, { error: "invalid weather channel", issues: parsed.error.issues });
       const weatherChannel: Channel = { id: `wx_${randomUUID().slice(0, 8)}`, ...parsed.data };
       config = { ...config, weatherChannel };

@@ -101,6 +101,15 @@ Notes:
 - `scan.fmAudioHpfHz` (Hz, 0 = off or 50…1000, default 300) is the FM speaker
   high-pass: a 6th-order Butterworth that strips the sub-audible CTCSS tone
   (67–254 Hz hum) from the speaker. Passed as `--audio-hpf-hz`.
+- **Sub-audible squelch** is per channel, set in the admin channel drawer's
+  Tone select: a CTCSS tone (`ctcssHz`) or a DCS code (`dcsCode`, e.g.
+  `023N`/`023I`), never both. The helper decodes both on every open FM lane
+  and reports what it hears (the drawer's "Heard:" hint); a squelched channel
+  opens only on its tone/code and mutes once it has been gone
+  `CTCSS_LOSS_MS` / `DCS_LOSS_MS` (300 / 400 ms). Detector knobs (`CTCSS_*`,
+  `DCS_*`, `SUBAUDIO_*`) live in `kiosk/native/src/constants.hpp`. An
+  inverted DCS code is identical on air to another normal code (023I = 047N),
+  so a heard code always reads in its N form.
 - **Speaker loudness** is a feed-forward AGC/compressor on the demodulated
   audio (every transmission starts at 0 dB and is steered to a target; pauses
   below a hold level freeze it so gaps never pump the gain up) followed by a

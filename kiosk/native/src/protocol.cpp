@@ -54,6 +54,12 @@ std::optional<Command> parse_command(const std::string& line, std::string& err) 
           ch.open_db = opt_num(c, "openDb");
           ch.hang_ms = opt_num(c, "hangMs");
           ch.ctcss_hz = opt_num(c, "ctcssHz");
+          if (auto it = c.find("dcs"); it != c.end() && !it->is_null()) {
+            const std::string code = it->get<std::string>();
+            ch.dcs = dcs_parse(code);
+            if (!ch.dcs) { err = "channel " + ch.id + ": bad dcs '" + code + "' (want a standard code like 023N)"; return std::nullopt; }
+            if (ch.ctcss_hz) { err = "channel " + ch.id + ": ctcssHz and dcs are mutually exclusive"; return std::nullopt; }
+          }
           t.channels.push_back(std::move(ch));
         }
       }

@@ -345,6 +345,58 @@ describe("HTTP API", () => {
     }
   });
 
+  it("PUT /api/channels/:id sets and clears dcsCode; CTCSS and DCS stay exclusive", async () => {
+    const { server } = makeApp();
+    expect((await request(server).post("/api/channels")
+      .send({ freq: 145150000, alphaTag: "X", mode: "nfm", enabled: true, ctcssHz: 100.0, dcsCode: "023N" })).status).toBe(400);
+    const add = await request(server).post("/api/channels")
+      .send({ freq: 145130000, alphaTag: "T", mode: "nfm", enabled: true, dcsCode: "023N" });
+    expect(add.status).toBe(201);
+    expect(add.body.dcsCode).toBe("023N");
+    const id = add.body.id as string;
+    expect((await request(server).put(`/api/channels/${id}`).send({ dcsCode: "024N" })).status).toBe(400);
+    // Adding a tone while the code is still set: the merged channel would carry both.
+    expect((await request(server).put(`/api/channels/${id}`).send({ ctcssHz: 100.0 })).status).toBe(400);
+    const sw = await request(server).put(`/api/channels/${id}`).send({ ctcssHz: 100.0, dcsCode: null });
+    expect(sw.status).toBe(200);
+    expect(sw.body.ctcssHz).toBe(100.0);
+    expect(sw.body).not.toHaveProperty("dcsCode");
+    const back = await request(server).put(`/api/channels/${id}`).send({ ctcssHz: null, dcsCode: "754I" });
+    expect(back.body.dcsCode).toBe("754I");
+    expect(back.body).not.toHaveProperty("ctcssHz");
+    const clear = await request(server).put(`/api/channels/${id}`).send({ dcsCode: null });
+    expect(clear.body).not.toHaveProperty("dcsCode");
+  });
+
+  it("a heard DCS code persists as heardDcs (telemetry save), unchanged codes write nothing", async () => {
+    const { configStore } = makeApp();
+    const cfg = configStore.load();
+    configStore.save({ ...cfg, channels: [
+      { id: "a", freq: 146520000, alphaTag: "A", mode: "nfm", enabled: true },
+    ] });
+    const engine = new FakeEngine();
+    createServer({ configStore, engine, activityLog: new ActivityLog(100), wsHub: new WsHub(), staticDir: dir });
+    const save = vi.spyOn(configStore, "save");
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      engine.emitDcs("a", "047N");
+      vi.advanceTimersByTime(30_000);
+      expect(save).toHaveBeenCalledTimes(1);
+      expect(configStore.load().channels[0]!.heardDcs).toBe("047N");
+      expect(configStore.load().channels[0]).not.toHaveProperty("heardCtcssHz");
+      engine.emitDcs("a", "047N");
+      vi.advanceTimersByTime(30_000);
+      expect(save).toHaveBeenCalledTimes(1);
+      engine.emitTone("a", 100.0);          // a CTCSS report leaves heardDcs alone
+      vi.advanceTimersByTime(30_000);
+      expect(save).toHaveBeenCalledTimes(2);
+      expect(configStore.load().channels[0]!.heardDcs).toBe("047N");
+      expect(configStore.load().channels[0]!.heardCtcssHz).toBe(100.0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("GET /api/channels/duplicates lists non-GMRS duplicate sets, richest first", async () => {
     // The block rule (Task 2) stops NEW dupes via the API, so duplicates only
     // pre-exist in configs that predate the rule. Seed that state by writing

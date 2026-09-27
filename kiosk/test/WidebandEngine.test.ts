@@ -916,6 +916,31 @@ describe("CTCSS tone squelch passthrough", () => {
   });
 });
 
+describe("DCS squelch passthrough", () => {
+  it("tune carries dcs only on coded channels", async () => {
+    const tunes = tmpFile("tunes");
+    const { engine } = makeEngine({ FAKE_WB_TUNES_FILE: tunes });
+    await engine.start(cfg([{ ...VHF_A, dcsCode: "023N" }, VHF_B]));
+    await waitFor(() => lines(tunes).length >= 1, 1000);
+    await engine.stop();
+    const first = JSON.parse(lines(tunes)[0]!);
+    expect(first.channels[0].dcs).toBe("023N");
+    expect(first.channels[0]).not.toHaveProperty("ctcssHz");
+    expect(first.channels[1]).not.toHaveProperty("dcs");
+  });
+
+  it("helper tone with dcs => tone EngineEvent carrying dcs", async () => {
+    const { engine, events } = makeEngine({
+      FAKE_WB_SCRIPT: `{"ev":"tone","id":"${VHF_A.id}","dcs":"047N"}`,
+    });
+    await engine.start(cfg([VHF_A, VHF_B]));
+    await waitFor(() => events.some((e) => e.type === "tone"), 1000);
+    await engine.stop();
+    const tone = events.find((e) => e.type === "tone");
+    expect(tone && tone.type === "tone" && [tone.channelId, tone.dcs, tone.ctcssHz]).toEqual([VHF_A.id, "047N", undefined]);
+  });
+});
+
 describe("retune (re-point vs respawn)", () => {
   // Three channels within one 2 MHz window => a single 3-channel group.
   const A = ch(146_790_000);            // slot 0

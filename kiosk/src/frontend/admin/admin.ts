@@ -15,6 +15,7 @@
 import type { Channel, Config } from "../../backend/config/schema.js";
 import { NOAA_CHANNELS } from "../../backend/config/noaa.js";
 import { CTCSS_TONES } from "../../backend/config/ctcss.js";
+import { DCS_CODES, dcsAlias } from "../../backend/config/dcs.js";
 import { api } from "../lib/api.js";
 import { fmtFreq, esc } from "../lib/format.js";
 import { bandFor, matchesBank, serviceFor, groupChannelsByBank } from "../../backend/config/banks.js";
@@ -1131,9 +1132,28 @@ export function renderAdmin(root: HTMLElement): void {
       `<option value="${m}" ${m === selected ? "selected" : ""}>${m.toUpperCase()}</option>`).join("");
   }
 
-  function toneOptions(selected: number | undefined): string {
-    return `<option value="" ${selected === undefined ? "selected" : ""}>None</option>` + CTCSS_TONES.map((t) =>
-      `<option value="${t.toFixed(1)}" ${t === selected ? "selected" : ""}>${t.toFixed(1)} Hz</option>`).join("");
+  // Tone select: None, the 50 CTCSS tones (value "100.0"), then the 104 DCS
+  // codes in both polarities (value "dcs:023N"). A channel holds at most one.
+  function toneOptions(c: Channel | undefined): string {
+    const ctcss = c?.ctcssHz, dcs = c?.dcsCode;
+    const none = ctcss === undefined && dcs === undefined;
+    return `<option value="" ${none ? "selected" : ""}>None</option>` +
+      `<optgroup label="CTCSS">` + CTCSS_TONES.map((t) =>
+        `<option value="${t.toFixed(1)}" ${t === ctcss ? "selected" : ""}>${t.toFixed(1)} Hz</option>`).join("") + `</optgroup>` +
+      `<optgroup label="DCS">` + DCS_CODES.flatMap((d) => (["N", "I"] as const).map((p) =>
+        `<option value="dcs:${d}${p}" ${`${d}${p}` === dcs ? "selected" : ""}>DCS ${d} ${p}</option>`)).join("") + `</optgroup>`;
+  }
+
+  // Drawer hint: the last tone/code the helper heard (a heard DCS code is in
+  // its on-air normal form, so name the inverted twin too).
+  function toneHint(c: Channel | undefined): string {
+    const heard: string[] = [];
+    if (c?.heardCtcssHz != null) heard.push(`${c.heardCtcssHz.toFixed(1)} Hz`);
+    if (c?.heardDcs != null) {
+      const twin = dcsAlias(c.heardDcs);
+      heard.push(`DCS ${esc(c.heardDcs)}${twin ? ` (= ${twin})` : ""}`);
+    }
+    return heard.length ? `Heard: ${heard.join(" · ")}` : "Sub-audible CTCSS / DCS — only open on this tone or code";
   }
 
   function profileSummary(b: Bank): string {
@@ -1496,7 +1516,7 @@ export function renderAdmin(root: HTMLElement): void {
         <label class="dwRow"><span>Freq <small>MHz</small></span><input id="dwMhz" value="${c ? fmtFreq(c.freq) : ""}" placeholder="145.130" /></label>
         <label class="dwRow"><span>Name</span><input id="dwTag" value="${c ? esc(c.alphaTag) : ""}" placeholder="KC0KW — Gibbs Rd" /></label>
         <label class="dwRow"><span>Mode</span><select id="dwMode">${modeOptions(c?.mode ?? "nfm")}</select></label>
-        <label class="dwRow"><span>Tone <small>${c?.heardCtcssHz != null ? `Heard: ${c.heardCtcssHz.toFixed(1)} Hz` : "Sub-audible CTCSS — only open on this tone"}</small></span><select id="dwTone">${toneOptions(c?.ctcssHz)}</select></label>
+        <label class="dwRow"><span>Tone <small>${toneHint(c)}</small></span><select id="dwTone">${toneOptions(c)}</select></label>
         <label class="dwRow"><span>Tags <small>Comma-separated — banks match on these</small></span><input id="dwTags" value="${esc((c ? c.tags ?? [] : drawerPresetTags).join(", "))}" placeholder="air, rail, ham" /></label>
         <label class="dwRow"><span>Site <small>Transmitter lat, lon — drives the map blip</small></span><input id="dwLoc" value="${c?.location?.lat != null ? `${c.location.lat}, ${c.location.lon}` : ""}" placeholder="39.1755, -94.4861" /></label>
         <div class="dwSection">Behavior</div>
@@ -1555,16 +1575,20 @@ export function renderAdmin(root: HTMLElement): void {
           enabled: !drawer.querySelector<HTMLInputElement>("#dwArchived")!.checked,
           audible: drawer.querySelector<HTMLInputElement>("#dwAudible")!.checked,
         };
-        // Tone squelch: "" = None. An edit sends null to CLEAR a set tone
+        // Tone squelch: "" = None, "dcs:023N" = a DCS code, else a CTCSS
+        // tone. Picking one clears the other; an edit sends null to CLEAR
         // (an absent key would leave the old one in place on the merge).
         const toneRaw = drawer.querySelector<HTMLSelectElement>("#dwTone")!.value;
-        const tone = toneRaw === "" ? undefined : Number(toneRaw);
+        const dcs = toneRaw.startsWith("dcs:") ? toneRaw.slice(4) : undefined;
+        const tone = toneRaw === "" || dcs !== undefined ? undefined : Number(toneRaw);
         if (c) {
-          await api.updateChannel(c.id, { ...patch, ctcssHz: tone ?? null });
+          await api.updateChannel(c.id, { ...patch, ctcssHz: tone ?? null, dcsCode: dcs ?? null });
           await refresh();
           setFieldStatus(err, "Saved", "ok", SAVED_MESSAGE_MS);
         } else {
-          await api.addChannel({ ...patch, ...(tone !== undefined ? { ctcssHz: tone } : {}) });
+          await api.addChannel({
+            ...patch, ...(tone !== undefined ? { ctcssHz: tone } : {}), ...(dcs !== undefined ? { dcsCode: dcs } : {}),
+          });
           closeDrawer();
           await refresh();
         }

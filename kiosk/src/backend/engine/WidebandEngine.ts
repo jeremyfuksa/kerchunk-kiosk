@@ -146,6 +146,7 @@ interface HelperEvent {
   msg?: string;
   raw?: string;
   ctcssHz?: number;
+  dcs?: string;
 }
 
 // Fields of a helper txstat event copied verbatim into the JSONL record.
@@ -573,11 +574,18 @@ export class WidebandEngine implements ScannerEngine {
           this.emit({ type: "rf", channelId: ev.id, db: ev.db, ts: this.now() });
         }
         break;
-      case "tone":
-        if (typeof ev.id === "string" && typeof ev.ctcssHz === "number") {
-          this.emit({ type: "tone", channelId: ev.id, ctcssHz: ev.ctcssHz, ts: this.now() });
+      case "tone": {
+        const ctcssHz = typeof ev.ctcssHz === "number" ? ev.ctcssHz : undefined;
+        const dcs = typeof ev.dcs === "string" ? ev.dcs : undefined;
+        if (typeof ev.id === "string" && (ctcssHz !== undefined || dcs !== undefined)) {
+          this.emit({
+            type: "tone", channelId: ev.id,
+            ...(ctcssHz !== undefined ? { ctcssHz } : {}), ...(dcs !== undefined ? { dcs } : {}),
+            ts: this.now(),
+          });
         }
         break;
+      }
       case "same":
         if (typeof ev.raw === "string") {
           this.emit({ type: "same", raw: ev.raw, ts: this.now() });
@@ -697,6 +705,8 @@ export class WidebandEngine implements ScannerEngine {
         ...(c.hangMs !== undefined ? { hangMs: c.hangMs } : {}),
         // CTCSS tone squelch (omitted = carrier squelch only, as before).
         ...(c.ctcssHz !== undefined ? { ctcssHz: c.ctcssHz } : {}),
+        // DCS squelch ("023N"); the schema keeps it exclusive with ctcssHz.
+        ...(c.dcsCode !== undefined ? { dcs: c.dcsCode } : {}),
       })),
       monitor: this.config?.monitor ?? false,
       // Close Call: ON by default for this engine; knownHz carries EVERY

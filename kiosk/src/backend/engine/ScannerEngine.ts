@@ -116,9 +116,10 @@ export type EngineEvent =
   // Median received RF power over one closed transmission (helper telemetry)
   // — feeds the ERP estimator (channel.rfDb -> location.powerWatts).
   | { type: "rf"; channelId: string; db: number; ts: number }
-  // The CTCSS tone (Hz) the helper heard on an open FM channel — once per
-  // transmission. Feeds channel.heardCtcssHz (server-owned telemetry).
-  | { type: "tone"; channelId: string; ctcssHz: number; ts: number }
+  // The sub-audible squelch the helper heard on an open FM channel — once per
+  // transmission: a CTCSS tone (Hz) and/or a DCS code ("023N", on-air normal
+  // form). Feeds channel.heardCtcssHz / heardDcs (server-owned telemetry).
+  | { type: "tone"; channelId: string; ctcssHz?: number; dcs?: string; ts: number }
   // A SAME/EAS line decoded off the weather channel (multimon-ng via the
   // helper's SAME lane). Raw text; the server parses and decides.
   | { type: "same"; raw: string; ts: number }
