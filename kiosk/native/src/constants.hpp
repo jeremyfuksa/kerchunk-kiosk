@@ -63,6 +63,9 @@ inline constexpr double FLOOR_ALPHA_DOWN = 0.1056; // GR 0.2 per 20 ms
 inline constexpr double SKIP_HOLDOFF_S = 10.0;
 inline constexpr int RF_MAX_SAMPLES = 6000;        // ~60 s of open-power samples
 inline constexpr int RF_MIN_SAMPLES = 50;          // ~0.5 s before an rf estimate is emitted
+// Squelch-calibration txstat events (instrumentation only): per carrier episode, keep at most this
+// many per-poll quiet/power samples (30 s at POLL_MS); later polls still count, samples stop.
+inline constexpr int TX_MAX_SAMPLES = 3000;
 inline constexpr int FADE_SAMPLES = 288;           // 6 ms at 48 kHz; only on silence edges
 inline constexpr float RAIL = 0.8f;                // hard speaker guard (last resort, after the limiter)
 // ---- Speaker loudness (replaced the per-channel level-trim learner). Every default below is a
