@@ -1,7 +1,7 @@
 # Kerchunk Kiosk
 
 A software-defined radio scanner appliance. A repurposed laptop running Ubuntu,
-an RTL-SDR dongle, and a native C++ DSP engine monitor **every channel in a 2 MHz window
+an RTL-SDR dongle, and a native C++ DSP engine monitor **every channel in a ~2.4 MHz window
 simultaneously** — no scan latency, no missed bursts inside a band group — and
 boot lid-closed straight into a fullscreen dashboard on an external monitor.
 
@@ -10,7 +10,7 @@ boot lid-closed straight into a fullscreen dashboard on an external monitor.
 ## What it does
 
 - **Wideband engine**: one persistent C++ DSP helper (`kerchunk-dsp`) samples a 2.4 MS/s
-  I/Q window and demodulates up to 12 channels at once; the SDR is opened once
+  I/Q window and demodulates up to 32 channels at once (configurable, 1–64); the SDR is opened once
   per boot and retuned live between band groups (group-hop) — the USB
   re-open thrash that kills `rtl_fm`-style scanners is structurally gone.
 - **Real squelch**: per-channel power over an adaptive group noise floor AND

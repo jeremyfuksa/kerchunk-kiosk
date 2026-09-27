@@ -3,7 +3,7 @@
 The scanner application: TypeScript backend (engine control, HTTP/WS API,
 config), kiosk dashboard + web admin frontends, and the C++ DSP helper
 `kerchunk-dsp` (`native/`, built by `npm run build`). The default **wideband engine**
-demodulates every channel in a 2 MHz window simultaneously behind the
+demodulates every channel in a ~2.4 MHz window simultaneously behind the
 `ScannerEngine` interface; the original sequential `rtl_fm` engine remains as
 `KERCHUNK_ENGINE=rtlfm` for Pi-class hardware.
 

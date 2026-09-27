@@ -32,6 +32,10 @@ export interface ScanConfig {
   audioSink: string;
   // Wideband engine tuning (optional; RtlFmEngine/FakeEngine ignore these).
   windowBandwidthHz?: number;
+  // kerchunk-dsp lane slots per group (--lanes; default 12) and front-end
+  // sample rate (--rate; default 2.4 Msps). Spawn-time helper args (see schema).
+  lanesPerGroup?: number;
+  sampleRateHz?: number;
   groupDwellMs?: number;
   openAboveFloorDb?: number;
   // Quieting threshold on kerchunk-dsp's dB scale (see schema).

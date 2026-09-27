@@ -392,8 +392,49 @@ describe("WidebandEngine", () => {
       const a = lines(args)[0] ?? "";
       expect(a).toContain("--quiet-db -7.5");
       expect(a).not.toContain("--detect-via");
-      expect(a).not.toContain("--lanes");
       expect(a).not.toContain("--lane-modes");
+    });
+
+    it("always passes --rate and --lanes: defaults 2.5 Msps / 32, config knobs, option overrides", async () => {
+      const spawnArgs = async (c: ScanConfig, over: Record<string, unknown> = {}) => {
+        const args = tmpFile("args");
+        const { engine } = makeEngine({ FAKE_WB_ARGS_FILE: args }, over);
+        await engine.start(c);
+        await waitFor(() => lines(args).length >= 1, 1000);
+        await engine.stop();
+        return lines(args)[0] ?? "";
+      };
+      const d = await spawnArgs(cfg([VHF_A]));
+      expect(d).toContain("--rate 2500000");
+      expect(d).toContain("--lanes 32");
+      const k = await spawnArgs(cfg([VHF_A], { lanesPerGroup: 32, sampleRateHz: 2_000_000 }));
+      expect(k).toContain("--rate 2000000");
+      expect(k).toContain("--lanes 32");
+      // The weather radio pins its own rate + lanes regardless of the scan knobs.
+      const wx = await spawnArgs(cfg([VHF_A], { lanesPerGroup: 32, sampleRateHz: 2_000_000 }),
+        { sampleRateHz: 250_000, lanes: 2 });
+      expect(wx).toContain("--rate 250000");
+      expect(wx).toContain("--lanes 2");
+      expect(wx).not.toContain("--rate 2000000");
+    });
+
+    it("groups at lanesPerGroup: 30 channels in 1 MHz = 1 group at the default 32 lanes, 3 groups at 12", async () => {
+      const thirty = Array.from({ length: 30 }, (_, i) => ch(146_000_000 + i * 30_000));
+      const groupsSeen = async (lanesPerGroup?: number) => {
+        const tunes = tmpFile("tunes");
+        const { engine } = makeEngine({ FAKE_WB_TUNES_FILE: tunes }, { groupDwellMs: 40 });
+        await engine.start(cfg(thirty, lanesPerGroup === undefined ? {} : { lanesPerGroup }));
+        await waitFor(() => lines(tunes).length >= 6, 2000);
+        await engine.stop();
+        const ts = lines(tunes).map((l) => JSON.parse(l) as { centerHz: number; channels: unknown[] });
+        return { centers: new Set(ts.map((t) => t.centerHz)).size, sizes: ts.map((t) => t.channels.length) };
+      };
+      const wide = await groupsSeen();
+      expect(wide.centers).toBe(1);
+      expect(wide.sizes[0]).toBe(30);
+      const narrow = await groupsSeen(12);
+      expect(narrow.centers).toBe(3);
+      expect(Math.max(...narrow.sizes)).toBe(12);
     });
 
     it("forwards nativeAmGainDb as --am-gain-db; omits it when unset", async () => {
@@ -466,13 +507,13 @@ describe("WidebandEngine", () => {
       expect(lines(args)[0] ?? "").not.toContain("--quiet-db");
     });
 
-    it("retune never respawns for a topology change (fixed 12 slots)", async () => {
+    it("retune never respawns for a topology change (lane slots fit every group)", async () => {
       const args = tmpFile("args");
       const tunes = tmpFile("tunes");
       const { engine } = makeEngine({ FAKE_WB_ARGS_FILE: args, FAKE_WB_TUNES_FILE: tunes }, { groupDwellMs: 60_000 });
       await engine.start(cfg([VHF_A]));
       await waitFor(() => lines(tunes).length >= 1, 1000);
-      // More channels + an AM lane: the fixed 12-slot channelizer just re-points.
+      // More channels + an AM lane: the spawned lane slots just re-point.
       const many = Array.from({ length: 10 }, (_, i) => ch(146_000_000 + i * 25_000, i === 3 ? { mode: "am" } : {}));
       await engine.retune(cfg(many));
       await waitFor(() => lines(tunes).length >= 2, 1000);
@@ -828,7 +869,7 @@ describe("retune (re-point vs respawn)", () => {
     expect(lines(args)).toHaveLength(1);
   });
 
-  it("re-points (no respawn) when an added channel grows the group — fixed 12 slots", async () => {
+  it("re-points (no respawn) when an added channel grows the group — slots fit every group", async () => {
     const args = tmpFile("args");
     const tunes = tmpFile("tunes");
     const { engine } = makeEngine({ FAKE_WB_ARGS_FILE: args, FAKE_WB_TUNES_FILE: tunes });
@@ -853,6 +894,26 @@ describe("retune (re-point vs respawn)", () => {
     await engine.stop();
     expect(lines(args)).toHaveLength(1);
     expect(lines(tunes).at(-1)).toContain('"mode":"am"');
+  });
+
+  it("respawns when lanesPerGroup or sampleRateHz changes (spawn-time args); re-points when unchanged", async () => {
+    const args = tmpFile("args");
+    const tunes = tmpFile("tunes");
+    const { engine } = makeEngine({ FAKE_WB_ARGS_FILE: args, FAKE_WB_TUNES_FILE: tunes }, { groupDwellMs: 60_000 });
+    await engine.start(cfg([A, B], { lanesPerGroup: 16 }));
+    await waitFor(() => lines(tunes).length >= 1, 1000);
+    await engine.retune(cfg([A, B, C], { lanesPerGroup: 16 }));    // same shape: re-point
+    await waitFor(() => lines(tunes).length >= 2, 1000);
+    expect(lines(args)).toHaveLength(1);
+    await engine.retune(cfg([A, B, C], { lanesPerGroup: 24 }));
+    await waitFor(() => lines(args).length >= 2, 1000);
+    expect(lines(args)).toHaveLength(2);
+    expect(lines(args)[1]).toContain("--lanes 24");
+    await engine.retune(cfg([A, B, C], { lanesPerGroup: 24, sampleRateHz: 2_200_000 }));
+    await waitFor(() => lines(args).length >= 3, 1000);
+    await engine.stop();
+    expect(lines(args)).toHaveLength(3);
+    expect(lines(args)[2]).toContain("--rate 2200000");
   });
 
   it("tears the helper down (releases the SDR) when the last channel is deleted", async () => {

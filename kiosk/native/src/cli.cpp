@@ -56,7 +56,11 @@ bool parse_cli(int argc, const char* const* argv, Cli& c, std::string& err) {
     else if (k == "--tune") { if (!val(c.tune_json)) return false; }
     else if (k == "--audio-out") { if (!val(c.audio_out)) return false; }
     else if (k == "--same-out") { if (!val(c.same_out)) return false; }
-    else if (k == "--detect-via" || k == "--lanes" || k == "--lane-modes") { if (!val(v)) return false; }   // GR-era: ignored
+    else if (k == "--detect-via" || k == "--lane-modes") { if (!val(v)) return false; }   // GR-era: ignored
+    else if (k == "--lanes") {
+      if (!val(v) || !to_int(v, n) || n < 1 || n > MAX_LANES) { err = "--lanes must be an integer in [1, " + std::to_string(MAX_LANES) + "]"; return false; }
+      c.eng.lanes = n;
+    }
     else if (k == "--rtl-index") { if (!val(v) || !to_int(v, c.rtl_index) || c.rtl_index < 0) { err = "--rtl-index must be a non-negative integer"; return false; } }
     else if (k == "--audio-fd") { if (!val(v) || !to_int(v, c.audio_fd)) { err = "--audio-fd must be an integer"; return false; } }
     else if (k == "--rate") {

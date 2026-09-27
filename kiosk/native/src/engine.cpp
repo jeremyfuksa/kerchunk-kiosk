@@ -10,12 +10,12 @@ using nlohmann::json;
 
 Engine::Engine(const EngineOptions& o, Emit emit, Pcm speaker, Pcm tee, Pcm same)
     : opt_(o), emit_(std::move(emit)), speaker_(std::move(speaker)), tee_(std::move(tee)), same_(std::move(same)),
-      ch_(o.rate), sc_(o.squelch, [this](const json& j) { emit_(j); }), spk_(o.speaker_lpf_hz, (float)(AM_GAIN * std::pow(10.0, o.am_gain_db / 20.0)), o.agc, o.limiter_ceiling,
+      ch_(o.rate), sc_(o.squelch, [this](const json& j) { emit_(j); }, o.lanes), spk_(o.speaker_lpf_hz, (float)(AM_GAIN * std::pow(10.0, o.am_gain_db / 20.0)), o.agc, o.limiter_ceiling,
            o.limiter_release_ms),
-      power_(MAX_LANES), disc_(MAX_LANES), quiet_(MAX_LANES),
-      disc_buf_(MAX_LANES, std::vector<float>(Channelizer::kLaneSamplesPerHop)), readings_(MAX_LANES) {
+      power_(o.lanes), disc_(o.lanes), quiet_(o.lanes),
+      disc_buf_(o.lanes, std::vector<float>(Channelizer::kLaneSamplesPerHop)), readings_(o.lanes) {
   if (o.close_call) cc_ = std::make_unique<CloseCall>(o.rate);   // FFTW planning on this (the DSP) thread
-  ch_.set_lanes(std::vector<double>(MAX_LANES, 0.0));
+  ch_.set_lanes(std::vector<double>(opt_.lanes, 0.0));
   out48_.reserve(256);
 }
 
@@ -36,7 +36,7 @@ void Engine::sync_active() {
   // Parked slots skip their channelizer extract + IFFT -- except a parked slot the speaker is
   // still fading out (on_hop keeps its discriminator running on the old channel's samples).
   const int f = spk_.feeding_lane();
-  for (int i = 0; i < MAX_LANES; i++) ch_.set_lane_active(i, !sc_.lane(i).parked() || i == f);
+  for (int i = 0; i < opt_.lanes; i++) ch_.set_lane_active(i, !sc_.lane(i).parked() || i == f);
 }
 
 void Engine::command(const Command& c) {
@@ -71,12 +71,12 @@ void Engine::tune(const TuneCmd& t) {
     ok.push_back(c);
   }
   sc_.tune(center_, ok, t.monitor);
-  std::vector<double> offsets(MAX_LANES, 0.0);
-  for (int i = 0; i < MAX_LANES; i++)
+  std::vector<double> offsets(opt_.lanes, 0.0);
+  for (int i = 0; i < opt_.lanes; i++)
     if (!sc_.lane(i).parked()) offsets[i] = sc_.lane(i).freq_hz - center_;
   ch_.reset_stream();
   ch_.set_lanes(offsets);
-  for (int i = 0; i < MAX_LANES; i++) reset_lane(i);
+  for (int i = 0; i < opt_.lanes; i++) reset_lane(i);
   spk_.cut();   // retune: fade the last emitted sample out (GR faded before a retune), no step
   same_path_.reset();
   if (cc_) {
@@ -140,7 +140,7 @@ void Engine::push_u8(const uint8_t* iq, size_t nsamples) {
 
 void Engine::on_hop(const cf* lanes, int per, const cf* raw, int raw_n) {
   samples_ += raw_n;
-  for (int i = 0; i < MAX_LANES; i++) {
+  for (int i = 0; i < opt_.lanes; i++) {
     const LaneState& L = sc_.lane(i);
     if (L.parked()) continue;
     const cf* y = lanes + i * per;
@@ -180,7 +180,7 @@ void Engine::on_hop(const cf* lanes, int per, const cf* raw, int raw_n) {
 
 void Engine::poll() {
   polls_++;
-  for (int i = 0; i < MAX_LANES; i++)
+  for (int i = 0; i < opt_.lanes; i++)
     readings_[i] = {power_[i].fast_db(), power_[i].slow_db(), quiet_[i].db(), quiet_[i].ready()};
   sc_.poll(now(), readings_);
   sync_speaker();

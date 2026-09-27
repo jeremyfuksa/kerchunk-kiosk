@@ -2,11 +2,17 @@
 
 #include <algorithm>
 #include <cmath>
+#include <stdexcept>
+#include <string>
 
 namespace kc {
 using nlohmann::json;
 
-Scanner::Scanner(Params p, Emit emit) : p_(p), emit_(std::move(emit)), lanes_(MAX_LANES) {}
+Scanner::Scanner(Params p, Emit emit, int lanes) : p_(p), emit_(std::move(emit)) {
+  if (lanes < 1 || lanes > MAX_LANES)
+    throw std::invalid_argument("Scanner: lanes " + std::to_string(lanes) + " outside [1, " + std::to_string(MAX_LANES) + "]");
+  lanes_.resize(lanes);
+}
 
 void Scanner::assign(int i, const ChannelCmd& c) {
   LaneState L;
@@ -27,16 +33,18 @@ void Scanner::tune(double center_hz, std::vector<ChannelCmd> channels, bool moni
   // id in Node's open set with no close ever following (the scanner would park forever).
   for (auto& L : lanes_)
     if (!L.parked() && L.open) emit_({{"ev", "close"}, {"id", L.id}});
-  const int n = MAX_LANES;
-  if ((int)channels.size() > n) {
+  const int n = (int)lanes_.size();
+  // Split before truncating: the background (SAME) channel keeps the last slot even when the
+  // group overflows, wherever it sits in the list. Extras beyond the slot count are dropped.
+  std::vector<ChannelCmd> bgs, regs;
+  for (auto& c : channels) (c.background ? bgs : regs).push_back(c);
+  const int reg_slots = bgs.empty() ? n : n - 1;   // the SAME slot is spoken for
+  if ((int)regs.size() > reg_slots || bgs.size() > 1) {
     emit_({{"ev", "log"}, {"msg", "group truncated to " + std::to_string(n) + " channels"}});
-    channels.resize(n);
+    if ((int)regs.size() > reg_slots) regs.resize(reg_slots);
   }
   monitor_ = monitor;
   set_audible(-1);
-  std::vector<ChannelCmd> bgs, regs;
-  for (auto& c : channels) (c.background ? bgs : regs).push_back(c);
-  if (!bgs.empty() && (int)regs.size() > n - 1) regs.resize(n - 1);   // the SAME slot is spoken for
   for (int i = 0; i < n; i++) {
     const ChannelCmd* c = nullptr;
     if (i == n - 1 && !bgs.empty()) c = &bgs[0];

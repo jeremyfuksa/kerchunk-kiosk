@@ -39,7 +39,8 @@ class Scanner {
     double hang_ms = 2000.0;
   };
   using Emit = std::function<void(const nlohmann::json&)>;
-  Scanner(Params p, Emit emit);
+  // lanes: slot count, 1..MAX_LANES (throws std::invalid_argument otherwise).
+  Scanner(Params p, Emit emit, int lanes = DEFAULT_LANES);
 
   void tune(double center_hz, std::vector<ChannelCmd> channels, bool monitor);
   void poll(double now, const std::vector<LaneReading>& r);
@@ -51,6 +52,7 @@ class Scanner {
   float gate() const { return gate_; }   // 1 = speaker open, 0 = closed (loudness is the AGC's job)
   bool monitor() const { return monitor_; }
   const LaneState& lane(int i) const { return lanes_[i]; }
+  int lanes() const { return (int)lanes_.size(); }
   std::vector<double> assigned_freqs() const;
   nlohmann::json power_levels(const std::vector<LaneReading>& r) const;
   nlohmann::json noise_levels(const std::vector<LaneReading>& r) const;

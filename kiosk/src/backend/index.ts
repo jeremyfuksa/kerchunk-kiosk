@@ -107,12 +107,17 @@ const engine =
 // baseband).
 const WEATHER_RATE_HZ = 250_000;
 const WEATHER_CENTER_OFFSET_HZ = 60_000;
+// Lane slots for the weather helper: the one NWR channel plus the background
+// SAME lane (always the last slot). Pinned here — scan.lanesPerGroup is the
+// scanner's knob, not this radio's.
+const WEATHER_LANES = 2;
 const weatherEngine = widebandFamily && weatherRadio && config.weatherChannel
   ? new WidebandEngine({
       ...deviceOpts(weatherRadio),
       ...restartBackoffOpts,
       ...watchdogOpts,
       sampleRateHz: WEATHER_RATE_HZ,
+      lanes: WEATHER_LANES,
       centerOffsetHz: WEATHER_CENTER_OFFSET_HZ,
       // Decode-only and latency-tolerant: run it at the lowest priority to keep
       // the scanner's real-time audio thread first (equal priority made the
@@ -153,7 +158,7 @@ engine.on((ev: EngineEvent) => {
   if (ev.type === "active") {
     activityLog.add({ freq: ev.freq, alphaTag: ev.channel.alphaTag, ts: ev.ts });
   }
-  // Bring weather up only after the main 12-lane graph is up and tuning.
+  // Bring weather up only after the main scanner helper is up and tuning.
   if (!weatherStarted && ev.type === "tuned") {
     weatherStarted = true;
     startWeatherLane();

@@ -69,8 +69,25 @@ from `pgrep -a kerchunk-dsp` is unchanged after making one.
 
 Notes:
 
-- The weather radio runs its narrow front-end at 250 kHz — kerchunk-dsp
-  lanes must land on a multiple of 50 kHz.
+- The weather radio runs its narrow front-end at 250 kHz with 2 lane slots
+  (`WEATHER_RATE_HZ` / `WEATHER_LANES` in `kiosk/src/backend/index.ts`) —
+  kerchunk-dsp lanes must land on a multiple of 50 kHz.
+- **Scanner group shape** — three `config.scan` knobs decide how many groups
+  the scan cycle hops through (fewer groups = a shorter cycle = fewer missed
+  transmissions). Omitted = today's defaults:
+
+  | `config.scan` | helper flag | default | range |
+  | --- | --- | --- | --- |
+  | `lanesPerGroup` | `--lanes` | 32 | 1…64 (kerchunk-dsp `MAX_LANES`) |
+  | `sampleRateHz` | `--rate` | 2 500 000 | 950 000…3 200 000, multiple of 50 000 (above ~2 560 000 RTL dongles tend to drop samples) |
+  | `windowBandwidthHz` | (grouping only) | 2 400 000 (RTL edge roll-off: floor −1.4 dB at ±1.0 MHz, −4.8 dB at ±1.2 MHz; 2 200 000 keeps edges within ~3.5 dB) | ≤ `sampleRateHz` − 50 000 |
+
+  `lanesPerGroup` caps channels per group; `windowBandwidthHz` caps a group's
+  span. The schema rejects a window wider than the rate minus one 50 kHz lane
+  (edge channels can't be placed), using the defaults for omitted fields — so
+  raising the window past 2.35 MHz needs a higher rate too. Changing
+  `lanesPerGroup` or `sampleRateHz` via `PUT /api/config` respawns only the
+  scanner helper (both are spawn args); the weather helper pins its own.
 - The quieting knob is `scan.nativeQuietDb` (the helper's own dB scale,
   default −6; lower = stricter), exposed in the admin as "Quieting
   threshold". Legacy configs may still hold the retired GNU-Radio-scale

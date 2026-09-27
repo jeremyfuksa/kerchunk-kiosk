@@ -19,6 +19,7 @@ TEST(cli_accepts_node_spawn_surface) {
   CHECK_NEAR(c.eng.squelch.hang_ms, 2000, 0);
   CHECK_NEAR(c.eng.squelch.quiet_db, -6, 0);
   CHECK(c.eng.rate == 2400000);
+  CHECK(c.eng.lanes == 12);
 }
 
 TEST(cli_rejects_bad_values_and_unknown) {
@@ -102,5 +103,22 @@ TEST(cli_speaker_agc_and_limiter_knobs) {
     std::string m;
     CHECK(!parse(a, e, m));
     CHECK(m.find(a[0]) != std::string::npos);
+  }
+}
+
+TEST(cli_lanes_range) {
+  {
+    kc::Cli c;
+    std::string err;
+    CHECK(c.eng.lanes == kc::DEFAULT_LANES);   // omitted = today's 12
+    CHECK(parse({"--lanes", "1"}, c, err) && c.eng.lanes == 1);
+    kc::Cli c2;
+    CHECK(parse({"--lanes", "64"}, c2, err) && c2.eng.lanes == 64);
+  }
+  for (const char* v : {"0", "65", "-1", "abc", "12.5", ""}) {
+    kc::Cli c;
+    std::string err;
+    CHECK(!parse({"--lanes", v}, c, err));
+    CHECK(err.find("--lanes") != std::string::npos);
   }
 }

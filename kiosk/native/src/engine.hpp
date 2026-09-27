@@ -17,6 +17,7 @@
 namespace kc {
 struct EngineOptions {
   int rate = 2'400'000;
+  int lanes = DEFAULT_LANES;                 // lane slots, 1..MAX_LANES (CLI --lanes)
   Scanner::Params squelch{};
   bool close_call = false;
   bool same = false;
@@ -38,6 +39,7 @@ class Engine {
   void push_u8(const uint8_t* iq, size_t nsamples);
   double now() const { return (double)samples_ / opt_.rate; }
   bool quit() const { return quit_; }
+  const Scanner& scanner() const { return sc_; }   // read-only: slot assignment (tests, diagnostics)
   // Input the DSP never saw (ring overrun, or retune discard): advance the clock by n samples and,
   // if a window is live, restart the channelizer stream so the gap can't smear across hops.
   // dropped=true counts toward power.drops and the rate-limited overrun log.

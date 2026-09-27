@@ -660,6 +660,31 @@ describe("close call RepeaterBook enrichment", () => {
   });
 });
 
+describe("scanner lane count + sample rate (config.scan)", () => {
+  it("changing lanesPerGroup or sampleRateHz restarts the scanner helper with the new values", async () => {
+    const { server, engine } = makeApp();
+    const cfg = (await request(server).get("/api/config")).body;
+    const before = engine.starts.length;
+    const res = await request(server).put("/api/config")
+      .send({ ...cfg, scan: { ...cfg.scan, lanesPerGroup: 32, sampleRateHz: 2_000_000, windowBandwidthHz: 1_900_000 } });
+    expect(res.status).toBe(200);
+    expect(engine.starts.length).toBe(before + 1);
+    const sc = engine.starts[engine.starts.length - 1]!;
+    expect(sc.lanesPerGroup).toBe(32);
+    expect(sc.sampleRateHz).toBe(2_000_000);
+  });
+
+  it("rejects a window too wide for the rate", async () => {
+    const { server, engine } = makeApp();
+    const cfg = (await request(server).get("/api/config")).body;
+    const before = engine.starts.length;
+    const res = await request(server).put("/api/config")
+      .send({ ...cfg, scan: { ...cfg.scan, sampleRateHz: 1_000_000 } });   // default 2 MHz window
+    expect(res.status).toBe(400);
+    expect(engine.starts.length).toBe(before);
+  });
+});
+
 describe("speaker AGC knobs (config.audio)", () => {
   it("changing an AGC/limiter knob restarts the scanner helper with the new value", async () => {
     const { server, engine } = makeApp();
