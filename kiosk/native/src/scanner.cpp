@@ -229,7 +229,10 @@ void Scanner::poll(double now, const std::vector<LaneReading>& r) {
       } else {
         L.above = 0;
       }
-    } else if (db < *floor + open_db - CLOSE_HYST_DB) {
+    } else if (db < *floor + open_db - CLOSE_HYST_DB || !L.quiet) {
+      // Close on carrier drop OR lost quieting: a carrier with no quieting (an AM signal on an FM
+      // lane, data, a stuck carrier) is not a transmission to hold for -- it parked the scanner
+      // until the max-hold cap (txstats, 2026-09-26). A fade shorter than the hang doesn't close.
       if (L.below_since < 0) L.below_since = now;
       else if (now - L.below_since >= hang_s) {
         L.open = false;
@@ -295,6 +298,8 @@ int Scanner::assign_cc(long long freq_hz) {
     c.id = "cc_" + std::to_string(freq_hz);
     c.freq_hz = (double)freq_hz;
     c.priority = true;   // a live Close Call hit preempts
+    // Airband is AM: an FM lane there never quiets, so the hit would be muted yet hold the lane.
+    if (freq_hz >= AIRBAND_LO_HZ && freq_hz <= AIRBAND_HI_HZ) c.mode = "am";
     assign(i, c);
     return i;
   }

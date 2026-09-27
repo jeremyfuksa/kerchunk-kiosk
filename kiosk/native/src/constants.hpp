@@ -61,6 +61,8 @@ inline constexpr double QUIET_DB_DEFAULT = -6.0;
 inline constexpr double FLOOR_ALPHA_UP = 0.01005;  // GR 0.02 per 20 ms
 inline constexpr double FLOOR_ALPHA_DOWN = 0.1056; // GR 0.2 per 20 ms
 inline constexpr double SKIP_HOLDOFF_S = 10.0;
+inline constexpr long long AIRBAND_LO_HZ = 118'000'000;   // VHF aviation voice band: Close Call lanes demod AM here
+inline constexpr long long AIRBAND_HI_HZ = 137'000'000;
 inline constexpr int RF_MAX_SAMPLES = 6000;        // ~60 s of open-power samples
 inline constexpr int RF_MIN_SAMPLES = 50;          // ~0.5 s before an rf estimate is emitted
 // Squelch-calibration txstat events (instrumentation only): per carrier episode, keep at most this

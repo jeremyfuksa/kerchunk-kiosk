@@ -1923,7 +1923,10 @@ export function renderAdmin(root: HTMLElement): void {
     // Map the identified modulation onto our demod modes; digital and
     // unknown fall back to nfm (all we can demodulate).
     const m = (d.mode ?? "").toUpperCase();
-    const mode = m === "FM" ? "fm" as const : m === "AM" ? "am" as const : "nfm" as const;
+    // Unknown modulation in the VHF airband (118-137 MHz) is AM, not nfm: an FM lane on an
+    // AM signal never quiets, so it stays muted while its carrier holds the scanner.
+    const air = d.freq >= 118_000_000 && d.freq <= 137_000_000;
+    const mode = m === "FM" ? "fm" as const : m === "AM" || (m === "" && air) ? "am" as const : "nfm" as const;
     cfg2.channels.push({
       id: `ch_${d.id.replace(/^cc_/, "")}`, freq: d.freq, alphaTag: d.alphaTag,
       mode, enabled: true, audible: false,
