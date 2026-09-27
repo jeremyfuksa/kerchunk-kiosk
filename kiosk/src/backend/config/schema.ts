@@ -97,6 +97,8 @@ export const newChannelSchema = channelObjectSchema.omit({ id: true }).refine(on
 export const DEFAULT_WINDOW_BANDWIDTH_HZ = 2_400_000;   // measured 2026-09-26: RTL floor -1.4 dB at +-1.0 MHz, -4.8 dB at +-1.2 MHz
 export const DEFAULT_LANES_PER_GROUP = 32;
 export const DEFAULT_SAMPLE_RATE_HZ = 2_500_000;
+// RTL flat passband (grouping keeps channels inside +-flat/2 where free): -1.4 dB at +-1.0 MHz.
+export const DEFAULT_FLAT_BANDWIDTH_HZ = 2_000_000;
 // A lane is 50 kHz wide: the rate must be a whole number of lanes, and a
 // channel's lane can sit no closer than half a lane to the band edge, so the
 // usable window is (rate - LANE_HZ).
@@ -115,6 +117,10 @@ export const configSchema = z.object({
     // Wideband engine tuning (optional; RtlFmEngine ignores these).
     // Usable I/Q window for grouping — keep under the dongle's ~2.4 MHz
     // instantaneous bandwidth to leave guard band.
+    // Flat part of the SDR passband (Hz): grouping keeps channels inside
+    // +-flat/2 of the tune center wherever it costs no extra group, and every
+    // channel >= 25 kHz off the DC spike. Default 2 000 000 (measured roll-off).
+    flatBandwidthHz: z.number().int().positive().optional(),
     windowBandwidthHz: z.number().int().positive().optional(),
     // kerchunk-dsp lane slots per group (--lanes). Grouping caps each group at
     // this many channels; more lanes = fewer groups = a shorter scan cycle.

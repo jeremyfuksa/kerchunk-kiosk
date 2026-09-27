@@ -81,6 +81,7 @@ Notes:
   | `lanesPerGroup` | `--lanes` | 32 | 1…64 (kerchunk-dsp `MAX_LANES`) |
   | `sampleRateHz` | `--rate` | 2 500 000 | 950 000…3 200 000, multiple of 50 000 (above ~2 560 000 RTL dongles tend to drop samples) |
   | `windowBandwidthHz` | (grouping only) | 2 400 000 (RTL edge roll-off: floor −1.4 dB at ±1.0 MHz, −4.8 dB at ±1.2 MHz; 2 200 000 keeps edges within ~3.5 dB) | ≤ `sampleRateHz` − 50 000 |
+  | `flatBandwidthHz` | (grouping only) | 2 000 000 | the RTL's flat passband: grouping keeps channels inside ±flat/2 of the tune center and ≥ 25 kHz off the DC spike wherever it costs no extra group |
 
   `lanesPerGroup` caps channels per group; `windowBandwidthHz` caps a group's
   span. The schema rejects a window wider than the rate minus one 50 kHz lane
