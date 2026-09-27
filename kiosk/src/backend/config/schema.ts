@@ -62,9 +62,9 @@ export const channelSchema = z.object({
 
 // Scanner front-end defaults, used when config omits the scan field (the
 // engine and the schema's window/rate refine share them).
-export const DEFAULT_WINDOW_BANDWIDTH_HZ = 2_000_000;
-export const DEFAULT_LANES_PER_GROUP = 12;
-export const DEFAULT_SAMPLE_RATE_HZ = 2_400_000;
+export const DEFAULT_WINDOW_BANDWIDTH_HZ = 2_400_000;   // measured 2026-09-26: RTL floor -1.4 dB at +-1.0 MHz, -4.8 dB at +-1.2 MHz
+export const DEFAULT_LANES_PER_GROUP = 32;
+export const DEFAULT_SAMPLE_RATE_HZ = 2_500_000;
 // A lane is 50 kHz wide: the rate must be a whole number of lanes, and a
 // channel's lane can sit no closer than half a lane to the band edge, so the
 // usable window is (rate - LANE_HZ).

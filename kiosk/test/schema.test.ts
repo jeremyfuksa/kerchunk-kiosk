@@ -215,7 +215,7 @@ describe("scan lanesPerGroup + sampleRateHz", () => {
   });
 
   it("sampleRateHz: multiple of 50 kHz in [950k, 3.2M]", () => {
-    expect(scan({ sampleRateHz: 2_400_000 }).sampleRateHz).toBe(2_400_000);
+    expect(scan({ sampleRateHz: 2_400_000, windowBandwidthHz: 2_000_000 }).sampleRateHz).toBe(2_400_000);
     expect(scan({ sampleRateHz: 3_200_000, windowBandwidthHz: 3_150_000 }).sampleRateHz).toBe(3_200_000);
     expect(scan({ sampleRateHz: 950_000, windowBandwidthHz: 900_000 }).sampleRateHz).toBe(950_000);
     expect(() => scan({ sampleRateHz: 900_000, windowBandwidthHz: 850_000 })).toThrow();   // librtlsdr rejects exactly 900 000
@@ -225,10 +225,10 @@ describe("scan lanesPerGroup + sampleRateHz", () => {
   });
 
   it("rejects a window wider than (sampleRateHz - 50 kHz), using defaults for omitted fields", () => {
-    expect(scan({ sampleRateHz: 2_050_000 }).sampleRateHz).toBe(2_050_000);   // exactly fits the 2 MHz default
-    expect(() => scan({ sampleRateHz: 2_000_000 })).toThrow();                 // default 2 MHz window too wide
-    expect(() => scan({ windowBandwidthHz: 2_400_000 })).toThrow();            // default 2.4 Msps rate
-    expect(scan({ windowBandwidthHz: 2_350_000 }).windowBandwidthHz).toBe(2_350_000);
+    expect(scan({ sampleRateHz: 2_450_000 }).sampleRateHz).toBe(2_450_000);   // exactly fits the 2.4 MHz default
+    expect(() => scan({ sampleRateHz: 2_400_000 })).toThrow();                 // default 2.4 MHz window too wide
+    expect(() => scan({ windowBandwidthHz: 2_500_000 })).toThrow();            // default 2.5 Msps rate
+    expect(scan({ windowBandwidthHz: 2_450_000 }).windowBandwidthHz).toBe(2_450_000);
     const r = configSchema.safeParse({ ...base, scan: { ...base.scan, sampleRateHz: 1_000_000 } });
     expect(r.success).toBe(false);
     if (!r.success) expect(r.error.issues[0]?.path).toEqual(["scan", "windowBandwidthHz"]);

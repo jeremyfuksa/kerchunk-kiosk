@@ -395,7 +395,7 @@ describe("WidebandEngine", () => {
       expect(a).not.toContain("--lane-modes");
     });
 
-    it("always passes --rate and --lanes: defaults 2.4 Msps / 12, config knobs, option overrides", async () => {
+    it("always passes --rate and --lanes: defaults 2.5 Msps / 32, config knobs, option overrides", async () => {
       const spawnArgs = async (c: ScanConfig, over: Record<string, unknown> = {}) => {
         const args = tmpFile("args");
         const { engine } = makeEngine({ FAKE_WB_ARGS_FILE: args }, over);
@@ -405,8 +405,8 @@ describe("WidebandEngine", () => {
         return lines(args)[0] ?? "";
       };
       const d = await spawnArgs(cfg([VHF_A]));
-      expect(d).toContain("--rate 2400000");
-      expect(d).toContain("--lanes 12");
+      expect(d).toContain("--rate 2500000");
+      expect(d).toContain("--lanes 32");
       const k = await spawnArgs(cfg([VHF_A], { lanesPerGroup: 32, sampleRateHz: 2_000_000 }));
       expect(k).toContain("--rate 2000000");
       expect(k).toContain("--lanes 32");
@@ -418,7 +418,7 @@ describe("WidebandEngine", () => {
       expect(wx).not.toContain("--rate 2000000");
     });
 
-    it("groups at lanesPerGroup: 30 channels in 1 MHz = 1 group at 32 lanes, 3 groups at 12", async () => {
+    it("groups at lanesPerGroup: 30 channels in 1 MHz = 1 group at the default 32 lanes, 3 groups at 12", async () => {
       const thirty = Array.from({ length: 30 }, (_, i) => ch(146_000_000 + i * 30_000));
       const groupsSeen = async (lanesPerGroup?: number) => {
         const tunes = tmpFile("tunes");
@@ -429,12 +429,12 @@ describe("WidebandEngine", () => {
         const ts = lines(tunes).map((l) => JSON.parse(l) as { centerHz: number; channels: unknown[] });
         return { centers: new Set(ts.map((t) => t.centerHz)).size, sizes: ts.map((t) => t.channels.length) };
       };
-      const wide = await groupsSeen(32);
+      const wide = await groupsSeen();
       expect(wide.centers).toBe(1);
       expect(wide.sizes[0]).toBe(30);
-      const def = await groupsSeen();
-      expect(def.centers).toBe(3);
-      expect(Math.max(...def.sizes)).toBe(12);
+      const narrow = await groupsSeen(12);
+      expect(narrow.centers).toBe(3);
+      expect(Math.max(...narrow.sizes)).toBe(12);
     });
 
     it("forwards nativeAmGainDb as --am-gain-db; omits it when unset", async () => {

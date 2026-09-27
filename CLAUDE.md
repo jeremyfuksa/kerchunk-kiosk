@@ -10,7 +10,7 @@ that are easy to get wrong.
 Kerchunk is an SDR scanner **appliance**: a lid-closed Ubuntu 26.04 laptop
 (i7-4770HQ MacBook Pro), RTL-SDR dongles, and a persistent native C++ DSP
 helper (`kerchunk-dsp`, `kiosk/native/`) that demodulates every channel in a
-~2 MHz window at once. Stack: TypeScript (Node ≥24, ESM) backend +
+~2.4 MHz window at once. Stack: TypeScript (Node ≥24, ESM) backend +
 vanilla-TS/Vite frontends, the C++ DSP helper (cmake; librtlsdr, FFTW, ALSA),
 zod-validated config, systemd. **No frontend framework — vanilla TS
 only.** Icons are `lucide-static` only, never hand-rolled SVG (operator
