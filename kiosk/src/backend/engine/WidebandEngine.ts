@@ -6,9 +6,9 @@ import type {
   SpeakerAgcConfig,
 } from "./ScannerEngine.js";
 import {
-  type Channel, DEFAULT_LANES_PER_GROUP, DEFAULT_SAMPLE_RATE_HZ, DEFAULT_WINDOW_BANDWIDTH_HZ,
+  type Channel, DEFAULT_LANES_PER_GROUP, DEFAULT_SAMPLE_RATE_HZ, DEFAULT_WINDOW_BANDWIDTH_HZ, DEFAULT_FLAT_BANDWIDTH_HZ,
 } from "../config/schema.js";
-import { groupChannels, sweepCenters, type ChannelGroup } from "./grouping.js";
+import { groupChannels, sweepCenters, type ChannelGroup, type GroupingOptions } from "./grouping.js";
 import { setVolume as amixerVolume, setMuted as amixerMuted } from "../audio.js";
 import { TxStatsLog } from "./txStats.js";
 
@@ -326,6 +326,7 @@ export class WidebandEngine implements ScannerEngine {
       config.channels,
       config.windowBandwidthHz ?? DEFAULT_WINDOW_HZ,
       this.lanesFor(config),
+      this.groupingOpts(config),
     );
     this.groupIndex = 0;
     // Band-sweep stops: empty windows Close Call hunts in, one per rotation.
@@ -373,6 +374,16 @@ export class WidebandEngine implements ScannerEngine {
    * spawn-time args). If the helper isn't live there is nothing to re-point —
    * also a full start.
    */
+  // Edge-aware placement (grouping.ts): keep channels in the flat passband and
+  // off the DC spike. An engine with a fixed center offset (the weather radio,
+  // parked 60 kHz off NWR) already dodges DC, so it skips the DC shift.
+  private groupingOpts(config: ScanConfig): GroupingOptions {
+    return {
+      flatHz: config.flatBandwidthHz ?? DEFAULT_FLAT_BANDWIDTH_HZ,
+      ...(this.centerOffsetHz !== 0 ? { dcClearHz: 0 } : {}),
+    };
+  }
+
   async retune(config: ScanConfig): Promise<void> {
     if (this._state !== "running" || !this.child?.stdin?.writable) {
       return this.start(config);
@@ -385,6 +396,7 @@ export class WidebandEngine implements ScannerEngine {
       config.channels,
       config.windowBandwidthHz ?? DEFAULT_WINDOW_HZ,
       this.lanesFor(config),
+      this.groupingOpts(config),
     );
     // Slots fit every group: only an emptied channel set (release the SDR)
     // takes the full start() path.

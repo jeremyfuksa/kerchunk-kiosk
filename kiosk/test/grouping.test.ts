@@ -100,3 +100,35 @@ describe("sweepCenters — CC band-sweep stops", () => {
     expect(sweepCenters([{ loHz: 470_000_000, hiHz: 450_000_000 }], 2_000_000, groups)).toEqual([]);
   });
 });
+
+describe("groupChannels edge-aware placement", () => {
+  it("moves a lone channel's center off the DC spike, and not farther than needed", () => {
+    const [g] = groupChannels([ch(444_275_000)], 2_400_000, 32);
+    const off = Math.abs(g!.centerHz - 444_275_000);
+    expect(off).toBeGreaterThanOrEqual(25_000);
+    expect(off).toBeLessThanOrEqual(30_000);
+  });
+
+  it("dcClearHz 0 keeps the plain midpoint (weather radio: its own center offset dodges DC)", () => {
+    const [g] = groupChannels([ch(162_550_000)], 2_400_000, 32, { dcClearHz: 0 });
+    expect(g!.centerHz).toBe(162_550_000);
+  });
+
+  it("shifts the center so fewer channels sit in the rolled-off edge", () => {
+    // 2.3 MHz span, three channels bunched low + one high. The midpoint (461.15) leaves all four
+    // beyond +-1.0 MHz; any valid center is in [461.1, 461.2], and 461.1 brings 460.1 back inside.
+    const freqs = [460_000_000, 460_050_000, 460_100_000, 462_300_000];
+    const [g] = groupChannels(freqs.map((f) => ch(f)), 2_400_000, 32, { flatHz: 2_000_000 });
+    const outside = (c: number) => freqs.filter((f) => Math.abs(f - c) > 1_000_000).length;
+    for (const f of freqs) expect(Math.abs(f - g!.centerHz)).toBeLessThanOrEqual(1_200_000);
+    expect(outside(461_150_000)).toBe(4);
+    expect(outside(g!.centerHz)).toBe(3);
+  });
+
+  it("never adds groups to buy flatness", () => {
+    const freqs = Array.from({ length: 40 }, (_, k) => 144_000_000 + k * 60_000);   // 2.34 MHz span
+    const plain = groupChannels(freqs.map((f) => ch(f)), 2_400_000, 64);
+    const flat = groupChannels(freqs.map((f) => ch(f)), 2_400_000, 64, { flatHz: 2_000_000 });
+    expect(flat).toHaveLength(plain.length);
+  });
+});

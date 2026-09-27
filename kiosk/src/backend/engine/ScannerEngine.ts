@@ -32,6 +32,8 @@ export interface ScanConfig {
   audioSink: string;
   // Wideband engine tuning (optional; RtlFmEngine/FakeEngine ignore these).
   windowBandwidthHz?: number;
+  // Flat part of the SDR passband for edge-aware grouping (see schema).
+  flatBandwidthHz?: number;
   // kerchunk-dsp lane slots per group (--lanes; default 12) and front-end
   // sample rate (--rate; default 2.4 Msps). Spawn-time helper args (see schema).
   lanesPerGroup?: number;
