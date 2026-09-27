@@ -60,6 +60,19 @@ export const channelSchema = z.object({
   lookedUpAt: z.number().optional(),
 });
 
+// Scanner front-end defaults, used when config omits the scan field (the
+// engine and the schema's window/rate refine share them).
+export const DEFAULT_WINDOW_BANDWIDTH_HZ = 2_000_000;
+export const DEFAULT_LANES_PER_GROUP = 12;
+export const DEFAULT_SAMPLE_RATE_HZ = 2_400_000;
+// A lane is 50 kHz wide: the rate must be a whole number of lanes, and a
+// channel's lane can sit no closer than half a lane to the band edge, so the
+// usable window is (rate - LANE_HZ).
+const LANE_HZ = 50_000;
+export const MAX_LANES_PER_GROUP = 64;   // kerchunk-dsp MAX_LANES (native/src/constants.hpp)
+export const MIN_SAMPLE_RATE_HZ = 900_000;
+export const MAX_SAMPLE_RATE_HZ = 3_200_000;
+
 export const configSchema = z.object({
   version: z.literal(1),
   scan: z.object({
@@ -71,6 +84,18 @@ export const configSchema = z.object({
     // Usable I/Q window for grouping — keep under the dongle's ~2.4 MHz
     // instantaneous bandwidth to leave guard band.
     windowBandwidthHz: z.number().int().positive().optional(),
+    // kerchunk-dsp lane slots per group (--lanes). Grouping caps each group at
+    // this many channels; more lanes = fewer groups = a shorter scan cycle.
+    // Omitted = 12 (the GNU-Radio-era cost cap; native lanes are cheap).
+    // Changing it respawns the scanner helper (spawn arg).
+    lanesPerGroup: z.number().int().min(1).max(MAX_LANES_PER_GROUP).optional(),
+    // Scanner front-end sample rate (Hz, --rate). Must be a whole number of
+    // 50 kHz lanes and fit the RTL-SDR's range. windowBandwidthHz must be at
+    // most (sampleRateHz - 50 kHz) — see the refine below. Omitted = 2.4 Msps.
+    // Changing it respawns the scanner helper (spawn arg).
+    sampleRateHz: z.number().int().min(MIN_SAMPLE_RATE_HZ).max(MAX_SAMPLE_RATE_HZ)
+      .refine((r) => r % LANE_HZ === 0, { message: "sampleRateHz must be a multiple of 50000" })
+      .optional(),
     // Dwell per group before hopping to the next (hold-through overrides).
     groupDwellMs: z.number().int().positive().optional(),
     // Ceiling on ONE continuous hold-through (default 180 s). A lane that
@@ -144,6 +169,17 @@ export const configSchema = z.object({
     // Close Call lockouts: frequencies that must NEVER trigger discovery
     // again (noise sources, data links the operator dismissed).
     lockoutHz: z.array(z.number().int().positive()).optional(),
+  }).superRefine((s, ctx) => {
+    // A window wider than (rate - one lane) can't place its edge channels.
+    const rate = s.sampleRateHz ?? DEFAULT_SAMPLE_RATE_HZ;
+    const window = s.windowBandwidthHz ?? DEFAULT_WINDOW_BANDWIDTH_HZ;
+    if (window > rate - LANE_HZ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["windowBandwidthHz"],
+        message: `windowBandwidthHz ${window} exceeds sampleRateHz ${rate} minus ${LANE_HZ} (edge channels can't be placed)`,
+      });
+    }
   }),
   audio: z.object({
     sink: z.string().min(1),

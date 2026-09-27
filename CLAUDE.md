@@ -134,6 +134,9 @@ replays the warm-up overlay on the wall.
   knobs are `config.scan.nativeQuietDb` (`--quiet-db`) and
   `config.scan.nativeAmGainDb` (`--am-gain-db`, the AM pre-gain into the AGC),
   `config.scan.fmAudioLpfHz` (`--audio-lpf-hz`, FM weak-signal hiss).
+  Group shape: `config.scan.lanesPerGroup` (`--lanes`, 12, 1…64) and
+  `config.scan.sampleRateHz` (`--rate`, 2 400 000, 900k…3.2M in 50 kHz steps)
+  with `windowBandwidthHz` (2 MHz, ≤ rate − 50 kHz — schema-enforced).
   Speaker loudness is a per-transmission AGC + peak limiter in the helper
   (the per-channel `levelTrimDb` learner is gone; old configs strip it):
   `config.audio.agcTargetDb` (−18) / `agcMaxGainDb` (15) / `agcMinGainDb`
@@ -240,11 +243,16 @@ even with green checks.
   validated shape (`src/backend/config/schema.ts`). The server owns the
   derived `knownHz`/lockout lists (channels + discoveries + lockouts) and
   Close Call suppression.
-- **Fixed 12-slot channelizer.** `kerchunk-dsp` builds 12 lane slots at spawn
-  regardless of config (a slot's FM/AM demod is chosen per `tune`; parked slots
-  skip their extract+IFFT). Channel edits, AM lanes and break-ins therefore
-  always `retune()` in place — only an emptied channel set respawns (to
-  release the SDR).
+- **Lane slots are a spawn-time knob.** `kerchunk-dsp` builds `--lanes` slots
+  at spawn (`scan.lanesPerGroup`, default 12, max 64 = `MAX_LANES` in
+  `native/src/constants.hpp`; the background/SAME lane is always the LAST
+  slot). The front-end rate is `--rate` (`scan.sampleRateHz`, default 2.4 Msps)
+  and the grouping window `scan.windowBandwidthHz` (default 2 MHz, must be ≤
+  rate − 50 kHz). Grouping caps groups at the lane count, so a slot's FM/AM
+  demod chosen per `tune` always fits (parked slots skip their extract+IFFT):
+  channel edits, AM lanes and break-ins `retune()` in place. Respawns: an
+  emptied channel set (to release the SDR), or a change to the lane count or
+  rate. The weather helper pins 2 lanes at 250 kHz (`index.ts`).
 - **Two engine instances can run at once:** the scanner (serial KIOSK01) and a
   low-rate (250 kHz) decode-only weather monitor (KIOSK03) watching NWR for
   SAME. Both share one antenna via a splitter; only the scanner owns audio.

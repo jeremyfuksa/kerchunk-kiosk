@@ -114,6 +114,9 @@ export function toScanConfig(
     audioSink: cfg.audio.sink,
     // Wideband engine tuning; RtlFmEngine/FakeEngine ignore these.
     windowBandwidthHz: cfg.scan.windowBandwidthHz,
+    // Helper spawn args: a change respawns the scanner via scanChanged below.
+    lanesPerGroup: cfg.scan.lanesPerGroup,
+    sampleRateHz: cfg.scan.sampleRateHz,
     groupDwellMs: cfg.scan.groupDwellMs,
     openAboveFloorDb: cfg.scan.openAboveFloorDb,
     nativeQuietDb: cfg.scan.nativeQuietDb,

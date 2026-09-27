@@ -5,7 +5,9 @@ import type {
   ScannerEngine, ScanConfig, EngineState, EngineEvent, EngineListener, ScanChannel,
   SpeakerAgcConfig,
 } from "./ScannerEngine.js";
-import type { Channel } from "../config/schema.js";
+import {
+  type Channel, DEFAULT_LANES_PER_GROUP, DEFAULT_SAMPLE_RATE_HZ, DEFAULT_WINDOW_BANDWIDTH_HZ,
+} from "../config/schema.js";
 import { groupChannels, sweepCenters, type ChannelGroup } from "./grouping.js";
 import { setVolume as amixerVolume, setMuted as amixerMuted } from "../audio.js";
 
@@ -24,8 +26,9 @@ export const SPEAKER_AGC_FLAGS: ReadonlyArray<readonly [keyof SpeakerAgcConfig, 
 // Wideband group-hop scanner.
 //
 // ONE persistent native DSP helper (kerchunk-dsp, C++, kiosk/native/) owns the
-// SDR for the engine's whole lifetime. It samples a ~2.4 MHz I/Q window, runs a
-// fixed 12-slot channelizer that demodulates every channel in the window
+// SDR for the engine's whole lifetime. It samples a ~2.4 MHz I/Q window
+// (config.scan.sampleRateHz), runs a channelizer with config.scan.lanesPerGroup
+// slots (default 12) that demodulates every channel in the window
 // simultaneously, does squelch detection against an
 // adaptive noise floor, picks the audible channel (first-active-wins), and
 // plays audio straight to ALSA. Node owns grouping + group-hop timing and
@@ -42,10 +45,13 @@ export interface WidebandEngineOptions {
   /** RTL-SDR EEPROM serial (multi-SDR). Preferred over rtlIndex: the helper
    *  resolves it to the exact dongle regardless of enumeration order. */
   rtlSerial?: string;
-  /** Front-end sample rate (Hz). Omitted = the helper's wideband default. A
-   *  narrow rate (e.g. 240 kHz) makes a single-channel radio cheap — the
-   *  2.4 MHz front-end is the dominant cost. Must be a multiple of 48 kHz. */
+  /** Front-end sample rate (Hz). Overrides config.sampleRateHz (the scanner's
+   *  knob). A narrow rate (e.g. 250 kHz) makes a single-channel radio cheap —
+   *  the front-end is the dominant cost. Must be a multiple of 50 kHz. */
   sampleRateHz?: number;
+  /** Fixed helper lane-slot count. Overrides config.lanesPerGroup (the
+   *  scanner's knob) — the weather radio pins its own small count. */
+  lanes?: number;
   /** Shift the window center this many Hz off the group center so a lone
    *  channel doesn't sit on the RTL DC spike (the channel filter then scrubs
    *  the spike). Needed for a dedicated single-channel radio at a narrow rate. */
@@ -93,10 +99,11 @@ export interface WidebandEngineOptions {
   silenceTimeoutMs?: number;
 }
 
-const DEFAULT_WINDOW_HZ = 2_000_000;
-// Must match kerchunk-dsp's fixed lane-slot count (kiosk/native). Grouping
-// splits oversized clusters so the helper never truncates.
-const MAX_CHANNELS_PER_GROUP = 12;
+// Defaults when config omits scan.windowBandwidthHz / lanesPerGroup /
+// sampleRateHz (config/schema.ts). The lane count is passed to kerchunk-dsp as
+// --lanes, and grouping splits oversized clusters at the same count so the
+// helper never truncates.
+const DEFAULT_WINDOW_HZ = DEFAULT_WINDOW_BANDWIDTH_HZ;
 const DEFAULT_GROUP_DWELL_MS = 3000;
 // Signal events drive the dashboard meter; the helper's power telemetry
 // arrives ~5 Hz, pass it through at up to 4 Hz for a live-feeling needle.
@@ -190,6 +197,10 @@ export class WidebandEngine implements ScannerEngine {
   private readonly rtlIndexResolver: (() => number | null) | undefined;
   private readonly rtlSerial: string | undefined;
   private readonly sampleRateHz: number | undefined;
+  private readonly lanesOverride: number | undefined;
+  // Lane count + rate the LIVE helper was spawned with: a retune whose config
+  // needs different ones must respawn (both are spawn-time helper args).
+  private spawnedShape: { lanes: number; rate: number } | null = null;
   private readonly centerOffsetHz: number;
   private readonly niceness: number | undefined;
   private readonly maxHoldMs: number;
@@ -206,6 +217,7 @@ export class WidebandEngine implements ScannerEngine {
     this.rtlIndexResolver = opts.rtlIndex;
     this.rtlSerial = opts.rtlSerial;
     this.sampleRateHz = opts.sampleRateHz;
+    this.lanesOverride = opts.lanes;
     this.centerOffsetHz = opts.centerOffsetHz ?? 0;
     this.niceness = opts.niceness;
     this.readyTimeoutMs = opts.readyTimeoutMs ?? DEFAULT_READY_TIMEOUT_MS;
@@ -272,6 +284,14 @@ export class WidebandEngine implements ScannerEngine {
     }
   }
 
+  private lanesFor(config: ScanConfig): number {
+    return this.lanesOverride ?? config.lanesPerGroup ?? DEFAULT_LANES_PER_GROUP;
+  }
+
+  private rateFor(config: ScanConfig): number {
+    return this.sampleRateHz ?? config.sampleRateHz ?? DEFAULT_SAMPLE_RATE_HZ;
+  }
+
   private groupDwellMs(): number {
     return this.groupDwellOverride ?? this.config?.groupDwellMs ?? DEFAULT_GROUP_DWELL_MS;
   }
@@ -285,7 +305,7 @@ export class WidebandEngine implements ScannerEngine {
     this.groups = groupChannels(
       config.channels,
       config.windowBandwidthHz ?? DEFAULT_WINDOW_HZ,
-      MAX_CHANNELS_PER_GROUP,
+      this.lanesFor(config),
     );
     this.groupIndex = 0;
     // Band-sweep stops: empty windows Close Call hunts in, one per rotation.
@@ -325,24 +345,29 @@ export class WidebandEngine implements ScannerEngine {
    * helper's `tune` command re-centers the SDR and re-assigns the EXISTING
    * lanes; no respawn, no `booting`/`warmup` events.
    *
-   * kerchunk-dsp has a fixed 12 lane slots built at spawn regardless of
-   * config, so ANY topology change (more channels, an AM lane, …) just
-   * re-points. The only case that respawns is an emptied channel set: the
-   * helper must be torn down to release the SDR, not left hot on a deleted
-   * window. If the helper isn't live there is nothing to re-point — also a
-   * full start.
+   * kerchunk-dsp's lane slots (--lanes) are built at spawn and fit any group
+   * the grouping makes, so ANY topology change (more channels, an AM lane, …)
+   * just re-points. Respawns: an emptied channel set (the helper must be torn
+   * down to release the SDR, not left hot on a deleted window), and a config
+   * whose lane count or sample rate differs from the live helper's (both are
+   * spawn-time args). If the helper isn't live there is nothing to re-point —
+   * also a full start.
    */
   async retune(config: ScanConfig): Promise<void> {
     if (this._state !== "running" || !this.child?.stdin?.writable) {
       return this.start(config);
     }
+    const shape = this.spawnedShape;
+    if (!shape || shape.lanes !== this.lanesFor(config) || shape.rate !== this.rateFor(config)) {
+      return this.start(config);
+    }
     const newGroups = groupChannels(
       config.channels,
       config.windowBandwidthHz ?? DEFAULT_WINDOW_HZ,
-      MAX_CHANNELS_PER_GROUP,
+      this.lanesFor(config),
     );
-    // Fixed 12 slots: only an emptied channel set (release the SDR) takes the
-    // full start() path.
+    // Slots fit every group: only an emptied channel set (release the SDR)
+    // takes the full start() path.
     if (newGroups.length === 0) return this.start(config);
     this.config = config;
     this.groups = newGroups;
@@ -371,9 +396,10 @@ export class WidebandEngine implements ScannerEngine {
           : []),
       "--open-db", String(cfg.openAboveFloorDb ?? 9),
     ];
-    // Narrow front-end for a single-channel radio (weather): 10x cheaper than
-    // the 2.4 MHz wideband default — the front-end dominates the helper's cost.
-    if (this.sampleRateHz !== undefined) args.push("--rate", String(this.sampleRateHz));
+    // Front-end rate + lane slots, always explicit. The weather radio pins a
+    // narrow rate (10x cheaper — the front-end dominates the helper's cost)
+    // and 2 lanes; the scanner takes config.scan.sampleRateHz / lanesPerGroup.
+    args.push("--rate", String(this.rateFor(cfg)), "--lanes", String(this.lanesFor(cfg)));
     // Close Call FFT: built on unless explicitly disabled (matches the per-tune
     // `closeCall ?? true`). Off => the helper skips the 2048-pt FFT entirely.
     // A closeCall config change respawns the helper, so this stays in sync.
@@ -413,6 +439,7 @@ export class WidebandEngine implements ScannerEngine {
 
     this.clearWatchdogs(); // cheap insurance: no stale timer from a prior child
     this.lastSpawnAt = this.now();
+    this.spawnedShape = { lanes: this.lanesFor(this.config), rate: this.rateFor(this.config) };
     const base = [...this.helperCmd, ...this.helperArgs()];
     // Low-priority spawn (weather radio): `nice` execs the helper so all of its
     // threads inherit the nice value from birth. Lowering own priority needs

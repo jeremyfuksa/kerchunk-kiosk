@@ -196,6 +196,44 @@ describe("wideband scan fields", () => {
   });
 });
 
+describe("scan lanesPerGroup + sampleRateHz", () => {
+  const base = defaultConfig();
+  const scan = (x: object) => configSchema.parse({ ...base, scan: { ...base.scan, ...x } }).scan;
+
+  it("are optional (today's 12 lanes / 2.4 Msps / 2 MHz apply)", () => {
+    const s = scan({});
+    expect(s.lanesPerGroup).toBeUndefined();
+    expect(s.sampleRateHz).toBeUndefined();
+  });
+
+  it("lanesPerGroup: integer in [1, 64]", () => {
+    expect(scan({ lanesPerGroup: 1 }).lanesPerGroup).toBe(1);
+    expect(scan({ lanesPerGroup: 64 }).lanesPerGroup).toBe(64);
+    expect(() => scan({ lanesPerGroup: 0 })).toThrow();
+    expect(() => scan({ lanesPerGroup: 65 })).toThrow();
+    expect(() => scan({ lanesPerGroup: 12.5 })).toThrow();
+  });
+
+  it("sampleRateHz: multiple of 50 kHz in [900k, 3.2M]", () => {
+    expect(scan({ sampleRateHz: 2_400_000 }).sampleRateHz).toBe(2_400_000);
+    expect(scan({ sampleRateHz: 3_200_000, windowBandwidthHz: 3_150_000 }).sampleRateHz).toBe(3_200_000);
+    expect(scan({ sampleRateHz: 900_000, windowBandwidthHz: 850_000 }).sampleRateHz).toBe(900_000);
+    expect(() => scan({ sampleRateHz: 2_048_000 })).toThrow();          // not a lane multiple
+    expect(() => scan({ sampleRateHz: 850_000, windowBandwidthHz: 500_000 })).toThrow();
+    expect(() => scan({ sampleRateHz: 3_250_000 })).toThrow();
+  });
+
+  it("rejects a window wider than (sampleRateHz - 50 kHz), using defaults for omitted fields", () => {
+    expect(scan({ sampleRateHz: 2_050_000 }).sampleRateHz).toBe(2_050_000);   // exactly fits the 2 MHz default
+    expect(() => scan({ sampleRateHz: 2_000_000 })).toThrow();                 // default 2 MHz window too wide
+    expect(() => scan({ windowBandwidthHz: 2_400_000 })).toThrow();            // default 2.4 Msps rate
+    expect(scan({ windowBandwidthHz: 2_350_000 }).windowBandwidthHz).toBe(2_350_000);
+    const r = configSchema.safeParse({ ...base, scan: { ...base.scan, sampleRateHz: 1_000_000 } });
+    expect(r.success).toBe(false);
+    if (!r.success) expect(r.error.issues[0]?.path).toEqual(["scan", "windowBandwidthHz"]);
+  });
+});
+
 describe("mixerCard by name", () => {
   it("accepts an ALSA card NAME (stable across boots, unlike indices)", () => {
     const cfg = structuredClone(defaultConfig()) as Record<string, unknown> & { audio: Record<string, unknown> };
