@@ -10,7 +10,7 @@ import { RtlFmEngine } from "./engine/RtlFmEngine.js";
 import { FakeEngine } from "./engine/FakeEngine.js";
 import { WidebandEngine } from "./engine/WidebandEngine.js";
 import { rtlIndexForPort } from "./radios.js";
-import { setVolume, setMuted } from "./audio.js";
+import { setVolume, setMuted, watchOutput } from "./audio.js";
 import { RepeaterBook } from "./repeaterbook.js";
 import { RadioReference } from "./radioreference.js";
 import { MyGmrs } from "./mygmrs.js";
@@ -314,6 +314,14 @@ server.listen(PORT, () => {
     .then(() => setVolume(config.audio.volume, { card: config.audio.mixerCard, control: config.audio.mixerControl }))
     .then(() => setMuted(config.audio.muted, { card: config.audio.mixerCard, control: config.audio.mixerControl }))
     .catch((err) => console.error("engine start failed:", err));
+  // mixerControl "auto" (default): when the live output changes (headphone jack
+  // plugged/unplugged), re-apply the saved volume + mute to the new control.
+  watchOutput({ card: config.audio.mixerCard, control: config.audio.mixerControl }, (control) => {
+    const a = getConfig().audio;
+    console.error(`[audio] output moved to ${control}: re-applying volume ${a.volume}${a.muted ? " (muted)" : ""}`);
+    void setVolume(a.volume, { card: a.mixerCard, control })
+      .then(() => setMuted(a.muted, { card: a.mixerCard, control }));
+  });
 });
 
 // Stop BOTH engines on shutdown: leaving the weather helper running orphans a

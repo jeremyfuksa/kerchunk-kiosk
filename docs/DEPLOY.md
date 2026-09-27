@@ -153,6 +153,16 @@ Notes:
   20 MB (`TXSTATS_MAX_BYTES`, `kiosk/src/backend/engine/txStats.ts`).
   Instrumentation only — it changes no squelch or audio behavior.
 
+## Audio mixer
+
+Volume and mute drive an ALSA control via `amixer` on `audio.mixerCard`.
+`audio.mixerControl` omitted or `"auto"` targets the live output: `Headphone`
+while the card's "Headphone Jack" reads plugged, otherwise `Master` (also the
+fallback on cards without jack sense). On the appliance's CS4208 the audio
+leaves the headphone jack and Master does not govern it. The backend polls the
+jack every `JACK_POLL_MS` (5 s, `kiosk/src/backend/audio.ts`) and re-applies the
+saved volume/mute when the output moves. An explicit control name disables both.
+
 ## Legacy: remote Pi deploy
 
 `kiosk/scripts/deploy.sh` and the `.githooks/post-merge` auto-deploy hook are
