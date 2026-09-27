@@ -365,3 +365,66 @@ TEST(engine_lanes_1_single_background_lane) {
   bad.lanes = kc::MAX_LANES + 1;
   CHECK_THROWS(Rig(bad));
 }
+
+namespace {
+// FM carrier at `off` Hz carrying a 1 kHz "voice" tone (3 kHz dev) plus, if ctcss > 0, a CTCSS tone
+// at 600 Hz deviation -- added into x over [t0, t1).
+void burst_fm_ctcss(std::vector<sig::cf>& x, double off, double t0, double t1, double ctcss) {
+  double ph = 0;
+  for (size_t i = (size_t)(t0 * RATE); i < (size_t)(t1 * RATE) && i < x.size(); i++) {
+    const double t = (double)i / RATE;
+    double f = off + 3000 * std::sin(2 * M_PI * 1000 * t);
+    if (ctcss > 0) f += 600 * std::sin(2 * M_PI * ctcss * t);
+    ph += 2 * M_PI * f / RATE;
+    x[i] += sig::cf((float)(0.2 * std::cos(ph)), (float)(0.2 * std::sin(ph)));
+  }
+}
+const char* toned_tune(const char* ctcss) {
+  static std::string s;
+  s = std::string(R"({"cmd":"tune","centerHz":146000000,"channels":[{"id":"a","freqHz":146050000,"hangMs":500)") +
+      (ctcss ? std::string(R"(,"ctcssHz":)") + ctcss : std::string()) + R"(}],"closeCall":false})";
+  return s.c_str();
+}
+}  // namespace
+
+TEST(engine_ctcss_right_tone_opens_and_reports) {
+  kc::EngineOptions o; o.rate = RATE;
+  Rig r(o);
+  r.tune(toned_tune("100.0"));
+  auto x = scene(3.0, 11);
+  burst_fm_ctcss(x, 50'000, 1.0, 2.5, 100.0);
+  r.feed(x);
+  auto op = r.of("open");
+  CHECK(op.size() == 1);
+  if (!op.empty()) CHECK(op[0]["t"].get<double>() < 1.75);   // window fill + 2 hops + OPEN_POLLS
+  auto t = r.of("tone");
+  CHECK(t.size() == 1 && t[0]["id"] == "a" && t[0]["ctcssHz"] == 100.0);
+  CHECK(r.pcm_rms(1.9, 2.4) > 0.05);
+}
+
+TEST(engine_ctcss_wrong_tone_or_none_never_opens) {
+  for (double tx : {123.0, 0.0}) {
+    kc::EngineOptions o; o.rate = RATE;
+    Rig r(o);
+    r.tune(toned_tune("100.0"));
+    auto x = scene(3.0, 12);
+    burst_fm_ctcss(x, 50'000, 1.0, 2.8, tx);
+    r.feed(x);
+    CHECK(r.of("open").empty());
+    CHECK(r.pcm_rms(1.0, 3.0) < 1e-3);
+  }
+}
+
+TEST(engine_untoned_channel_opens_as_before_and_reports_heard_tone) {
+  kc::EngineOptions o; o.rate = RATE;
+  Rig r(o);
+  r.tune(toned_tune(nullptr));
+  auto x = scene(3.0, 13);
+  burst_fm_ctcss(x, 50'000, 1.0, 2.0, 151.4);
+  r.feed(x);
+  auto op = r.of("open");
+  CHECK(op.size() == 1);
+  if (!op.empty()) { CHECK(op[0]["t"].get<double>() > 1.08); CHECK(op[0]["t"].get<double>() < 1.2); }
+  auto t = r.of("tone");
+  CHECK(t.size() == 1 && t[0]["ctcssHz"] == 151.4);
+}

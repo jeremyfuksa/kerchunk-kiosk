@@ -57,6 +57,7 @@ void Scanner::assign(int i, const ChannelCmd& c) {
   L.background = c.background;
   L.open_db = c.open_db;
   L.hang_ms = c.hang_ms;
+  if (!L.am && !L.background) L.ctcss_hz = c.ctcss_hz;   // CTCSS is an FM thing; SAME never gates
   L.warmup_polls = (int)WARMUP_MS / POLL_MS;
   // Only parked slots are (re)assigned, and park() already ended their episode; drop any
   // leftover rather than attribute it to the new id.
@@ -113,7 +114,7 @@ void Scanner::set_audible(int i) {
   if (audible_ == i) return;
   audible_ = i;
   // Gate follows carrier, not just audibility: an open lane riding its hang time must not blast noise.
-  gate_ = (i >= 0 && lanes_[i].carrier) ? 1.f : 0.f;
+  gate_ = (i >= 0 && lanes_[i].carrier && lanes_[i].tone_ok) ? 1.f : 0.f;
   if (i >= 0) emit_({{"ev", "audible"}, {"id", lanes_[i].id}});
   else emit_({{"ev", "audible"}, {"id", nullptr}});
 }
@@ -194,18 +195,27 @@ void Scanner::poll(double now, const std::vector<LaneReading>& r) {
       }
     }
 
+    // CTCSS: a toned channel needs its tone to open, and mutes (like losing quieting) once the tone
+    // has been gone CTCSS_LOSS_MS. tone_seen only counts within the current episode/open.
+    if (!L.open && !tx_[i].active) L.tone_seen = -1;
+    if (L.ctcss_hz) {
+      if (r[i].tone && std::fabs(*r[i].tone - *L.ctcss_hz) <= CTCSS_MATCH_HZ) L.tone_seen = now;
+      L.tone_ok = L.tone_seen >= 0 && now - L.tone_seen <= CTCSS_LOSS_MS / 1000.0;
+    }
+
     const double gate_thresh = *floor + open_db - CLOSE_HYST_DB;
     const double fast = r[i].fast_db;
     L.carrier = L.carrier ? fast > gate_thresh - GATE_HYST_DB / 2 : fast > gate_thresh + GATE_HYST_DB / 2;
     if (!r[i].quiet_ready) L.quiet = false;
     else L.quiet = L.quiet ? r[i].quiet_db < quiet_db + QUIET_HYST_DB / 2 : r[i].quiet_db < quiet_db - QUIET_HYST_DB / 2;
-    if (audible_ == i) gate_ = L.carrier && L.quiet ? 1.f : 0.f;
+    if (audible_ == i) gate_ = L.carrier && L.quiet && L.tone_ok ? 1.f : 0.f;
 
     if (!L.open) {
-      if (db > *floor + open_db && L.quiet && now >= L.skip_until) {
+      if (db > *floor + open_db && L.quiet && L.tone_ok && now >= L.skip_until) {
         if (++L.above >= OPEN_POLLS) {
           L.open = true;
           L.below_since = -1;
+          L.tone_reported = false;
           tx_[i].opened = true;   // db > floor+open_db here, so the episode is active
           emit_({{"ev", "open"}, {"id", L.id}, {"db", round1(db)}});
           if (!L.allow_audio) {
@@ -233,7 +243,18 @@ void Scanner::poll(double now, const std::vector<LaneReading>& r) {
     } else {
       L.below_since = -1;
     }
+    // Tone report: once per open, the first stable tone an open FM lane hears (toned or not).
+    if (L.open && !L.tone_reported && r[i].tone && wants_tone(i)) {
+      L.tone_reported = true;
+      emit_({{"ev", "tone"}, {"id", L.id}, {"ctcssHz", round1(*r[i].tone)}});
+    }
   }
+}
+
+bool Scanner::wants_tone(int i) const {
+  const LaneState& L = lanes_[i];
+  return !monitor_ && !L.parked() && !L.am && !L.background && L.id.rfind("cc_", 0) != 0 &&
+         (L.open || tx_[i].active);
 }
 
 long long Scanner::skip(double holdoff_s, double now) {

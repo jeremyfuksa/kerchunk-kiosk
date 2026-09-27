@@ -7,7 +7,7 @@ TEST(protocol_parses_full_tune) {
   std::string err;
   auto c = kc::parse_command(
       R"({"cmd":"tune","centerHz":146033750,"channels":[{"id":"a","freqHz":146520000,"priority":true,)"
-      R"("levelDb":-2.5,"mode":"am","audible":false,"openDb":12,"quietDb":-86,"hangMs":1500},)"
+      R"("levelDb":-2.5,"mode":"am","audible":false,"openDb":12,"quietDb":-86,"hangMs":1500,"ctcssHz":100.0},)"
       R"({"id":"nwr","freqHz":162550000,"background":true}],"monitor":false,"closeCall":true,"closeCallDb":18,"knownHz":[1,2]})",
       err);
   CHECK(c.has_value());
@@ -17,6 +17,8 @@ TEST(protocol_parses_full_tune) {
   CHECK(t.channels[0].id == "a" && t.channels[0].priority && t.channels[0].mode == "am" && !t.channels[0].audible);
   CHECK_NEAR(*t.channels[0].open_db, 12, 0);
   CHECK_NEAR(*t.channels[0].hang_ms, 1500, 0);
+  CHECK_NEAR(*t.channels[0].ctcss_hz, 100.0, 0);
+  CHECK(!t.channels[1].ctcss_hz);   // absent = no tone squelch
   // levelDb (the retired per-channel trim) still parses -- an older Node may send it -- but is ignored.
   CHECK(t.channels[1].background && !t.channels[1].open_db);
   CHECK(t.close_call && t.known_hz.size() == 2);

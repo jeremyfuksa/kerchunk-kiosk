@@ -9,6 +9,7 @@
 #include "audio.hpp"
 #include "channelizer.hpp"
 #include "closecall.hpp"
+#include "ctcss.hpp"
 #include "demod.hpp"
 #include "meters.hpp"
 #include "protocol.hpp"
@@ -66,6 +67,7 @@ class Engine {
   std::vector<ChunkPower> power_;
   std::vector<FmDiscriminator> disc_;
   std::vector<QuietingMeter> quiet_;
+  std::vector<CtcssDetector> ctcss_;   // fed only while Scanner::wants_tone(lane)
   std::vector<std::vector<float>> disc_buf_;
   std::vector<LaneReading> readings_;
   std::vector<float> out48_;

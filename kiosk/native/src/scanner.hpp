@@ -14,6 +14,7 @@ namespace kc {
 struct LaneReading {
   float fast_db = -200, slow_db = -200, quiet_db = 200;
   bool quiet_ready = false;
+  std::optional<float> tone;   // CtcssDetector::tone() -- only fed on lanes Scanner::wants_tone()
 };
 
 struct LaneState {
@@ -21,6 +22,10 @@ struct LaneState {
   double freq_hz = 0;
   bool priority = false, am = false, allow_audio = true, audible_cfg = true, background = false;
   std::optional<double> open_db, hang_ms;
+  std::optional<double> ctcss_hz;   // tone squelch (never set on AM / background lanes)
+  double tone_seen = -1;            // last poll the configured tone matched (-1 = not this episode)
+  bool tone_ok = true;              // tone present within CTCSS_LOSS_MS (always true without ctcss_hz)
+  bool tone_reported = false;       // "tone" event already emitted for this open
   double alert_until = -1;
   std::optional<double> floor_db;
   bool open = false, carrier = false, quiet = false;
@@ -60,6 +65,9 @@ class Scanner {
   long long skip(double holdoff_s, double now);
   void alert_unmute(const std::string& id, double hold_s, double now);
   int assign_cc(long long freq_hz);
+  // Lane i needs its CTCSS detector fed: an FM, non-background, non-Close-Call lane that is open or
+  // has a carrier episode in progress. Everything else leaves the detector idle (and reset).
+  bool wants_tone(int i) const;
 
   int audible() const { return audible_; }
   float gate() const { return gate_; }   // 1 = speaker open, 0 = closed (loudness is the AGC's job)

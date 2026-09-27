@@ -53,6 +53,7 @@ std::optional<Command> parse_command(const std::string& line, std::string& err) 
           ch.background = get_or<bool>(c, "background", false);
           ch.open_db = opt_num(c, "openDb");
           ch.hang_ms = opt_num(c, "hangMs");
+          ch.ctcss_hz = opt_num(c, "ctcssHz");
           t.channels.push_back(std::move(ch));
         }
       }
