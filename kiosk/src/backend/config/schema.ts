@@ -136,6 +136,17 @@ export const configSchema = z.object({
       .optional(),
     // Dwell per group before hopping to the next (hold-through overrides).
     groupDwellMs: z.number().int().positive().optional(),
+    // Activity-weighted dwell: each group's quiet dwell (groupDwellMs x bank
+    // dwellWeight) is scaled by its recent traffic — factor = clamp((a+1) /
+    // (mean+1), minFactor, maxFactor), a = opens decayed with halfLifeMin.
+    // Never shrinks a dwell below 1 s. Node-side scheduling: a PUT applies it
+    // live (no helper respawn). Omitted = enabled, 30 min, 0.5, 2.0.
+    autoDwell: z.object({
+      enabled: z.boolean().optional(),
+      halfLifeMin: z.number().min(1).max(1440).optional(),
+      minFactor: z.number().min(0.2).max(1).optional(),
+      maxFactor: z.number().min(1).max(5).optional(),
+    }).optional(),
     // Ceiling on ONE continuous hold-through (default 180 s). A lane that
     // reads open past this is treated as stuck and abandoned so it can't park
     // the scanner. Applied at engine construction — changing it needs a

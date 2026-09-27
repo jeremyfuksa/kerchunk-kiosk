@@ -1056,3 +1056,123 @@ describe("PCM tee gating", () => {
     expect(lines(args)[0]).not.toContain("--audio-fd");
   });
 });
+
+describe("activity-weighted dwell (scan.autoDwell)", () => {
+  // Three groups: a VHF pair (group 0), 155 MHz (group 1), UHF (group 2).
+  const MID = ch(155_475_000);
+  const three = [VHF_A, VHF_B, MID, UHF];
+  // Frozen, hand-advanced clock: the (real) hop timer only hops when WE move
+  // time, so the plan is observable without racing it.
+  function clockEngine(env: Record<string, string>, over: Record<string, unknown> = {}) {
+    const clock = { t: 1_000_000 };
+    const made = makeEngine(env, { groupDwellMs: 3000, now: () => clock.t, ...over });
+    return { ...made, clock };
+  }
+  const opens = (id: string, n: number) => Array.from({ length: n }, () =>
+    [`{"ev":"open","id":"${id}","db":-10}`, `{"ev":"close","id":"${id}"}`]).flat().join("\n");
+  const closes = (events: EngineEvent[]) => events.filter((e) => e.type === "release").length;
+
+  it("cold start: every group gets the same (base) dwell", async () => {
+    const tunes = tmpFile("tunes");
+    const { engine } = clockEngine({ FAKE_WB_TUNES_FILE: tunes });
+    await engine.start(cfg(three));
+    await waitFor(() => lines(tunes).length >= 1, 1000);
+    expect(engine.groupDwellPlan()).toEqual([3000, 3000, 3000]);
+    await engine.stop();
+  });
+
+  it("a group with opens dwells longer, idle groups shorter — bounded by min/max", async () => {
+    const tunes = tmpFile("tunes");
+    const { engine, events } = clockEngine({
+      FAKE_WB_TUNES_FILE: tunes, FAKE_WB_SCRIPT: opens(VHF_A.id, 3),
+    });
+    await engine.start(cfg(three));
+    expect(await waitFor(() => closes(events) >= 3, 1000)).toBe(true);
+    // a = [3,0,0], mean 1: (3+1)/2 = 2.0 (max), (0+1)/2 = 0.5 (min).
+    expect(engine.groupDwellPlan()).toEqual([6000, 1500, 1500]);
+    // Tighter bounds apply live, with no tune and no respawn.
+    const tunesBefore = lines(tunes).length;
+    engine.updateScheduling({ autoDwell: { maxFactor: 1.5, minFactor: 0.8 } });
+    expect(engine.groupDwellPlan()).toEqual([4500, 2400, 2400]);
+    expect(lines(tunes)).toHaveLength(tunesBefore);
+    await engine.stop();
+  });
+
+  it("an idle group never shrinks below 1 s", async () => {
+    const tunes = tmpFile("tunes");
+    const { engine, events } = clockEngine(
+      { FAKE_WB_TUNES_FILE: tunes, FAKE_WB_SCRIPT: opens(VHF_A.id, 3) },
+      { groupDwellMs: 1500 },
+    );
+    await engine.start(cfg(three, { autoDwell: { minFactor: 0.2 } }));
+    expect(await waitFor(() => closes(events) >= 3, 1000)).toBe(true);
+    expect(engine.groupDwellPlan()).toEqual([3000, 1000, 1000]);
+    await engine.stop();
+  });
+
+  it("activity decays with the half-life", async () => {
+    const tunes = tmpFile("tunes");
+    const { engine, events, clock } = clockEngine({
+      FAKE_WB_TUNES_FILE: tunes, FAKE_WB_SCRIPT: opens(VHF_A.id, 3),
+    }, { groupDwellMs: 60_000 }); // no hop while the clock jumps
+    await engine.start(cfg(three, { autoDwell: { halfLifeMin: 1, maxFactor: 5, minFactor: 0.2 } }));
+    expect(await waitFor(() => closes(events) >= 3, 1000)).toBe(true);
+    // t0: a0 = 3, mean 1 -> 4/2 = 2.0; idle 1/2 = 0.5.
+    expect(engine.groupDwellPlan()[0]).toBeCloseTo(120_000);
+    // One half-life later: a0 = 1.5, mean 0.5 -> 2.5/1.5; idle 1/1.5.
+    clock.t += 60_000;
+    const [g0, g1] = engine.groupDwellPlan();
+    expect(g0).toBeCloseTo(60_000 * 2.5 / 1.5);
+    expect(g1).toBeCloseTo(60_000 / 1.5);
+    await engine.stop();
+  });
+
+  it("the hop timer honors the scaled dwell", async () => {
+    const tunes = tmpFile("tunes");
+    const { engine, events, clock } = clockEngine({
+      FAKE_WB_TUNES_FILE: tunes, FAKE_WB_SCRIPT: opens(VHF_A.id, 3),
+    });
+    await engine.start(cfg(three));
+    expect(await waitFor(() => closes(events) >= 3, 1000)).toBe(true);
+    const start = lines(tunes).length;
+    clock.t += 4000; // past the 3 s base, inside the busy group's 6 s
+    await new Promise((r) => setTimeout(r, 300));
+    expect(lines(tunes)).toHaveLength(start);
+    clock.t += 2100;
+    expect(await waitFor(() => lines(tunes).length > start, 1000)).toBe(true);
+    await engine.stop();
+  });
+
+  it("enabled:false keeps the plain (old) dwell whatever the traffic", async () => {
+    const tunes = tmpFile("tunes");
+    const { engine, events } = clockEngine({
+      FAKE_WB_TUNES_FILE: tunes, FAKE_WB_SCRIPT: opens(VHF_A.id, 3),
+    });
+    await engine.start(cfg(three, { autoDwell: { enabled: false } }));
+    expect(await waitFor(() => closes(events) >= 3, 1000)).toBe(true);
+    expect(engine.groupDwellPlan()).toEqual([3000, 3000, 3000]);
+    await engine.stop();
+  });
+
+  it("bank dwellWeight stays the base the activity factor scales", async () => {
+    const tunes = tmpFile("tunes");
+    const { engine } = clockEngine({ FAKE_WB_TUNES_FILE: tunes });
+    await engine.start(cfg([VHF_A, VHF_B, { ...MID, dwellWeight: 2 } as Channel, UHF]));
+    await waitFor(() => lines(tunes).length >= 1, 1000);
+    expect(engine.groupDwellPlan()).toEqual([3000, 6000, 3000]);
+    await engine.stop();
+  });
+
+  it("opens on muted or Close Call lanes don't count as the group's traffic", async () => {
+    const tunes = tmpFile("tunes");
+    const muted = { ...VHF_A, audible: false };
+    const { engine, events } = clockEngine({
+      FAKE_WB_TUNES_FILE: tunes,
+      FAKE_WB_SCRIPT: [opens(muted.id, 2), opens("cc_146900000", 2)].join("\n"),
+    });
+    await engine.start(cfg([muted, VHF_B, MID, UHF]));
+    expect(await waitFor(() => closes(events) >= 4, 1000)).toBe(true);
+    expect(engine.groupDwellPlan()).toEqual([3000, 3000, 3000]);
+    await engine.stop();
+  });
+});

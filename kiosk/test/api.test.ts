@@ -942,6 +942,28 @@ describe("review fixes: engine lifecycle", () => {
     expect(updates[0]).toContain(464_550_000); // lockout reached the helper live
   });
 
+  it("PUT /api/config with only autoDwell changes applies it live (no restart)", async () => {
+    const { server, engine } = makeApp();
+    let starts = 0;
+    const realStart = engine.start.bind(engine);
+    engine.start = async (sc) => { starts++; return realStart(sc); };
+    const cfg = (await request(server).get("/api/config")).body;
+    cfg.scan.autoDwell = { enabled: true, halfLifeMin: 10, maxFactor: 3 };
+    const res = await request(server).put("/api/config").send(cfg);
+    expect(res.status).toBe(200);
+    expect(starts).toBe(0);
+    const updates = (engine as { schedulingUpdates?: Array<{ autoDwell?: unknown }> }).schedulingUpdates ?? [];
+    expect(updates).toEqual([{ autoDwell: { enabled: true, halfLifeMin: 10, maxFactor: 3 } }]);
+  });
+
+  it("PUT /api/config rejects out-of-range autoDwell", async () => {
+    const { server } = makeApp();
+    const cfg = (await request(server).get("/api/config")).body;
+    cfg.scan.autoDwell = { minFactor: 1.5 };
+    const res = await request(server).put("/api/config").send(cfg);
+    expect(res.status).toBe(400);
+  });
+
   it("PUT /api/config with scan-relevant changes still restarts", async () => {
     const { server, engine } = makeApp();
     let starts = 0;

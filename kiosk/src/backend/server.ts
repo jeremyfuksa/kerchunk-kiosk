@@ -121,6 +121,9 @@ export function toScanConfig(
     lanesPerGroup: cfg.scan.lanesPerGroup,
     sampleRateHz: cfg.scan.sampleRateHz,
     groupDwellMs: cfg.scan.groupDwellMs,
+    // Node-side scheduling (no helper arg): stripped from the PUT handler's
+    // scanChanged diff and pushed live via engine.updateScheduling.
+    autoDwell: cfg.scan.autoDwell,
     openAboveFloorDb: cfg.scan.openAboveFloorDb,
     nativeQuietDb: cfg.scan.nativeQuietDb,
     nativeAmGainDb: cfg.scan.nativeAmGainDb,
@@ -867,13 +870,21 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
       // own lockoutHz field is only a fallback it never reads when the server
       // supplies knownHz. Leaving it in the diff made every lockout-only edit
       // take the restart branch this comparison exists to avoid.
-      const scanChanged = JSON.stringify({ ...before, knownHz: [], lockoutHz: [] })
-        !== JSON.stringify({ ...after, knownHz: [], lockoutHz: [] });
+      // Scheduling knobs (autoDwell) are Node-side hop timing, not helper
+      // state: stripped here too and applied live, so tuning them never
+      // bounces audio.
+      const strip = (s: ScanConfig) => ({ ...s, knownHz: [], lockoutHz: [], autoDwell: undefined });
+      const scanChanged = JSON.stringify(strip(before)) !== JSON.stringify(strip(after));
       if (scanChanged) {
         await engine.stop();
         await engine.start(scanConfigFor(mode, monitorChannel));
-      } else if (JSON.stringify(before.knownHz) !== JSON.stringify(after.knownHz)) {
-        engine.updateKnownHz?.(after.knownHz ?? []);
+      } else {
+        if (JSON.stringify(before.knownHz) !== JSON.stringify(after.knownHz)) {
+          engine.updateKnownHz?.(after.knownHz ?? []);
+        }
+        if (JSON.stringify(before.autoDwell) !== JSON.stringify(after.autoDwell)) {
+          engine.updateScheduling?.({ autoDwell: after.autoDwell });
+        }
       }
       return json(res, 200, config);
     }

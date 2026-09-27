@@ -1,4 +1,5 @@
 import type { Channel } from "../config/schema.js";
+import type { AutoDwellConfig } from "./scanSchedule.js";
 
 // A channel as the engine scans it: the config channel plus per-channel
 // scan-profile overrides resolved from its banks (ROADMAP Idea 7). The
@@ -39,6 +40,10 @@ export interface ScanConfig {
   lanesPerGroup?: number;
   sampleRateHz?: number;
   groupDwellMs?: number;
+  // Activity-weighted dwell (config.scan.autoDwell, see scanSchedule.ts).
+  // Node-side scheduling only: the server pushes a change live through
+  // updateScheduling — never a helper respawn.
+  autoDwell?: AutoDwellConfig;
   openAboveFloorDb?: number;
   // Quieting threshold on kerchunk-dsp's dB scale (see schema).
   nativeQuietDb?: number;
@@ -173,6 +178,9 @@ export interface ScannerEngine {
    * (RtlFm) omit it and callers fall back to stop()+start().
    */
   retune?(config: ScanConfig): Promise<void>;
+  /** Apply Node-side scan-scheduling knobs live (no tune, no respawn).
+   *  Optional — engines that don't group-hop ignore scheduling. */
+  updateScheduling?(s: Pick<ScanConfig, "autoDwell">): void;
   setVolume(percent: number): Promise<void>;
   setMuted(muted: boolean): Promise<void>;
   readonly state: EngineState;
