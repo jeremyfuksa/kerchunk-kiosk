@@ -2,6 +2,7 @@
 import { describe, it, expect } from "vitest";
 import { configSchema, defaultConfig } from "../src/backend/config/schema.js";
 import { CTCSS_TONES } from "../src/backend/config/ctcss.js";
+import { DCS_CODES, dcsAlias, dcsWord, isDcsCode } from "../src/backend/config/dcs.js";
 
 describe("configSchema", () => {
   it("accepts a valid config", () => {
@@ -53,6 +54,33 @@ describe("configSchema", () => {
     expect(CTCSS_TONES).toHaveLength(50);
     expect(CTCSS_TONES[0]).toBe(67.0);
     expect(CTCSS_TONES[49]).toBe(254.1);
+  });
+
+  it("dcsCode must be a standard code + N|I, exclusive with ctcssHz; heardDcs is free telemetry", () => {
+    const withCode = (extra: object) => ({ ...defaultConfig(), channels: [
+      { id: "x", freq: 146520000, alphaTag: "", mode: "fm", enabled: true, ...extra },
+    ] });
+    expect(configSchema.safeParse(withCode({ dcsCode: "023N" })).success).toBe(true);
+    expect(configSchema.safeParse(withCode({ dcsCode: "754I" })).success).toBe(true);
+    for (const bad of ["024N", "023", "23N", "023n", "023X", "0023N", 23]) {
+      expect(configSchema.safeParse(withCode({ dcsCode: bad })).success).toBe(false);
+    }
+    expect(configSchema.safeParse(withCode({ dcsCode: "023N", ctcssHz: 100.0 })).success).toBe(false);
+    expect(configSchema.safeParse(withCode({ heardDcs: "047N", heardCtcssHz: 88.5 })).success).toBe(true);
+  });
+
+  it("the shared DCS table is the 104 standard codes; words and inversion twins match published values", () => {
+    expect(DCS_CODES).toHaveLength(104);
+    expect(new Set(DCS_CODES).size).toBe(104);
+    expect(DCS_CODES[0]).toBe("023");
+    expect(DCS_CODES[103]).toBe("754");
+    expect(isDcsCode("023N") && isDcsCode("023I") && !isDcsCode("024N")).toBe(true);
+    expect(dcsWord("023N")).toBe(0x763813);   // UV-K5 firmware / native test_dcs.cpp
+    expect(dcsAlias("023I")).toBe("047N");     // standard inversion pairs
+    expect(dcsAlias("047N")).toBe("023I");
+    expect(dcsAlias("754N")).toBe("116I");
+    expect(dcsAlias("bogus")).toBeUndefined();
+    for (const c of DCS_CODES) expect(dcsAlias(`${c}N`)).toMatch(/^\d{3}I$/);
   });
 
   it("defaultConfig() is itself valid", () => {

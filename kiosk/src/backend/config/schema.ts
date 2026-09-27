@@ -1,6 +1,7 @@
 // kiosk/src/backend/config/schema.ts
 import { z } from "zod";
 import { isCtcssTone } from "./ctcss.js";
+import { isDcsCode } from "./dcs.js";
 
 // airplanes.live REST base, over HTTPS. The endpoint 301s http -> https, so a
 // cleartext base spent two requests and two TCP connections per poll — double
@@ -29,7 +30,10 @@ export const locationSchema = z.object({
   powerEstimated: z.boolean().optional(),
 });
 
-export const channelSchema = z.object({
+// The channel fields as a plain object schema (server PUT/POST use .partial()
+// / .omit(), which a refined schema lacks); channelSchema adds the cross-field
+// rules.
+export const channelObjectSchema = z.object({
   id: z.string().min(1),
   freq: z.number().int().positive(),
   alphaTag: z.string(),
@@ -59,6 +63,14 @@ export const channelSchema = z.object({
   // Server-owned telemetry like rfDb — shown in the channel drawer so the
   // operator can fill ctcssHz.
   heardCtcssHz: z.number().optional(),
+  // DCS (Digital-Coded Squelch): "023N" / "023I" — one of the 104 standard
+  // codes (./dcs.ts) plus polarity. When set, the helper opens this channel
+  // only while that code is present. FM only; never together with ctcssHz.
+  dcsCode: z.string().refine(isDcsCode, { message: "dcsCode must be a standard DCS code like 023N" }).optional(),
+  // The last DCS code the helper heard on this channel while open, in the
+  // on-air normal form (an inverted code reads as its normal twin, ./dcs.ts).
+  // Server-owned telemetry like heardCtcssHz.
+  heardDcs: z.string().optional(),
   // (levelTrimDb — the retired per-channel loudness trim — is gone: the
   // helper's speaker AGC levels every transmission instead. Old config files
   // that still carry it parse fine; zod strips the unknown key.)
@@ -69,6 +81,16 @@ export const channelSchema = z.object({
   // recorded so the boot enrichment pass doesn't re-query every restart.
   lookedUpAt: z.number().optional(),
 });
+
+/** A channel squelches on at most one sub-audible scheme: CTCSS or DCS. */
+export function oneSubAudible(c: { ctcssHz?: number; dcsCode?: string }): boolean {
+  return c.ctcssHz === undefined || c.dcsCode === undefined;
+}
+const SUB_AUDIBLE_MSG = { message: "ctcssHz and dcsCode are mutually exclusive", path: ["dcsCode"] };
+
+export const channelSchema = channelObjectSchema.refine(oneSubAudible, SUB_AUDIBLE_MSG);
+/** POST body shape: a channel without its server-assigned id. */
+export const newChannelSchema = channelObjectSchema.omit({ id: true }).refine(oneSubAudible, SUB_AUDIBLE_MSG);
 
 // Scanner front-end defaults, used when config omits the scan field (the
 // engine and the schema's window/rate refine share them).

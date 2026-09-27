@@ -62,8 +62,9 @@ export const api = {
   addChannel: (c: Omit<Channel, "id">) =>
     fetch("/api/channels", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(c) }).then(j<Channel>),
   deleteChannel: (id: string) => fetch(`/api/channels/${id}`, { method: "DELETE" }),
-  // ctcssHz: null clears a set tone (the server merges patches field-wise).
-  updateChannel: (id: string, patch: Partial<Omit<Channel, "id" | "ctcssHz">> & { ctcssHz?: number | null }) =>
+  // ctcssHz / dcsCode: null clears a set tone or code (the server merges
+  // patches field-wise).
+  updateChannel: (id: string, patch: Partial<Omit<Channel, "id" | "ctcssHz" | "dcsCode">> & { ctcssHz?: number | null; dcsCode?: string | null }) =>
     fetch(`/api/channels/${id}`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(patch) }).then(j<Channel>),
   setVolume: (percent: number) =>
     fetch("/api/audio/volume", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ percent }) }),

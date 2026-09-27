@@ -92,7 +92,7 @@ at a time (mutation chain); GETs — including the long-lived `/api/stream.wav`
 | PUT | `/api/config` | Replace config. Engine restarts only if scan-relevant fields changed; lockout/discovery-only edits push `knownHz` live instead. |
 | GET | `/api/channels` | Channel list. |
 | POST | `/api/channels` | Add a channel (`201` + channel; `409` on frequency collision). |
-| PUT | `/api/channels/:id` | Update a channel — field-wise merge (`409` on collision, `404` unknown id). `ctcssHz` (CTCSS tone squelch, one of the 50 standard tones) is cleared by sending `null`. |
+| PUT | `/api/channels/:id` | Update a channel — field-wise merge (`409` on collision, `404` unknown id). `ctcssHz` (CTCSS tone squelch, one of the 50 standard tones) and `dcsCode` (DCS squelch, `"023N"`/`"023I"`, one of the 104 standard codes) are cleared by sending `null`; a channel may carry only one of the two (`400` if the merged channel would have both). |
 | DELETE | `/api/channels/:id` | Remove a channel (`204`; `404` unknown id). |
 | GET | `/api/channels/duplicates` | Duplicate-frequency sets, richest entry first. |
 | POST | `/api/channels/duplicates/resolve` | Delete every duplicate except each set's richest. |
@@ -170,8 +170,10 @@ One JSON message per event, `EngineEvent` union
 (`kiosk/src/backend/engine/ScannerEngine.ts`): `active`, `audible`,
 `release`, `idle`, `closecall`, `rf`, `tone`, `same`, `signal`, `tuned`,
 `alert`, `aircraft`, `status`, `warmup`, `reload`, `error`. `tone`
-(`{ channelId, ctcssHz }`) is the CTCSS tone heard on an open FM channel,
-once per transmission; the server keeps the latest as `channel.heardCtcssHz`. Late joiners get
+(`{ channelId, ctcssHz?, dcs? }`) is the CTCSS tone and/or DCS code heard on
+an open FM channel, once per transmission; `dcs` is in its on-air normal form
+(`"047N"` for a `023I` transmitter — the two are identical on air). The server
+keeps the latest as `channel.heardCtcssHz` / `channel.heardDcs`. Late joiners get
 the last now-playing event and last non-empty aircraft snapshot replayed;
 stuck clients (>512 KB buffered) get events dropped, not queued.
 

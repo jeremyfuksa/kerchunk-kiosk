@@ -81,6 +81,9 @@ export class FakeEngine implements ScannerEngine {
   emitTone(channelId: string, ctcssHz: number): void {
     this.emit({ type: "tone", channelId, ctcssHz, ts: nextTs() });
   }
+  emitDcs(channelId: string, dcs: string): void {
+    this.emit({ type: "tone", channelId, dcs, ts: nextTs() });
+  }
   emitCloseCall(freqHz: number): void {
     this.emit({ type: "closecall", freqHz, ts: nextTs() });
   }
