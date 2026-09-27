@@ -301,3 +301,67 @@ TEST(engine_skip_audible_cc_lane_fades_without_click) {
   for (size_t i = n0 + kc::FADE_SAMPLES + 64; i < r.pcm.size(); i++) zero = zero && r.pcm[i] == 0;
   CHECK(zero);
 }
+
+namespace {
+// `regs` channels spread from -90 kHz over span_hz (the +-90 kHz usable window at RATE by default),
+// plus an optional background channel appended last.
+std::string many_channels(int regs, bool bg, long long span_hz = 180'000) {
+  std::string s = R"({"cmd":"tune","centerHz":146000000,"channels":[)";
+  for (int i = 0; i < regs; i++) {
+    const long long f = 146'000'000LL - 90'000 + (long long)i * span_hz / std::max(1, regs - 1);
+    s += (i ? "," : "") + std::string(R"({"id":"c)") + std::to_string(i) + R"(","freqHz":)" + std::to_string(f) + "}";
+  }
+  if (bg) s += std::string(regs ? "," : "") + R"({"id":"nwr","freqHz":146000000,"background":true})";
+  return s + "]}";
+}
+}  // namespace
+
+TEST(engine_lanes_32_assigns_32_channels_background_last) {
+  kc::EngineOptions o; o.rate = RATE; o.lanes = 32;
+  Rig r(o);
+  r.tune(many_channels(31, true));
+  const auto& sc = r.e.scanner();
+  CHECK(sc.lanes() == 32);
+  for (int i = 0; i < 31; i++) CHECK(sc.lane(i).id == "c" + std::to_string(i));
+  CHECK(sc.lane(31).id == "nwr" && sc.lane(31).background);
+  CHECK(r.of("log").empty());
+  r.feed(scene(0.5, 11));
+  auto pw = r.of("power");
+  CHECK(!pw.empty() && pw.back()["levels"].size() == 32 && pw.back()["noise"].size() == 32);
+  // More channels than slots: extras dropped with a log line, background keeps the last slot.
+  r.ev.clear();
+  r.tune(many_channels(40, true));
+  CHECK(r.of("log").size() == 1);
+  CHECK(r.e.scanner().lane(30).id == "c30" && r.e.scanner().lane(31).id == "nwr");
+}
+
+TEST(engine_lanes_32_close_call_lands_in_first_parked_slot) {
+  kc::EngineOptions o; o.rate = RATE; o.lanes = 32; o.close_call = true;
+  Rig r(o);
+  std::string t = many_channels(20, false, 100'000);   // -90..+10 kHz: clear of the 87.5 kHz hit
+  t.pop_back();   // strip '}' to append the Close Call fields
+  r.tune(t + R"(,"closeCall":true,"closeCallDb":15,"knownHz":[]})");
+  auto x = scene(3.0, 12);
+  auto c = sig::tone(RATE, x.size(), 87'500, 0.2);
+  for (size_t i = (size_t)(0.6 * RATE); i < x.size(); i++) x[i] += c[i];
+  r.feed(x);
+  auto cc = r.of("closecall");
+  CHECK(!cc.empty() && cc[0]["freqHz"] == 146087500);
+  CHECK(r.e.scanner().lane(20).id == "cc_146087500");   // slot 20: first parked slot above 12
+}
+
+TEST(engine_lanes_1_single_background_lane) {
+  kc::EngineOptions o; o.rate = RATE; o.lanes = 1; o.same = true;
+  Rig r(o);
+  r.tune(many_channels(1, true));   // one regular + the background: background wins the only slot
+  CHECK(r.e.scanner().lanes() == 1 && r.e.scanner().lane(0).id == "nwr");
+  auto x = scene(1.0, 13);
+  burst_fm(x, 0, 0.0, 1.0);
+  r.feed(x);
+  CHECK(!r.same_pcm.empty());
+  CHECK(r.of("open").empty());
+  kc::EngineOptions bad; bad.rate = RATE; bad.lanes = 0;
+  CHECK_THROWS(Rig(bad));
+  bad.lanes = kc::MAX_LANES + 1;
+  CHECK_THROWS(Rig(bad));
+}

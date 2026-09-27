@@ -11,7 +11,7 @@ const float QUIET = (float)kc::QUIET_DB_DEFAULT - 10, NOISY = (float)kc::QUIET_D
 struct Sim {
   std::vector<nlohmann::json> ev;
   kc::Scanner s;
-  std::vector<kc::LaneReading> r = std::vector<kc::LaneReading>(kc::MAX_LANES);
+  std::vector<kc::LaneReading> r = std::vector<kc::LaneReading>(kc::DEFAULT_LANES);
   double t = 0;
   explicit Sim(kc::Scanner::Params p = {}) : s(p, [this](const nlohmann::json& e) { ev.push_back(e); }) {
     for (auto& x : r) x = {FLOOR, FLOOR, NOISY, true};
@@ -39,7 +39,7 @@ TEST(scanner_tune_emits_tuned_and_slots) {
   m.s.tune(146e6, {ch("a"), bg, ch("b")}, false);
   CHECK(m.of("tuned").size() == 1);
   CHECK(m.s.lane(0).id == "a" && m.s.lane(1).id == "b");
-  CHECK(m.s.lane(kc::MAX_LANES - 1).id == "nwr");
+  CHECK(m.s.lane(kc::DEFAULT_LANES - 1).id == "nwr");
   CHECK(m.s.lane(2).parked());
 }
 
@@ -49,7 +49,27 @@ TEST(scanner_truncates_oversize_group) {
   for (int i = 0; i < 14; i++) v.push_back(ch("c" + std::to_string(i)));
   m.s.tune(146e6, v, false);
   CHECK(m.of("log").size() == 1);
-  CHECK(m.s.lane(kc::MAX_LANES - 1).id == "c11");
+  CHECK(m.s.lane(kc::DEFAULT_LANES - 1).id == "c11");
+}
+
+TEST(scanner_oversize_group_keeps_background_in_last_slot) {
+  Sim m;
+  std::vector<kc::ChannelCmd> v;
+  for (int i = 0; i < 14; i++) v.push_back(ch("c" + std::to_string(i)));
+  auto bg = ch("nwr"); bg.background = true;
+  v.push_back(bg);   // listed last, past the slot count: must still land in the SAME slot
+  m.s.tune(146e6, v, false);
+  CHECK(m.of("log").size() == 1);
+  CHECK(m.s.lane(kc::DEFAULT_LANES - 2).id == "c10");
+  CHECK(m.s.lane(kc::DEFAULT_LANES - 1).id == "nwr");
+}
+
+TEST(scanner_lane_count_bounds) {
+  auto nop = [](const nlohmann::json&) {};
+  CHECK(kc::Scanner({}, nop).lanes() == kc::DEFAULT_LANES);
+  CHECK(kc::Scanner({}, nop, kc::MAX_LANES).lanes() == kc::MAX_LANES);
+  CHECK_THROWS(kc::Scanner({}, nop, 0));
+  CHECK_THROWS(kc::Scanner({}, nop, kc::MAX_LANES + 1));
 }
 
 TEST(scanner_no_open_during_warmup_then_opens_after_100ms) {
@@ -161,7 +181,7 @@ TEST(scanner_background_lane_never_opens) {
   auto bg = ch("nwr"); bg.background = true;
   m.s.tune(162e6, {bg}, false);
   m.run(0.8);
-  m.set(kc::MAX_LANES - 1, KEYED, true);
+  m.set(kc::DEFAULT_LANES - 1, KEYED, true);
   m.run(1.0);
   CHECK(m.of("open").empty());
 }

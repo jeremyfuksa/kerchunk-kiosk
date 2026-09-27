@@ -34,7 +34,11 @@ inline constexpr double SAME_RS_TRANSITION_HZ = 1000;      // 50k->22.05k resamp
 
 // ---- Engine (P1b). GR ran 20 ms polls; the native engine decides every 10 ms chunk, so the
 // per-poll rates below are GR's re-timed to the same wall-clock time constants.
-inline constexpr int MAX_LANES = 12;               // fixed lane slots; background/SAME lane = last slot
+// Lane slots are a runtime count (EngineOptions::lanes, CLI --lanes, config scan.lanesPerGroup);
+// the background/SAME lane is always the LAST slot. MAX_LANES is only the upper bound --
+// native lanes are cheap (parked slots skip their extract + IFFT), the 12 was a GNU Radio cost cap.
+inline constexpr int DEFAULT_LANES = 12;
+inline constexpr int MAX_LANES = 64;
 inline constexpr int POLL_MS = 10;                 // one squelch decision per lane chunk
 inline constexpr int OPEN_POLLS = 10;              // 100 ms sustained above threshold to open
 inline constexpr double WARMUP_MS = 500;           // per-lane settle time after (re)assignment
