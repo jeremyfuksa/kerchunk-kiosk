@@ -15,9 +15,9 @@ struct Sim {
   std::vector<kc::LaneReading> r = std::vector<kc::LaneReading>(kc::DEFAULT_LANES);
   double t = 0;
   explicit Sim(kc::Scanner::Params p = {}) : s(p, [this](const nlohmann::json& e) { ev.push_back(e); }) {
-    for (auto& x : r) x = {FLOOR, FLOOR, NOISY, true};
+    for (auto& x : r) x = {FLOOR, FLOOR, NOISY, true, {}};
   }
-  void set(int i, float db, bool quiet) { r[i] = {db, db, quiet ? QUIET : NOISY, true}; }
+  void set(int i, float db, bool quiet) { r[i] = {db, db, quiet ? QUIET : NOISY, true, {}}; }
   void run(double seconds) {
     int n = (int)(seconds * 1000 / kc::POLL_MS + 0.5);
     for (int k = 0; k < n; k++) { t += kc::POLL_MS / 1000.0; s.poll(t, r); }
@@ -395,7 +395,7 @@ TEST(scanner_quiet_ready_false_blocks_open) {
   Sim m;
   m.s.tune(146e6, {ch("a")}, false);
   m.run(0.8);
-  m.r[0] = {KEYED, KEYED, QUIET, false};                   // high power, low quiet_db, but not ready
+  m.r[0] = {KEYED, KEYED, QUIET, false, {}};                   // high power, low quiet_db, but not ready
   m.run(1.0);
   CHECK(m.of("open").empty());
 }
@@ -468,7 +468,7 @@ TEST(scanner_txstat_quantiles_spread) {
   m.s.tune(146e6, {ch("a")}, false);
   m.run(0.8);
   for (int k = 0; k < 100; k++) {                            // quiet_db -30 .. -10.2, all quieted
-    m.r[0] = {KEYED, KEYED, -30.f + 0.2f * (float)k, true};
+    m.r[0] = {KEYED, KEYED, -30.f + 0.2f * (float)k, true, {}};
     m.run(0.01);
   }
   m.set(0, FLOOR, false);
@@ -513,7 +513,7 @@ TEST(scanner_txstat_omits_quiet_fields_without_ready_samples) {
   Sim m;
   m.s.tune(146e6, {ch("a")}, false);
   m.run(0.8);
-  m.r[0] = {KEYED, KEYED, QUIET, false};                     // power, quiet meter not ready
+  m.r[0] = {KEYED, KEYED, QUIET, false, {}};                     // power, quiet meter not ready
   m.run(0.2);
   m.set(0, FLOOR, false);
   m.run(0.01);
@@ -575,4 +575,111 @@ TEST(scanner_txstat_am_mode_and_background_excluded) {
   m.run(0.01);
   auto tx = m.of("txstat");
   CHECK(tx.size() == 1 && tx[0]["id"] == "air" && tx[0]["mode"] == "am");
+}
+
+// ---- CTCSS tone squelch + tone reporting
+
+namespace {
+kc::ChannelCmd toned(const std::string& id, double hz) { auto c = ch(id); c.ctcss_hz = hz; return c; }
+}  // namespace
+
+TEST(scanner_ctcss_wrong_or_missing_tone_never_opens) {
+  Sim m;
+  m.s.tune(146e6, {toned("a", 100.0), toned("b", 100.0)}, false);
+  m.run(0.8);
+  CHECK(!m.s.wants_tone(0));                      // idle lane: detector not fed
+  m.set(0, KEYED, true); m.r[0].tone = 123.0f;    // co-channel user on another tone
+  m.set(1, KEYED, true);                          // carrier with no tone at all
+  m.run(0.05);
+  CHECK(m.s.wants_tone(0) && m.s.wants_tone(1));  // carrier episode: detector runs
+  m.run(3.0);
+  CHECK(m.of("open").empty());
+  CHECK(m.of("tone").empty());                    // tone reports are for open lanes only
+}
+
+TEST(scanner_ctcss_right_tone_opens_and_reports_once) {
+  Sim m;
+  m.s.tune(146e6, {toned("a", 100.0)}, false);
+  m.run(0.8);
+  m.set(0, KEYED, true);
+  m.run(0.5);                                     // detector still filling its window
+  CHECK(m.of("open").empty());
+  m.r[0].tone = 100.0f;
+  m.run(0.09);
+  CHECK(m.of("open").empty());                    // still needs OPEN_POLLS with the tone
+  m.run(0.02);
+  CHECK(m.of("open").size() == 1 && m.s.gate() > 0.5f);
+  m.run(1.0);
+  auto t = m.of("tone");
+  CHECK(t.size() == 1 && t[0]["id"] == "a" && t[0]["ctcssHz"] == 100.0);
+}
+
+TEST(scanner_ctcss_tone_loss_mutes_after_loss_ms_and_returns) {
+  Sim m;
+  m.s.tune(146e6, {toned("a", 100.0)}, false);
+  m.run(0.8);
+  m.set(0, KEYED, true); m.r[0].tone = 100.0f;
+  m.run(0.5);
+  CHECK(m.s.gate() > 0.5f);
+  m.r[0].tone.reset();                            // carrier stays, tone gone (interferer)
+  m.run(kc::CTCSS_LOSS_MS / 1000.0 - 0.05);
+  CHECK(m.s.gate() > 0.5f);                       // brief dropout rides through
+  m.run(0.1);
+  CHECK(m.s.gate() == 0.0f);                      // muted like lost quieting ...
+  CHECK(m.of("close").empty());                   // ... but the lane stays open on power
+  m.r[0].tone = 100.0f;
+  m.run(0.01);
+  CHECK(m.s.gate() > 0.5f);
+}
+
+TEST(scanner_untoned_channel_opens_exactly_as_before) {
+  // The same scene with and without a detected tone: identical open/audible/close streams.
+  auto scene = [](bool tone) {
+    kc::Scanner::Params p; p.hang_ms = 500;
+    Sim m(p);
+    m.s.tune(146e6, {ch("a")}, false);
+    m.run(0.8);
+    m.set(0, KEYED, true);
+    if (tone) m.r[0].tone = 88.5f;
+    m.run(1.0);
+    m.set(0, FLOOR, false);
+    m.run(1.0);
+    std::vector<nlohmann::json> out;
+    for (auto& e : m.ev) if (e["ev"] != "tone") out.push_back(e);
+    return std::make_pair(out, m.of("tone"));
+  };
+  auto [plain, none] = scene(false);
+  auto [with, heard] = scene(true);
+  CHECK(plain == with);
+  CHECK(none.empty());
+  CHECK(heard.size() == 1 && heard[0]["ctcssHz"] == 88.5);
+}
+
+TEST(scanner_ctcss_ignored_on_am_and_background_lanes) {
+  Sim m;
+  auto am = toned("air", 100.0); am.mode = "am";
+  auto bg = toned("nwr", 100.0); bg.background = true;
+  m.s.tune(120e6, {am, bg}, false);
+  m.run(0.8);
+  m.set(0, KEYED, true);
+  m.set(kc::DEFAULT_LANES - 1, KEYED, true);
+  m.run(0.3);
+  CHECK(m.of("open").size() == 1);                // AM opens with no tone
+  CHECK(!m.s.wants_tone(0) && !m.s.wants_tone(kc::DEFAULT_LANES - 1));
+}
+
+TEST(scanner_tone_reported_again_on_next_open) {
+  kc::Scanner::Params p; p.hang_ms = 200;
+  Sim m(p);
+  m.s.tune(146e6, {ch("a")}, false);
+  m.run(0.8);
+  for (int k = 0; k < 2; k++) {
+    m.set(0, KEYED, true); m.r[0].tone = 131.8f;
+    m.run(0.5);
+    m.set(0, FLOOR, false);
+    m.run(0.5);
+  }
+  CHECK(m.of("open").size() == 2);
+  CHECK(m.of("tone").size() == 2);
+  CHECK(!m.s.wants_tone(0));                      // closed, no episode: detector idle again
 }

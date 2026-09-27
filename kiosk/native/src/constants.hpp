@@ -66,6 +66,29 @@ inline constexpr int RF_MIN_SAMPLES = 50;          // ~0.5 s before an rf estima
 // Squelch-calibration txstat events (instrumentation only): per carrier episode, keep at most this
 // many per-poll quiet/power samples (30 s at POLL_MS); later polls still count, samples stop.
 inline constexpr int TX_MAX_SAMPLES = 3000;
+// ---- CTCSS tone squelch + tone reporting (CtcssDetector, ctcss.hpp). The detector runs only on
+// FM lanes that are open or have a carrier episode in progress (Scanner::wants_tone).
+// Decimation: block-average CTCSS_DECIM1 discriminator samples (50 kHz -> 2 kHz), low-pass at
+// CTCSS_LPF_HZ, keep every 2nd (-> CTCSS_RATE). Every CTCSS tone (67-254.1 Hz) sits in the passband;
+// voice folding onto the tone band on the 2:1 step (746-933 Hz) is in the LPF stopband.
+inline constexpr int CTCSS_DECIM1 = 25;                 // 50 kHz -> 2 kHz block average
+inline constexpr int CTCSS_RATE = LANE_RATE / CTCSS_DECIM1 / 2;   // 1 kHz Goertzel rate
+inline constexpr double CTCSS_LPF_HZ = 350;             // 2 kHz-rate FIR -6 dB point
+inline constexpr double CTCSS_LPF_TRANSITION_HZ = 200;  // -> 33 taps
+inline constexpr int CTCSS_WINDOW_MS = 400;             // Goertzel window: 2.5 Hz resolution (tightest
+                                                        // EIA spacing is 67.0/69.3 = 2.3 Hz)
+inline constexpr int CTCSS_HOP_MS = 100;                // one tone decision per 100 ms
+// Detected = the strongest tone's power exceeds the mean of the other 49 by this much. On pure
+// noise the max of 50 bins is ~6.5 dB over the mean, so 10 dB keeps random picks rare (and a
+// random pick must also repeat CTCSS_STABLE_HOPS times on the same tone).
+inline constexpr double CTCSS_MARGIN_DB = 10.0;
+// Absolute floor: mean-square dB of the tone at the discriminator scale (+-1.0 = FM_MAX_DEV_HZ).
+// A standard 0.5-0.75 kHz-deviation tone (amplitude 0.10-0.15) reads about -23..-19 dB; -40 dB
+// (~70 Hz deviation) rejects residual hum/rumble yet keeps a low-deviation encoder.
+inline constexpr double CTCSS_FLOOR_DB = -40.0;
+inline constexpr int CTCSS_STABLE_HOPS = 2;             // same tone on this many hops in a row = detected
+inline constexpr double CTCSS_MATCH_HZ = 1.0;           // detected tone must be within this of ctcssHz
+inline constexpr double CTCSS_LOSS_MS = 300;            // open tone channel: tone gone this long mutes the gate
 inline constexpr int FADE_SAMPLES = 288;           // 6 ms at 48 kHz; only on silence edges
 inline constexpr float RAIL = 0.8f;                // hard speaker guard (last resort, after the limiter)
 // ---- Speaker loudness (replaced the per-channel level-trim learner). Every default below is a

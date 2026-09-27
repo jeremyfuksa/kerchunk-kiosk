@@ -67,6 +67,8 @@ const MIME: Record<string, string> = {
 // it before a restart/reboot and watches for it to change — the only signal
 // that survives a restart which completes between two polls.
 const STARTED_AT = Date.now();
+// Optional channel fields a PUT /api/channels/:id may clear by sending null.
+const CLEARABLE_CHANNEL_FIELDS = ["ctcssHz"] as const;
 
 export function toScanConfig(
   cfg: Config,
@@ -406,6 +408,24 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
   // (EMA, persisted on a trailing debounce). This is
   // the ERP estimator's measurement input.
   let rfSaveTimer: NodeJS.Timeout | null = null;
+  function scheduleTelemetrySave(): void {
+    if (rfSaveTimer) clearTimeout(rfSaveTimer);
+    rfSaveTimer = setTimeout(() => { rfSaveTimer = null; saveConfig(config, { telemetry: true }); }, 30_000);
+    rfSaveTimer.unref?.();
+  }
+  // Heard CTCSS tone -> channel.heardCtcssHz, through the same telemetry
+  // save. Only a CHANGED tone touches config (every transmission reports).
+  engine.on((ev) => {
+    if (ev.type !== "tone") return;
+    const ch = config.channels.find((c) => c.id === ev.channelId);
+    if (!ch || ch.heardCtcssHz === ev.ctcssHz) return;
+    config = {
+      ...config,
+      channels: config.channels.map((c) =>
+        c.id === ev.channelId ? { ...c, heardCtcssHz: ev.ctcssHz } : c),
+    };
+    scheduleTelemetrySave();
+  });
   engine.on((ev) => {
     if (ev.type !== "rf") return;
     deps.history?.setRf?.(ev.channelId, ev.db);
@@ -417,9 +437,7 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
       channels: config.channels.map((c) =>
         c.id === ev.channelId ? { ...c, rfDb: Math.round(next * 10) / 10 } : c),
     };
-    if (rfSaveTimer) clearTimeout(rfSaveTimer);
-    rfSaveTimer = setTimeout(() => { rfSaveTimer = null; saveConfig(config, { telemetry: true }); }, 30_000);
-    rfSaveTimer.unref?.();
+    scheduleTelemetrySave();
   });
 
   // ── ERP estimator (operator idea): licensed channels are calibration
@@ -892,16 +910,31 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
       if (method === "PUT") {
         if (!config.channels.some((c) => c.id === id)) return json(res, 404, { error: "unknown channel" });
         const body = await readBody(req);
-        const parsed = channelSchema.partial().safeParse(body);
+        // Optional fields a PUT may CLEAR by sending null (the merge below
+        // would otherwise keep the old value for an absent key).
+        const cleared: Array<(typeof CLEARABLE_CHANNEL_FIELDS)[number]> = [];
+        const rest = body !== null && typeof body === "object" ? { ...(body as Record<string, unknown>) } : body;
+        if (rest !== null && typeof rest === "object") {
+          for (const k of CLEARABLE_CHANNEL_FIELDS) {
+            if ((rest as Record<string, unknown>)[k] === null) { cleared.push(k); delete (rest as Record<string, unknown>)[k]; }
+          }
+        }
+        const parsed = channelSchema.partial().safeParse(rest);
         if (!parsed.success) return json(res, 400, { error: "invalid channel" });
         const existing = config.channels.find((c) => c.id === id)!;
-        const candidate = { ...existing, ...parsed.data } as Channel;
+        const strip = (c: Channel): Channel => {
+          if (!cleared.length) return c;
+          const out = { ...c };
+          for (const k of cleared) delete out[k];
+          return out;
+        };
+        const candidate = strip({ ...existing, ...parsed.data } as Channel);
         const conflict = config.channels.find((c) => c.id !== id && collides(c, candidate));
         if (conflict) return json(res, 409, {
           error: `frequency already used by ${conflict.alphaTag || `${(conflict.freq / 1e6).toFixed(4)} MHz`}`,
           conflictsWith: { id: conflict.id, alphaTag: conflict.alphaTag },
         });
-        config = { ...config, channels: config.channels.map((c) => c.id === id ? { ...c, ...parsed.data, id } : c) };
+        config = { ...config, channels: config.channels.map((c) => c.id === id ? strip({ ...c, ...parsed.data, id }) : c) };
         await persistAndReload();
         return json(res, 200, config.channels.find((c) => c.id === id));
       }

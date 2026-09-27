@@ -17,6 +17,7 @@ struct ChannelCmd {
   std::string mode = "nfm";
   bool audible = true;
   bool background = false;
+  std::optional<double> ctcss_hz;           // CTCSS tone squelch: open only on this tone (FM, non-background)
   std::optional<double> open_db, hang_ms;   // quietDb is parsed and ignored (decision C: GR scale);
                                             // a legacy levelDb is ignored too (speaker AGC replaced it)
 };

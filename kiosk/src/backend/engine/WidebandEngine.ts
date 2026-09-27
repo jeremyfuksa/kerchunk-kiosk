@@ -145,6 +145,7 @@ interface HelperEvent {
   centerHz?: number;
   msg?: string;
   raw?: string;
+  ctcssHz?: number;
 }
 
 // Fields of a helper txstat event copied verbatim into the JSONL record.
@@ -570,6 +571,11 @@ export class WidebandEngine implements ScannerEngine {
           this.emit({ type: "rf", channelId: ev.id, db: ev.db, ts: this.now() });
         }
         break;
+      case "tone":
+        if (typeof ev.id === "string" && typeof ev.ctcssHz === "number") {
+          this.emit({ type: "tone", channelId: ev.id, ctcssHz: ev.ctcssHz, ts: this.now() });
+        }
+        break;
       case "same":
         if (typeof ev.raw === "string") {
           this.emit({ type: "same", raw: ev.raw, ts: this.now() });
@@ -687,6 +693,8 @@ export class WidebandEngine implements ScannerEngine {
         // helper's global defaults. Resolved from banks by the server.
         ...(c.openAboveFloorDb !== undefined ? { openDb: c.openAboveFloorDb } : {}),
         ...(c.hangMs !== undefined ? { hangMs: c.hangMs } : {}),
+        // CTCSS tone squelch (omitted = carrier squelch only, as before).
+        ...(c.ctcssHz !== undefined ? { ctcssHz: c.ctcssHz } : {}),
       })),
       monitor: this.config?.monitor ?? false,
       // Close Call: ON by default for this engine; knownHz carries EVERY
