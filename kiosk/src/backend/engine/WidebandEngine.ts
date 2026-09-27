@@ -442,6 +442,8 @@ export class WidebandEngine implements ScannerEngine {
     if (cfg.nativeAmGainDb !== undefined) args.push("--am-gain-db", String(cfg.nativeAmGainDb));
     // FM speaker audio low-pass (weak-signal hiss vs voice brightness).
     if (cfg.fmAudioLpfHz !== undefined) args.push("--audio-lpf-hz", String(cfg.fmAudioLpfHz));
+    // FM speaker high-pass (CTCSS hum), 0 = off.
+    if (cfg.fmAudioHpfHz !== undefined) args.push("--audio-hpf-hz", String(cfg.fmAudioHpfHz));
     // Speaker AGC + limiter (config.audio). Omitted knobs = the helper's defaults.
     const agc = cfg.speakerAgc;
     if (agc) {

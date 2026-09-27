@@ -22,9 +22,10 @@ std::vector<float> speaker_lpf(double hz) {
 }  // namespace
 
 SpeakerPath::SpeakerPath(double lpf_hz, float am_gain, const AgcParams& agc, double limiter_ceiling,
-                         double limiter_release_ms)
+                         double limiter_release_ms, double hpf_hz)
     : am_gain_(am_gain),
       lpf_(speaker_lpf(lpf_hz)),
+      hpf_(LANE_RATE, hpf_hz, SPEAKER_HPF_ORDER),
       agc_(agc, LANE_RATE),
       lim_(limiter_ceiling, limiter_release_ms, AUDIO_RATE),
       rs_(24, 25, LANE_RATE, SPEAKER_RS_CUTOFF_HZ, SPEAKER_RS_TRANSITION_HZ) {
@@ -79,6 +80,7 @@ void SpeakerPath::switch_now() {
   switching_ = false;
   de_.reset();
   lpf_.reset();
+  hpf_.reset();
   am_.reset();
   agc_.reset();
   lim_.reset();
@@ -112,7 +114,7 @@ void SpeakerPath::process(const cf* x, const float* disc, int n, std::vector<flo
   for (int i = 0; i < n; i++) {
     float a = 0.f;
     if (cur_lane_ >= 0 && x && disc) {
-      a = cur_am_ ? am_.step(x[i]) * am_gain_ : lpf_.step(de_.step(disc[i]));
+      a = cur_am_ ? am_.step(x[i]) * am_gain_ : hpf_.step(lpf_.step(de_.step(disc[i])));
       a = agc_.step(a, agc_frozen);
     }
     a50_[i] = a;

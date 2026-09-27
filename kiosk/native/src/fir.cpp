@@ -65,3 +65,37 @@ void FirFilter::reset() {
 }
 
 }  // namespace kc
+
+namespace kc {
+ButterHighpass::ButterHighpass(double rate, double cutoff_hz, int order) {
+  if (cutoff_hz <= 0) return;
+  if (order < 2 || order > 8 || order % 2) throw std::invalid_argument("ButterHighpass: order must be even, 2..8");
+  if (!(cutoff_hz < rate / 2)) throw std::invalid_argument("ButterHighpass: cutoff must be below Nyquist");
+  const double w0 = 2 * M_PI * cutoff_hz / rate, cw = std::cos(w0), sw = std::sin(w0);
+  for (int k = 0; k < order / 2; k++) {
+    // Butterworth pole pair k: Q = 1 / (2 cos(theta_k)), theta_k = (2k+1) pi / (2 order).
+    const double q = 1.0 / (2.0 * std::cos((2 * k + 1) * M_PI / (2.0 * order)));
+    const double alpha = sw / (2 * q), a0 = 1 + alpha;
+    Sec x;
+    x.b0 = (1 + cw) / 2 / a0;
+    x.b1 = -(1 + cw) / a0;
+    x.b2 = (1 + cw) / 2 / a0;
+    x.a1 = -2 * cw / a0;
+    x.a2 = (1 - alpha) / a0;
+    s_.push_back(x);
+  }
+}
+
+float ButterHighpass::step(float xin) {
+  double x = xin;
+  for (auto& q : s_) {
+    const double y = q.b0 * x + q.z1;
+    q.z1 = q.b1 * x - q.a1 * y + q.z2;
+    q.z2 = q.b2 * x - q.a2 * y;
+    x = y;
+  }
+  return (float)x;
+}
+
+void ButterHighpass::reset() { for (auto& q : s_) q.z1 = q.z2 = 0; }
+}  // namespace kc

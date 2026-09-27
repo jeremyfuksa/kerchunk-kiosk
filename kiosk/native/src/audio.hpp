@@ -20,7 +20,8 @@ class SpeakerPath {
   // am_gain: linear gain on normalized AM audio (default AM_GAIN; the engine applies --am-gain-db).
   // agc / limiter_*: speaker loudness knobs (the engine applies --agc-* / --limiter-*).
   explicit SpeakerPath(double lpf_hz = SPEAKER_LPF_HZ, float am_gain = AM_GAIN, const AgcParams& agc = {},
-                       double limiter_ceiling = LIMITER_CEILING, double limiter_release_ms = LIMITER_RELEASE_MS);
+                       double limiter_ceiling = LIMITER_CEILING, double limiter_release_ms = LIMITER_RELEASE_MS,
+                       double hpf_hz = SPEAKER_HPF_HZ);
   void set_source(int lane, bool am);
   void set_gain(float target);
   void reset();   // hard cut: drops the source and zeroes all state (the next sample may step)
@@ -43,6 +44,7 @@ class SpeakerPath {
   float am_gain_;
   Deemphasis de_;
   FirFilter lpf_;
+  ButterHighpass hpf_;
   AmEnvelope am_;
   Agc agc_;
   Limiter lim_;

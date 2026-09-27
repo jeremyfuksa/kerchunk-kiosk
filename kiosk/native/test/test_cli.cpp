@@ -29,6 +29,8 @@ TEST(cli_rejects_bad_values_and_unknown) {
   CHECK(!parse({"--rate", "2048000"}, c, err));
   CHECK(!parse({"--rate", "abc"}, c, err));
   CHECK(!parse({"--audio-lpf-hz", "999"}, c, err));
+  CHECK(!parse({"--audio-hpf-hz", "20"}, c, err));
+  CHECK(!parse({"--audio-hpf-hz", "1001"}, c, err));
   CHECK(!parse({"--am-gain-db", "25"}, c, err));
   CHECK(!parse({"--am-gain-db", "abc"}, c, err));
   CHECK(!parse({"--audio-fd", "x"}, c, err));

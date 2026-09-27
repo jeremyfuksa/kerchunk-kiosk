@@ -22,6 +22,12 @@ inline constexpr double AM_CARRIER_TAU_S = 0.04;   // AM carrier tracker (~40 ms
 // Runtime knob: --audio-lpf-hz (config scan.fmAudioLpfHz).
 inline constexpr double SPEAKER_LPF_HZ = 2700;
 inline constexpr double SPEAKER_LPF_TRANSITION_HZ = 500;
+// FM speaker high-pass: removes the sub-audible CTCSS tone (67-254 Hz) that repeaters and GMRS/
+// business users transmit under the voice -- an audible hum GR never filtered either. 6th-order
+// Butterworth at 300 Hz: 100 Hz tone ~-38 dB, 150 Hz ~-36 dB, 250 Hz ~-9 dB; voice (>=300 Hz)
+// intact. AM bypasses it. Runtime knob: --audio-hpf-hz (config scan.fmAudioHpfHz; 0 = off).
+inline constexpr double SPEAKER_HPF_HZ = 300;
+inline constexpr int SPEAKER_HPF_ORDER = 6;
 // SAME path LPF: multimon-ng's EAS decoder only needs the voiceband (AFSK 1562.5/2083.3 Hz).
 inline constexpr double SAME_LPF_HZ = 3500;
 inline constexpr double SAME_LPF_TRANSITION_HZ = 1500;

@@ -98,6 +98,9 @@ Notes:
 - `scan.fmAudioLpfHz` (Hz, 1000…24000, default 2700 — GNU Radio `nbfm_rx`
   parity) is the FM speaker low-pass: the weak-signal hiss knob. Lower = less
   hiss, duller voice; passed as `--audio-lpf-hz`. Same helper-only restart.
+- `scan.fmAudioHpfHz` (Hz, 0 = off or 50…1000, default 300) is the FM speaker
+  high-pass: a 6th-order Butterworth that strips the sub-audible CTCSS tone
+  (67–254 Hz hum) from the speaker. Passed as `--audio-hpf-hz`.
 - **Speaker loudness** is a feed-forward AGC/compressor on the demodulated
   audio (every transmission starts at 0 dB and is steered to a target; pauses
   below a hold level freeze it so gaps never pump the gain up) followed by a

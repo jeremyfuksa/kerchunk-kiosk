@@ -144,6 +144,10 @@ export const configSchema = z.object({
     // this is the weak-signal hiss knob: lower = less hiss, duller voice.
     // Passed as --audio-lpf-hz. Omitted = 2700 (GR nbfm_rx parity).
     fmAudioLpfHz: z.number().min(1000).max(24000).optional(),
+    // FM speaker high-pass cutoff (Hz): strips the sub-audible CTCSS tone
+    // (67-254 Hz) repeaters send under the voice. 0 = off. Passed as
+    // --audio-hpf-hz. Omitted = 300 (6th-order Butterworth in the helper).
+    fmAudioHpfHz: z.number().refine((v) => v === 0 || (v >= 50 && v <= 1000), "0 (off) or 50-1000 Hz").optional(),
     // Close Call: discover strong transmissions in the tuned window on
     // non-configured frequencies. Plays them (priority preempt) and auto-adds
     // them as DISABLED channels for operator review. Default ON (wideband).

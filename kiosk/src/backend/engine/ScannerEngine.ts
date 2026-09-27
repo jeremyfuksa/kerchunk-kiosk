@@ -44,6 +44,8 @@ export interface ScanConfig {
   nativeAmGainDb?: number;
   // FM speaker audio low-pass cutoff in Hz (see schema).
   fmAudioLpfHz?: number;
+  // FM speaker high-pass cutoff in Hz, 0 = off (see schema).
+  fmAudioHpfHz?: number;
   // Speaker AGC + limiter knobs (config.audio, see schema). Only the scanner
   // helper gets these; the weather helper's hand-built config omits them.
   speakerAgc?: SpeakerAgcConfig;

@@ -124,6 +124,7 @@ export function toScanConfig(
     nativeQuietDb: cfg.scan.nativeQuietDb,
     nativeAmGainDb: cfg.scan.nativeAmGainDb,
     fmAudioLpfHz: cfg.scan.fmAudioLpfHz,
+    fmAudioHpfHz: cfg.scan.fmAudioHpfHz,
     // Speaker AGC + limiter knobs (config.audio). In the scan config so the
     // PUT handler's scanChanged diff respawns the helper when one changes —
     // the same path audio.remoteListening takes. Volume/mute are NOT here, so

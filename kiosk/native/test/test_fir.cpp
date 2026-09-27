@@ -36,3 +36,21 @@ TEST(fir_filter_matches_direct_convolution) {
   f.reset();
   CHECK_NEAR(f.step(1.0f), 0.1, 1e-7);
 }
+
+TEST(butter_highpass_cuts_ctcss_keeps_voice) {
+  auto gain_db = [](double hz, double cut) {
+    kc::ButterHighpass f(kc::LANE_RATE, cut, kc::SPEAKER_HPF_ORDER);
+    double in = 0, out = 0;
+    for (int n = 0; n < kc::LANE_RATE; n++) {   // 1 s; measure the second half (IIR settled)
+      const float x = (float)std::sin(2 * M_PI * hz * n / kc::LANE_RATE);
+      const float y = f.step(x);
+      if (n >= kc::LANE_RATE / 2) { in += x * x; out += y * y; }
+    }
+    return 10 * std::log10(out / in);
+  };
+  CHECK(gain_db(100, 300) < -35);    // CTCSS tones gone
+  CHECK(gain_db(150, 300) < -30);
+  CHECK(gain_db(1000, 300) > -0.5);  // voice intact
+  CHECK(std::fabs(gain_db(100, 0)) < 1e-6);   // 0 = pass-through
+  CHECK_THROWS(kc::ButterHighpass(kc::LANE_RATE, 300, 5));
+}
