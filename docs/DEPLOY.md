@@ -89,6 +89,21 @@ Notes:
   raising the window past 2.35 MHz needs a higher rate too. Changing
   `lanesPerGroup` or `sampleRateHz` via `PUT /api/config` respawns only the
   scanner helper (both are spawn args); the weather helper pins its own.
+- **Scan scheduling** — Node-side hop timing (`WidebandEngine`'s dwell timer,
+  math in `kiosk/src/backend/engine/scanSchedule.ts`). A `PUT /api/config`
+  applies these live: no helper respawn, no tune.
+
+  | `config.scan` | default | range | effect |
+  | --- | --- | --- | --- |
+  | `autoDwell.enabled` | `true` | bool | scale each group's quiet dwell by its recent traffic; `false` = plain `groupDwellMs` × bank `dwellWeight` |
+  | `autoDwell.halfLifeMin` | 30 | 1…1440 | half-life (minutes) of the per-group decayed open count |
+  | `autoDwell.minFactor` | 0.5 | 0.2…1 | floor for an idle group (never below 1 s absolute) |
+  | `autoDwell.maxFactor` | 2.0 | 1…5 | ceiling for a busy group |
+
+  factor = clamp((a + 1) / (mean + 1), minFactor, maxFactor), where `a` is the
+  group's decayed open count and `mean` the average over all groups — a cold
+  start (or a restart; counts live in memory) is 1.0 everywhere. Hold-through
+  and `maxHoldMs` are unchanged: dwell only governs quiet windows.
 - The quieting knob is `scan.nativeQuietDb` (the helper's own dB scale,
   default −6; lower = stricter), exposed in the admin as "Quieting
   threshold". Legacy configs may still hold the retired GNU-Radio-scale

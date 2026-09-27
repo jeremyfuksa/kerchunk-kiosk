@@ -11,6 +11,9 @@ import {
 import { groupChannels, sweepCenters, type ChannelGroup, type GroupingOptions } from "./grouping.js";
 import { setVolume as amixerVolume, setMuted as amixerMuted } from "../audio.js";
 import { TxStatsLog } from "./txStats.js";
+import {
+  ActivityTracker, dwellFactor, resolveAutoDwell, scaledDwellMs, type AutoDwellConfig,
+} from "./scanSchedule.js";
 
 /** config.audio speaker-loudness knob -> kerchunk-dsp flag (AGC + limiter). */
 export const SPEAKER_AGC_FLAGS: ReadonlyArray<readonly [keyof SpeakerAgcConfig, string]> = [
@@ -111,6 +114,10 @@ export interface WidebandEngineOptions {
 // helper never truncates.
 const DEFAULT_WINDOW_HZ = DEFAULT_WINDOW_BANDWIDTH_HZ;
 const DEFAULT_GROUP_DWELL_MS = 3000;
+// Hop-timer tick ceiling while activity-weighted dwell is on: scaled dwells
+// aren't multiples of dwell/3, so the old dwell/3 tick (1 s at the 3 s
+// default) would round a 1.5 s dwell up to 2 s. A 100 ms no-op tick is free.
+const SCHED_TICK_MS = 100;
 // Signal events drive the dashboard meter; the helper's power telemetry
 // arrives ~5 Hz, pass it through at up to 4 Hz for a live-feeling needle.
 const SIGNAL_THROTTLE_MS = 250;
@@ -189,6 +196,9 @@ export class WidebandEngine implements ScannerEngine {
   // NOT re-armed, so it measures true continuous hold against the max-hold cap.
   private holdStartedAt = 0;
   private dwellTimer: NodeJS.Timeout | null = null;
+  // Activity-weighted dwell (config.scan.autoDwell): decayed open counts per
+  // group, keyed by the group's center so it survives a same-shape retune.
+  private readonly activity = new ActivityTracker();
   private restartTimer: NodeJS.Timeout | null = null;
 
   // Warm-up milestones (drive the kiosk "WARMING UP" overlay). One-shot per
@@ -314,6 +324,65 @@ export class WidebandEngine implements ScannerEngine {
 
   private groupDwellMs(): number {
     return this.groupDwellOverride ?? this.config?.groupDwellMs ?? DEFAULT_GROUP_DWELL_MS;
+  }
+
+  private autoDwell(): Required<AutoDwellConfig> {
+    return resolveAutoDwell(this.config?.autoDwell);
+  }
+
+  private static groupKey(group: ChannelGroup<ScanChannel>): string {
+    return String(group.centerHz);
+  }
+
+  /**
+   * How long the rotation parks on a quiet group before hopping. BASE =
+   * groupDwellMs x the max bank dwellWeight among its channels (ROADMAP Idea
+   * 7: the busiest bank in a mixed window dominates; default weight 1). With
+   * autoDwell on, the base is then scaled by the group's recent activity
+   * (scanSchedule.dwellFactor) and floored at MIN_AUTO_DWELL_MS. Hold-through
+   * and the maxHoldMs cap are separate: this governs quiet windows only.
+   */
+  private effectiveDwellMs(index: number): number {
+    const group = this.groups[index];
+    if (!group) return this.groupDwellMs();
+    const weight = Math.max(...group.channels.map((c) => c.dwellWeight ?? 1));
+    const base = this.groupDwellMs() * weight;
+    const auto = this.autoDwell();
+    if (!auto.enabled || this.groups.length <= 1) return base;
+    const halfLifeMs = auto.halfLifeMin * 60_000;
+    const now = this.now();
+    const values = this.groups.map((g) => this.activity.value(WidebandEngine.groupKey(g), now, halfLifeMs));
+    const mean = values.reduce((a, b) => a + b, 0) / values.length;
+    const factor = dwellFactor(values[index] ?? 0, mean, auto.minFactor, auto.maxFactor);
+    return scaledDwellMs(base, factor);
+  }
+
+  /** Effective quiet-window dwell per group right now, in rotation order
+   *  (diagnostics + tests). */
+  groupDwellPlan(): number[] {
+    return this.groups.map((_, i) => this.effectiveDwellMs(i));
+  }
+
+  /** Live scheduling update (config.scan.autoDwell): Node-side only, so no
+   *  tune, no respawn — the next tick simply uses the new numbers. */
+  updateScheduling(s: { autoDwell?: AutoDwellConfig }): void {
+    if (!this.config) return;
+    this.config = { ...this.config, autoDwell: s.autoDwell };
+    // Re-arm only a live timer (the tick rate depends on autoDwell.enabled);
+    // groupStartedAt is untouched, so the current dwell just continues.
+    if (this.dwellTimer) this.startDwellTimer();
+  }
+
+  // Credit one transmission to the group being dwelt on. Only a NEW open of
+  // an audible, configured channel of the current group counts: Close Call
+  // lanes and background decoder feeds aren't the group's traffic, a muted
+  // carrier would inflate it, and sweep stops aren't groups.
+  private recordActivity(id: string): void {
+    if (this.sweeping || this.openIds.has(id)) return;
+    const group = this.groups[this.groupIndex];
+    const channel = group?.channels.find((c) => c.id === id);
+    if (!group || !channel || channel.audible === false || channel.background) return;
+    this.activity.record(WidebandEngine.groupKey(group), this.now(), this.autoDwell().halfLifeMin * 60_000);
   }
 
   async start(config: ScanConfig): Promise<void> {
@@ -562,6 +631,7 @@ export class WidebandEngine implements ScannerEngine {
         break;
       case "open": {
         if (typeof ev.id !== "string") return;
+        this.recordActivity(ev.id);
         this.openIds.add(ev.id);
         const channel = this.findChannel(ev.id);
         const ts = this.now();
@@ -771,13 +841,6 @@ export class WidebandEngine implements ScannerEngine {
         // Nothing audible is open: the window gets its plain dwell, no hold.
         this.holdStartedAt = 0;
       }
-      // Weighted dwell (ROADMAP Idea 7): a window's park time scales by
-      // the max dwellWeight among its channels — the busiest bank in a
-      // mixed window dominates. Default weight 1 = the global dwell.
-      const group = this.groups[this.groupIndex];
-      const weight = group
-        ? Math.max(...group.channels.map((c) => c.dwellWeight ?? 1))
-        : 1;
       if (this.sweeping) {
         // A sweep stop lasts one plain dwell, then the rotation resumes.
         if (this.now() - this.groupStartedAt >= dwell) {
@@ -787,7 +850,8 @@ export class WidebandEngine implements ScannerEngine {
         }
         return;
       }
-      if (this.now() - this.groupStartedAt >= dwell * weight) {
+      // Quiet window: bank-weighted, activity-scaled dwell (effectiveDwellMs).
+      if (this.now() - this.groupStartedAt >= this.effectiveDwellMs(this.groupIndex)) {
         const wrapped = this.groupIndex === this.groups.length - 1;
         if (wrapped && this.sweeps.length > 0) {
           // Full pass done: spend one stop hunting in the sweep ranges.
@@ -799,7 +863,9 @@ export class WidebandEngine implements ScannerEngine {
         this.groupIndex = (this.groupIndex + 1) % this.groups.length;
         this.sendTune();
       }
-    }, Math.max(20, Math.floor(dwell / 3)));
+    }, Math.max(20, this.autoDwell().enabled
+      ? Math.min(Math.floor(dwell / 3), SCHED_TICK_MS)
+      : Math.floor(dwell / 3)));
   }
 
   private clearDwellTimer(): void {

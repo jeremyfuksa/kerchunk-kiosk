@@ -70,6 +70,8 @@ export class FakeEngine implements ScannerEngine {
   skips = 0;
   knownHzUpdates: number[][] = [];
   updateKnownHz(knownHz: number[]): void { this.knownHzUpdates.push(knownHz); }
+  schedulingUpdates: Array<Pick<ScanConfig, "autoDwell">> = [];
+  updateScheduling(s: Pick<ScanConfig, "autoDwell">): void { this.schedulingUpdates.push(s); }
   lastHoldoff: number | undefined;
   skip(holdoffSeconds?: number): void { this.skips++; this.lastHoldoff = holdoffSeconds; }
   emitSame(raw: string): void {
