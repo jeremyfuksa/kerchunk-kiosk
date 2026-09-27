@@ -1145,13 +1145,16 @@ export function renderAdmin(root: HTMLElement): void {
   }
 
   // Drawer hint: the last tone/code the helper heard (a heard DCS code is in
-  // its on-air normal form, so name the inverted twin too).
+  // its on-air normal form, so name the inverted twin too). Each heard value is
+  // a button that selects it in the Tone select (the drawer's Save applies it).
   function toneHint(c: Channel | undefined): string {
     const heard: string[] = [];
-    if (c?.heardCtcssHz != null) heard.push(`${c.heardCtcssHz.toFixed(1)} Hz`);
+    const use = (value: string, label: string): string =>
+      `<button type="button" class="toneUse" data-tone="${esc(value)}" title="Use this tone">${label}</button>`;
+    if (c?.heardCtcssHz != null) heard.push(use(c.heardCtcssHz.toFixed(1), `${c.heardCtcssHz.toFixed(1)} Hz`));
     if (c?.heardDcs != null) {
       const twin = dcsAlias(c.heardDcs);
-      heard.push(`DCS ${esc(c.heardDcs)}${twin ? ` (= ${twin})` : ""}`);
+      heard.push(use(`dcs:${c.heardDcs}`, `DCS ${esc(c.heardDcs)}`) + (twin ? ` (= ${twin})` : ""));
     }
     return heard.length ? `Heard: ${heard.join(" · ")}` : "Sub-audible CTCSS / DCS — only open on this tone or code";
   }
@@ -1544,6 +1547,12 @@ export function renderAdmin(root: HTMLElement): void {
         <dt>id</dt><dd>${esc(c.id)}</dd>
       </dl>` : ""}`;
     drawer.querySelector<HTMLButtonElement>(".dwClose")!.addEventListener("click", closeDrawer);
+    // "Heard: 100.0 Hz" buttons pick that tone in the select (preventDefault:
+    // the button sits inside the row's <label>).
+    drawer.querySelectorAll<HTMLButtonElement>(".toneUse").forEach((b) => b.addEventListener("click", (e) => {
+      e.preventDefault();
+      drawer.querySelector<HTMLSelectElement>("#dwTone")!.value = b.dataset.tone ?? "";
+    }));
     drawer.querySelector<HTMLButtonElement>("#dwSave")!.addEventListener("click", async () => {
       const err = drawer.querySelector<HTMLElement>("#dwErr")!;
       err.textContent = "";
