@@ -194,3 +194,19 @@ TEST(speaker_am_gain_scales_am_audio) {
   CHECK(full > 0.05);
   CHECK_NEAR(half / full, 0.5, 0.01);
 }
+
+TEST(speaker_hpf_removes_sub_audible_tone) {
+  auto rms_at = [](kc::SpeakerPath& sp, double hz) {
+    std::vector<float> disc(kc::LANE_RATE);
+    for (size_t i = 0; i < disc.size(); i++) disc[i] = 0.1f * (float)std::sin(2 * M_PI * hz * i / kc::LANE_RATE);
+    std::vector<kc::cf> x(disc.size());
+    sp.set_source(0, false);
+    sp.set_gain(1.0f);
+    std::vector<float> out;
+    for (size_t i = 0; i + 64 <= disc.size(); i += 64) sp.process(&x[i], &disc[i], 64, out);
+    return sig::rms(out.data() + out.size() / 2, out.size() / 2);
+  };
+  kc::SpeakerPath on = flat_path();
+  kc::SpeakerPath off0(kc::SPEAKER_LPF_HZ, kc::AM_GAIN, flat_agc(), kc::LIMITER_CEILING, kc::LIMITER_RELEASE_MS, 0);
+  CHECK(rms_at(on, 100) < 0.02 * rms_at(off0, 100));   // >= 34 dB down with the default HPF
+}

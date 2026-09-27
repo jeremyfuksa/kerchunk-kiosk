@@ -68,6 +68,15 @@ describe("configSchema", () => {
     expect(() => scan({ helperSilenceTimeoutMs: 1500.5 })).toThrow();
   });
 
+  it("accepts scan.fmAudioHpfHz of 0 (off) or [50, 1000] and rejects the rest", () => {
+    const base = defaultConfig();
+    const hpf = (v: number) => configSchema.parse({ ...base, scan: { ...base.scan, fmAudioHpfHz: v } }).scan.fmAudioHpfHz;
+    expect(hpf(0)).toBe(0);
+    expect(hpf(300)).toBe(300);
+    expect(() => hpf(20)).toThrow();
+    expect(() => hpf(1001)).toThrow();
+  });
+
   it("accepts scan.fmAudioLpfHz in [1000, 24000] and rejects outside it", () => {
     const base = defaultConfig();
     expect(configSchema.parse({ ...base, scan: { ...base.scan, fmAudioLpfHz: 3500 } }).scan.fmAudioLpfHz).toBe(3500);

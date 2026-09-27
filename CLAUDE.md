@@ -133,7 +133,8 @@ replays the warm-up overlay on the wall.
   defaults live in `kiosk/native/src/constants.hpp`; the operator-facing
   knobs are `config.scan.nativeQuietDb` (`--quiet-db`) and
   `config.scan.nativeAmGainDb` (`--am-gain-db`, the AM pre-gain into the AGC),
-  `config.scan.fmAudioLpfHz` (`--audio-lpf-hz`, FM weak-signal hiss).
+  `config.scan.fmAudioLpfHz` (`--audio-lpf-hz`, FM weak-signal hiss),
+  `config.scan.fmAudioHpfHz` (`--audio-hpf-hz`, CTCSS hum; 0 = off).
   Group shape: `config.scan.lanesPerGroup` (`--lanes`, 12, 1…64) and
   `config.scan.sampleRateHz` (`--rate`, 2 400 000, 900k…3.2M in 50 kHz steps)
   with `windowBandwidthHz` (2 MHz, ≤ rate − 50 kHz — schema-enforced).
