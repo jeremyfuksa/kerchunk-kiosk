@@ -10,6 +10,7 @@ import {
 } from "../config/schema.js";
 import { groupChannels, sweepCenters, type ChannelGroup } from "./grouping.js";
 import { setVolume as amixerVolume, setMuted as amixerMuted } from "../audio.js";
+import { TxStatsLog } from "./txStats.js";
 
 /** config.audio speaker-loudness knob -> kerchunk-dsp flag (AGC + limiter). */
 export const SPEAKER_AGC_FLAGS: ReadonlyArray<readonly [keyof SpeakerAgcConfig, string]> = [
@@ -97,6 +98,11 @@ export interface WidebandEngineOptions {
   /** Treat the helper as dead if it prints nothing for this long
    *  after "ready" (it emits power every 200 ms once tuned). Default 5 s. */
   silenceTimeoutMs?: number;
+  /** Squelch-calibration log: append each helper `txstat` event (one carrier
+   *  episode) as a JSON line here, rotating to `<path>.1` past 20 MB. Unset =
+   *  txstat events are ignored. The scanner engine only (index.ts). Never
+   *  forwarded as an EngineEvent / over WS. */
+  txStatsPath?: string;
 }
 
 // Defaults when config omits scan.windowBandwidthHz / lanesPerGroup /
@@ -140,6 +146,11 @@ interface HelperEvent {
   msg?: string;
   raw?: string;
 }
+
+// Fields of a helper txstat event copied verbatim into the JSONL record.
+const TXSTAT_FIELDS = [
+  "mode", "opened", "polls", "quietP10", "quietP50", "quietP90", "aboveFloorP50",
+] as const;
 
 export class WidebandEngine implements ScannerEngine {
   private readonly helperCmd: string[];
@@ -212,6 +223,7 @@ export class WidebandEngine implements ScannerEngine {
   private logSuppressed = 0;
   private readyTimer: NodeJS.Timeout | null = null;
   private silenceTimer: NodeJS.Timeout | null = null;
+  private readonly txStats: TxStatsLog | null;
 
   constructor(opts: WidebandEngineOptions = {}) {
     this.rtlIndexResolver = opts.rtlIndex;
@@ -233,7 +245,13 @@ export class WidebandEngine implements ScannerEngine {
     this.maxHoldMs = opts.maxHoldMs ?? 180_000;
     this.log = opts.log ?? ((m) => console.warn(m));
     this.now = opts.now ?? Date.now;
+    this.txStats = opts.txStatsPath
+      ? new TxStatsLog(opts.txStatsPath, { log: this.log, now: this.now })
+      : null;
   }
+
+  /** Resolves once every txstat line so far has been written (tests). */
+  flushTxStats(): Promise<void> { return this.txStats?.flush() ?? Promise.resolve(); }
 
   get state(): EngineState { return this._state; }
   /** The DSP helper's pid (system-health diagnostics). */
@@ -562,6 +580,9 @@ export class WidebandEngine implements ScannerEngine {
           this.emit({ type: "closecall", freqHz: ev.freqHz, ts: this.now() });
         }
         break;
+      case "txstat":
+        if (this.txStats && typeof ev.id === "string") this.recordTxStat(ev);
+        break;
       case "audible": {
         this.audibleId = typeof ev.id === "string" ? ev.id : null;
         // Surface speaker ownership: the dashboard's now-playing follows
@@ -596,6 +617,20 @@ export class WidebandEngine implements ScannerEngine {
       if (!channel || channel.audible !== false) return true;
     }
     return false;
+  }
+
+  // One squelch-calibration line. The helper emits a retune-cut episode under
+  // its OLD id just before the new group's "tuned", so resolve the freq
+  // against the whole configured channel list, not the current group.
+  private recordTxStat(ev: HelperEvent): void {
+    const id = ev.id as string;
+    const rec: Record<string, unknown> = { t: new Date(this.now()).toISOString(), id };
+    const cc = /^cc_(\d+)$/.exec(id);
+    const freqHz = cc ? Number(cc[1]) : this.config?.channels.find((c) => c.id === id)?.freq;
+    if (freqHz !== undefined) rec.freqHz = freqHz;
+    const raw = ev as unknown as Record<string, unknown>;
+    for (const k of TXSTAT_FIELDS) if (raw[k] !== undefined) rec[k] = raw[k];
+    this.txStats!.append(rec);
   }
 
   private findChannel(id: string): Channel | null {

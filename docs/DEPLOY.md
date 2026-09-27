@@ -129,6 +129,17 @@ Notes:
   `scan.helperReadyTimeoutMs` / `scan.helperSilenceTimeoutMs` (ms, 1000…120000),
   applied to both helpers at engine construction — a backend restart, not a
   config PUT, picks them up.
+- **Squelch-calibration log** — `txstats.jsonl`, next to `config.json`
+  (`/var/lib/kerchunk-kiosk/txstats.jsonl` on the appliance; scanner helper
+  only). One JSON line per carrier episode: a lane's power crossed the open
+  threshold, and the line records whether the quieting check let it open, how
+  long it lasted (`polls`, 10 ms each), its quieting p10/p50/p90 and power
+  above floor. Rejected carriers shorter than 100 ms aren't logged. It's the
+  data for setting `scan.nativeQuietDb` from real traffic; analyse it with
+  `/usr/bin/python3 kiosk/bench/squelch_calibrate.py
+  /var/lib/kerchunk-kiosk/txstats.jsonl`. Rotates to `txstats.jsonl.1` past
+  20 MB (`TXSTATS_MAX_BYTES`, `kiosk/src/backend/engine/txStats.ts`).
+  Instrumentation only — it changes no squelch or audio behavior.
 
 ## Legacy: remote Pi deploy
 

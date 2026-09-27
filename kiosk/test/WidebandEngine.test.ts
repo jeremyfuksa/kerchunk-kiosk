@@ -110,6 +110,43 @@ describe("WidebandEngine", () => {
     expect(events.some((e) => e.type === "signal")).toBe(true);
   });
 
+  it("helper txstat => one JSONL line (t + freqHz added), never an EngineEvent", async () => {
+    const path = tmpFile("txstats.jsonl");
+    const { engine, events } = makeEngine({
+      FAKE_WB_SCRIPT: [
+        `{"ev":"txstat","id":"${VHF_A.id}","mode":"fm","opened":true,"polls":57,"quietP10":-21.5,"quietP50":-18.2,"quietP90":-12.0,"aboveFloorP50":19.4}`,
+        `{"ev":"txstat","id":"cc_463562500","mode":"fm","opened":false,"polls":12,"aboveFloorP50":11.1}`,
+        `{"ev":"txstat","id":"nope","mode":"am","opened":false,"polls":30,"quietP50":-2.5,"quietP10":-3,"quietP90":-1,"aboveFloorP50":9.5}`,
+      ].join("\n"),
+    }, { txStatsPath: path });
+    await engine.start(cfg([VHF_A, VHF_B]));
+    await waitFor(() => lines(path).length >= 3, 2000);
+    await engine.stop();
+    await engine.flushTxStats();
+    const recs = lines(path).map((l) => JSON.parse(l) as Record<string, unknown>);
+    expect(recs).toHaveLength(3);
+    expect(recs[0]).toMatchObject({
+      id: VHF_A.id, freqHz: VHF_A.freq, mode: "fm", opened: true, polls: 57,
+      quietP10: -21.5, quietP50: -18.2, quietP90: -12.0, aboveFloorP50: 19.4,
+    });
+    expect(Number.isNaN(Date.parse(recs[0]!.t as string))).toBe(false);
+    expect(recs[1]).toMatchObject({ id: "cc_463562500", freqHz: 463_562_500, opened: false });
+    expect(recs[1]).not.toHaveProperty("quietP50");
+    expect(recs[2]).toMatchObject({ id: "nope", mode: "am" });
+    expect(recs[2]).not.toHaveProperty("freqHz");              // unknown id: no freq
+    expect(events.some((e) => (e.type as string) === "txstat")).toBe(false);
+  });
+
+  it("txstat without txStatsPath is ignored", async () => {
+    const { engine, events } = makeEngine({
+      FAKE_WB_SCRIPT: `{"ev":"txstat","id":"${VHF_A.id}","mode":"fm","opened":true,"polls":20}`,
+    });
+    await engine.start(cfg([VHF_A]));
+    await new Promise((r) => setTimeout(r, 200));
+    await engine.stop();
+    expect(events.some((e) => (e.type as string) === "txstat")).toBe(false);
+  });
+
   it("helper close of the last open channel => idle", async () => {
     const { engine, events } = makeEngine({
       FAKE_WB_SCRIPT: [

@@ -88,6 +88,8 @@ const engine =
       ...restartBackoffOpts,
       ...watchdogOpts,
       ...maxHold,
+      // Squelch-calibration data (per-episode quieting stats), next to config.json.
+      txStatsPath: join(dirname(CONFIG_PATH), "txstats.jsonl"),
     })
   : new RtlFmEngine({
       openThreshold: config.scan.squelchLevel,
