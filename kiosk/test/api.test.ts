@@ -297,6 +297,54 @@ describe("HTTP API", () => {
     expect(edit.body.alphaTag).toBe("A2");
   });
 
+  it("PUT /api/channels/:id sets, rejects and clears ctcssHz (null clears)", async () => {
+    const { server } = makeApp();
+    const add = await request(server).post("/api/channels")
+      .send({ freq: 145130000, alphaTag: "T", mode: "nfm", enabled: true, ctcssHz: 151.4 });
+    expect(add.status).toBe(201);
+    expect(add.body.ctcssHz).toBe(151.4);
+    const id = add.body.id as string;
+    expect((await request(server).put(`/api/channels/${id}`).send({ ctcssHz: 100.1 })).status).toBe(400);
+    const set = await request(server).put(`/api/channels/${id}`).send({ ctcssHz: 100.0 });
+    expect(set.body.ctcssHz).toBe(100.0);
+    const keep = await request(server).put(`/api/channels/${id}`).send({ alphaTag: "T2" });
+    expect(keep.body.ctcssHz).toBe(100.0);   // absent key: unchanged
+    const clear = await request(server).put(`/api/channels/${id}`).send({ alphaTag: "T3", ctcssHz: null });
+    expect(clear.status).toBe(200);
+    expect(clear.body).not.toHaveProperty("ctcssHz");
+    expect(clear.body.alphaTag).toBe("T3");
+    expect((await request(server).put(`/api/channels/${id}`).send({ alphaTag: null })).status).toBe(400);
+  });
+
+  it("a heard CTCSS tone persists as heardCtcssHz (telemetry save), unchanged tones write nothing", async () => {
+    const { configStore } = makeApp();
+    const cfg = configStore.load();
+    configStore.save({ ...cfg, channels: [
+      { id: "a", freq: 146520000, alphaTag: "A", mode: "nfm", enabled: true },
+    ] });
+    const engine = new FakeEngine();
+    createServer({ configStore, engine, activityLog: new ActivityLog(100), wsHub: new WsHub(), staticDir: dir });
+    const save = vi.spyOn(configStore, "save");
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      engine.emitTone("a", 100.0);
+      engine.emitTone("nope", 100.0);   // unknown channel: ignored
+      vi.advanceTimersByTime(30_000);
+      expect(save).toHaveBeenCalledTimes(1);
+      expect(save.mock.calls[0]![1]).toEqual({ telemetry: true });
+      expect(configStore.load().channels[0]!.heardCtcssHz).toBe(100.0);
+      engine.emitTone("a", 100.0);       // same tone again: no config write
+      vi.advanceTimersByTime(30_000);
+      expect(save).toHaveBeenCalledTimes(1);
+      engine.emitTone("a", 123.0);       // a different tone: updated
+      vi.advanceTimersByTime(30_000);
+      expect(save).toHaveBeenCalledTimes(2);
+      expect(configStore.load().channels[0]!.heardCtcssHz).toBe(123.0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("GET /api/channels/duplicates lists non-GMRS duplicate sets, richest first", async () => {
     // The block rule (Task 2) stops NEW dupes via the API, so duplicates only
     // pre-exist in configs that predate the rule. Seed that state by writing

@@ -1,6 +1,7 @@
 // kiosk/test/schema.test.ts
 import { describe, it, expect } from "vitest";
 import { configSchema, defaultConfig } from "../src/backend/config/schema.js";
+import { CTCSS_TONES } from "../src/backend/config/ctcss.js";
 
 describe("configSchema", () => {
   it("accepts a valid config", () => {
@@ -32,6 +33,26 @@ describe("configSchema", () => {
   it("clamps volume range via schema (0-100)", () => {
     const bad = { ...defaultConfig(), audio: { ...defaultConfig().audio, volume: 250 } };
     expect(() => configSchema.parse(bad)).toThrow();
+  });
+
+  it("ctcssHz must be one of the 50 standard tones; heardCtcssHz is free telemetry", () => {
+    const withTone = (extra: object) => ({ ...defaultConfig(), channels: [
+      { id: "x", freq: 146520000, alphaTag: "", mode: "fm", enabled: true, ...extra },
+    ] });
+    expect(configSchema.safeParse(withTone({ ctcssHz: 100.0 })).success).toBe(true);
+    expect(configSchema.safeParse(withTone({ ctcssHz: 67.0 })).success).toBe(true);
+    expect(configSchema.safeParse(withTone({ ctcssHz: 254.1 })).success).toBe(true);
+    expect(configSchema.safeParse(withTone({ ctcssHz: 100.1 })).success).toBe(false);
+    expect(configSchema.safeParse(withTone({ ctcssHz: 150.0 })).success).toBe(false);   // not in the 50-tone set
+    expect(configSchema.safeParse(withTone({ ctcssHz: "100.0" })).success).toBe(false);
+    expect(configSchema.safeParse(withTone({ heardCtcssHz: 123.0 })).success).toBe(true);
+    expect(configSchema.safeParse(withTone({})).success).toBe(true);   // untoned: unchanged
+  });
+
+  it("the shared CTCSS table is the 50 EIA tones", () => {
+    expect(CTCSS_TONES).toHaveLength(50);
+    expect(CTCSS_TONES[0]).toBe(67.0);
+    expect(CTCSS_TONES[49]).toBe(254.1);
   });
 
   it("defaultConfig() is itself valid", () => {

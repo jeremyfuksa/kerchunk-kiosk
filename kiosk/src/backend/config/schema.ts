@@ -1,5 +1,6 @@
 // kiosk/src/backend/config/schema.ts
 import { z } from "zod";
+import { isCtcssTone } from "./ctcss.js";
 
 // airplanes.live REST base, over HTTPS. The endpoint 301s http -> https, so a
 // cleartext base spent two requests and two TCP connections per poll — double
@@ -49,6 +50,15 @@ export const channelSchema = z.object({
   // Median received RF power (dB, helper units), EMA over transmissions —
   // the ERP estimator's measurement input. Server-owned telemetry.
   rfDb: z.number().optional(),
+  // CTCSS tone squelch: when set, the helper opens this channel only while
+  // this sub-audible tone is present (co-channel users on other tones, or
+  // none, stay silent). Must be one of the 50 standard tones (./ctcss.ts).
+  // FM only — the helper ignores it on AM channels.
+  ctcssHz: z.number().refine(isCtcssTone, { message: "ctcssHz must be a standard CTCSS tone" }).optional(),
+  // The last CTCSS tone the helper heard on this channel while open.
+  // Server-owned telemetry like rfDb — shown in the channel drawer so the
+  // operator can fill ctcssHz.
+  heardCtcssHz: z.number().optional(),
   // (levelTrimDb — the retired per-channel loudness trim — is gone: the
   // helper's speaker AGC levels every transmission instead. Old config files
   // that still carry it parse fine; zod strips the unknown key.)

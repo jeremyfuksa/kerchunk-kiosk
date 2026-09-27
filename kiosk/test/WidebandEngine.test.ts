@@ -875,6 +875,30 @@ describe("hear-vs-see passthrough", () => {
   });
 });
 
+describe("CTCSS tone squelch passthrough", () => {
+  it("tune carries ctcssHz only on toned channels", async () => {
+    const tunes = tmpFile("tunes");
+    const { engine } = makeEngine({ FAKE_WB_TUNES_FILE: tunes });
+    await engine.start(cfg([{ ...VHF_A, ctcssHz: 100.0 }, VHF_B]));
+    await waitFor(() => lines(tunes).length >= 1, 1000);
+    await engine.stop();
+    const first = JSON.parse(lines(tunes)[0]!);
+    expect(first.channels[0].ctcssHz).toBe(100.0);
+    expect(first.channels[1]).not.toHaveProperty("ctcssHz");
+  });
+
+  it("helper tone => tone EngineEvent", async () => {
+    const { engine, events } = makeEngine({
+      FAKE_WB_SCRIPT: `{"ev":"tone","id":"${VHF_A.id}","ctcssHz":151.4}`,
+    });
+    await engine.start(cfg([VHF_A, VHF_B]));
+    await waitFor(() => events.some((e) => e.type === "tone"), 1000);
+    await engine.stop();
+    const tone = events.find((e) => e.type === "tone");
+    expect(tone && tone.type === "tone" && [tone.channelId, tone.ctcssHz]).toEqual([VHF_A.id, 151.4]);
+  });
+});
+
 describe("retune (re-point vs respawn)", () => {
   // Three channels within one 2 MHz window => a single 3-channel group.
   const A = ch(146_790_000);            // slot 0
