@@ -79,7 +79,7 @@ Notes:
   | `config.scan` | helper flag | default | range |
   | --- | --- | --- | --- |
   | `lanesPerGroup` | `--lanes` | 12 | 1…64 (kerchunk-dsp `MAX_LANES`) |
-  | `sampleRateHz` | `--rate` | 2 400 000 | 900 000…3 200 000, multiple of 50 000 |
+  | `sampleRateHz` | `--rate` | 2 400 000 | 950 000…3 200 000, multiple of 50 000 (above ~2 560 000 RTL dongles tend to drop samples) |
   | `windowBandwidthHz` | (grouping only) | 2 000 000 | ≤ `sampleRateHz` − 50 000 |
 
   `lanesPerGroup` caps channels per group; `windowBandwidthHz` caps a group's

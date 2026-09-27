@@ -214,10 +214,11 @@ describe("scan lanesPerGroup + sampleRateHz", () => {
     expect(() => scan({ lanesPerGroup: 12.5 })).toThrow();
   });
 
-  it("sampleRateHz: multiple of 50 kHz in [900k, 3.2M]", () => {
+  it("sampleRateHz: multiple of 50 kHz in [950k, 3.2M]", () => {
     expect(scan({ sampleRateHz: 2_400_000 }).sampleRateHz).toBe(2_400_000);
     expect(scan({ sampleRateHz: 3_200_000, windowBandwidthHz: 3_150_000 }).sampleRateHz).toBe(3_200_000);
-    expect(scan({ sampleRateHz: 900_000, windowBandwidthHz: 850_000 }).sampleRateHz).toBe(900_000);
+    expect(scan({ sampleRateHz: 950_000, windowBandwidthHz: 900_000 }).sampleRateHz).toBe(950_000);
+    expect(() => scan({ sampleRateHz: 900_000, windowBandwidthHz: 850_000 })).toThrow();   // librtlsdr rejects exactly 900 000
     expect(() => scan({ sampleRateHz: 2_048_000 })).toThrow();          // not a lane multiple
     expect(() => scan({ sampleRateHz: 850_000, windowBandwidthHz: 500_000 })).toThrow();
     expect(() => scan({ sampleRateHz: 3_250_000 })).toThrow();

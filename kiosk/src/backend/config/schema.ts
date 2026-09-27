@@ -70,7 +70,7 @@ export const DEFAULT_SAMPLE_RATE_HZ = 2_400_000;
 // usable window is (rate - LANE_HZ).
 const LANE_HZ = 50_000;
 export const MAX_LANES_PER_GROUP = 64;   // kerchunk-dsp MAX_LANES (native/src/constants.hpp)
-export const MIN_SAMPLE_RATE_HZ = 900_000;
+export const MIN_SAMPLE_RATE_HZ = 950_000;   // librtlsdr: 900 001..3 200 000 (and 225 001..300 000); first 50 kHz multiple
 export const MAX_SAMPLE_RATE_HZ = 3_200_000;
 
 export const configSchema = z.object({
