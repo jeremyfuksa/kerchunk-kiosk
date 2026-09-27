@@ -99,11 +99,24 @@ Notes:
   | `autoDwell.halfLifeMin` | 30 | 1…1440 | half-life (minutes) of the per-group decayed open count |
   | `autoDwell.minFactor` | 0.5 | 0.2…1 | floor for an idle group (never below 1 s absolute) |
   | `autoDwell.maxFactor` | 2.0 | 1…5 | ceiling for a busy group |
+  | `priorityRevisit.enabled` | `true` | bool | peek at groups holding a `priority: true` channel between normal dwells |
+  | `priorityRevisit.everyMs` | 4000 | 1000…60000 | quiet non-priority dwell between two peeks |
+  | `priorityRevisit.lookMs` | 700 | 300…5000 | length of one peek — must cover the ~0.64 s post-hop warm-up (settle + 500 ms + one 100 ms open poll) |
 
   factor = clamp((a + 1) / (mean + 1), minFactor, maxFactor), where `a` is the
   group's decayed open count and `mean` the average over all groups — a cold
   start (or a restart; counts live in memory) is 1.0 everywhere. Hold-through
   and `maxHoldMs` are unchanged: dwell only governs quiet windows.
+
+  Priority revisit: after `everyMs` of quiet dwell on non-priority groups the
+  radio hops to the next priority group (round-robin across groups) for
+  `lookMs`, then returns to the interrupted group with its remaining dwell. An
+  open during the look holds like any open (then `lookMs` more after it
+  closes). Never while holding an open, on a sweep stop, in monitor mode
+  (weather break-in / direct tune), or while the current group is itself a
+  priority group. Peeks don't feed `autoDwell`. Cost at defaults: ~15 % of
+  scan time on peeks (0.7 / 4.7 s), and each return re-warms the interrupted
+  group (~0.6 s deaf) — roughly a quarter of non-priority listening time.
 - The quieting knob is `scan.nativeQuietDb` (the helper's own dB scale,
   default −6; lower = stricter), exposed in the admin as "Quieting
   threshold". Legacy configs may still hold the retired GNU-Radio-scale

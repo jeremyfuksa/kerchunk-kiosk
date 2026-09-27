@@ -124,6 +124,7 @@ export function toScanConfig(
     // Node-side scheduling (no helper arg): stripped from the PUT handler's
     // scanChanged diff and pushed live via engine.updateScheduling.
     autoDwell: cfg.scan.autoDwell,
+    priorityRevisit: cfg.scan.priorityRevisit,
     openAboveFloorDb: cfg.scan.openAboveFloorDb,
     nativeQuietDb: cfg.scan.nativeQuietDb,
     nativeAmGainDb: cfg.scan.nativeAmGainDb,
@@ -870,10 +871,10 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
       // own lockoutHz field is only a fallback it never reads when the server
       // supplies knownHz. Leaving it in the diff made every lockout-only edit
       // take the restart branch this comparison exists to avoid.
-      // Scheduling knobs (autoDwell) are Node-side hop timing, not helper
+      // Scheduling knobs (autoDwell, priorityRevisit) are Node-side hop timing, not helper
       // state: stripped here too and applied live, so tuning them never
       // bounces audio.
-      const strip = (s: ScanConfig) => ({ ...s, knownHz: [], lockoutHz: [], autoDwell: undefined });
+      const strip = (s: ScanConfig) => ({ ...s, knownHz: [], lockoutHz: [], autoDwell: undefined, priorityRevisit: undefined });
       const scanChanged = JSON.stringify(strip(before)) !== JSON.stringify(strip(after));
       if (scanChanged) {
         await engine.stop();
@@ -882,8 +883,9 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
         if (JSON.stringify(before.knownHz) !== JSON.stringify(after.knownHz)) {
           engine.updateKnownHz?.(after.knownHz ?? []);
         }
-        if (JSON.stringify(before.autoDwell) !== JSON.stringify(after.autoDwell)) {
-          engine.updateScheduling?.({ autoDwell: after.autoDwell });
+        if (JSON.stringify([before.autoDwell, before.priorityRevisit])
+          !== JSON.stringify([after.autoDwell, after.priorityRevisit])) {
+          engine.updateScheduling?.({ autoDwell: after.autoDwell, priorityRevisit: after.priorityRevisit });
         }
       }
       return json(res, 200, config);
