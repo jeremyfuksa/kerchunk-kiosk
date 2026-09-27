@@ -683,3 +683,46 @@ TEST(scanner_tone_reported_again_on_next_open) {
   CHECK(m.of("tone").size() == 2);
   CHECK(!m.s.wants_tone(0));                      // closed, no episode: detector idle again
 }
+
+// A carrier that stays up after quieting is lost (an AM signal on an FM lane, data, a stuck
+// transmitter) must not hold the lane -- and so the scanner -- open until max-hold: once quieting
+// has been gone for the hang time, the lane closes like a carrier drop.
+TEST(scanner_open_lane_closes_after_quieting_lost_for_hang) {
+  kc::Scanner::Params p; p.hang_ms = 500;
+  Sim m(p);
+  m.s.tune(146e6, {ch("a")}, false);
+  m.run(0.8);
+  m.set(0, KEYED, true);
+  m.run(0.5);
+  CHECK(m.of("open").size() == 1);
+  m.set(0, KEYED, false);                         // carrier stays, quieting gone
+  m.run(0.3);
+  CHECK(m.s.gate() == 0.0f);
+  CHECK(m.of("close").empty());                   // still inside the hang
+  m.run(0.4);
+  CHECK(m.of("close").size() == 1);
+}
+
+TEST(scanner_brief_quieting_fade_does_not_close) {
+  kc::Scanner::Params p; p.hang_ms = 500;
+  Sim m(p);
+  m.s.tune(146e6, {ch("a")}, false);
+  m.run(0.8);
+  m.set(0, KEYED, true);
+  m.run(0.5);
+  m.set(0, KEYED, false);
+  m.run(0.3);                                     // fade shorter than the hang
+  m.set(0, KEYED, true);
+  m.run(1.0);
+  CHECK(m.of("close").empty());
+  CHECK(m.s.gate() > 0);
+}
+
+TEST(scanner_cc_lane_in_airband_demodulates_am) {
+  Sim m;
+  m.s.tune(146e6, {ch("a")}, false);
+  const int air = m.s.assign_cc(133800000);
+  const int vhf = m.s.assign_cc(146012500);
+  CHECK(air >= 0 && m.s.lane(air).am);
+  CHECK(vhf >= 0 && !m.s.lane(vhf).am);
+}
