@@ -12,6 +12,39 @@ Scanner::Scanner(Params p, Emit emit, int lanes) : p_(p), emit_(std::move(emit))
   if (lanes < 1 || lanes > MAX_LANES)
     throw std::invalid_argument("Scanner: lanes " + std::to_string(lanes) + " outside [1, " + std::to_string(MAX_LANES) + "]");
   lanes_.resize(lanes);
+  tx_.resize(lanes);
+  for (auto& T : tx_) { T.quiet.reserve(TX_MAX_SAMPLES); T.above.reserve(TX_MAX_SAMPLES); }
+}
+
+namespace {
+// Nearest-rank quantile of an already-sorted, non-empty buffer.
+double quantile(const std::vector<float>& s, double q) {
+  return s[(size_t)std::lround(q * (double)(s.size() - 1))];
+}
+}  // namespace
+
+void Scanner::end_tx(int i) {
+  TxEpisode& T = tx_[i];
+  if (!T.active) return;
+  const LaneState& L = lanes_[i];
+  if (!L.parked() && (T.opened || T.polls >= OPEN_POLLS)) {
+    json e = {{"ev", "txstat"}, {"id", L.id}, {"mode", L.am ? "am" : "fm"}, {"opened", T.opened}, {"polls", T.polls}};
+    if (!T.quiet.empty()) {
+      std::sort(T.quiet.begin(), T.quiet.end());
+      e["quietP10"] = round1(quantile(T.quiet, 0.1));
+      e["quietP50"] = round1(quantile(T.quiet, 0.5));
+      e["quietP90"] = round1(quantile(T.quiet, 0.9));
+    }
+    if (!T.above.empty()) {
+      std::sort(T.above.begin(), T.above.end());
+      e["aboveFloorP50"] = round1(quantile(T.above, 0.5));
+    }
+    emit_(e);
+  }
+  T.active = T.opened = false;
+  T.polls = 0;
+  T.quiet.clear();   // clear() keeps the reserved capacity
+  T.above.clear();
 }
 
 void Scanner::assign(int i, const ChannelCmd& c) {
@@ -25,10 +58,20 @@ void Scanner::assign(int i, const ChannelCmd& c) {
   L.open_db = c.open_db;
   L.hang_ms = c.hang_ms;
   L.warmup_polls = (int)WARMUP_MS / POLL_MS;
+  // Only parked slots are (re)assigned, and park() already ended their episode; drop any
+  // leftover rather than attribute it to the new id.
+  TxEpisode& T = tx_[i];
+  T.active = T.opened = false;
+  T.polls = 0;
+  T.quiet.clear();
+  T.above.clear();
   lanes_[i] = std::move(L);
 }
 
 void Scanner::tune(double center_hz, std::vector<ChannelCmd> channels, bool monitor) {
+  // Carrier episodes are cut by the retune: emit them now, under their old ids, before any slot is
+  // reassigned (Node resolves a txstat id against its whole channel config, not the new group).
+  for (int i = 0; i < (int)lanes_.size(); i++) end_tx(i);
   // Close every open lane BEFORE the tuned ack: an open already in flight must not leave a stale
   // id in Node's open set with no close ever following (the scanner would park forever).
   for (auto& L : lanes_)
@@ -136,6 +179,21 @@ void Scanner::poll(double now, const std::vector<LaneReading>& r) {
     const double db = *rd[i];
     if (L.open && (int)L.rf.size() < RF_MAX_SAMPLES) L.rf.push_back((float)db);
 
+    // Squelch-calibration episode tracking (observes only; the decisions below never read tx_).
+    {
+      TxEpisode& T = tx_[i];
+      if (!T.active) {
+        if (db > *floor + open_db && now >= L.skip_until) { T.active = true; T.opened = L.open; }
+      } else if (db < *floor + open_db - CLOSE_HYST_DB) {
+        end_tx(i);
+      }
+      if (T.active) {
+        T.polls++;
+        if ((int)T.above.size() < TX_MAX_SAMPLES) T.above.push_back((float)(db - *floor));
+        if (r[i].quiet_ready && (int)T.quiet.size() < TX_MAX_SAMPLES) T.quiet.push_back(r[i].quiet_db);
+      }
+    }
+
     const double gate_thresh = *floor + open_db - CLOSE_HYST_DB;
     const double fast = r[i].fast_db;
     L.carrier = L.carrier ? fast > gate_thresh - GATE_HYST_DB / 2 : fast > gate_thresh + GATE_HYST_DB / 2;
@@ -148,6 +206,7 @@ void Scanner::poll(double now, const std::vector<LaneReading>& r) {
         if (++L.above >= OPEN_POLLS) {
           L.open = true;
           L.below_since = -1;
+          tx_[i].opened = true;   // db > floor+open_db here, so the episode is active
           emit_({{"ev", "open"}, {"id", L.id}, {"db", round1(db)}});
           if (!L.allow_audio) {
             // see-only: report, never speak
@@ -182,6 +241,7 @@ long long Scanner::skip(double holdoff_s, double now) {
   if (i < 0) return 0;
   LaneState& L = lanes_[i];
   const std::string id = L.id;
+  end_tx(i);   // the skip ends the episode (and its holdoff keeps a new one from starting)
   L.open = false;
   L.above = 0;
   L.below_since = -1;

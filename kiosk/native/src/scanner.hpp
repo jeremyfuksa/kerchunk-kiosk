@@ -31,6 +31,19 @@ struct LaneState {
   bool parked() const { return id.empty(); }
 };
 
+// Squelch-calibration stats for one "carrier episode" on a lane: from the poll where power first
+// exceeds floor+open_db until it drops below the close threshold (floor+open_db-CLOSE_HYST_DB), or
+// the lane is skipped / retuned / parked. Instrumentation only -- never feeds a squelch decision.
+// Sample buffers are reserved once (TX_MAX_SAMPLES) when the Scanner is built and reused via
+// clear(), so the per-poll path never allocates.
+struct TxEpisode {
+  bool active = false;
+  bool opened = false;   // the lane was open at some point during the episode
+  int polls = 0;
+  std::vector<float> quiet;   // quiet_db, only on quiet_ready polls
+  std::vector<float> above;   // slow power minus the shared floor, every poll
+};
+
 class Scanner {
  public:
   struct Params {
@@ -59,7 +72,10 @@ class Scanner {
 
  private:
   void assign(int i, const ChannelCmd& c);
-  void park(int i) { lanes_[i] = LaneState{}; }
+  void park(int i) { end_tx(i); lanes_[i] = LaneState{}; }
+  // End lane i's carrier episode (if any) and emit its txstat, BEFORE the lane's id can change.
+  // Rejected (never-opened) episodes shorter than OPEN_POLLS are dropped as noise blips.
+  void end_tx(int i);
   void set_audible(int i);
   int next_open() const;
   void flush_rf(LaneState& L);
@@ -67,6 +83,7 @@ class Scanner {
   Params p_;
   Emit emit_;
   std::vector<LaneState> lanes_;
+  std::vector<TxEpisode> tx_;   // parallel to lanes_
   int audible_ = -1;
   float gate_ = 0;
   bool monitor_ = false;

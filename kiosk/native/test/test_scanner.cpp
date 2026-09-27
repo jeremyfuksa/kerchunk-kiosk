@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <vector>
 
 #include "check.hpp"
@@ -170,6 +171,9 @@ TEST(scanner_tune_closes_open_lanes_before_tuned) {
   m.run(0.2);
   m.ev.clear();
   m.s.tune(147e6, {ch("b")}, false);
+  m.ev.erase(std::remove_if(m.ev.begin(), m.ev.end(),
+                            [](const nlohmann::json& e) { return e["ev"] == "txstat"; }),
+             m.ev.end());   // the cut episode's txstat leads; see the txstat retune test
   CHECK(m.ev.size() >= 3);
   CHECK(m.ev[0]["ev"] == "close" && m.ev[0]["id"] == "a");
   CHECK(m.ev[1]["ev"] == "audible" && m.ev[1]["id"].is_null());
@@ -431,4 +435,144 @@ TEST(scanner_rekey_inside_hang_no_extra_events) {
   CHECK(m.of("close").empty());
   CHECK(m.of("audible").empty());                               // no re-announcement of audible
   CHECK(m.s.gate() > 0.f);                                       // gate follows carrier back up
+}
+
+// --- squelch-calibration txstat (instrumentation only) --------------------------------------
+
+TEST(scanner_txstat_opened_carrier_emits_one_with_quantiles) {
+  Sim m;
+  m.s.tune(146e6, {ch("a")}, false);
+  m.run(0.8);
+  m.set(0, KEYED, true);
+  m.run(0.5);
+  CHECK(m.of("txstat").empty());                             // still in the episode
+  m.set(0, FLOOR, false);
+  m.run(0.01);                                               // drop below close threshold: episode ends
+  auto tx = m.of("txstat");
+  CHECK(tx.size() == 1);
+  CHECK(m.of("close").empty());                              // ...long before the hang closes the lane
+  const auto& e = tx[0];
+  CHECK(e["id"] == "a" && e["mode"] == "fm" && e["opened"] == true);
+  CHECK(e["polls"].get<int>() == 50);
+  CHECK_NEAR(e["quietP10"].get<double>(), QUIET, 0.05);
+  CHECK_NEAR(e["quietP50"].get<double>(), QUIET, 0.05);
+  CHECK_NEAR(e["quietP90"].get<double>(), QUIET, 0.05);
+  // ~2 dB under KEYED-FLOOR: the floor creeps up (FLOOR_ALPHA_UP) during the pre-open polls.
+  CHECK(e["aboveFloorP50"].get<double>() > KEYED - FLOOR - 3 && e["aboveFloorP50"].get<double>() <= KEYED - FLOOR);
+  m.run(2.5);
+  CHECK(m.of("txstat").size() == 1);                         // hang + close add nothing
+}
+
+TEST(scanner_txstat_quantiles_spread) {
+  Sim m;
+  m.s.tune(146e6, {ch("a")}, false);
+  m.run(0.8);
+  for (int k = 0; k < 100; k++) {                            // quiet_db -30 .. -10.2, all quieted
+    m.r[0] = {KEYED, KEYED, -30.f + 0.2f * (float)k, true};
+    m.run(0.01);
+  }
+  m.set(0, FLOOR, false);
+  m.run(0.01);
+  auto tx = m.of("txstat");
+  CHECK(tx.size() == 1 && tx[0]["opened"] == true);
+  const double p10 = tx[0]["quietP10"].get<double>(), p50 = tx[0]["quietP50"].get<double>(),
+               p90 = tx[0]["quietP90"].get<double>();
+  CHECK(p10 < p50 && p50 < p90);
+  CHECK_NEAR(p10, -28.0, 0.25);
+  CHECK_NEAR(p50, -20.0, 0.25);
+  CHECK_NEAR(p90, -12.2, 0.25);
+}
+
+TEST(scanner_txstat_rejected_carrier_emits_opened_false) {
+  Sim m;
+  m.s.tune(146e6, {ch("a")}, false);
+  m.run(0.8);
+  m.set(0, KEYED, false);                                    // power, no quieting: never opens
+  m.run(0.2);
+  m.set(0, FLOOR, false);
+  m.run(0.01);
+  CHECK(m.of("open").empty());
+  auto tx = m.of("txstat");
+  CHECK(tx.size() == 1);
+  CHECK(tx[0]["id"] == "a" && tx[0]["opened"] == false && tx[0]["polls"].get<int>() == 20);
+  CHECK_NEAR(tx[0]["quietP50"].get<double>(), NOISY, 0.05);
+}
+
+TEST(scanner_txstat_short_blip_emits_nothing) {
+  Sim m;
+  m.s.tune(146e6, {ch("a")}, false);
+  m.run(0.8);
+  m.set(0, KEYED, false);
+  m.run(0.05);                                               // 5 polls < OPEN_POLLS
+  m.set(0, FLOOR, false);
+  m.run(0.5);
+  CHECK(m.of("txstat").empty());
+}
+
+TEST(scanner_txstat_omits_quiet_fields_without_ready_samples) {
+  Sim m;
+  m.s.tune(146e6, {ch("a")}, false);
+  m.run(0.8);
+  m.r[0] = {KEYED, KEYED, QUIET, false};                     // power, quiet meter not ready
+  m.run(0.2);
+  m.set(0, FLOOR, false);
+  m.run(0.01);
+  auto tx = m.of("txstat");
+  CHECK(tx.size() == 1 && tx[0]["opened"] == false);
+  CHECK(!tx[0].contains("quietP50") && tx[0].contains("aboveFloorP50"));
+}
+
+// Retune policy: an in-flight episode is emitted under its OLD id at the very start of tune(),
+// before any slot is reassigned; nothing carries the old id afterwards.
+TEST(scanner_txstat_retune_emits_old_id_before_reassignment) {
+  Sim m;
+  m.s.tune(146e6, {ch("a")}, false);
+  m.run(0.8);
+  m.set(0, KEYED, true);
+  m.run(0.3);
+  m.ev.clear();
+  m.s.tune(147e6, {ch("b")}, false);
+  CHECK(!m.ev.empty() && m.ev[0]["ev"] == "txstat" && m.ev[0]["id"] == "a" && m.ev[0]["opened"] == true);
+  m.set(0, FLOOR, false);
+  m.run(0.8);                                                // "b" warms up on the reused slot
+  CHECK(m.of("txstat").size() == 1);
+  m.set(0, KEYED, true);
+  m.run(0.3);
+  m.set(0, FLOOR, false);
+  m.run(0.01);
+  auto tx = m.of("txstat");
+  CHECK(tx.size() == 2);
+  CHECK(tx.size() == 2 && tx[1]["id"] == "b");               // the new id's own episode, never "a" again
+}
+
+TEST(scanner_txstat_skip_ends_episode_and_holdoff_starts_none) {
+  Sim m;
+  m.s.tune(146e6, {ch("a")}, false);
+  m.run(0.8);
+  m.set(0, KEYED, true);
+  m.run(0.3);
+  m.s.skip(0.5, m.t);
+  auto tx = m.of("txstat");
+  CHECK(tx.size() == 1 && tx[0]["opened"] == true);
+  m.set(0, KEYED, false);                                    // still keyed but noisy, inside holdoff
+  m.run(0.3);
+  m.set(0, FLOOR, false);
+  m.run(0.01);
+  CHECK(m.of("txstat").size() == 1);                         // no rejected episode during the holdoff
+}
+
+TEST(scanner_txstat_am_mode_and_background_excluded) {
+  Sim m;
+  auto am = ch("air"); am.mode = "am";
+  auto bg = ch("nwr"); bg.background = true;
+  m.s.tune(120e6, {am, bg}, false);
+  m.run(0.8);
+  m.set(0, KEYED, true);
+  m.set(kc::DEFAULT_LANES - 1, KEYED, true);
+  m.run(0.3);
+  m.set(0, FLOOR, false);
+  m.set(kc::DEFAULT_LANES - 1, FLOOR, false);
+  m.run(0.01);
+  auto tx = m.of("txstat");
+  CHECK(tx.size() == 1 && tx[0]["id"] == "air" && tx[0]["mode"] == "am");
 }
