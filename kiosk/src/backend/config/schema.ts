@@ -151,7 +151,7 @@ export const configSchema = z.object({
     // peek at a priority channel's group (round-robin) for lookMs, then resume
     // the interrupted group. An open during the look holds as usual. lookMs
     // must cover the ~0.64 s post-hop warm-up before a lane can open. Live
-    // like autoDwell. Omitted = enabled, 4000, 700.
+    // like autoDwell. Omitted = enabled, 8000, 700.
     priorityRevisit: z.object({
       enabled: z.boolean().optional(),
       everyMs: z.number().int().min(1000).max(60_000).optional(),

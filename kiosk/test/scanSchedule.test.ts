@@ -52,7 +52,7 @@ describe("priority revisit helpers", () => {
     expect(nextRevisitTarget([2, 5], 7)).toEqual({ index: 5, cursor: 0 }); // stale cursor after a regroup
   });
 
-  it("resolves defaults (everyMs 4000, lookMs 700)", () => {
+  it("resolves defaults (everyMs 8000, lookMs 700)", () => {
     expect(resolvePriorityRevisit(undefined)).toEqual(PRIORITY_REVISIT_DEFAULTS);
     expect(resolvePriorityRevisit({ lookMs: 900 })).toEqual({ ...PRIORITY_REVISIT_DEFAULTS, lookMs: 900 });
   });

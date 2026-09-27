@@ -1192,7 +1192,8 @@ describe("priority revisit (scan.priorityRevisit)", () => {
   const G1 = [MID.id];
   const G2 = [UHF.id];
   const settle = () => new Promise((r) => setTimeout(r, 300));
-  const noAuto = { autoDwell: { enabled: false } };
+  // These cases are timed around a 4 s peek interval (the shipped default is 8 s).
+  const noAuto = { autoDwell: { enabled: false }, priorityRevisit: { everyMs: 4000 } };
 
   it("peeks at the priority group every everyMs, then returns and resumes the remaining dwell", async () => {
     const tunes = tmpFile("tunes");
@@ -1222,7 +1223,7 @@ describe("priority revisit (scan.priorityRevisit)", () => {
       // Emitted ~1 s after the first tune: the test has hopped to the peek by then.
       FAKE_WB_SCRIPT: ["sleep:1000", `{"ev":"open","id":"${UHF.id}","db":-10}`].join("\n"),
     });
-    await engine.start(cfg([VHF_A, VHF_B, MID, { ...UHF, priority: true }]));
+    await engine.start(cfg([VHF_A, VHF_B, MID, { ...UHF, priority: true }], { priorityRevisit: { everyMs: 4000 } }));
     await waitFor(() => lines(tunes).length >= 1, 1000);
     clock.t += 4100;
     expect(await waitFor(() => lines(tunes).length >= 2, 1000)).toBe(true);

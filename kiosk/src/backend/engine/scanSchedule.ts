@@ -96,7 +96,7 @@ export interface PriorityRevisitConfig {
 
 export const PRIORITY_REVISIT_DEFAULTS = {
   enabled: true,
-  everyMs: 4000,
+  everyMs: 8000,   // peek cost ~0.7 s look + ~0.6 s re-warm per peek: ~15% of scan time at 8 s (~25% at 4 s)
   // A hop costs ~23-35 ms of retune settle + WARMUP_MS 500 before a lane may
   // open + one OPEN_POLLS window (100 ms): ~0.64 s until a carrier that is
   // already up can open. 700 ms covers that with a little margin; anything
