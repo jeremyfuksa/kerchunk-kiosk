@@ -256,6 +256,8 @@ export const configSchema = z.object({
     // its first appliance boot). Optional so existing configs default to
     // card 0 / "Master".
     mixerCard: z.union([z.number().int().nonnegative(), z.string().min(1)]).optional(),
+    // ALSA control volume/mute drive. Omitted or "auto" = the live output
+    // (Headphone when the jack is plugged, else Master) — see audio.ts.
     mixerControl: z.string().min(1).optional(),
   }),
   // Banks (ROADMAP Idea 1): channel collections. A bank is a predicate over

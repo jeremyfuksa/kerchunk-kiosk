@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { setVolume, setMuted, listSinks } from "../src/backend/audio.js";
+import { setVolume, setMuted, listSinks, resolveControl, watchOutput } from "../src/backend/audio.js";
 
 describe("audio", () => {
   it("setVolume drives the mixer in dB — a true log fader", async () => {
@@ -66,5 +66,37 @@ describe("audio", () => {
     expect(sinks).toContain("hdmi:CARD=vc4hdmi0,DEV=0");
     expect(sinks).toContain("default:CARD=vc4hdmi0");
     expect(sinks).not.toContain("    Discard all samples");
+  });
+
+  it("auto control: Headphone when the jack is plugged, Master when not or when there's no jack sense", async () => {
+    const jack = (on: boolean | null) => vi.fn(async (_c: string, args: string[]) =>
+      args.includes("cget")
+        ? (on === null ? { stdout: "", stderr: "no such control", code: 1 } : { stdout: `  : values=${on ? "on" : "off"}\n`, stderr: "", code: 0 })
+        : { stdout: "", stderr: "", code: 0 });
+    expect(await resolveControl(undefined, "PCH", jack(true))).toBe("Headphone");
+    expect(await resolveControl("auto", "PCH", jack(false))).toBe("Master");
+    expect(await resolveControl(undefined, "PCH", jack(null))).toBe("Master");
+    expect(await resolveControl("PCM", "PCH", jack(true))).toBe("PCM");   // explicit wins, no probe
+    const run = jack(true);
+    await setMuted(true, { run, card: "PCH" });
+    expect(run).toHaveBeenLastCalledWith("amixer", ["-c", "PCH", "sset", "Headphone", "mute"]);
+  });
+
+  it("watchOutput reports a jack change once, and never for an explicit control", async () => {
+    vi.useFakeTimers();
+    let on = true;
+    const run = vi.fn(async () => ({ stdout: `  : values=${on ? "on" : "off"}\n`, stderr: "", code: 0 }));
+    const seen: string[] = [];
+    const stop = watchOutput({ run, card: "PCH" }, (c) => seen.push(c), 100);
+    await vi.advanceTimersByTimeAsync(250);
+    on = false;
+    await vi.advanceTimersByTimeAsync(250);
+    stop();
+    expect(seen).toEqual(["Master"]);
+    const never = watchOutput({ run, card: "PCH", control: "Master" }, () => seen.push("x"), 100);
+    await vi.advanceTimersByTimeAsync(500);
+    never();
+    expect(seen).toEqual(["Master"]);
+    vi.useRealTimers();
   });
 });

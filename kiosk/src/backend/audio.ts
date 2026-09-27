@@ -33,10 +33,51 @@ function uiToDb(ui: number): string {
   return `${db.toFixed(2)}dB`;
 }
 
+// "auto" (the default) targets whichever output is actually live: on the
+// appliance's CS4208 the audio leaves the headphone jack, which Master does NOT
+// govern — mute/volume on Master did nothing (operator: "mute does not work",
+// 2026-09-26). Jack plugged -> "Headphone"; otherwise (or on a card with no
+// jack-sense control, e.g. a Pi) -> "Master".
+export const AUTO_CONTROL = "auto";
+const JACK_CONTROL = "name='Headphone Jack'";
+
+export async function resolveControl(control: string | undefined, card: number | string, run: Runner = defaultRun): Promise<string> {
+  if (control !== undefined && control !== AUTO_CONTROL) return control;
+  try {
+    const r = await run("amixer", ["-c", String(card), "cget", JACK_CONTROL]);
+    if (r.code === 0 && /:\s*values=on\b/.test(r.stdout)) return "Headphone";
+  } catch { /* no jack sense: fall through */ }
+  return "Master";
+}
+
+// Re-apply the saved volume/mute whenever the live output changes (jack
+// plugged/unplugged). Returns a stop function.
+export const JACK_POLL_MS = 5000;
+export function watchOutput(
+  opts: AmixerOpts,
+  onChange: (control: string) => void,
+  pollMs = JACK_POLL_MS,
+): () => void {
+  if (opts.control !== undefined && opts.control !== AUTO_CONTROL) return () => {};
+  const card = opts.card ?? 0;
+  let last: string | null = null;
+  let busy = false;
+  const t = setInterval(() => {
+    if (busy) return;
+    busy = true;
+    void resolveControl(AUTO_CONTROL, card, opts.run ?? defaultRun).then((c) => {
+      if (last !== null && c !== last) onChange(c);
+      last = c;
+    }).finally(() => { busy = false; });
+  }, pollMs);
+  t.unref?.();
+  return () => clearInterval(t);
+}
+
 export async function setVolume(percent: number, opts: AmixerOpts = {}): Promise<void> {
   const run = opts.run ?? defaultRun;
   const card = opts.card ?? 0;
-  const control = opts.control ?? "Master";
+  const control = await resolveControl(opts.control, card, run);
   const clamped = Math.max(0, Math.min(100, Math.round(percent)));
   // Never reject: a non-zero exit (e.g. HDMI cards exposing no mixer control)
   // or a spawn error must degrade to a safe no-op, not crash the boot chain.
@@ -55,7 +96,7 @@ export async function setVolume(percent: number, opts: AmixerOpts = {}): Promise
 export async function setMuted(muted: boolean, opts: AmixerOpts = {}): Promise<void> {
   const run = opts.run ?? defaultRun;
   const card = opts.card ?? 0;
-  const control = opts.control ?? "Master";
+  const control = await resolveControl(opts.control, card, run);
   try {
     const result = await run("amixer", ["-c", String(card), "sset", control, muted ? "mute" : "unmute"]);
     if (result.code !== 0) return; // no mixer control available; swallow
