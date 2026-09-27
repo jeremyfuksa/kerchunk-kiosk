@@ -147,6 +147,16 @@ export const configSchema = z.object({
       minFactor: z.number().min(0.2).max(1).optional(),
       maxFactor: z.number().min(1).max(5).optional(),
     }).optional(),
+    // Priority revisit: every everyMs of quiet dwell on non-priority groups,
+    // peek at a priority channel's group (round-robin) for lookMs, then resume
+    // the interrupted group. An open during the look holds as usual. lookMs
+    // must cover the ~0.64 s post-hop warm-up before a lane can open. Live
+    // like autoDwell. Omitted = enabled, 8000, 700.
+    priorityRevisit: z.object({
+      enabled: z.boolean().optional(),
+      everyMs: z.number().int().min(1000).max(60_000).optional(),
+      lookMs: z.number().int().min(300).max(5000).optional(),
+    }).optional(),
     // Ceiling on ONE continuous hold-through (default 180 s). A lane that
     // reads open past this is treated as stuck and abandoned so it can't park
     // the scanner. Applied at engine construction — changing it needs a

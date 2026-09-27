@@ -1176,3 +1176,124 @@ describe("activity-weighted dwell (scan.autoDwell)", () => {
     await engine.stop();
   });
 });
+
+describe("priority revisit (scan.priorityRevisit)", () => {
+  // Groups: 0 = VHF pair, 1 = MID (155 MHz), 2 = UHF. Hand-advanced clock; the
+  // real 100 ms tick picks up each jump. Long base dwell so only revisits hop.
+  const MID = ch(155_475_000);
+  function clockEngine(env: Record<string, string>, over: Record<string, unknown> = {}) {
+    const clock = { t: 1_000_000 };
+    const made = makeEngine(env, { groupDwellMs: 10_000, now: () => clock.t, ...over });
+    return { ...made, clock };
+  }
+  const tuneIds = (file: string): string[][] => lines(file).map((l) =>
+    ((JSON.parse(l) as { channels: Array<{ id: string }> }).channels).map((c) => c.id));
+  const G0 = [VHF_A.id, VHF_B.id];
+  const G1 = [MID.id];
+  const G2 = [UHF.id];
+  const settle = () => new Promise((r) => setTimeout(r, 300));
+  // These cases are timed around a 4 s peek interval (the shipped default is 8 s).
+  const noAuto = { autoDwell: { enabled: false }, priorityRevisit: { everyMs: 4000 } };
+
+  it("peeks at the priority group every everyMs, then returns and resumes the remaining dwell", async () => {
+    const tunes = tmpFile("tunes");
+    const { engine, clock } = clockEngine({ FAKE_WB_TUNES_FILE: tunes }, { groupDwellMs: 5000 });
+    await engine.start(cfg([VHF_A, VHF_B, MID, { ...UHF, priority: true }], noAuto));
+    await waitFor(() => lines(tunes).length >= 1, 1000);
+    clock.t += 3900;
+    await settle();
+    expect(tuneIds(tunes)).toEqual([G0]);            // not yet due
+    clock.t += 200;                                  // 4.1 s of quiet G0 dwell
+    expect(await waitFor(() => lines(tunes).length >= 2, 1000)).toBe(true);
+    expect(tuneIds(tunes)[1]).toEqual(G2);           // the priority peek
+    clock.t += 700;                                  // lookMs
+    expect(await waitFor(() => lines(tunes).length >= 3, 1000)).toBe(true);
+    expect(tuneIds(tunes)[2]).toEqual(G0);           // back to the interrupted group
+    // 4.1 s of its 5 s were spent: it resumes with ~0.9 s left, not a fresh 5 s.
+    clock.t += 1000;
+    expect(await waitFor(() => lines(tunes).length >= 4, 1000)).toBe(true);
+    expect(tuneIds(tunes)[3]).toEqual(G1);
+    await engine.stop();
+  });
+
+  it("an open during the look holds on the priority group, and doesn't count as its activity", async () => {
+    const tunes = tmpFile("tunes");
+    const { engine, events, clock } = clockEngine({
+      FAKE_WB_TUNES_FILE: tunes,
+      // Emitted ~1 s after the first tune: the test has hopped to the peek by then.
+      FAKE_WB_SCRIPT: ["sleep:1000", `{"ev":"open","id":"${UHF.id}","db":-10}`].join("\n"),
+    });
+    await engine.start(cfg([VHF_A, VHF_B, MID, { ...UHF, priority: true }], { priorityRevisit: { everyMs: 4000 } }));
+    await waitFor(() => lines(tunes).length >= 1, 1000);
+    clock.t += 4100;
+    expect(await waitFor(() => lines(tunes).length >= 2, 1000)).toBe(true);
+    expect(tuneIds(tunes)[1]).toEqual(G2);
+    expect(await waitFor(() => events.some((e) => e.type === "active"), 2000)).toBe(true);
+    clock.t += 5000;                                 // far past lookMs
+    await settle();
+    expect(lines(tunes)).toHaveLength(2);            // held on the priority open
+    expect(engine.groupDwellPlan()).toEqual([10_000, 10_000, 10_000]); // not credited
+    await engine.stop();
+  });
+
+  it("never revisits while the current group holds an open", async () => {
+    const tunes = tmpFile("tunes");
+    const { engine, events, clock } = clockEngine({
+      FAKE_WB_TUNES_FILE: tunes,
+      FAKE_WB_SCRIPT: `{"ev":"open","id":"${VHF_A.id}","db":-10}`,
+    });
+    await engine.start(cfg([VHF_A, VHF_B, MID, { ...UHF, priority: true }], noAuto));
+    expect(await waitFor(() => events.some((e) => e.type === "signal"), 1000)).toBe(true);
+    clock.t += 8000;
+    await settle();
+    expect(lines(tunes)).toHaveLength(1);
+    await engine.stop();
+  });
+
+  it("round-robins between priority channels in different groups", async () => {
+    const tunes = tmpFile("tunes");
+    const { engine, clock } = clockEngine({ FAKE_WB_TUNES_FILE: tunes }, { groupDwellMs: 60_000 });
+    await engine.start(cfg([VHF_A, VHF_B, { ...MID, priority: true }, { ...UHF, priority: true }], noAuto));
+    await waitFor(() => lines(tunes).length >= 1, 1000);
+    for (let n = 2; n <= 5; n++) {
+      clock.t += n % 2 === 0 ? 4100 : 700;           // peek, return, peek, return
+      expect(await waitFor(() => lines(tunes).length >= n, 1000)).toBe(true);
+    }
+    expect(tuneIds(tunes)).toEqual([G0, G1, G0, G2, G0]);
+    await engine.stop();
+  });
+
+  it("no revisit when the priority channel's group is the current group", async () => {
+    const tunes = tmpFile("tunes");
+    const { engine, clock } = clockEngine({ FAKE_WB_TUNES_FILE: tunes });
+    await engine.start(cfg([{ ...VHF_A, priority: true }, VHF_B, MID, UHF], noAuto));
+    await waitFor(() => lines(tunes).length >= 1, 1000);
+    clock.t += 8000;
+    await settle();
+    expect(lines(tunes)).toHaveLength(1);
+    await engine.stop();
+  });
+
+  it("enabled:false never revisits", async () => {
+    const tunes = tmpFile("tunes");
+    const { engine, clock } = clockEngine({ FAKE_WB_TUNES_FILE: tunes });
+    await engine.start(cfg([VHF_A, VHF_B, MID, { ...UHF, priority: true }],
+      { ...noAuto, priorityRevisit: { enabled: false } }));
+    await waitFor(() => lines(tunes).length >= 1, 1000);
+    clock.t += 8000;
+    await settle();
+    expect(lines(tunes)).toHaveLength(1);
+    await engine.stop();
+  });
+
+  it("no revisit in monitor mode (weather break-in / direct tune)", async () => {
+    const tunes = tmpFile("tunes");
+    const { engine, clock } = clockEngine({ FAKE_WB_TUNES_FILE: tunes });
+    await engine.start(cfg([VHF_A, VHF_B, MID, { ...UHF, priority: true }], { ...noAuto, monitor: true }));
+    await waitFor(() => lines(tunes).length >= 1, 1000);
+    clock.t += 8000;
+    await settle();
+    expect(lines(tunes)).toHaveLength(1);
+    await engine.stop();
+  });
+});

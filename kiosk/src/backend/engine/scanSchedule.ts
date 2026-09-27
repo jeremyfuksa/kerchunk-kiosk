@@ -83,3 +83,39 @@ export function dwellFactor(a: number, mean: number, minFactor: number, maxFacto
 export function scaledDwellMs(baseMs: number, factor: number): number {
   return Math.max(baseMs * factor, Math.min(baseMs, MIN_AUTO_DWELL_MS));
 }
+
+/** config.scan.priorityRevisit — peek at priority channels' groups between
+ *  normal dwells (hardware-scanner "priority scan"). */
+export interface PriorityRevisitConfig {
+  enabled?: boolean;
+  /** Dwell on non-priority groups between two revisits, ms. */
+  everyMs?: number;
+  /** How long one revisit looks at the priority group, ms. */
+  lookMs?: number;
+}
+
+export const PRIORITY_REVISIT_DEFAULTS = {
+  enabled: true,
+  everyMs: 8000,   // peek cost ~0.7 s look + ~0.6 s re-warm per peek: ~15% of scan time at 8 s (~25% at 4 s)
+  // A hop costs ~23-35 ms of retune settle + WARMUP_MS 500 before a lane may
+  // open + one OPEN_POLLS window (100 ms): ~0.64 s until a carrier that is
+  // already up can open. 700 ms covers that with a little margin; anything
+  // shorter is a deaf look.
+  lookMs: 700,
+} as const;
+
+export function resolvePriorityRevisit(c: PriorityRevisitConfig | undefined): Required<PriorityRevisitConfig> {
+  return {
+    enabled: c?.enabled ?? PRIORITY_REVISIT_DEFAULTS.enabled,
+    everyMs: c?.everyMs ?? PRIORITY_REVISIT_DEFAULTS.everyMs,
+    lookMs: c?.lookMs ?? PRIORITY_REVISIT_DEFAULTS.lookMs,
+  };
+}
+
+/** Round-robin pick over the priority groups: returns the group to visit and
+ *  the advanced cursor, or null when there is none. */
+export function nextRevisitTarget(targets: number[], cursor: number): { index: number; cursor: number } | null {
+  if (targets.length === 0) return null;
+  const index = targets[cursor % targets.length]!;
+  return { index, cursor: (cursor + 1) % targets.length };
+}

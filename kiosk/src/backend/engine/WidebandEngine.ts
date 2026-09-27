@@ -13,6 +13,7 @@ import { setVolume as amixerVolume, setMuted as amixerMuted } from "../audio.js"
 import { TxStatsLog } from "./txStats.js";
 import {
   ActivityTracker, dwellFactor, resolveAutoDwell, scaledDwellMs, type AutoDwellConfig,
+  nextRevisitTarget, resolvePriorityRevisit, type PriorityRevisitConfig,
 } from "./scanSchedule.js";
 
 /** config.audio speaker-loudness knob -> kerchunk-dsp flag (AGC + limiter). */
@@ -114,7 +115,8 @@ export interface WidebandEngineOptions {
 // helper never truncates.
 const DEFAULT_WINDOW_HZ = DEFAULT_WINDOW_BANDWIDTH_HZ;
 const DEFAULT_GROUP_DWELL_MS = 3000;
-// Hop-timer tick ceiling while activity-weighted dwell is on: scaled dwells
+// Hop-timer tick ceiling while activity-weighted dwell or priority revisit is
+// on: scaled dwells and 700 ms priority looks
 // aren't multiples of dwell/3, so the old dwell/3 tick (1 s at the 3 s
 // default) would round a 1.5 s dwell up to 2 s. A 100 ms no-op tick is free.
 const SCHED_TICK_MS = 100;
@@ -199,6 +201,14 @@ export class WidebandEngine implements ScannerEngine {
   // Activity-weighted dwell (config.scan.autoDwell): decayed open counts per
   // group, keyed by the group's center so it survives a same-shape retune.
   private readonly activity = new ActivityTracker();
+  // Priority revisit (config.scan.priorityRevisit). While `revisit` is set the
+  // radio is peeking at a priority channel's group; returnIndex/elapsedMs say
+  // where to go back to and how much of that group's dwell was already spent.
+  // revisitCreditMs accrues quiet non-priority dwell toward the next peek.
+  private revisit: { returnIndex: number; elapsedMs: number } | null = null;
+  private revisitCreditMs = 0;
+  private revisitCursor = 0;
+  private lastTickAt = 0;
   private restartTimer: NodeJS.Timeout | null = null;
 
   // Warm-up milestones (drive the kiosk "WARMING UP" overlay). One-shot per
@@ -363,11 +373,12 @@ export class WidebandEngine implements ScannerEngine {
     return this.groups.map((_, i) => this.effectiveDwellMs(i));
   }
 
-  /** Live scheduling update (config.scan.autoDwell): Node-side only, so no
-   *  tune, no respawn — the next tick simply uses the new numbers. */
-  updateScheduling(s: { autoDwell?: AutoDwellConfig }): void {
+  /** Live scheduling update (config.scan.autoDwell / priorityRevisit):
+   *  Node-side only, so no tune, no respawn — the next tick simply uses the
+   *  new numbers (a look already in progress finishes normally). */
+  updateScheduling(s: { autoDwell?: AutoDwellConfig; priorityRevisit?: PriorityRevisitConfig }): void {
     if (!this.config) return;
-    this.config = { ...this.config, autoDwell: s.autoDwell };
+    this.config = { ...this.config, autoDwell: s.autoDwell, priorityRevisit: s.priorityRevisit };
     // Re-arm only a live timer (the tick rate depends on autoDwell.enabled);
     // groupStartedAt is untouched, so the current dwell just continues.
     if (this.dwellTimer) this.startDwellTimer();
@@ -378,7 +389,8 @@ export class WidebandEngine implements ScannerEngine {
   // lanes and background decoder feeds aren't the group's traffic, a muted
   // carrier would inflate it, and sweep stops aren't groups.
   private recordActivity(id: string): void {
-    if (this.sweeping || this.openIds.has(id)) return;
+    // A priority look is not the group's own turn: revisits don't count.
+    if (this.sweeping || this.revisit || this.openIds.has(id)) return;
     const group = this.groups[this.groupIndex];
     const channel = group?.channels.find((c) => c.id === id);
     if (!group || !channel || channel.audible === false || channel.background) return;
@@ -398,6 +410,7 @@ export class WidebandEngine implements ScannerEngine {
       this.groupingOpts(config),
     );
     this.groupIndex = 0;
+    this.resetRevisit();
     // Band-sweep stops: empty windows Close Call hunts in, one per rotation.
     this.sweeps = sweepCenters(
       config.sweepRanges ?? [],
@@ -480,6 +493,7 @@ export class WidebandEngine implements ScannerEngine {
     );
     this.sweepIndex = 0;
     this.sweeping = false;
+    this.resetRevisit();
     this.sendTune();         // re-point now (emits "tuned", not "booting")
     this.startDwellTimer();  // re-arm the hop cadence (single group ⇒ parks)
   }
@@ -623,6 +637,7 @@ export class WidebandEngine implements ScannerEngine {
       case "ready":
         if (this.readyTimer) { clearTimeout(this.readyTimer); this.readyTimer = null; }
         if (this.child) this.armSilence(this.child);
+        this.resetRevisit();
         this.sendTune();
         this.startDwellTimer();
         break;
@@ -810,11 +825,73 @@ export class WidebandEngine implements ScannerEngine {
     this.markFirstTune();
   }
 
+  /** Rotation indices of groups holding an enabled, audible priority channel. */
+  private priorityGroups(): number[] {
+    const out: number[] = [];
+    this.groups.forEach((g, i) => {
+      if (g.channels.some((c) => c.priority && c.enabled !== false && c.audible !== false && !c.background)) {
+        out.push(i);
+      }
+    });
+    return out;
+  }
+
+  // Forget any in-flight look and accrued credit: a (re)spawn or a retune
+  // re-points the radio at groupIndex, which is now simply the current group.
+  private resetRevisit(): void {
+    this.revisit = null;
+    this.revisitCreditMs = 0;
+    this.lastTickAt = this.now();
+  }
+
+  /**
+   * Priority revisit: after every `everyMs` of QUIET dwell on non-priority
+   * groups, peek at the next priority group (round-robin) for `lookMs`, then
+   * return to the interrupted group with its remaining dwell. Never while
+   * holding on an open (the tick returns before this), during a sweep stop,
+   * in monitor mode (weather break-in / direct tune — also a single group, so
+   * the hop timer is parked anyway), or while the current group IS a priority
+   * group (it is being heard; that resets the credit). Returns true if it hopped.
+   */
+  private maybeStartRevisit(deltaMs: number): boolean {
+    const pr = resolvePriorityRevisit(this.config?.priorityRevisit);
+    const targets = this.priorityGroups();
+    if (!pr.enabled || this.config?.monitor || targets.length === 0) return false;
+    if (targets.includes(this.groupIndex)) {
+      this.revisitCreditMs = 0;
+      return false;
+    }
+    this.revisitCreditMs += deltaMs;
+    if (this.revisitCreditMs < pr.everyMs) return false;
+    const pick = nextRevisitTarget(targets, this.revisitCursor);
+    if (!pick) return false;
+    this.revisitCursor = pick.cursor;
+    this.revisitCreditMs = 0;
+    this.revisit = { returnIndex: this.groupIndex, elapsedMs: this.now() - this.groupStartedAt };
+    this.groupIndex = pick.index;
+    this.sendTune();
+    return true;
+  }
+
+  private endRevisit(): void {
+    const r = this.revisit;
+    if (!r) return;
+    this.revisit = null;
+    this.groupIndex = r.returnIndex;
+    this.sendTune();
+    // Resume, don't restart: the interrupted group keeps only what was left.
+    this.groupStartedAt = this.now() - r.elapsedMs;
+  }
+
   private startDwellTimer(): void {
     this.clearDwellTimer();
     if (this.groups.length <= 1 && this.sweeps.length === 0) return; // single group: park forever
     const dwell = this.groupDwellMs();
+    this.lastTickAt = this.now();
     this.dwellTimer = setInterval(() => {
+      const tickAt = this.now();
+      const deltaMs = Math.max(0, tickAt - this.lastTickAt);
+      this.lastTickAt = tickAt;
       // Only an AUDIBLE open has a claim on the radio. A muted channel reading
       // open — a continuously-keyed business carrier, say — would otherwise
       // park the scanner in SILENCE for the whole max-hold cap, which sounds
@@ -850,6 +927,13 @@ export class WidebandEngine implements ScannerEngine {
         }
         return;
       }
+      if (this.revisit) {
+        // Priority look: an open there held above like any open (and the
+        // close re-armed groupStartedAt, so the look runs on lookMs past it).
+        const lookMs = resolvePriorityRevisit(this.config?.priorityRevisit).lookMs;
+        if (this.now() - this.groupStartedAt >= lookMs) this.endRevisit();
+        return;
+      }
       // Quiet window: bank-weighted, activity-scaled dwell (effectiveDwellMs).
       if (this.now() - this.groupStartedAt >= this.effectiveDwellMs(this.groupIndex)) {
         const wrapped = this.groupIndex === this.groups.length - 1;
@@ -862,8 +946,10 @@ export class WidebandEngine implements ScannerEngine {
         }
         this.groupIndex = (this.groupIndex + 1) % this.groups.length;
         this.sendTune();
+        return;
       }
-    }, Math.max(20, this.autoDwell().enabled
+      this.maybeStartRevisit(deltaMs);
+    }, Math.max(20, this.autoDwell().enabled || resolvePriorityRevisit(this.config?.priorityRevisit).enabled
       ? Math.min(Math.floor(dwell / 3), SCHED_TICK_MS)
       : Math.floor(dwell / 3)));
   }

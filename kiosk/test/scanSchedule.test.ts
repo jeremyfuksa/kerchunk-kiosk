@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   ActivityTracker, dwellFactor, scaledDwellMs, resolveAutoDwell, AUTO_DWELL_DEFAULTS,
+  nextRevisitTarget, resolvePriorityRevisit, PRIORITY_REVISIT_DEFAULTS,
 } from "../src/backend/engine/scanSchedule.js";
 
 describe("activity-weighted dwell math", () => {
@@ -40,5 +41,19 @@ describe("activity-weighted dwell math", () => {
   it("resolves defaults for omitted fields", () => {
     expect(resolveAutoDwell(undefined)).toEqual(AUTO_DWELL_DEFAULTS);
     expect(resolveAutoDwell({ maxFactor: 3 })).toEqual({ ...AUTO_DWELL_DEFAULTS, maxFactor: 3 });
+  });
+});
+
+describe("priority revisit helpers", () => {
+  it("round-robins the targets and wraps the cursor", () => {
+    expect(nextRevisitTarget([], 0)).toBeNull();
+    expect(nextRevisitTarget([2, 5], 0)).toEqual({ index: 2, cursor: 1 });
+    expect(nextRevisitTarget([2, 5], 1)).toEqual({ index: 5, cursor: 0 });
+    expect(nextRevisitTarget([2, 5], 7)).toEqual({ index: 5, cursor: 0 }); // stale cursor after a regroup
+  });
+
+  it("resolves defaults (everyMs 8000, lookMs 700)", () => {
+    expect(resolvePriorityRevisit(undefined)).toEqual(PRIORITY_REVISIT_DEFAULTS);
+    expect(resolvePriorityRevisit({ lookMs: 900 })).toEqual({ ...PRIORITY_REVISIT_DEFAULTS, lookMs: 900 });
   });
 });

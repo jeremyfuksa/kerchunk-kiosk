@@ -956,6 +956,28 @@ describe("review fixes: engine lifecycle", () => {
     expect(updates).toEqual([{ autoDwell: { enabled: true, halfLifeMin: 10, maxFactor: 3 } }]);
   });
 
+  it("PUT /api/config with only priorityRevisit changes applies it live (no restart)", async () => {
+    const { server, engine } = makeApp();
+    let starts = 0;
+    const realStart = engine.start.bind(engine);
+    engine.start = async (sc) => { starts++; return realStart(sc); };
+    const cfg = (await request(server).get("/api/config")).body;
+    cfg.scan.priorityRevisit = { everyMs: 6000, lookMs: 900 };
+    const res = await request(server).put("/api/config").send(cfg);
+    expect(res.status).toBe(200);
+    expect(starts).toBe(0);
+    const updates = (engine as { schedulingUpdates?: Array<Record<string, unknown>> }).schedulingUpdates ?? [];
+    expect(updates.at(-1)?.priorityRevisit).toEqual({ everyMs: 6000, lookMs: 900 });
+  });
+
+  it("PUT /api/config rejects out-of-range priorityRevisit", async () => {
+    const { server } = makeApp();
+    const cfg = (await request(server).get("/api/config")).body;
+    cfg.scan.priorityRevisit = { lookMs: 100 };
+    const res = await request(server).put("/api/config").send(cfg);
+    expect(res.status).toBe(400);
+  });
+
   it("PUT /api/config rejects out-of-range autoDwell", async () => {
     const { server } = makeApp();
     const cfg = (await request(server).get("/api/config")).body;
