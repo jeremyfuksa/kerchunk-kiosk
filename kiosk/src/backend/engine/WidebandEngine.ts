@@ -646,11 +646,15 @@ export class WidebandEngine implements ScannerEngine {
         break;
       case "open": {
         if (typeof ev.id !== "string") return;
+        const channel = this.findChannel(ev.id);
+        // Stale: an open for a lane of the group we just hopped away from (it
+        // was in the pipe when sendTune cleared openIds). Unknown ids used to
+        // count as audible and parked the scanner, silent, for maxHoldMs.
+        if (!channel) return;
         this.recordActivity(ev.id);
         this.openIds.add(ev.id);
-        const channel = this.findChannel(ev.id);
         const ts = this.now();
-        if (channel) this.emit({ type: "active", channel, freq: channel.freq, ts });
+        this.emit({ type: "active", channel, freq: channel.freq, ts });
         if (typeof ev.db === "number") this.emit({ type: "signal", dbfs: ev.db, ts });
         break;
       }

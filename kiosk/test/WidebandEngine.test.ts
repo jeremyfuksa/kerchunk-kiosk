@@ -189,18 +189,40 @@ describe("WidebandEngine", () => {
     // can hear has no claim on the radio.
     const tunes = tmpFile("tunes");
     const muted = ch(146_790_000, { audible: false });
+    // A 1 s dwell gives the fake's scripted open time to land while its group
+    // is still tuned: on a loaded CI runner the helper's subshell can take
+    // longer than the 100 ms default, and an open that arrives after the hop
+    // is (correctly) dropped as stale — which left this test flaky.
     const { engine, events } = makeEngine({
       FAKE_WB_TUNES_FILE: tunes,
       FAKE_WB_SCRIPT: `{"ev":"open","id":"${muted.id}","db":-10}`, // opens, never closes
-    });
+    }, { groupDwellMs: 1000 });
     await engine.start(cfg([muted, VHF_B, UHF]));
-    const sawOpen = await waitFor(() => events.some((e) => e.type === "signal"), 1000);
-    expect(sawOpen).toBe(true);
+    const accepted = await waitFor(
+      () => events.some((e) => e.type === "active" && e.channel.id === muted.id), 1000);
+    expect(accepted).toBe(true);
     const tunesAtOpen = lines(tunes).length;
     // Default maxHoldMs is 180 s — if the mute is ignored, nothing hops here.
-    const hopped = await waitFor(() => lines(tunes).length > tunesAtOpen, 2000);
+    const hopped = await waitFor(() => lines(tunes).length > tunesAtOpen, 2500);
     await engine.stop();
     expect(hopped).toBe(true);
+  });
+
+  it("an open for an id outside the current group (stale, after a hop) is dropped, not held", async () => {
+    // The helper can have an old group's "open" in the pipe when a hop's tune
+    // goes out; sendTune has already cleared openIds, and an id the current
+    // group doesn't know used to count as audible (like a Close Call lane) —
+    // a phantom open that parked the scanner, silent, for the max-hold cap.
+    const tunes = tmpFile("tunes");
+    const { engine, events } = makeEngine({
+      FAKE_WB_TUNES_FILE: tunes,
+      FAKE_WB_SCRIPT: `{"ev":"open","id":"c999000000","db":-10}`, // in no group, never closes
+    });
+    await engine.start(cfg([VHF_A, VHF_B, UHF]));
+    const kept = await waitFor(() => lines(tunes).length >= 8, 3000);
+    await engine.stop();
+    expect(kept).toBe(true);
+    expect(events.some((e) => e.type === "signal")).toBe(false);
   });
 
   it("holds when an audible channel is open alongside a muted one", async () => {
