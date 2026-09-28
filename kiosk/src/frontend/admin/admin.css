@@ -1784,11 +1784,12 @@ tr.bankRow .bkSummary {
 
 /* Desktop keeps every settings card open, so its summary is a header rather
    than a control. Keyboard users can still toggle it — pointer-events only
-   stops the click. */
+   stops the click. The Advanced (engine) card is the exception: it stays
+   closed on desktop, so its summary remains a control with a chevron. */
 @media (min-width: 700px) {
-  .settingsCard summary { pointer-events: none; }
+  .settingsCard:not(.engineCard) summary { pointer-events: none; }
   /* Always open here, so there is no state for a marker to report. */
-  .admin .settingsCard > summary::after { display: none; }
+  .admin .settingsCard:not(.engineCard) > summary::after { display: none; }
 }
 
 
