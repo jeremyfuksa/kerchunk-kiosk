@@ -1803,3 +1803,30 @@ tr.bankRow .bkSummary {
   .admin .dToggle .chev { transition: none; }
   .admin button:active:not(:disabled) { transform: none; }
 }
+
+/* Engine knobs (spec 2026-09-27): Sound curve + Advanced (engine) bands. */
+.settingsCard.engineCard { grid-column: 1 / -1; }
+.engineBands { display: grid; grid-template-columns: 1fr 1fr; gap: 1.1rem 1.75rem; }
+.engineBand h3 { margin: 0; display: flex; align-items: baseline; gap: 0.5rem; color: var(--ink); font-size: var(--t-body); }
+.engineBand > .hint { margin: 0.15rem 0 0.3rem; }
+.engineSub { margin: 0.7rem 0 0; color: var(--label); font-size: var(--t-caption); }
+.cost { font-size: var(--t-micro); font-weight: 600; }
+.cost-scan { color: var(--caution); }
+.cost-live { color: var(--green); }
+.cost-backend { color: var(--red); }
+.derived { margin-top: 0.5rem; padding: 0.5rem 0.65rem; border: 1px solid var(--rule); border-radius: 4px; background: var(--etch); color: var(--label); font-size: var(--t-caption); }
+.derived.warn, .formActions .hint.warn { color: var(--caution); }
+.settingGroups input.dirty { border-color: var(--amber); }
+.loudCurve { margin: 0 0 0.6rem; padding: 0.6rem 0.6rem 0.35rem; border: 1px solid var(--rule); border-radius: 4px; background: var(--etch); }
+.loudCurve svg { display: block; width: 100%; height: auto; }
+.loudCurve figcaption { margin-top: 0.25rem; color: var(--dim); font-size: var(--t-micro); }
+.loudCurve text { fill: var(--mark); font-size: 10px; }
+.loudCurve .lc-hold { fill: var(--ink); opacity: 0.04; }
+.loudCurve .lc-unity { stroke: var(--mark); stroke-dasharray: 3 4; }
+.loudCurve .lc-target { stroke: var(--amber); stroke-opacity: 0.35; }
+.loudCurve .lc-ceil { stroke: var(--caution); stroke-opacity: 0.5; stroke-dasharray: 2 3; }
+.loudCurve .lc-curve { fill: none; stroke: var(--amber); stroke-width: 2.25; stroke-linejoin: round; }
+.loudCurve .lc-axis { stroke: var(--panel-edge); }
+@media (max-width: 699.98px) {
+  .engineBands { grid-template-columns: 1fr; }
+}
