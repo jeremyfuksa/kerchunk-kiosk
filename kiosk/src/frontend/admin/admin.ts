@@ -2726,6 +2726,7 @@ export function renderAdmin(root: HTMLElement): void {
         lanes: knobUi(cur, "kLanes"), rateHz: knobUi(cur, "kRate") * 1e6,
         windowHz: knobUi(cur, "kWindow") * 1e6, flatHz: knobUi(cur, "kFlat") * 1e6,
         groupDwellMs: knobCfg.scan.groupDwellMs ?? DEFAULT_GROUP_DWELL_MS,
+        sweeping: (knobCfg.scan.sweepRanges?.length ?? 0) > 0,
       });
       kPreview.textContent = previewText(pv);
       kPreview.classList.toggle("warn", !pv.ok);
@@ -2745,7 +2746,7 @@ export function renderAdmin(root: HTMLElement): void {
     errEl.textContent = "";
     try {
       const cfg = await api.getConfig();
-      applyKnobs(cfg, fields, knobValues(fields));
+      applyKnobs(cfg, fields, knobValues(fields), knobLoaded);  // only what the operator changed
       const saved = await api.putConfig(cfg);
       knobCfg = saved;
       for (const f of fields) writeKnob(f, saved);  // this card only: keep the other card's unsaved edits
@@ -2757,6 +2758,13 @@ export function renderAdmin(root: HTMLElement): void {
   root.querySelectorAll<HTMLInputElement>(".soundCard input, .engineCard input").forEach((el) => {
     el.addEventListener("input", refreshKnobs);
     el.addEventListener("change", refreshKnobs);
+  });
+  // The group preview reads channels/banks from knobCfg; channel and bank edits
+  // elsewhere on the page don't touch it, so re-read the config each time the
+  // Advanced card opens (inputs and dirty state are left alone).
+  root.querySelector<HTMLDetailsElement>(".engineCard")!.addEventListener("toggle", (e) => {
+    if (!(e.currentTarget as HTMLDetailsElement).open) return;
+    api.getConfig().then((cfg) => { knobCfg = cfg; refreshKnobs(); }).catch(() => { /* keep the last preview */ });
   });
   kSndSave.addEventListener("click", () => { void saveKnobs(SOUND_FIELDS, kSndErr); });
   kAdvSave.addEventListener("click", () => { void saveKnobs(ENGINE_FIELDS, kAdvErr); });
@@ -2817,11 +2825,18 @@ export function renderAdmin(root: HTMLElement): void {
   const settingsCards = [...root.querySelectorAll<HTMLDetailsElement>(".settingsCard")];
   const wide = window.matchMedia("(min-width: 700px)");
   let accordionWired = false;
+  let engineLaidOut = false;
   function applySettingsLayout(): void {
     if (wide.matches) {
       // Every card opens on wide screens except Advanced (engine): its knobs
       // are rarely touched, so it stays a deliberate click (spec 2026-09-27).
-      settingsCards.forEach((d) => { d.open = !d.classList.contains("engineCard"); });
+      // It is closed only the first time — a narrow->wide crossing (tablet
+      // rotate) must not snap shut a card the operator opened.
+      settingsCards.forEach((d) => {
+        if (!d.classList.contains("engineCard")) d.open = true;
+        else if (!engineLaidOut) d.open = false;
+      });
+      engineLaidOut = true;
       return;
     }
     if (!accordionWired) {
