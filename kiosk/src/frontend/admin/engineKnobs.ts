@@ -157,7 +157,9 @@ export function knobUi(values: KnobValues, id: string): number {
   const raw = values[id];
   if (typeof raw === "string" && raw.trim() !== "") {
     const n = Number(raw);
-    if (Number.isFinite(n)) return n;
+    // Clamped to the field's range so a half-typed value can't feed the curve
+    // a NaN (limiter ceiling 0 -> log10(0)); saving still rejects it.
+    if (Number.isFinite(n)) return f.allowZero && n === 0 ? 0 : Math.min(f.max, Math.max(f.min, n));
   }
   return f.def as number;
 }
@@ -167,10 +169,14 @@ export function windowError(windowHz: number, rateHz: number): string | null {
   return `Window ${fmt(windowHz / 1e6)} MHz is wider than rate − ${fmt(LANE_HZ / 1e6)} (${fmt((rateHz - LANE_HZ) / 1e6)}). Raise the rate or narrow the window.`;
 }
 
-export function applyKnobs(cfg: Config, fields: readonly KnobField[], values: KnobValues): Config {
+// With a `loaded` snapshot (what the card showed), only fields the operator
+// changed are written or validated: an untouched field keeps its stored value
+// exactly, even one finer than the UI can show or outside the UI's range.
+export function applyKnobs(cfg: Config, fields: readonly KnobField[], values: KnobValues, loaded?: KnobValues): Config {
   const root = cfg as unknown as Record<string, unknown>;
   for (const f of fields) {
     if (!(f.id in values)) continue;
+    if (loaded && values[f.id] === loaded[f.id]) continue;
     const raw = values[f.id];
     const v = f.kind === "switch" ? raw === true : parseKnob(f, typeof raw === "string" ? raw : "");
     setAt(root, f.path, v);
@@ -222,7 +228,8 @@ export function loudnessOut(xDb: number, p: CurveParams): number {
 export function loudnessCurve(p: CurveParams): { points: Array<[number, number]>; ceilDb: number; caption: string } {
   const points: Array<[number, number]> = [];
   for (let x = CURVE_LO; x <= CURVE_HI; x++) points.push([x, loudnessOut(x, p)]);
-  const caption = `Talkers from ${minus(fmt(p.targetDb - p.maxGainDb))} to ${minus(fmt(p.targetDb - p.minGainDb))} dBFS come out at ${minus(fmt(p.targetDb))}`;
+  // Upper end capped at 0 dBFS: nothing louder than full scale can arrive.
+  const caption = `Talkers from ${minus(fmt(p.targetDb - p.maxGainDb))} to ${minus(fmt(Math.min(0, p.targetDb - p.minGainDb)))} dBFS come out at ${minus(fmt(p.targetDb))}`;
   return { points, ceilDb: 20 * Math.log10(p.limiterCeiling), caption };
 }
 
@@ -255,7 +262,9 @@ export function curveSvg(p: CurveParams): string {
 // autoDwell factor 1. The dwell timer runs from the tune, so the ~0.64 s post-
 // hop warm-up is inside it (measured 2026-09-27: 10 groups at 1500 ms ~ 15.5 s).
 // "Quiet" because holds lengthen it.
-export interface PreviewInput { channels: Channel[]; banks: Bank[]; lanes: number; windowHz: number; flatHz: number; rateHz: number; groupDwellMs: number }
+// sweeping: scan.sweepRanges is set, so each rotation adds one sweep stop of a
+// plain groupDwellMs (WidebandEngine's wrap -> sendSweepTune).
+export interface PreviewInput { channels: Channel[]; banks: Bank[]; lanes: number; windowHz: number; flatHz: number; rateHz: number; groupDwellMs: number; sweeping?: boolean }
 export type Preview =
   | { ok: true; groups: number; channels: number; edge: number; cycleS: number; priorityGroups: number }
   | { ok: false; error: string };
@@ -272,6 +281,7 @@ export function previewGroups(i: PreviewInput): Preview {
     dwellMs += i.groupDwellMs * Math.max(1, ...g.channels.map((c) => profileFor(c, i.banks).dwellWeight ?? 1));
     if (g.channels.some((c) => c.priority === true)) priorityGroups++;
   }
+  if (i.sweeping && groups.length > 0) dwellMs += i.groupDwellMs;
   return { ok: true, groups: groups.length, channels, edge, cycleS: Math.round(dwellMs / 100) / 10, priorityGroups };
 }
 

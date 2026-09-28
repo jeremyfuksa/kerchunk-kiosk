@@ -161,7 +161,7 @@ describe("loudness curve", () => {
     expect(loudnessOut(0, { ...P, targetDb: -3, minGainDb: 0 })).toBeCloseTo(20 * Math.log10(0.7), 6); // limiter cap
   });
   it("captions the flat range", () => {
-    expect(loudnessCurve(P).caption).toBe("Talkers from −33 to 2 dBFS come out at −18");
+    expect(loudnessCurve(P).caption).toBe("Talkers from −33 to 0 dBFS come out at −18");
     expect(loudnessCurve(P).points).toHaveLength(71);   // -70..0 dB in 1 dB steps
   });
   it("renders SVG with the curve, target, ceiling and hold region", () => {
@@ -204,5 +204,45 @@ describe("group-shape preview", () => {
   it("idle revisit hint when nothing is priority", () => {
     const p = previewGroups({ ...base, channels: channels.map((c) => ({ ...c, priority: false })) });
     expect(revisitHint(p)).toBe("No channel is marked priority yet, so this is idle");
+  });
+});
+
+describe("review minors (2026-09-28)", () => {
+  it("applyKnobs with a loaded snapshot writes only changed fields (odd stored values survive, untouched junk isn't validated)", () => {
+    const cfg = baseCfg();
+    cfg.scan.windowBandwidthHz = 2_412_345;       // finer than the UI's 4-decimal MHz display
+    cfg.audio.limiterCeiling = 0.01;              // schema-valid, below the UI's 0.05 floor
+    const loaded = { kWindow: readKnob(cfg, KNOB_BY_ID.kWindow!), kLimCeil: readKnob(cfg, KNOB_BY_ID.kLimCeil!), kHalfLife: "", kAutoDwell: true };
+    const out = applyKnobs(cfg, KNOB_FIELDS, { ...loaded, kHalfLife: "20" }, loaded);
+    expect(out.scan.windowBandwidthHz).toBe(2_412_345);
+    expect(out.audio.limiterCeiling).toBe(0.01);
+    expect(out.scan.autoDwell).toEqual({ halfLifeMin: 20 });   // untouched switch not written
+  });
+
+  it("applyKnobs with a snapshot still checks the effective window against the rate", () => {
+    const cfg = baseCfg();
+    cfg.scan.windowBandwidthHz = 2_400_000;
+    const loaded = { kRate: "" };
+    expect(() => applyKnobs(cfg, KNOB_FIELDS, { kRate: "2.4" }, loaded)).toThrow("wider than rate");
+  });
+
+  it("knobUi clamps a typed value to the field's range (the curve never sees NaN)", () => {
+    expect(knobUi({ kLimCeil: "0" }, "kLimCeil")).toBe(0.05);
+    expect(knobUi({ kAgcTarget: "12" }, "kAgcTarget")).toBe(-3);
+    expect(knobUi({ kHpf: "0" }, "kHpf")).toBe(0);            // 0 = off stays 0
+    expect(curveSvg({ targetDb: -18, maxGainDb: 15, minGainDb: -20, holdBelowDb: -50,
+      limiterCeiling: knobUi({ kLimCeil: "0" }, "kLimCeil") })).not.toContain("NaN");
+  });
+
+  it("the caption never promises a level above 0 dBFS", () => {
+    expect(loudnessCurve({ targetDb: -18, maxGainDb: 15, minGainDb: -20, holdBelowDb: -50, limiterCeiling: 0.7 }).caption)
+      .toBe("Talkers from −33 to 0 dBFS come out at −18");
+  });
+
+  it("the cycle estimate counts one sweep stop per rotation when sweep ranges are set", () => {
+    const channels = [ch(146_000_000), ch(462_000_000)];
+    const base = { channels, banks: [], lanes: 32, windowHz: 2_400_000, flatHz: 2_000_000, rateHz: 2_500_000, groupDwellMs: 1500 };
+    expect(previewGroups(base)).toMatchObject({ ok: true, cycleS: 3 });
+    expect(previewGroups({ ...base, sweeping: true })).toMatchObject({ ok: true, cycleS: 4.5 });
   });
 });
