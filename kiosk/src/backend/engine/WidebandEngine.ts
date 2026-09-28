@@ -8,6 +8,7 @@ import type {
 import {
   type Channel, DEFAULT_LANES_PER_GROUP, DEFAULT_SAMPLE_RATE_HZ, DEFAULT_WINDOW_BANDWIDTH_HZ, DEFAULT_FLAT_BANDWIDTH_HZ,
 } from "../config/schema.js";
+import { DEFAULT_GROUP_DWELL_MS, DEFAULT_READY_TIMEOUT_MS, DEFAULT_SILENCE_TIMEOUT_MS } from "../config/engineDefaults.js";
 import { groupChannels, sweepCenters, type ChannelGroup, type GroupingOptions } from "./grouping.js";
 import { setVolume as amixerVolume, setMuted as amixerMuted } from "../audio.js";
 import { TxStatsLog } from "./txStats.js";
@@ -114,7 +115,6 @@ export interface WidebandEngineOptions {
 // --lanes, and grouping splits oversized clusters at the same count so the
 // helper never truncates.
 const DEFAULT_WINDOW_HZ = DEFAULT_WINDOW_BANDWIDTH_HZ;
-const DEFAULT_GROUP_DWELL_MS = 3000;
 // Hop-timer tick ceiling while activity-weighted dwell or priority revisit is
 // on: scaled dwells and 700 ms priority looks
 // aren't multiples of dwell/3, so the old dwell/3 tick (1 s at the 3 s
@@ -136,8 +136,8 @@ const HELPER_LOG_WINDOW_MS = 60_000;
 // timeout longer than that window would let a helper that's merely slow (not
 // wedged) get treated as freshly healthy right as its own watchdog is about
 // to fire, defeating the backoff escalation on repeat failures.
-const DEFAULT_READY_TIMEOUT_MS = 10_000;
-const DEFAULT_SILENCE_TIMEOUT_MS = 5_000;
+// DEFAULT_READY_TIMEOUT_MS and DEFAULT_SILENCE_TIMEOUT_MS are imported from
+// engineDefaults (scan.helperReadyTimeoutMs / helperSilenceTimeoutMs).
 
 // The helper (kerchunk-dsp) is a standalone binary built by build:native:dist
 // and copied next to this file in dist/.

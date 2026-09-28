@@ -46,6 +46,12 @@ import type { Bank } from "../../backend/config/schema.js";
 import { ReconnectingWs } from "../lib/wsClient.js";
 import { SystemActionWatcher } from "../lib/systemActionWatcher.js";
 import type { EngineEvent } from "../../backend/engine/ScannerEngine.js";
+import {
+  KNOB_FIELDS, ADVANCED_BANDS, BAND_COST, COST_LABEL, type KnobField, type KnobValues,
+  readKnob, knobUi, applyKnobs, dirtyBands, saveCost, curveSvg, loudnessCurve,
+  previewGroups, previewText, revisitHint,
+} from "./engineKnobs.js";
+import { DEFAULT_GROUP_DWELL_MS } from "../../backend/config/engineDefaults.js";
 import "./admin.css";
 
 declare const google: any;
@@ -284,6 +290,18 @@ function playSample(id: string): void {
   void audio.play().catch(stopSample);
 }
 
+// One Settings row per engine knob, in the same label/hint/inputUnit shape as
+// the hand-written rows (placeholder = the default: blank saves "default").
+function knobRow(f: KnobField): string {
+  const sub = f.sub ? `<p class="engineSub">${f.sub}</p>` : "";
+  if (f.kind === "switch") {
+    const hintId = f.id === "kRevisit" ? ` id="kRevisitHint"` : "";
+    return `${sub}<label class="switchRow"><span>${f.label} <small${hintId}>${f.hint}</small></span><input id="${f.id}" type="checkbox" /></label>`;
+  }
+  const lo = f.allowZero ? 0 : f.min;
+  return `${sub}<label><span>${f.label} <small>${f.hint}</small></span><span class="inputUnit"><input id="${f.id}" type="number" min="${lo}" max="${f.max}" step="${f.step}" placeholder="${f.def}" /><b>${f.unit}</b></span></label>`;
+}
+
 export function renderAdmin(root: HTMLElement): void {
   root.innerHTML = `
     <main class="admin">
@@ -401,6 +419,17 @@ export function renderAdmin(root: HTMLElement): void {
         <div class="formActions"><button id="tSave" class="primary">Save scanning</button><span id="tErr" class="err"></span></div>
         </div>
       </details>
+      <details class="settingsCard soundCard">
+        <summary><h2>Sound</h2><span class="cardHint">Loudness and filters</span></summary>
+        <div class="cardBody">
+        <figure class="loudCurve">
+          <svg id="kCurve" viewBox="0 0 300 150" role="img" aria-label="Speaker level: input level against output level, steady state (attack and release not shown)"></svg>
+          <figcaption id="kCurveSay"></figcaption>
+        </figure>
+        <div class="settingGroups">${KNOB_FIELDS.filter((f) => f.band === "sound").map(knobRow).join("")}</div>
+        <div class="formActions"><button id="kSndSave" class="primary">Save sound</button><span id="kSndNote" class="hint"></span><span id="kSndErr" class="err"></span></div>
+        </div>
+      </details>
       <details class="settingsCard alertsCard">
         <summary><h2>Alerts</h2><span class="cardHint">Cooldowns, notifications, SAME scope</span></summary>
         <div class="cardBody">
@@ -433,6 +462,21 @@ export function renderAdmin(root: HTMLElement): void {
           <label><span>Google Maps Map ID</span><input id="tMapsMapId" type="text" placeholder="Optional vector map ID" /></label>
         </div>
         <div class="formActions"><button id="igSave" class="primary">Save integrations</button><span id="igErr" class="err"></span></div>
+        </div>
+      </details>
+      <details class="settingsCard engineCard">
+        <summary><h2>Advanced (engine)</h2><span class="cardHint">Tuned for this appliance. Leave blank for the default.</span></summary>
+        <div class="cardBody">
+        <div class="engineBands">
+          ${ADVANCED_BANDS.map((b) => `
+          <div class="engineBand" role="group" aria-labelledby="kBand_${b.band}">
+            <h3 id="kBand_${b.band}">${b.title} <span class="cost cost-${BAND_COST[b.band]}">${COST_LABEL[BAND_COST[b.band]]}</span></h3>
+            <p class="hint">${b.purpose}</p>
+            <div class="settingGroups">${KNOB_FIELDS.filter((f) => f.band === b.band).map(knobRow).join("")}</div>
+            ${b.band === "shape" ? `<div id="kPreview" class="derived" role="status" aria-live="polite"></div>` : ""}
+          </div>`).join("")}
+        </div>
+        <div class="formActions"><button id="kAdvSave" class="primary">Save engine settings</button><span id="kAdvNote" class="hint"></span><span id="kAdvErr" class="err"></span></div>
         </div>
       </details>
       </div>
@@ -2579,6 +2623,7 @@ export function renderAdmin(root: HTMLElement): void {
     syncCloseCallDependents();
     tSweep.value = (cfg.scan.sweepRanges ?? [])
       .map((r) => `${r.loHz / 1e6}-${r.hiHz / 1e6}`).join(", ");
+    fillKnobs(cfg);
   });
 
   // Per-card saves (spec 2026-07-16 admin IA): each card patches only its
@@ -2629,6 +2674,92 @@ export function renderAdmin(root: HTMLElement): void {
       setFieldStatus(tErr, "Saved", "ok", SAVED_MESSAGE_MS);
     } catch (e) { setFieldStatus(tErr, (e as Error).message, "err"); }
   });
+
+  // Engine knobs (Sound + Advanced (engine) cards) — table-driven, see
+  // engineKnobs.ts. Each card saves only its own fields; the server's PUT diff
+  // decides the real cost (scheduling live, everything else restarts scanning).
+  const knobEl = (id: string): HTMLInputElement => root.querySelector<HTMLInputElement>(`#${id}`)!;
+  const SOUND_FIELDS = KNOB_FIELDS.filter((f) => f.band === "sound");
+  const ENGINE_FIELDS = KNOB_FIELDS.filter((f) => f.band !== "sound");
+  const knobValues = (fields: readonly KnobField[]): KnobValues =>
+    Object.fromEntries(fields.map((f) => [f.id, f.kind === "switch" ? knobEl(f.id).checked : knobEl(f.id).value]));
+  const kCurve = root.querySelector<SVGSVGElement>("#kCurve")!;
+  const kCurveSay = root.querySelector<HTMLElement>("#kCurveSay")!;
+  const kPreview = root.querySelector<HTMLElement>("#kPreview")!;
+  const kRevisitHint = root.querySelector<HTMLElement>("#kRevisitHint")!;
+  const kSndSave = root.querySelector<HTMLButtonElement>("#kSndSave")!;
+  const kSndNote = root.querySelector<HTMLElement>("#kSndNote")!;
+  const kSndErr = root.querySelector<HTMLElement>("#kSndErr")!;
+  const kAdvSave = root.querySelector<HTMLButtonElement>("#kAdvSave")!;
+  const kAdvNote = root.querySelector<HTMLElement>("#kAdvNote")!;
+  const kAdvErr = root.querySelector<HTMLElement>("#kAdvErr")!;
+  let knobLoaded: KnobValues = {};
+  let knobCfg: Config | null = null;
+
+  function writeKnob(f: KnobField, cfg: Config): void {
+    const v = readKnob(cfg, f);
+    if (typeof v === "boolean") knobEl(f.id).checked = v;
+    else knobEl(f.id).value = v;
+    knobLoaded[f.id] = v;
+  }
+
+  function refreshKnobs(): void {
+    const cur = knobValues(KNOB_FIELDS);
+    const p = {
+      targetDb: knobUi(cur, "kAgcTarget"), maxGainDb: knobUi(cur, "kAgcMax"), minGainDb: knobUi(cur, "kAgcMin"),
+      holdBelowDb: knobUi(cur, "kAgcHold"), limiterCeiling: knobUi(cur, "kLimCeil"),
+    };
+    kCurve.innerHTML = curveSvg(p);
+    kCurveSay.textContent = loudnessCurve(p).caption;
+    for (const f of KNOB_FIELDS) knobEl(f.id).classList.toggle("dirty", cur[f.id] !== knobLoaded[f.id]);
+    const snd = saveCost("sound", dirtyBands(SOUND_FIELDS, knobLoaded, cur));
+    kSndSave.textContent = snd.label;
+    kSndNote.textContent = snd.note;
+    kSndNote.classList.toggle("warn", snd.warn);
+    const adv = saveCost("advanced", dirtyBands(ENGINE_FIELDS, knobLoaded, cur));
+    kAdvSave.textContent = adv.label;
+    kAdvNote.textContent = adv.note;
+    kAdvNote.classList.toggle("warn", adv.warn);
+    if (knobCfg) {
+      const pv = previewGroups({
+        channels: knobCfg.channels, banks: knobCfg.banks ?? [],
+        lanes: knobUi(cur, "kLanes"), rateHz: knobUi(cur, "kRate") * 1e6,
+        windowHz: knobUi(cur, "kWindow") * 1e6, flatHz: knobUi(cur, "kFlat") * 1e6,
+        groupDwellMs: knobCfg.scan.groupDwellMs ?? DEFAULT_GROUP_DWELL_MS,
+      });
+      kPreview.textContent = previewText(pv);
+      kPreview.classList.toggle("warn", !pv.ok);
+      kAdvSave.disabled = !pv.ok;
+      kRevisitHint.textContent = revisitHint(pv);
+    }
+  }
+
+  function fillKnobs(cfg: Config): void {
+    knobCfg = cfg;
+    knobLoaded = {};
+    for (const f of KNOB_FIELDS) writeKnob(f, cfg);
+    refreshKnobs();
+  }
+
+  async function saveKnobs(fields: readonly KnobField[], errEl: HTMLElement): Promise<void> {
+    errEl.textContent = "";
+    try {
+      const cfg = await api.getConfig();
+      applyKnobs(cfg, fields, knobValues(fields));
+      const saved = await api.putConfig(cfg);
+      knobCfg = saved;
+      for (const f of fields) writeKnob(f, saved);  // this card only: keep the other card's unsaved edits
+      refreshKnobs();
+      setFieldStatus(errEl, "Saved", "ok", SAVED_MESSAGE_MS);
+    } catch (e) { setFieldStatus(errEl, (e as Error).message, "err"); }
+  }
+
+  root.querySelectorAll<HTMLInputElement>(".soundCard input, .engineCard input").forEach((el) => {
+    el.addEventListener("input", refreshKnobs);
+    el.addEventListener("change", refreshKnobs);
+  });
+  kSndSave.addEventListener("click", () => { void saveKnobs(SOUND_FIELDS, kSndErr); });
+  kAdvSave.addEventListener("click", () => { void saveKnobs(ENGINE_FIELDS, kAdvErr); });
 
   const alErr = root.querySelector<HTMLElement>("#alErr")!;
   root.querySelector<HTMLButtonElement>("#alSave")!.addEventListener("click", async () => {
@@ -2688,7 +2819,9 @@ export function renderAdmin(root: HTMLElement): void {
   let accordionWired = false;
   function applySettingsLayout(): void {
     if (wide.matches) {
-      settingsCards.forEach((d) => { d.open = true; });
+      // Every card opens on wide screens except Advanced (engine): its knobs
+      // are rarely touched, so it stays a deliberate click (spec 2026-09-27).
+      settingsCards.forEach((d) => { d.open = !d.classList.contains("engineCard"); });
       return;
     }
     if (!accordionWired) {
