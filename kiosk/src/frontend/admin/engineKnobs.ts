@@ -2,13 +2,15 @@
 // Pure (no DOM): ONE field table drives markup, load, save, validation and dirty
 // tracking, so ~24 knobs aren't 24 hand-written blocks. Values in the table's
 // min/max/step/def are UI units; config value = UI value x scale.
-import type { Config } from "../../backend/config/schema.js";
+import type { Bank, Channel, Config } from "../../backend/config/schema.js";
 import {
   AUTO_DWELL_DEFAULTS, PRIORITY_REVISIT_DEFAULTS, HELPER_DEFAULTS,
   DEFAULT_LANES_PER_GROUP, DEFAULT_SAMPLE_RATE_HZ, DEFAULT_WINDOW_BANDWIDTH_HZ, DEFAULT_FLAT_BANDWIDTH_HZ,
   DEFAULT_READY_TIMEOUT_MS, DEFAULT_SILENCE_TIMEOUT_MS,
   LANE_HZ, MAX_LANES_PER_GROUP, MIN_SAMPLE_RATE_HZ, MAX_SAMPLE_RATE_HZ,
 } from "../../backend/config/engineDefaults.js";
+import { groupChannels } from "../../backend/engine/grouping.js";
+import { isScannable, profileFor } from "../../backend/config/banks.js";
 
 export type Band = "sound" | "loudness" | "shape" | "schedule" | "watchdog";
 export type Cost = "scan" | "live" | "backend";
@@ -201,4 +203,84 @@ export function saveCost(card: "sound" | "advanced", bands: ReadonlySet<Band>): 
   if (costs.has("backend")) bits.push("watchdogs apply after a backend restart (System → Restart radio backend)");
   const note = bits.length ? bits.join("; ").replace(/^./, (c) => c.toUpperCase()) + "." : "Nothing changed.";
   return { label: costs.has("scan") ? "Save and restart scanning" : "Save engine settings", note, warn: costs.has("scan") };
+}
+
+// ---- Loudness curve: first-order steady-state picture of the speaker AGC +
+// limiter (attack/release not modelled): out = min(ceil, x + clamp(target - x,
+// minGain, maxGain)), levels in dBFS, ceiling = 20 log10(limiterCeiling).
+export interface CurveParams { targetDb: number; maxGainDb: number; minGainDb: number; holdBelowDb: number; limiterCeiling: number }
+
+const CURVE_LO = -70;
+const CURVE_HI = 0;
+
+export function loudnessOut(xDb: number, p: CurveParams): number {
+  const ceil = 20 * Math.log10(p.limiterCeiling);
+  const gain = Math.max(p.minGainDb, Math.min(p.maxGainDb, p.targetDb - xDb));
+  return Math.min(ceil, xDb + gain);
+}
+
+export function loudnessCurve(p: CurveParams): { points: Array<[number, number]>; ceilDb: number; caption: string } {
+  const points: Array<[number, number]> = [];
+  for (let x = CURVE_LO; x <= CURVE_HI; x++) points.push([x, loudnessOut(x, p)]);
+  const caption = `Talkers from ${minus(fmt(p.targetDb - p.maxGainDb))} to ${minus(fmt(p.targetDb - p.minGainDb))} dBFS come out at ${minus(fmt(p.targetDb))}`;
+  return { points, ceilDb: 20 * Math.log10(p.limiterCeiling), caption };
+}
+
+export function curveSvg(p: CurveParams): string {
+  const L = 30, R = 292, T = 8, B = 128;
+  const sx = (x: number): number => L + (x - CURVE_LO) / (CURVE_HI - CURVE_LO) * (R - L);
+  const sy = (y: number): number => B - (Math.max(CURVE_LO, y) - CURVE_LO) / (CURVE_HI - CURVE_LO) * (B - T);
+  const { points, ceilDb } = loudnessCurve(p);
+  const d = points.map(([x, y], i) => `${i ? "L" : "M"}${sx(x).toFixed(1)} ${sy(y).toFixed(1)}`).join("");
+  const holdX = sx(Math.max(CURVE_LO, Math.min(CURVE_HI, p.holdBelowDb)));
+  const ticks = [-60, -40, -20, 0].map((v) => `<text x="${sx(v)}" y="${B + 12}" text-anchor="middle">${minus(String(v))}</text>`).join("");
+  return (
+    `<rect class="lc-hold" x="${L}" y="${T}" width="${(holdX - L).toFixed(1)}" height="${B - T}"/>` +
+    `<text x="${L + 4}" y="${T + 12}">gain held</text>` +
+    `<line class="lc-unity" x1="${sx(CURVE_LO)}" y1="${sy(CURVE_LO)}" x2="${sx(CURVE_HI)}" y2="${sy(CURVE_HI)}"/>` +
+    `<line class="lc-target" x1="${L}" y1="${sy(p.targetDb).toFixed(1)}" x2="${R}" y2="${sy(p.targetDb).toFixed(1)}"/>` +
+    `<text x="${R - 2}" y="${(sy(p.targetDb) - 4).toFixed(1)}" text-anchor="end">target ${minus(fmt(p.targetDb))}</text>` +
+    `<line class="lc-ceil" x1="${L}" y1="${sy(ceilDb).toFixed(1)}" x2="${R}" y2="${sy(ceilDb).toFixed(1)}"/>` +
+    `<text x="${L + 4}" y="${(sy(ceilDb) - 3).toFixed(1)}">limiter</text>` +
+    `<path class="lc-curve" d="${d}"/>` +
+    `<line class="lc-axis" x1="${L}" y1="${B}" x2="${R}" y2="${B}"/>` +
+    ticks
+  );
+}
+
+// ---- Group-shape preview: the same pure grouping the engine runs, over the
+// channels the server would scan (isScannable, as toScanConfig filters). No
+// NWR background channel: the appliance has a dedicated weather radio.
+// Cycle = sum of each group's dwell (groupDwellMs x its max bank dwellWeight) at
+// autoDwell factor 1. The dwell timer runs from the tune, so the ~0.64 s post-
+// hop warm-up is inside it (measured 2026-09-27: 10 groups at 1500 ms ~ 15.5 s).
+// "Quiet" because holds lengthen it.
+export interface PreviewInput { channels: Channel[]; banks: Bank[]; lanes: number; windowHz: number; flatHz: number; rateHz: number; groupDwellMs: number }
+export type Preview =
+  | { ok: true; groups: number; channels: number; edge: number; cycleS: number; priorityGroups: number }
+  | { ok: false; error: string };
+
+export function previewGroups(i: PreviewInput): Preview {
+  const err = windowError(i.windowHz, i.rateHz);
+  if (err) return { ok: false, error: err };
+  const scannable = i.channels.filter((c) => isScannable(c, i.banks));
+  const groups = groupChannels(scannable, i.windowHz, Math.max(1, Math.round(i.lanes)), { flatHz: i.flatHz });
+  let channels = 0, edge = 0, dwellMs = 0, priorityGroups = 0;
+  for (const g of groups) {
+    channels += g.channels.length;
+    edge += g.channels.filter((c) => Math.abs(c.freq - g.centerHz) > i.flatHz / 2).length;
+    dwellMs += i.groupDwellMs * Math.max(1, ...g.channels.map((c) => profileFor(c, i.banks).dwellWeight ?? 1));
+    if (g.channels.some((c) => c.priority === true)) priorityGroups++;
+  }
+  return { ok: true, groups: groups.length, channels, edge, cycleS: Math.round(dwellMs / 100) / 10, priorityGroups };
+}
+
+export function previewText(p: Preview): string {
+  if (!p.ok) return p.error;
+  return `${p.groups} group${p.groups === 1 ? "" : "s"} from ${p.channels} channels, ${p.edge} outside the flat passband. Quiet cycle ≈ ${fmt(p.cycleS)} s.`;
+}
+
+export function revisitHint(p: Preview): string {
+  if (!p.ok || p.priorityGroups === 0) return "No channel is marked priority yet, so this is idle";
+  return `Peeks at ${p.priorityGroups} priority group${p.priorityGroups === 1 ? "" : "s"}`;
 }
