@@ -14,7 +14,7 @@ would FLIP:
                  10% would not pass: the transmission would be chopped/lost)
   rejected->pass rejected episodes whose quietP50 < T (the carrier would now
                  open: likely noise/data let through)
-(The helper's +-1 dB QUIET_HYST_DB is ignored: this is a first-order view.)
+(The helper's +-2 dB QUIET_HYST_DB is ignored: this is a first-order view.)
 
 Usage (stdlib only, system python):
   /usr/bin/python3 kiosk/bench/squelch_calibrate.py /var/lib/kerchunk-kiosk/txstats.jsonl [more.jsonl ...]

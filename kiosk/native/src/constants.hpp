@@ -63,6 +63,10 @@ inline constexpr double QUIET_HYST_DB = 2.0;
 // inside it; biased permissive (vs. -7 or tighter) so a weak carrier doesn't get chopped as noise.
 // Validated by ear at the P3 A/B, the real check for a threshold this data-starved. Tune live via
 // --quiet-db.
+// 2026-09-27 txstats calibration (15.5k real episodes, 23 h, kiosk/bench/squelch_calibrate.py): -6 and
+// -7 both sit at the knee in every band. With two junk channels archived, -7 loses 1 weak 2 m open
+// for 7 fewer junk carriers; the appliance runs scan.nativeQuietDb -7. The default stays -6 until
+// data logged at -7 confirms it.
 inline constexpr double QUIET_DB_DEFAULT = -6.0;
 inline constexpr double FLOOR_ALPHA_UP = 0.01005;  // GR 0.02 per 20 ms
 inline constexpr double FLOOR_ALPHA_DOWN = 0.1056; // GR 0.2 per 20 ms
