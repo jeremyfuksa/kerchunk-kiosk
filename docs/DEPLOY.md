@@ -117,6 +117,9 @@ Notes:
   priority group. Peeks don't feed `autoDwell`. Cost at defaults: ~15 % of
   scan time on peeks (0.7 / 4.7 s), and each return re-warms the interrupted
   group (~0.6 s deaf) — roughly a quarter of non-priority listening time.
+- **Admin:** every knob above (group shape, scheduling, quieting, AM gain, FM
+  filters, speaker AGC/limiter, watchdogs) is editable under Settings → **Sound**
+  and **Advanced (engine)**. Each band says what a save costs; blank = default.
 - The quieting knob is `scan.nativeQuietDb` (the helper's own dB scale,
   default −6; lower = stricter), exposed in the admin as "Quieting
   threshold". Legacy configs may still hold the retired GNU-Radio-scale
