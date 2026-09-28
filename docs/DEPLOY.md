@@ -188,7 +188,10 @@ Volume and mute drive an ALSA control via `amixer` on `audio.mixerCard`.
 `audio.mixerControl` omitted or `"auto"` targets the live output: `Headphone`
 while the card's "Headphone Jack" reads plugged, otherwise `Master` (also the
 fallback on cards without jack sense). On the appliance's CS4208 the audio
-leaves the headphone jack and Master does not govern it. The backend polls the
+leaves the headphone jack. Master is the codec's virtual master: it doesn't
+switch the jack, but its gain adds to Headphone's (the HP DAC gain is
+Headphone + Master). So whenever Headphone carries the volume, the backend pins
+Master at 0 dB unmuted, or a leftover Master cut would stack on it. The backend polls the
 jack every `JACK_POLL_MS` (5 s, `kiosk/src/backend/audio.ts`) and re-applies the
 saved volume/mute when the output moves. An explicit control name disables both.
 

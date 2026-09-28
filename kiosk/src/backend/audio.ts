@@ -77,10 +77,25 @@ export function watchOutput(
   return () => clearInterval(t);
 }
 
+// On the appliance's CS4208, Master is a virtual master: the headphone DAC's
+// gain is Headphone + Master. Whenever Headphone carries the volume, Master is
+// pinned at 0 dB unmuted so a stale Master cut can't stack on it (Master left
+// at -27 dB from the auto->Master era + Headphone -26 dB = -53 dB: silence,
+// 2026-09-27). Never rejects, like the setters.
+async function pinVmaster(control: string, card: number | string, run: Runner): Promise<void> {
+  if (control !== "Headphone") return;
+  try {
+    await run("amixer", ["-c", String(card), "--", "sset", "Master", "0dB", "unmute"]);
+  } catch {
+    /* no Master on this card -> nothing to pin */
+  }
+}
+
 export async function setVolume(percent: number, opts: AmixerOpts = {}): Promise<void> {
   const run = opts.run ?? defaultRun;
   const card = opts.card ?? 0;
   const control = await resolveControl(opts.control, card, run);
+  await pinVmaster(control, card, run);
   const clamped = Math.max(0, Math.min(100, Math.round(percent)));
   // Never reject: a non-zero exit (e.g. HDMI cards exposing no mixer control)
   // or a spawn error must degrade to a safe no-op, not crash the boot chain.
@@ -100,6 +115,7 @@ export async function setMuted(muted: boolean, opts: AmixerOpts = {}): Promise<v
   const run = opts.run ?? defaultRun;
   const card = opts.card ?? 0;
   const control = await resolveControl(opts.control, card, run);
+  await pinVmaster(control, card, run);
   try {
     const result = await run("amixer", ["-c", String(card), "sset", control, muted ? "mute" : "unmute"]);
     if (result.code !== 0) return; // no mixer control available; swallow
