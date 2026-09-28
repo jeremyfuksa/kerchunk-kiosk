@@ -4,8 +4,12 @@ async function j<T>(res: Response): Promise<T> {
   if (!res.ok) {
     const text = await res.text();
     try {
-      const parsed = JSON.parse(text) as { error?: string };
-      throw new Error(parsed.error ?? text);
+      const parsed = JSON.parse(text) as { error?: string; issues?: Array<{ path?: Array<string | number>; message?: string }> };
+      // A zod 400 ("invalid config") says nothing on its own: name the first
+      // failing field so the card can show why the save was refused.
+      const issue = parsed.issues?.[0];
+      const detail = issue?.message ? `: ${(issue.path ?? []).join(".")} — ${issue.message}` : "";
+      throw new Error((parsed.error ?? text) + detail);
     } catch (e) {
       if (e instanceof SyntaxError) throw new Error(`${res.status} ${text}`);
       throw e;
