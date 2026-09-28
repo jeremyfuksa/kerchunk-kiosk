@@ -19,9 +19,14 @@ describe("audio", () => {
     await setVolume(0, { run, control: "Master", card: 0 });
     await setVolume(1, { run, control: "Master", card: 0 });
     await setVolume(100, { run, control: "Master", card: 0 });
-    expect(run).toHaveBeenNthCalledWith(1, "amixer", ["-c", "0", "--", "sset", "Master", "0%"]);
-    expect(run).toHaveBeenNthCalledWith(2, "amixer", ["-c", "0", "--", "sset", "Master", "-44.55dB"]);
-    expect(run).toHaveBeenNthCalledWith(3, "amixer", ["-c", "0", "--", "sset", "Master", "0.00dB"]);
+    // Only the Master level calls: driving Master also opens the speakers
+    // (routing, covered by the jack tests below).
+    const master = run.mock.calls.map(([, a]) => a as string[]).filter((a) => a.includes("Master"));
+    expect(master).toEqual([
+      ["-c", "0", "--", "sset", "Master", "0%"],
+      ["-c", "0", "--", "sset", "Master", "-44.55dB"],
+      ["-c", "0", "--", "sset", "Master", "0.00dB"],
+    ]);
   });
 
   it("setMuted true calls amixer mute", async () => {
@@ -100,9 +105,29 @@ describe("audio", () => {
     await setMuted(true, { run, card: "PCH", control: "Headphone" });  // watchOutput passes the resolved name
     expect(ssets()).toContainEqual(["-c", "PCH", "--", "sset", "Master", "0dB", "unmute"]);
     expect(ssets()).toContainEqual(["-c", "PCH", "sset", "Headphone", "mute"]);
+    // Auto-Mute is disabled on this codec: the internal speakers must be muted
+    // explicitly while the jack carries the audio, or they play alongside it.
+    expect(ssets()).toContainEqual(["-c", "PCH", "sset", "Speaker", "mute"]);
+    expect(ssets()).toContainEqual(["-c", "PCH", "sset", "Bass Speaker", "mute"]);
+  });
+
+  it("driving Master (jack unplugged) opens the internal speakers at 0 dB so Master alone carries the volume", async () => {
+    // Speaker/Bass Speaker sat at 0/off, so an unplugged jack meant silence.
+    const run = vi.fn(async (_c: string, args: string[]) =>
+      args.includes("cget") ? { stdout: "  : values=off\n", stderr: "", code: 0 } : { stdout: "", stderr: "", code: 0 });
+    const ssets = () => run.mock.calls.map(([, a]) => a).filter((a) => a.includes("sset"));
+    await setVolume(40, { run, card: "PCH" });                         // auto, jack unplugged
+    expect(ssets()).toEqual([
+      ["-c", "PCH", "--", "sset", "Speaker", "0dB", "unmute"],
+      ["-c", "PCH", "--", "sset", "Bass Speaker", "0dB", "unmute"],
+      ["-c", "PCH", "--", "sset", "Master", "-27.00dB"],
+    ]);
     run.mockClear();
-    await setVolume(40, { run, card: "PCH", control: "Master" });     // Master itself: no pin
-    expect(ssets()).toEqual([["-c", "PCH", "--", "sset", "Master", "-27.00dB"]]);
+    await setMuted(true, { run, card: "PCH", control: "Master" });    // watchOutput passes the resolved name
+    expect(ssets()).toContainEqual(["-c", "PCH", "sset", "Master", "mute"]);
+    run.mockClear();
+    await setVolume(40, { run, card: "PCH", control: "PCM" });        // any other explicit control: untouched routing
+    expect(ssets()).toEqual([["-c", "PCH", "--", "sset", "PCM", "-27.00dB"]]);
   });
 
   it("watchOutput reports a jack change once, and never for an explicit control", async () => {
