@@ -69,9 +69,14 @@ describe("audio", () => {
   });
 
   it("auto control: Headphone when the jack is plugged, Master when not or when there's no jack sense", async () => {
+    // Like real amixer on the CS4208: jack-sense controls live on the CARD
+    // interface, so a cget that omits iface=CARD finds nothing (exit 1) —
+    // the bug that pinned "auto" to Master on the appliance (2026-09-27).
     const jack = (on: boolean | null) => vi.fn(async (_c: string, args: string[]) =>
       args.includes("cget")
-        ? (on === null ? { stdout: "", stderr: "no such control", code: 1 } : { stdout: `  : values=${on ? "on" : "off"}\n`, stderr: "", code: 0 })
+        ? (on === null || !args.some((a) => a.startsWith("iface=CARD,"))
+            ? { stdout: "", stderr: "amixer: Cannot find the given element from control sysdefault:0", code: 1 }
+            : { stdout: `  : values=${on ? "on" : "off"}\n`, stderr: "", code: 0 })
         : { stdout: "", stderr: "", code: 0 });
     expect(await resolveControl(undefined, "PCH", jack(true))).toBe("Headphone");
     expect(await resolveControl("auto", "PCH", jack(false))).toBe("Master");

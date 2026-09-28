@@ -39,7 +39,10 @@ function uiToDb(ui: number): string {
 // 2026-09-26). Jack plugged -> "Headphone"; otherwise (or on a card with no
 // jack-sense control, e.g. a Pi) -> "Master".
 export const AUTO_CONTROL = "auto";
-const JACK_CONTROL = "name='Headphone Jack'";
+// Jack-sense controls sit on the CARD interface (numid=23,iface=CARD on the
+// CS4208): without iface=CARD, cget finds nothing and "auto" silently pinned
+// Master — mute/volume never reached the jack (2026-09-27).
+const JACK_CONTROL = "iface=CARD,name='Headphone Jack'";
 
 export async function resolveControl(control: string | undefined, card: number | string, run: Runner = defaultRun): Promise<string> {
   if (control !== undefined && control !== AUTO_CONTROL) return control;
