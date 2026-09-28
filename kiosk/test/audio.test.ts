@@ -87,6 +87,24 @@ describe("audio", () => {
     expect(run).toHaveBeenLastCalledWith("amixer", ["-c", "PCH", "sset", "Headphone", "mute"]);
   });
 
+  it("driving Headphone pins Master (the codec's vmaster) at 0 dB unmuted so the two never stack", async () => {
+    // CS4208: the HP DAC gain is Headphone + Master. Master left at -27 dB from
+    // the auto->Master era plus Headphone at -26 dB = -53 dB = silence (2026-09-27).
+    const run = vi.fn(async (_c: string, args: string[]) =>
+      args.includes("cget") ? { stdout: "  : values=on\n", stderr: "", code: 0 } : { stdout: "", stderr: "", code: 0 });
+    const ssets = () => run.mock.calls.map(([, a]) => a).filter((a) => a.includes("sset"));
+    await setVolume(40, { run, card: "PCH" });                         // auto, jack plugged
+    expect(ssets()).toContainEqual(["-c", "PCH", "--", "sset", "Master", "0dB", "unmute"]);
+    expect(ssets()).toContainEqual(["-c", "PCH", "--", "sset", "Headphone", "-27.00dB"]);
+    run.mockClear();
+    await setMuted(true, { run, card: "PCH", control: "Headphone" });  // watchOutput passes the resolved name
+    expect(ssets()).toContainEqual(["-c", "PCH", "--", "sset", "Master", "0dB", "unmute"]);
+    expect(ssets()).toContainEqual(["-c", "PCH", "sset", "Headphone", "mute"]);
+    run.mockClear();
+    await setVolume(40, { run, card: "PCH", control: "Master" });     // Master itself: no pin
+    expect(ssets()).toEqual([["-c", "PCH", "--", "sset", "Master", "-27.00dB"]]);
+  });
+
   it("watchOutput reports a jack change once, and never for an explicit control", async () => {
     vi.useFakeTimers();
     let on = true;
