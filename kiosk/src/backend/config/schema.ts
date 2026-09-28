@@ -92,20 +92,16 @@ export const channelSchema = channelObjectSchema.refine(oneSubAudible, SUB_AUDIB
 /** POST body shape: a channel without its server-assigned id. */
 export const newChannelSchema = channelObjectSchema.omit({ id: true }).refine(oneSubAudible, SUB_AUDIBLE_MSG);
 
-// Scanner front-end defaults, used when config omits the scan field (the
-// engine and the schema's window/rate refine share them).
-export const DEFAULT_WINDOW_BANDWIDTH_HZ = 2_400_000;   // measured 2026-09-26: RTL floor -1.4 dB at +-1.0 MHz, -4.8 dB at +-1.2 MHz
-export const DEFAULT_LANES_PER_GROUP = 32;
-export const DEFAULT_SAMPLE_RATE_HZ = 2_500_000;
-// RTL flat passband (grouping keeps channels inside +-flat/2 where free): -1.4 dB at +-1.0 MHz.
-export const DEFAULT_FLAT_BANDWIDTH_HZ = 2_000_000;
-// A lane is 50 kHz wide: the rate must be a whole number of lanes, and a
-// channel's lane can sit no closer than half a lane to the band edge, so the
-// usable window is (rate - LANE_HZ).
-const LANE_HZ = 50_000;
-export const MAX_LANES_PER_GROUP = 64;   // kerchunk-dsp MAX_LANES (native/src/constants.hpp)
-export const MIN_SAMPLE_RATE_HZ = 950_000;   // librtlsdr: 900 001..3 200 000 (and 225 001..300 000); first 50 kHz multiple
-export const MAX_SAMPLE_RATE_HZ = 3_200_000;
+// Scanner front-end defaults and limits live in engineDefaults.ts (zod-free,
+// so the admin bundle can import them); re-exported for existing importers.
+import {
+  DEFAULT_WINDOW_BANDWIDTH_HZ, DEFAULT_LANES_PER_GROUP, DEFAULT_SAMPLE_RATE_HZ,
+  DEFAULT_FLAT_BANDWIDTH_HZ, LANE_HZ, MAX_LANES_PER_GROUP, MIN_SAMPLE_RATE_HZ, MAX_SAMPLE_RATE_HZ,
+} from "./engineDefaults.js";
+export {
+  DEFAULT_WINDOW_BANDWIDTH_HZ, DEFAULT_LANES_PER_GROUP, DEFAULT_SAMPLE_RATE_HZ,
+  DEFAULT_FLAT_BANDWIDTH_HZ, MAX_LANES_PER_GROUP, MIN_SAMPLE_RATE_HZ, MAX_SAMPLE_RATE_HZ,
+};
 
 export const configSchema = z.object({
   version: z.literal(1),
