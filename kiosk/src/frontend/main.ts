@@ -55,11 +55,18 @@ const [, page, render]: [string, string, (root: HTMLElement) => void] = isAdminN
 
 document.documentElement.dataset.page = page;
 loadFonts(page);
-render(root);
 
 // Crossing between the classic admin and admin-next swaps the whole page.
+// Registered BEFORE render() so it runs ahead of either app's own hashchange
+// handler, and stops them: otherwise the outgoing app's route handler fires a
+// poll that overlaps the reload's requests (this box deadlocks on 2+
+// concurrent requests).
 if (location.pathname.startsWith("/admin")) {
-  window.addEventListener("hashchange", () => {
-    if (location.hash.startsWith("#/next") !== isAdminNext) location.reload();
+  window.addEventListener("hashchange", (e) => {
+    if (location.hash.startsWith("#/next") !== isAdminNext) {
+      e.stopImmediatePropagation();
+      location.reload();
+    }
   });
 }
+render(root);
