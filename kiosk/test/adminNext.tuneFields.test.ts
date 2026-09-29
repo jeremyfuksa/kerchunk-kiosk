@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import type { Config } from "../src/backend/config/schema.js";
 import { KNOB_FIELDS } from "../src/frontend/admin/engineKnobs.js";
 import {
-  TUNE_FIELDS, FIELD_BY_ID, readTune, applyTune, disabledIds, snapValue, isDefault, isNoChange, parseSweep,
+  TUNE_FIELDS, FIELD_BY_ID, readTune, applyTune, disabledIds, snapValue, isDefault, isNoChange, isNoOp, parseSweep,
 } from "../src/frontend/admin-next/tuneFields.js";
 
 const base = (): Config => ({
@@ -141,6 +141,22 @@ describe("helpers", () => {
     it("switches compare as booleans", () => {
       expect(isNoChange(FIELD_BY_ID.tCloseCall!, true, true)).toBe(true);
       expect(isNoChange(FIELD_BY_ID.tCloseCall!, false, true)).toBe(false);
+    });
+  });
+  describe("isNoOp — against what the radio will have", () => {
+    const open = FIELD_BY_ID.tOpenDb!; // default 9
+    it("with nothing in flight it is isNoChange against loaded", () => {
+      expect(isNoOp(open, "12", "12")).toBe(true);
+      expect(isNoOp(open, "9", "")).toBe(true);
+      expect(isNoOp(open, "15", "12")).toBe(false);
+    });
+    it("moving back to the old loaded value while a save of another is in flight is a change", () => {
+      // loaded 12, 15 in flight: 12 must be queued, or the radio ends on 15.
+      expect(isNoOp(open, "12", "12", "15")).toBe(false);
+    });
+    it("matching the in-flight value is no change", () => {
+      expect(isNoOp(open, "15", "12", "15")).toBe(true);
+      expect(isNoOp(open, "9", "12", "")).toBe(true); // "" in flight = unset = default 9
     });
   });
 });

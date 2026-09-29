@@ -27,7 +27,7 @@ import { hrefFor } from "./route.js";
 import { ico } from "./ui/icons.js";
 import { ApplyBatcher, TUNE_APPLY_DELAY_MS, type BatchState } from "./batcher.js";
 import {
-  FIELD_BY_ID, GROUP_TITLES, TUNE_FIELDS, applyTune, disabledIds, isDefault, isNoChange, readTune, snapValue,
+  FIELD_BY_ID, GROUP_TITLES, TUNE_FIELDS, applyTune, disabledIds, isDefault, isNoChange, isNoOp, readTune, snapValue,
   type TuneField, type TuneGroup, type TuneValue, type TuneValues,
 } from "./tuneFields.js";
 import type { Ctx } from "./ctx.js";
@@ -226,8 +226,13 @@ export function mountTune(ctx: Ctx): void {
     const s: BatchState | undefined = batchers.get(g)?.state;
     return s && (s.kind === "pending" || s.kind === "saving" || s.kind === "error") ? s.ids : [];
   }
+  /** Per id, the value an unresolved save sent (batch, heavy or direct) —
+   *  what the radio will have once it lands. */
+  const sending = new Map<string, TuneValue>();
+  /** What the radio has, or will have once an in-flight save lands. */
+  const baseline = (id: string, f: TuneField): TuneValue => sending.has(id) ? sending.get(id)! : loaded[id] ?? f.def;
   const busy = (f: TuneField): boolean =>
-    inflight.has(f.id) || batchIds(f.group).includes(f.id) || (heavy.get(f.group)?.has(f.id) ?? false);
+    inflight.has(f.id) || sending.has(f.id) || batchIds(f.group).includes(f.id) || (heavy.get(f.group)?.has(f.id) ?? false);
 
   // ── painting
   function shownValue(f: TuneField, v: TuneValue | undefined): string {
@@ -396,13 +401,16 @@ export function mountTune(ctx: Ctx): void {
   // ── saving
   async function saveIds(ids: string[]): Promise<void> {
     const sent: TuneValues = Object.fromEntries(ids.map((id) => [id, values[id]!]));
+    for (const id of ids) sending.set(id, sent[id]!);
+    // Only this save's entries: a later save of the same id may own it now.
+    const settle = (): void => { for (const id of ids) if (sending.get(id) === sent[id]) sending.delete(id); };
     let saved: Config;
     try {
       saved = await poller.run(async () => {
         const cfg = await api.getConfig();
-        applyTune(cfg, ids, values);
+        applyTune(cfg, ids, sent);
         return api.putConfig(cfg);
-      });
+      }).finally(settle);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       for (const id of ids) { rowErrors.set(id, `Not saved — ${msg}`); paintRow(id); }
@@ -480,8 +488,14 @@ export function mountTune(ctx: Ctx): void {
     // Back at what the radio has (moved and put back, or an unset field set to
     // its displayed default): nothing to send — sending the default
     // explicitly would restart the scanner for nothing.
-    const noChange = queued && isNoChange(f, values[id] ?? f.def, loaded[id] ?? f.def);
-    if (noChange) { values[id] = loaded[id] ?? f.def; paintControl(id); }
+    // Compared with what the radio will have: while a save of this field is
+    // in flight, putting it back to the old value is a change to queue.
+    const base = baseline(id, f);
+    const noChange = queued && isNoOp(f, values[id] ?? f.def, loaded[id] ?? f.def, sending.get(id));
+    if (noChange) { values[id] = base; paintControl(id); }
+    // A scan-cost field folded into a failed heavy Apply leaves that Apply
+    // bar once it's edited again: it saves by its own cost from here.
+    if (f.cost === "scan" && heavy.get(g)?.delete(id)) paintHeavy(g);
     const err = noChange ? null : invalid(f, values[id] ?? f.def);
     if (err) rowErrors.set(id, err); else rowErrors.delete(id);
     paintRow(id);
@@ -499,7 +513,8 @@ export function mountTune(ctx: Ctx): void {
     else { heavySet(g).add(id); paintHeavy(g); }
   }
   function revert(ids: readonly string[]): void {
-    for (const id of ids) { values[id] = loaded[id]!; paintControl(id); paintRow(id); }
+    // Back to what the radio will have — an in-flight save's value, if any.
+    for (const id of ids) { const f = FIELD_BY_ID[id]; values[id] = f ? baseline(id, f) : loaded[id]!; paintControl(id); paintRow(id); }
     paintDependents();
     paintCurve();
     paintPreview();

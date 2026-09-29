@@ -285,3 +285,11 @@ export function isNoChange(f: TuneField, v: TuneValue, loaded: TuneValue): boole
   if (a === "" || f.control.kind === "text") return false;
   return Number.isFinite(Number(a)) && Number(a) === Number(b);
 }
+
+/** isNoChange against what the radio WILL have: the value in an unresolved
+ *  save when there is one (`inflight`), else what was last loaded. Comparing
+ *  against `loaded` while a save is in flight would call "put it back to the
+ *  old value" a no-op — and leave the radio on the value in flight. */
+export function isNoOp(f: TuneField, v: TuneValue, loaded: TuneValue, inflight?: TuneValue): boolean {
+  return isNoChange(f, v, inflight !== undefined ? inflight : loaded);
+}
