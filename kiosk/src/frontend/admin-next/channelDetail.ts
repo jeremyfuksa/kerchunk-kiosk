@@ -166,7 +166,9 @@ const SWITCHES: Record<string, string> = { kcDtAudible: "audible", kcDtPriority:
 export function mountDetail(lib: LibCtx, host: HTMLElement): {
   show(d: Detail, o: { fromList: boolean }): void; hide(): void; paint(): void; isOpen(): boolean;
 } {
-  const sheet = mountSheet(host, { id: "kcDetail", label: "Channel" });
+  // The LCD already names the channel: the heading stays for assistive tech
+  // only, and the header keeps just the close button.
+  const sheet = mountSheet(host, { id: "kcDetail", label: "Channel", titleHidden: true });
   const body = sheet.body;
   const q = <T extends HTMLElement>(sel: string): T | null => body.querySelector<T>(sel);
 
@@ -177,7 +179,13 @@ export function mountDetail(lib: LibCtx, host: HTMLElement): {
   let shown: Channel | null = null;
   let adding: { draft: ChannelDraft; from?: Discovery } | null = null;
   const dirty = new Set<string>();
-  const inflight = new Set<string>();
+  /** Saves in flight per field (a field can have a second save queued). */
+  const inflight = new Map<string, number>();
+  const busy = (f: string): boolean => (inflight.get(f) ?? 0) > 0;
+  const bump = (f: string, by: 1 | -1): void => {
+    const n = (inflight.get(f) ?? 0) + by;
+    if (n > 0) inflight.set(f, n); else inflight.delete(f);
+  };
   let analyticsFreq: number | null = null;
   let statusTimer: ReturnType<typeof setTimeout> | undefined;
   let modeTouched = false;
@@ -203,7 +211,8 @@ export function mountDetail(lib: LibCtx, host: HTMLElement): {
     else location.replace(lib.listHref());
   }
   sheet.onClose(() => {
-    if (sheet.isOpen()) return; // re-shown before this (async) close event landed
+    // Re-shown before this (async) close event landed: nothing to close.
+    if (sheet.isOpen()) { routeClosing = false; return; }
     const byRoute = routeClosing;
     routeClosing = false;
     const wasOpen = detail !== null;
@@ -235,7 +244,12 @@ export function mountDetail(lib: LibCtx, host: HTMLElement): {
     clearTimeout(statusTimer);
     dirty.clear(); inflight.clear(); modeTouched = false;
     shown = null; adding = null; analyticsFreq = null;
-    if (!r) { shownKey = "loading"; sheet.setTitle("Channel"); body.innerHTML = `<div class="kc-detail">${emptyState("Loading…")}</div>`; return; }
+    if (!r) {
+      shownKey = "loading"; sheet.setTitle("Channel");
+      body.innerHTML = `<div class="kc-detail"><p class="kc-empty" id="kcDtLoad"></p></div>`;
+      paintLoading();
+      return;
+    }
     if (r.kind === "gone") {
       shownKey = "gone"; sheet.setTitle("Channel");
       body.innerHTML = `<div class="kc-detail">${emptyState(r.message)}<div class="kc-keys">${key({ id: "kcDtClose", label: "Close", wide: true })}</div></div>`;
@@ -255,6 +269,20 @@ export function mountDetail(lib: LibCtx, host: HTMLElement): {
     sheet.setTitle(channelName(c));
     body.innerHTML = editHtml(c, lib.store.data?.cfg.banks ?? []);
     wireEdit();
+    // Pin a frequency route to the channel it found, so editing the frequency
+    // (or another client moving it) can't re-resolve the pane to another row.
+    // A self-replace: it swaps the history entry, so it isn't another detail.
+    if (detail?.kind === "hz") {
+      detail = { kind: "ch", id: c.id };
+      selfReplace = true;
+      location.replace(hrefFor({ tab: "library", detail }));
+    }
+  }
+
+  function paintLoading(): void {
+    const p = q("#kcDtLoad");
+    const err = lib.store.loadError;
+    if (p) p.textContent = err ? `The library couldn't load: ${err}` : "Loading…";
   }
 
   /** Rewrite a read-only block only when its markup changes (keeps focus on
@@ -271,7 +299,7 @@ export function mountDetail(lib: LibCtx, host: HTMLElement): {
     const prev = shown!;
     const active = document.activeElement;
     const focused = active instanceof HTMLElement && body.contains(active) ? active.closest<HTMLElement>("[data-field]")?.dataset.field ?? null : null;
-    for (const f of detailFieldsToPatch(prev, fresh, { focused, dirty, inflight })) {
+    for (const f of detailFieldsToPatch(prev, fresh, { focused, dirty, inflight: new Set(inflight.keys()) })) {
       const el = q<HTMLInputElement | HTMLSelectElement>(`#${idFor(f)}`);
       if (!el) continue;
       if (el instanceof HTMLInputElement && el.type === "checkbox") el.checked = DETAIL_FIELDS[f]!(fresh) === "true";
@@ -282,7 +310,7 @@ export function mountDetail(lib: LibCtx, host: HTMLElement): {
     for (const id of ["kcDtPriority", "kcDtAlert"]) { const s = q<HTMLInputElement>(`#${id}`); if (s) s.disabled = archived; }
     sheet.setTitle(channelName(fresh));
     setHtml(q("#kcDtLcd"), lcdHtml(fresh, channelName(fresh)));
-    if (!inflight.has("banks")) setHtml(q("#kcDtBanks"), banksHtml(fresh, lib.store.data?.cfg.banks ?? []));
+    if (!busy("banks")) setHtml(q("#kcDtBanks"), banksHtml(fresh, lib.store.data?.cfg.banks ?? []));
     setHtml(q("#kcDtFacts"), factsHtml(fresh));
     setHtml(q("#kcDtHeard"), toneHeard(fresh));
     if (analyticsFreq !== fresh.freq) { analyticsFreq = fresh.freq; q("#kcDtStats")!.innerHTML = emptyState("Loading activity…"); lib.refresh("analytics"); }
@@ -290,8 +318,9 @@ export function mountDetail(lib: LibCtx, host: HTMLElement): {
 
   function paint(): void {
     const data = lib.store.data;
+    if (!data) { if (shownKey === "loading") paintLoading(); return; }
     // Add mode keeps its half-typed form until the route changes.
-    if (!detail || !data || shownKey === "add") return;
+    if (!detail || shownKey === "add") return;
     const r = resolveDetail(detail, data);
     if (r.kind === "gone" && detail.kind === "ch" && detail.id === justAdded) { if (shownKey !== "loading") render(null); return; }
     const k = r.kind === "edit" ? `edit:${r.channel.id}` : r.kind;
@@ -300,28 +329,38 @@ export function mountDetail(lib: LibCtx, host: HTMLElement): {
   }
 
   // ── edit-mode saving
-  async function save(f: string, patch: Parameters<typeof api.updateChannel>[1], o: { revert?: () => void } = {}): Promise<boolean> {
+  /** One channel PUT. `sent` is the raw text a text/select field committed:
+   *  the field stops being dirty only if it still holds that text (the
+   *  operator may have typed on while this saved). A failure keeps a typed
+   *  value (and its dirty flag) with the error; a switch reverts. */
+  async function save(f: string, patch: Parameters<typeof api.updateChannel>[1], o: { revert?: () => void; sent?: string } = {}): Promise<boolean> {
     const c = shown;
     if (!c) return false;
-    inflight.add(f);
+    bump(f, 1);
     status("Saving…");
+    let updated: Channel;
     try {
-      const updated = await lib.run(() => api.updateChannel(c.id, patch));
-      if (shown?.id === c.id) {
-        dirty.delete(f);
-        inflight.delete(f); // so the patch below repaints e.g. the bank chips
-        fieldErr(idFor(f), null);
-        status("Saved", { fade: true });
-        if (updated?.id === c.id) patchEdit(updated); // adopt the server's copy
-      }
-      return true;
+      updated = await lib.run(() => api.updateChannel(c.id, patch));
     } catch (e) {
+      bump(f, -1);
       if (shown?.id !== c.id) return false;
       o.revert?.();
-      dirty.delete(f);
       if (q(`#${idFor(f)}-err`)) { fieldErr(idFor(f), msg(e)); status(""); } else status(`Couldn't save: ${msg(e)}`);
       return false;
-    } finally { inflight.delete(f); }
+    }
+    bump(f, -1);
+    // Our copy of the list, too: a paint() before the next good poll (say
+    // the refresh fails) must not repaint the pre-save value.
+    const d = lib.store.data;
+    if (d) d.channels = d.channels.map((x) => (x.id === updated.id ? updated : x));
+    if (shown?.id === c.id) {
+      const el = q<HTMLInputElement | HTMLSelectElement>(`#${idFor(f)}`);
+      if (o.sent === undefined || el?.value === o.sent) dirty.delete(f);
+      if (!busy(f)) fieldErr(idFor(f), null);
+      status("Saved", { fade: true });
+      if (updated.id === c.id) patchEdit(updated); // adopt the server's copy
+    }
+    return true;
   }
 
   // Delegated once (the sheet body outlives every render): heard-tone picks
@@ -332,7 +371,7 @@ export function mountDetail(lib: LibCtx, host: HTMLElement): {
     const tone = t?.closest<HTMLButtonElement>("[data-tone]");
     if (tone) { const sel = q<HTMLSelectElement>("#kcDtTone")!; sel.value = tone.dataset.tone ?? ""; void commit("tone", sel.value); return; }
     const bank = t?.closest<HTMLButtonElement>("#kcDtBanks [data-chip]");
-    if (bank && bank.getAttribute("aria-disabled") !== "true" && !inflight.has("banks")) {
+    if (bank && bank.getAttribute("aria-disabled") !== "true" && !busy("banks")) {
       const tog = bankToggles(shown, lib.store.data?.cfg.banks ?? []).find((b) => b.id === bank.dataset.chip);
       if (tog?.next) void save("banks", { tags: tog.next });
     }
@@ -383,7 +422,7 @@ export function mountDetail(lib: LibCtx, host: HTMLElement): {
       }
     } catch (e) { fieldErr(idFor(f), msg(e)); return; } // invalid: nothing sent, value (and dirty) kept
     if (!Object.keys(patch).length) { dirty.delete(f); return; }
-    await save(f, patch);
+    await save(f, patch, { sent: v });
   }
 
   // ── add mode
@@ -424,7 +463,14 @@ export function mountDetail(lib: LibCtx, host: HTMLElement): {
         });
         lib.dialogs.toast(`Added ${name}.`);
       } catch (e) {
-        if (!out.id) { btn.disabled = false; status(""); fieldErr("kcDtFreq", msg(e)); return; }
+        if (!out.id) {
+          btn.disabled = false;
+          // A 409 collision ("frequency already used by …") belongs under
+          // Frequency; anything else is not the frequency's fault.
+          if (/^frequency already used by /.test(msg(e))) { status(""); fieldErr("kcDtFreq", msg(e)); }
+          else status(`Couldn't add the channel: ${msg(e)}`);
+          return;
+        }
         lib.dialogs.toast(`Added ${name}; the discovery is still listed in New.`);
       }
       const id = out.id;
@@ -450,17 +496,20 @@ export function mountDetail(lib: LibCtx, host: HTMLElement): {
 
   return {
     show(d, o) {
+      // Consumed first: render() below may raise it again (the hz → ch pin).
+      const replaced = selfReplace;
+      selfReplace = false;
+      routeClosing = false;
       const first = detail === null; // session state resets on close
       if (first) { openedFromList = o.fromList; detailsShown = 0; }
       const same = !first && JSON.stringify(detail) === JSON.stringify(d);
       if (!same) {
-        if (!selfReplace) detailsShown++;
+        if (!replaced) detailsShown++;
         detail = d;
         const data = lib.store.data;
         const r = data ? resolveDetail(d, data) : null;
         render(r?.kind === "gone" && d.kind === "ch" && d.id === justAdded ? null : r);
       }
-      selfReplace = false;
       sheet.open({ title: shown ? channelName(shown) : adding ? "New channel" : "Channel", pane: true });
     },
     hide() {

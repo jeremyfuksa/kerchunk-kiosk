@@ -28,7 +28,7 @@ export async function lockout(lib: LibCtx, freq: number, label: string): Promise
   lib.dialogs.toast(`Locked out ${label}.`, {
     undo: () => lib.run(async () => {
       const cfg = await api.getConfig();
-      cfg.scan = { ...cfg.scan, lockoutHz: (cfg.scan.lockoutHz ?? []).filter((f) => f !== freq) };
+      if (!s.wasLocked) cfg.scan = { ...cfg.scan, lockoutHz: (cfg.scan.lockoutHz ?? []).filter((f) => f !== freq) };
       cfg.channels = cfg.channels.map((c) => (s.enabled.has(c.id) ? { ...c, enabled: s.enabled.get(c.id)! } : c));
       if (s.discoveries.length) {
         const have = new Set((cfg.discoveries ?? []).map((d) => d.id));

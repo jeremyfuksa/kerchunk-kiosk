@@ -18,11 +18,14 @@ export interface Sheet {
   setTitle(t: string): void;
 }
 
-export function mountSheet(host: HTMLElement, o: { id: string; label: string }): Sheet {
+/** `titleHidden`: the heading stays for assistive tech (it labels the
+ *  dialog) but is visually hidden, leaving the header to the close button —
+ *  for a sheet whose body already names what it shows. */
+export function mountSheet(host: HTMLElement, o: { id: string; label: string; titleHidden?: boolean }): Sheet {
   host.insertAdjacentHTML("beforeend", `
     <dialog class="kc-sheet" id="${o.id}" aria-labelledby="${o.id}-title">
-      <header class="kc-sheet__head">
-        <h2 class="kc-sheet__title" id="${o.id}-title">${esc(o.label)}</h2>
+      <header class="kc-sheet__head${o.titleHidden ? " kc-sheet__head--bare" : ""}">
+        <h2 class="kc-sheet__title${o.titleHidden ? " kc-visuallyHidden" : ""}" id="${o.id}-title">${esc(o.label)}</h2>
         <button type="button" class="kc-sheet__close" aria-label="Close">${ico("close")}</button>
       </header>
       <div class="kc-sheet__body"></div>

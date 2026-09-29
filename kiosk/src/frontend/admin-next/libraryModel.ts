@@ -426,11 +426,17 @@ export function detailFieldsToPatch(
     .map(([id]) => id);
 }
 
-/** What a lockout will remove, so Undo restores exactly that (classic
- *  lockoutFreq's snapshot): the discoveries it drops and each channel's
- *  prior enabled flag at the frequency. */
-export function lockoutSnapshot(cfg: Config, freq: number): { discoveries: Discovery[]; enabled: Map<string, boolean> } {
+/** What a lockout will change, so Undo restores exactly that (classic
+ *  lockoutFreq's snapshot): the discoveries it drops, each channel's prior
+ *  enabled flag at the frequency, and whether the frequency was already on
+ *  the lockout list (then Undo leaves it there). */
+export function lockoutSnapshot(cfg: Config, freq: number): {
+  discoveries: Discovery[]; enabled: Map<string, boolean>; wasLocked: boolean;
+} {
   const enabled = new Map<string, boolean>();
   for (const c of cfg.channels) if (c.freq === freq) enabled.set(c.id, c.enabled);
-  return { discoveries: (cfg.discoveries ?? []).filter((d) => d.freq === freq), enabled };
+  return {
+    discoveries: (cfg.discoveries ?? []).filter((d) => d.freq === freq), enabled,
+    wasLocked: (cfg.scan.lockoutHz ?? []).includes(freq),
+  };
 }

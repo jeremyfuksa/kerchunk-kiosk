@@ -257,5 +257,11 @@ describe("lockoutSnapshot", () => {
     const s = lockoutSnapshot(cfg, A.freq);
     expect(s.discoveries.map((d) => d.id)).toEqual(["d"]);
     expect([...s.enabled.entries()]).toEqual([["a", true], ["c", false]]);
+    expect(s.wasLocked).toBe(false);
+  });
+  it("remembers a frequency that was already locked out, so Undo keeps it locked", () => {
+    const cfg = { version: 1, scan: { lockoutHz: [A.freq] }, audio: {}, channels: [A] } as unknown as import("../src/backend/config/schema.js").Config;
+    expect(lockoutSnapshot(cfg, A.freq).wasLocked).toBe(true);
+    expect(lockoutSnapshot(cfg, B.freq).wasLocked).toBe(false);
   });
 });

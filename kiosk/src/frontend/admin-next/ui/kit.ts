@@ -44,7 +44,7 @@ export function lcd(v: LcdView, o: { dbfs?: number | null } = {}): string {
   const db = v.state === "live" ? `<span class="kc-lcd__db" aria-hidden="true">${dbText(o.dbfs)}</span>` : "";
   const silent = v.silent ? ` <span class="kc-lcd__silent">${v.silent}</span>` : "";
   return `<div class="kc-lcd" data-state="${v.state}">
-    <div class="kc-lcd__meta"><span>${meter(v.state === "live" ? o.dbfs : null)}${esc(v.meta)}${silent}</span>${db}</div>
+    <div class="kc-lcd__meta"><span>${v.state === "detail" ? "" : meter(v.state === "live" ? o.dbfs : null)}${esc(v.meta)}${silent}</span>${db}</div>
     <div class="kc-lcd__name">${esc(v.name)}</div>
     ${v.freq ? `<div class="kc-lcd__freq">${esc(v.freq)}<small>MHz</small></div>` : ""}
   </div>`;
