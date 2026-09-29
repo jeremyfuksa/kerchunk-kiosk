@@ -1,14 +1,287 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-09-29T01:39:43Z",
+  "generatedAt": "2026-09-29T21:55:38Z",
   "title": "Design System: Kerchunk",
   "extensions": {
     "colorMeta": {
+      "kc-ground": {
+        "role": "neutral",
+        "displayName": "Blue-Slate Ground",
+        "canonical": "#15191f",
+        "layer": 2,
+        "note": "The admin page ground and the sheet ground.",
+        "tonalRamp": [
+          "#080b11",
+          "#21252c",
+          "#3e4249",
+          "#5d6269",
+          "#7d838b",
+          "#a0a5ae",
+          "#c4cad2",
+          "#e9eff8"
+        ]
+      },
+      "kc-raised": {
+        "role": "neutral",
+        "displayName": "Raised Slate",
+        "canonical": "#20262d",
+        "layer": 2,
+        "note": "Grouped surfaces: settings groups, lists, vitals, triage cards, resting chips, the segmented track.",
+        "tonalRamp": [
+          "#070c12",
+          "#20262d",
+          "#3c434a",
+          "#5b626a",
+          "#7c838c",
+          "#9ea6af",
+          "#c2cad3",
+          "#e7eff9"
+        ]
+      },
+      "kc-key": {
+        "role": "neutral",
+        "displayName": "Key Face",
+        "canonical": "#262d35",
+        "layer": 2,
+        "note": "Key and input faces, the toast, the bulk bar.",
+        "tonalRamp": [
+          "#060c12",
+          "#1f262e",
+          "#3b434b",
+          "#5a626b",
+          "#7b838d",
+          "#9da6b0",
+          "#c1cad5",
+          "#e6f0fa"
+        ]
+      },
+      "kc-line": {
+        "role": "neutral",
+        "displayName": "Row Line",
+        "canonical": "#232a31",
+        "layer": 2,
+        "note": "The only hairline — between rows, never on a surface's edge.",
+        "tonalRamp": [
+          "#060c12",
+          "#1f262d",
+          "#3b434a",
+          "#5a626a",
+          "#7b838c",
+          "#9da6af",
+          "#c1cad4",
+          "#e6f0f9"
+        ]
+      },
+      "kc-well": {
+        "role": "neutral",
+        "displayName": "LCD Well",
+        "canonical": "#0c1113",
+        "layer": 2,
+        "note": "The LCD glass, recessed below the ground.",
+        "tonalRamp": [
+          "#070c0e",
+          "#212628",
+          "#3d4345",
+          "#5c6265",
+          "#7d8486",
+          "#9fa6a9",
+          "#c3cacd",
+          "#e8f0f3"
+        ]
+      },
+      "kc-well-edge": {
+        "role": "neutral",
+        "displayName": "LCD Bezel",
+        "canonical": "#2a3a3a",
+        "layer": 2,
+        "note": "The LCD's inset bezel hairline (inside --kc-well-shadow).",
+        "tonalRamp": [
+          "#020e0e",
+          "#192828",
+          "#354646",
+          "#546565",
+          "#758686",
+          "#97a9a9",
+          "#bacecd",
+          "#dff3f3"
+        ]
+      },
+      "kc-ink": {
+        "role": "neutral",
+        "displayName": "Panel Ink",
+        "canonical": "#e6e9ee",
+        "layer": 2,
+        "note": "Primary admin text and values. 14.5 / 12.5 / 11.4 on ground / raised / key.",
+        "tonalRamp": [
+          "#090b0e",
+          "#232529",
+          "#404246",
+          "#5f6166",
+          "#808287",
+          "#a2a5aa",
+          "#c6c9ce",
+          "#eceff4"
+        ]
+      },
+      "kc-dim": {
+        "role": "neutral",
+        "displayName": "Dim Ink",
+        "canonical": "#a4acb7",
+        "layer": 2,
+        "note": "Secondary text, group titles. 7.7 / 6.7 / 6.1.",
+        "tonalRamp": [
+          "#060b13",
+          "#1f262e",
+          "#3c434c",
+          "#5b626c",
+          "#7b838d",
+          "#9ea6b1",
+          "#c2cad5",
+          "#e7effb"
+        ]
+      },
+      "kc-mute": {
+        "role": "neutral",
+        "displayName": "Mute Ink",
+        "canonical": "#8d96a3",
+        "layer": 2,
+        "note": "Hints, row meta, counts, empty states — the dimmest text. 5.9 / 5.1 / 4.7.",
+        "tonalRamp": [
+          "#060b14",
+          "#1e2630",
+          "#3b434e",
+          "#5a626e",
+          "#7a8390",
+          "#9da6b3",
+          "#c0cad8",
+          "#e6effe"
+        ]
+      },
+      "kc-glass": {
+        "role": "primary",
+        "displayName": "Sea Glass",
+        "canonical": "#5fd4c3",
+        "layer": 2,
+        "note": "LIVE: LCD characters, the one primary key, the active tab, the focus ring. Glow on glass, never a lit slab. 9.8 / 8.5 / 7.8.",
+        "tonalRamp": [
+          "#000f0c",
+          "#022c27",
+          "#064d45",
+          "#0f7165",
+          "#199688",
+          "#42bbab",
+          "#6ce0cf",
+          "#bbfef2"
+        ]
+      },
+      "kc-glass-ink": {
+        "role": "primary",
+        "displayName": "Glass Ink",
+        "canonical": "#08231f",
+        "layer": 2,
+        "note": "Text on sea-glass (primary key, checked switch thumb). 9.2:1 on glass.",
+        "tonalRamp": [
+          "#000f0c",
+          "#102a26",
+          "#2d4843",
+          "#4c6863",
+          "#6d8984",
+          "#8faca6",
+          "#b2d1cb",
+          "#d7f6f0"
+        ]
+      },
+      "kc-glass-text": {
+        "role": "primary",
+        "displayName": "Glass Text",
+        "canonical": "#d9f5f0",
+        "layer": 2,
+        "note": "The channel name on the LCD; row-name hover.",
+        "tonalRamp": [
+          "#000f0c",
+          "#132a27",
+          "#304744",
+          "#4e6763",
+          "#6f8984",
+          "#91aca7",
+          "#b5d0cb",
+          "#d9f6f1"
+        ]
+      },
+      "kc-coral": {
+        "role": "secondary",
+        "displayName": "Faceplate Coral",
+        "canonical": "#f29b8f",
+        "layer": 2,
+        "note": "Destructive or broken: Lock out, power actions, field errors, a hot vital. 8.3 / 7.2 / 6.5.",
+        "tonalRamp": [
+          "#1f0000",
+          "#4d0102",
+          "#70261f",
+          "#94473e",
+          "#ba685e",
+          "#e08b7f",
+          "#fdb4a9",
+          "#fee9e5"
+        ]
+      },
+      "kc-hay": {
+        "role": "secondary",
+        "displayName": "Faceplate Hay",
+        "canonical": "#e8c37a",
+        "layer": 2,
+        "note": "Needs attention: triage badge, suggestions strip, stressed verdict, heavy-apply notice. 10.5 / 9.1 / 8.3.",
+        "tonalRamp": [
+          "#110a00",
+          "#322200",
+          "#553e06",
+          "#7c5b01",
+          "#9f7c32",
+          "#c39f57",
+          "#e9c47b",
+          "#ffecca"
+        ]
+      },
+      "kc-hay-ink": {
+        "role": "secondary",
+        "displayName": "Hay Ink",
+        "canonical": "#2a1d05",
+        "layer": 2,
+        "note": "Text on hay (the triage badge). 9.8:1 on hay.",
+        "tonalRamp": [
+          "#120900",
+          "#30230a",
+          "#4e4027",
+          "#6e5f46",
+          "#908066",
+          "#b3a387",
+          "#d8c7ab",
+          "#feeccf"
+        ]
+      },
+      "kc-ok": {
+        "role": "secondary",
+        "displayName": "Healthy Green",
+        "canonical": "#7fc79a",
+        "layer": 2,
+        "note": "The healthy verdict dot. 8.9 / 7.7 / 7.0.",
+        "tonalRamp": [
+          "#001005",
+          "#032e18",
+          "#084f2d",
+          "#287149",
+          "#4d9469",
+          "#70b78b",
+          "#94ddaf",
+          "#c6fed9"
+        ]
+      },
       "signal-amber": {
         "role": "primary",
         "displayName": "Signal Amber",
         "canonical": "#ff6b35",
-        "note": "`--spark` in tokens.css layer 1 (frozen from Campfire's resolved value). The system's entire emphasis budget; marks live state only.",
+        "layer": 1,
+        "note": "Ambient layer 1 `--spark`. The kiosk's one loud colour: the live channel name, and its one glow.",
         "tonalRamp": [
           "#3d1405",
           "#5c1e08",
@@ -24,7 +297,8 @@
         "role": "secondary",
         "displayName": "Caution Hay",
         "canonical": "#f9c574",
-        "note": "tokens.css layer 1's `--warning-500` (frozen from Campfire). Reversible-but-consequential actions, and every focus ring. 11.2:1 on slate-panel.",
+        "layer": 1,
+        "note": "Ambient `--warning-500` (dashboard --caution).",
         "tonalRamp": [
           "#3a2a0c",
           "#573f12",
@@ -40,7 +314,8 @@
         "role": "secondary",
         "displayName": "Adopt Moss",
         "canonical": "#9ac35d",
-        "note": "tokens.css layer 1's `--success-400` (frozen from Campfire). Additive and confirming actions. 8.7:1 on slate-panel.",
+        "layer": 1,
+        "note": "Ambient `--success-400` (dashboard --green).",
         "tonalRamp": [
           "#1d2a0c",
           "#2d4013",
@@ -56,7 +331,8 @@
         "role": "secondary",
         "displayName": "Destroy Coral",
         "canonical": "#f17d7b",
-        "note": "tokens.css layer 1's `--danger-400` (frozen from Campfire). Irreversible or service-affecting actions, and error text. 6.7:1 on slate-panel.",
+        "layer": 1,
+        "note": "Ambient `--danger-400` (dashboard --red).",
         "tonalRamp": [
           "#3a1211",
           "#571b1a",
@@ -68,452 +344,877 @@
           "#f8b3b1"
         ]
       },
-      "listen-pine": {
+      "flamingo": {
         "role": "secondary",
-        "displayName": "Lifted Pine",
-        "canonical": "#87a7a9",
-        "note": "tokens.css layer 1's `--pine` lifted 35% toward `--ink` (frozen from Campfire); pine has no numbered ramp and its resolved value is 2.8:1. Passive/observational: auditioning, location, sparklines.",
+        "displayName": "Flamingo",
+        "canonical": "#dc3a38",
+        "layer": 1,
+        "note": "Ambient `--flamingo`: a close-call blip with no frequency.",
         "tonalRamp": [
-          "#162223",
-          "#213436",
-          "#2d4749",
-          "#3a5b5d",
-          "#4a7c7e",
-          "#679496",
-          "#87a7a9",
-          "#b4c8c9"
+          "#1f0001",
+          "#4d0004",
+          "#81000c",
+          "#b80317",
+          "#e13f3c",
+          "#fe746a",
+          "#fdb3ab",
+          "#ffe9e6"
+        ]
+      },
+      "golden-amber": {
+        "role": "secondary",
+        "displayName": "Golden Amber",
+        "canonical": "#ef991f",
+        "layer": 1,
+        "note": "Ambient `--golden-amber`: the antenna mark in the map legend.",
+        "tonalRamp": [
+          "#140800",
+          "#371f01",
+          "#5e3803",
+          "#875409",
+          "#b47111",
+          "#e48f03",
+          "#fdba6d",
+          "#feebd7"
+        ]
+      },
+      "danger-50": {
+        "role": "secondary",
+        "displayName": "Danger 50",
+        "canonical": "#fef5f4",
+        "layer": 1,
+        "note": "Ambient `--danger-50`: text on the solid system-risk strip.",
+        "tonalRamp": [
+          "#0f0a09",
+          "#2a2323",
+          "#47403f",
+          "#675f5e",
+          "#88807f",
+          "#aba3a2",
+          "#cfc7c6",
+          "#f5eceb"
+        ]
+      },
+      "danger-800": {
+        "role": "secondary",
+        "displayName": "Danger 800",
+        "canonical": "#9c2524",
+        "layer": 1,
+        "note": "Ambient `--danger-800`: the kiosk's solid system-risk strip (13.6:1 with danger-50).",
+        "tonalRamp": [
+          "#1f0001",
+          "#4c0306",
+          "#7e0810",
+          "#a8312e",
+          "#cf564e",
+          "#f77a70",
+          "#feb3ab",
+          "#ffe9e6"
         ]
       },
       "night-ground": {
         "role": "neutral",
         "displayName": "Night Ground",
         "canonical": "#0e0f12",
-        "note": "tokens.css layer 1's `--bg-base` (frozen from Campfire). The page field AND the recessed fill inside controls — the same value doing both is what makes an input read as cut into a panel."
+        "layer": 1,
+        "note": "Ambient `--bg-base`: the kiosk field.",
+        "tonalRamp": [
+          "#0a0b0e",
+          "#242528",
+          "#414246",
+          "#606165",
+          "#818286",
+          "#a3a5a9",
+          "#c7c9cd",
+          "#edeef3"
+        ]
       },
       "slate-panel": {
         "role": "neutral",
         "displayName": "Slate Panel",
         "canonical": "#16181d",
-        "note": "tokens.css layer 1's `--bg-subtle` (frozen from Campfire). Every card, table body, drawer and menu."
+        "layer": 1,
+        "note": "Ambient `--bg-subtle`: kiosk panels and over-map cards.",
+        "tonalRamp": [
+          "#090b10",
+          "#23252a",
+          "#404248",
+          "#5f6167",
+          "#808289",
+          "#a2a5ac",
+          "#c6c9d0",
+          "#ebeef6"
+        ]
+      },
+      "panel-edge": {
+        "role": "neutral",
+        "displayName": "Panel Edge",
+        "canonical": "#23262d",
+        "layer": 1,
+        "note": "Ambient `--border-default`: card edges.",
+        "tonalRamp": [
+          "#090b11",
+          "#22252c",
+          "#3f424a",
+          "#5e6169",
+          "#7f828b",
+          "#a1a5ae",
+          "#c5c9d2",
+          "#eaeef8"
+        ]
       },
       "hairline": {
         "role": "neutral",
         "displayName": "Hairline",
         "canonical": "#343842",
-        "note": "tokens.css layer 1's `--border-strong`/`--neutral-700` (frozen from Campfire). Row separators and field dividers. Replaced an earlier token that resolved to the panel colour itself (1.00:1)."
+        "layer": 1,
+        "note": "Ambient `--border-strong` / `--neutral-700`: rules and strong edges.",
+        "tonalRamp": [
+          "#080b13",
+          "#21252e",
+          "#3e424c",
+          "#5d616c",
+          "#7d828e",
+          "#a0a5b1",
+          "#c4c9d6",
+          "#e9eefb"
+        ]
+      },
+      "neutral-600": {
+        "role": "neutral",
+        "displayName": "Neutral 600",
+        "canonical": "#4d525e",
+        "layer": 1,
+        "note": "Ambient `--neutral-600`.",
+        "tonalRamp": [
+          "#070b14",
+          "#21252f",
+          "#3d424d",
+          "#5c616d",
+          "#7d828f",
+          "#9fa5b3",
+          "#c3c9d7",
+          "#e8eefd"
+        ]
       },
       "steel": {
         "role": "neutral",
         "displayName": "Steel",
         "canonical": "#7a8090",
-        "note": "tokens.css layer 1's `--neutral-500` (frozen from Campfire). Two non-text jobs: the resting edge of every interactive control (3.1:1, clears WCAG 1.4.11), and decorative glyphs — carets, chevrons, the fader groove."
+        "layer": 1,
+        "note": "Ambient `--neutral-500` / `--text-tertiary`: glyphs only, never text.",
+        "tonalRamp": [
+          "#070b16",
+          "#202532",
+          "#3c4250",
+          "#5b6170",
+          "#7c8292",
+          "#9ea5b6",
+          "#c2c9da",
+          "#e8eefe"
+        ]
       },
       "bright-ink": {
         "role": "neutral",
         "displayName": "Bright Ink",
         "canonical": "#f7f8f9",
-        "note": "tokens.css layer 1's `--text-primary` (frozen from Campfire). Primary text and data. 16.7:1 on slate-panel."
+        "layer": 1,
+        "note": "Ambient `--text-primary`: primary kiosk text.",
+        "tonalRamp": [
+          "#0b0b0c",
+          "#242526",
+          "#414243",
+          "#606162",
+          "#818283",
+          "#a4a5a6",
+          "#c8c9ca",
+          "#edeeef"
+        ]
       },
       "cool-label": {
         "role": "neutral",
         "displayName": "Cool Label",
         "canonical": "#b8bcc5",
-        "note": "tokens.css layer 1's `--neutral-300` (frozen from Campfire), reached past the semantic scale on purpose: the dark theme has no third text tier above 4.5:1, so labels and hints would otherwise be the same gray. 9.3:1 on slate-panel."
+        "layer": 1,
+        "note": "Ambient `--neutral-300`: secondary kiosk text.",
+        "tonalRamp": [
+          "#090b11",
+          "#22252c",
+          "#3f4249",
+          "#5e6169",
+          "#7f828b",
+          "#a1a5ae",
+          "#c5c9d2",
+          "#eaeef8"
+        ]
       },
       "quiet-hint": {
         "role": "neutral",
         "displayName": "Quiet Hint",
         "canonical": "#9299a5",
-        "note": "tokens.css layer 1's `--text-secondary` (frozen from Campfire). Helper text, units, column headers, empty states. 6.2:1 on slate-panel — the dimmest tier that is still text."
+        "layer": 1,
+        "note": "Ambient `--text-secondary`: the dimmest kiosk text tier.",
+        "tonalRamp": [
+          "#070b13",
+          "#20252f",
+          "#3c424d",
+          "#5b626d",
+          "#7c838e",
+          "#9ea5b2",
+          "#c2cad6",
+          "#e7effc"
+        ]
       },
-      "kc-ground": {
-        "role": "neutral",
-        "displayName": "Faceplate Ground",
-        "canonical": "#15191f",
-        "note": "tokens.css layer 2 (admin). Blue-slate page ground for the admin Faceplate."
-      },
-      "kc-raised": {
-        "role": "neutral",
-        "displayName": "Raised Surface",
-        "canonical": "#20262d",
-        "note": "tokens.css layer 2 (admin). Grouped surfaces, one tonal step above ground."
-      },
-      "kc-key": {
-        "role": "neutral",
-        "displayName": "Key Face",
-        "canonical": "#262d35",
-        "note": "tokens.css layer 2 (admin). Key/button faces with the single tactile shadow (--kc-key-shadow)."
-      },
-      "kc-line": {
-        "role": "neutral",
-        "displayName": "Row Hairline",
-        "canonical": "#232a31",
-        "note": "tokens.css layer 2 (admin). The only hairline in the Faceplate — between rows."
-      },
-      "kc-well": {
-        "role": "neutral",
-        "displayName": "LCD Well",
-        "canonical": "#0c1113",
-        "note": "tokens.css layer 2 (admin). The recessed panel behind the LCD glow — never a lit slab."
-      },
-      "kc-ink": {
-        "role": "neutral",
-        "displayName": "Faceplate Ink",
-        "canonical": "#e6e9ee",
-        "note": "tokens.css layer 2 (admin). Primary admin text."
-      },
-      "kc-dim": {
-        "role": "neutral",
-        "displayName": "Faceplate Dim",
-        "canonical": "#a4acb7",
-        "note": "tokens.css layer 2 (admin). Secondary admin text."
-      },
-      "kc-mute": {
-        "role": "neutral",
-        "displayName": "Faceplate Mute",
-        "canonical": "#8d96a3",
-        "note": "tokens.css layer 2 (admin). Tertiary/muted admin text."
-      },
-      "kc-glass": {
-        "role": "primary",
-        "displayName": "Sea Glass",
-        "canonical": "#5fd4c3",
-        "note": "tokens.css layer 2 (admin). The Faceplate's emphasis budget — the LCD glow and the one primary key per screen. Never a lit slab, always glow on glass."
-      },
-      "kc-glass-ink": {
-        "role": "neutral",
-        "displayName": "Glass Ink",
-        "canonical": "#08231f",
-        "note": "tokens.css layer 2 (admin). Text on the primary sea-glass key."
-      },
-      "kc-glass-text": {
-        "role": "neutral",
-        "displayName": "LCD Channel Text",
-        "canonical": "#d9f5f0",
-        "note": "tokens.css layer 2 (admin). The LCD's channel-name glow colour."
-      },
-      "kc-coral": {
-        "role": "secondary",
-        "displayName": "Faceplate Coral",
-        "canonical": "#f29b8f",
-        "note": "tokens.css layer 2 (admin). Destructive key text."
-      },
-      "kc-hay": {
-        "role": "secondary",
-        "displayName": "Faceplate Hay",
-        "canonical": "#e8c37a",
-        "note": "tokens.css layer 2 (admin). Needs-attention marker — triage badge, suggestions."
-      },
-      "kc-ok": {
-        "role": "secondary",
-        "displayName": "Faceplate OK",
-        "canonical": "#7fc79a",
-        "note": "tokens.css layer 2 (admin). Healthy status."
+      "pine": {
+        "role": "tertiary",
+        "displayName": "Pine",
+        "canonical": "#4a7c7e",
+        "layer": 1,
+        "note": "Ambient `--pine`; the base of the dashboard's --blue mix.",
+        "tonalRamp": [
+          "#000e0f",
+          "#012b2d",
+          "#164b4d",
+          "#396b6d",
+          "#5a8d8f",
+          "#7db0b2",
+          "#a0d4d6",
+          "#c5fafc"
+        ]
       },
       "service-air": {
         "role": "tertiary",
-        "displayName": "Air Blue",
+        "displayName": "Service Air",
         "canonical": "#3478f5",
-        "note": "Map only. Categorical, not semantic."
+        "layer": 1,
+        "note": "lib/serviceColor.ts PIN_COLORS. Categorical: map pins and matching blips; in the admin only the 8px row dot.",
+        "tonalRamp": [
+          "#000827",
+          "#011f5b",
+          "#023896",
+          "#1056d0",
+          "#367af8",
+          "#72a4fc",
+          "#accafe",
+          "#e6efff"
+        ]
       },
       "service-rail": {
         "role": "tertiary",
-        "displayName": "Rail Rust",
+        "displayName": "Service Rail",
         "canonical": "#8b5034",
-        "note": "Map only."
+        "layer": 1,
+        "note": "lib/serviceColor.ts PIN_COLORS. Categorical: map pins and matching blips; in the admin only the 8px row dot.",
+        "tonalRamp": [
+          "#190500",
+          "#401701",
+          "#673013",
+          "#8b5034",
+          "#af7154",
+          "#d49376",
+          "#fbb798",
+          "#feeae0"
+        ]
       },
       "service-ham": {
         "role": "tertiary",
-        "displayName": "Ham Pink",
+        "displayName": "Service Ham",
         "canonical": "#ec4e89",
-        "note": "Map only."
+        "layer": 1,
+        "note": "lib/serviceColor.ts PIN_COLORS. Categorical: map pins and matching blips; in the admin only the 8px row dot.",
+        "tonalRamp": [
+          "#1d0009",
+          "#490322",
+          "#7a093d",
+          "#b2015a",
+          "#da3c7a",
+          "#fc6d9d",
+          "#ffafc5",
+          "#fee8ed"
+        ]
       },
       "service-gmrs": {
         "role": "tertiary",
-        "displayName": "GMRS Green",
+        "displayName": "Service GMRS",
         "canonical": "#1fa84c",
-        "note": "Map only."
+        "layer": 1,
+        "note": "lib/serviceColor.ts PIN_COLORS. Categorical: map pins and matching blips; in the admin only the 8px row dot.",
+        "tonalRamp": [
+          "#001003",
+          "#022e0f",
+          "#075020",
+          "#107532",
+          "#009d41",
+          "#43c264",
+          "#6de788",
+          "#c8ffd0"
+        ]
       },
       "service-business": {
         "role": "tertiary",
-        "displayName": "Business Violet",
+        "displayName": "Service Business",
         "canonical": "#6d28d9",
-        "note": "Map only."
+        "layer": 1,
+        "note": "lib/serviceColor.ts PIN_COLORS. Categorical: map pins and matching blips; in the admin only the 8px row dot.",
+        "tonalRamp": [
+          "#0f002a",
+          "#2c0263",
+          "#4d05a2",
+          "#6e29da",
+          "#8c59fc",
+          "#a991fb",
+          "#cabffd",
+          "#eeecff"
+        ]
       },
       "service-marine": {
         "role": "tertiary",
-        "displayName": "Marine Cyan",
+        "displayName": "Service Marine",
         "canonical": "#0faec0",
-        "note": "Map only."
+        "layer": 1,
+        "note": "lib/serviceColor.ts PIN_COLORS. Categorical: map pins and matching blips; in the admin only the 8px row dot.",
+        "tonalRamp": [
+          "#000e11",
+          "#022b30",
+          "#064b53",
+          "#0f6e79",
+          "#1893a1",
+          "#28b9cb",
+          "#5bdef1",
+          "#ccf8ff"
+        ]
       },
       "service-weather": {
         "role": "tertiary",
-        "displayName": "Weather Gold",
+        "displayName": "Service Weather",
         "canonical": "#f4b315",
-        "note": "Map only."
+        "layer": 1,
+        "note": "lib/serviceColor.ts PIN_COLORS. Categorical: map pins and matching blips; in the admin only the 8px row dot.",
+        "tonalRamp": [
+          "#120900",
+          "#322201",
+          "#563d04",
+          "#7d5b0b",
+          "#a67a14",
+          "#d39a0a",
+          "#febd2a",
+          "#ffeccb"
+        ]
       },
       "service-publicsafety": {
         "role": "tertiary",
-        "displayName": "Public Safety Red",
+        "displayName": "Service Public Safety",
         "canonical": "#e5383b",
-        "note": "Map only."
+        "layer": 1,
+        "note": "lib/serviceColor.ts PIN_COLORS. Categorical: map pins and matching blips; in the admin only the 8px row dot.",
+        "tonalRamp": [
+          "#1f0001",
+          "#4d0006",
+          "#80000f",
+          "#b7031c",
+          "#e5383b",
+          "#fe746c",
+          "#fdb3ac",
+          "#ffe9e6"
+        ]
+      },
+      "service-unknown": {
+        "role": "tertiary",
+        "displayName": "Service Unknown",
+        "canonical": "#747b8a",
+        "layer": 1,
+        "note": "lib/serviceColor.ts PIN_COLORS. Categorical: map pins and matching blips; in the admin only the 8px row dot.",
+        "tonalRamp": [
+          "#070b16",
+          "#1f2531",
+          "#3c424f",
+          "#5b6170",
+          "#7b8292",
+          "#9ea5b5",
+          "#c2c9da",
+          "#e7efff"
+        ]
       },
       "position-unknown": {
         "role": "tertiary",
         "displayName": "Position Unknown",
         "canonical": "#4a7c7e",
-        "note": "A hit with no honest map position. Deliberately distinct from every service colour — uncertain geography must never look located."
-      },
-      "shadow-ink": {
-        "role": "neutral",
-        "displayName": "Shadow Ink",
-        "canonical": "#000000",
-        "note": "Depth only, 28-85% alpha: every shadow plus the drawer scrim. Never a surface colour."
-      },
-      "backdrop-ink": {
-        "role": "neutral",
-        "displayName": "Backdrop Ink",
-        "canonical": "#080a0d",
-        "note": "78% behind the modal dialog."
-      },
-      "overmap-plate": {
-        "role": "neutral",
-        "displayName": "Over-map Plate",
-        "canonical": "#0a0d12",
-        "note": "70% behind aircraft callsign chips, where the ground is arbitrary map imagery."
+        "layer": 1,
+        "note": "A hit with no honest map position (serviceColor.ts UNKNOWN_POSITION_COLOR). Distinct from every service colour on purpose.",
+        "tonalRamp": [
+          "#000e0f",
+          "#012b2d",
+          "#164b4d",
+          "#396b6d",
+          "#5a8d8f",
+          "#7db0b2",
+          "#a0d4d6",
+          "#c5fafc"
+        ]
       },
       "wall-ground": {
         "role": "neutral",
         "displayName": "Wall Ground",
         "canonical": "#05070a",
-        "note": "Ambient canvas skin. Deliberately darker than Night Ground — an unlit room, not a panel."
+        "layer": 1,
+        "note": "wall.css canvas ground — an unlit room, darker than Night Ground.",
+        "tonalRamp": [
+          "#090b0f",
+          "#222529",
+          "#3f4247",
+          "#5e6266",
+          "#7f8388",
+          "#a1a5ab",
+          "#c5cacf",
+          "#eaeff4"
+        ]
       },
       "art-ground": {
         "role": "neutral",
         "displayName": "Art Ground",
         "canonical": "#04060a",
-        "note": "Outer stop of the art surface's radial ground."
+        "layer": 1,
+        "note": "art.css radial ground, outer stop.",
+        "tonalRamp": [
+          "#080b10",
+          "#22252b",
+          "#3e4248",
+          "#5d6268",
+          "#7e838a",
+          "#a1a5ad",
+          "#c5c9d1",
+          "#eaeff7"
+        ]
       },
       "art-ground-mid": {
         "role": "neutral",
         "displayName": "Art Ground Mid",
         "canonical": "#070a10",
-        "note": "Middle stop."
+        "layer": 1,
+        "note": "art.css radial ground, middle stop.",
+        "tonalRamp": [
+          "#080b11",
+          "#21252c",
+          "#3e424a",
+          "#5d616a",
+          "#7e838b",
+          "#a0a5ae",
+          "#c4c9d3",
+          "#e9eff8"
+        ]
       },
       "art-ground-lift": {
         "role": "neutral",
         "displayName": "Art Ground Lift",
         "canonical": "#0b0f16",
-        "note": "Centre stop — the faint lift under the sediment field."
+        "layer": 1,
+        "note": "art.css radial ground, centre stop.",
+        "tonalRamp": [
+          "#080b12",
+          "#21252d",
+          "#3d424b",
+          "#5c616b",
+          "#7d838c",
+          "#9fa5af",
+          "#c3c9d4",
+          "#e9effa"
+        ]
       },
       "storm-tornado": {
         "role": "tertiary",
-        "displayName": "Tornado",
+        "displayName": "Storm Tornado",
         "canonical": "#e01a2b",
-        "note": "NWS convention, externally mandated. Do not restyle toward the Kerchunk palette."
+        "layer": 1,
+        "note": "NWS storm palette (dashboard.css --alert-color). Externally mandated — do not restyle toward the house palette.",
+        "tonalRamp": [
+          "#1f0001",
+          "#4c0207",
+          "#7f0712",
+          "#b51120",
+          "#ea2a34",
+          "#fb766f",
+          "#feb3ac",
+          "#ffe9e6"
+        ]
       },
       "storm-severe": {
         "role": "tertiary",
-        "displayName": "Severe thunderstorm",
+        "displayName": "Storm Severe",
         "canonical": "#f5a623",
-        "note": "NWS convention, externally mandated. Do not restyle toward the Kerchunk palette."
+        "layer": 1,
+        "note": "NWS storm palette (dashboard.css --alert-color). Externally mandated — do not restyle toward the house palette.",
+        "tonalRamp": [
+          "#130900",
+          "#352002",
+          "#5b3a05",
+          "#83570d",
+          "#b07400",
+          "#dd940f",
+          "#ffba5b",
+          "#ffebd3"
+        ]
       },
       "storm-flood": {
         "role": "tertiary",
-        "displayName": "Flood",
+        "displayName": "Storm Flood",
         "canonical": "#15924f",
-        "note": "NWS convention, externally mandated. Do not restyle toward the Kerchunk palette."
+        "layer": 1,
+        "note": "NWS storm palette (dashboard.css --alert-color). Externally mandated — do not restyle toward the house palette.",
+        "tonalRamp": [
+          "#001004",
+          "#012e14",
+          "#045028",
+          "#0b743d",
+          "#249a57",
+          "#51bf78",
+          "#78e49c",
+          "#c8fed6"
+        ]
       },
       "storm-winter": {
         "role": "tertiary",
-        "displayName": "Winter",
+        "displayName": "Storm Winter",
         "canonical": "#d23a9d",
-        "note": "NWS convention, externally mandated. Do not restyle toward the Kerchunk palette."
+        "layer": 1,
+        "note": "NWS storm palette (dashboard.css --alert-color). Externally mandated — do not restyle toward the house palette.",
+        "tonalRamp": [
+          "#1c0011",
+          "#460230",
+          "#750754",
+          "#a8117a",
+          "#d33b9e",
+          "#fc63c2",
+          "#ffabda",
+          "#fee7f3"
+        ]
       },
       "storm-wind": {
         "role": "tertiary",
-        "displayName": "Wind",
+        "displayName": "Storm Wind",
         "canonical": "#c59a2c",
-        "note": "NWS convention, externally mandated. Do not restyle toward the Kerchunk palette."
+        "layer": 1,
+        "note": "NWS storm palette (dashboard.css --alert-color). Externally mandated — do not restyle toward the house palette.",
+        "tonalRamp": [
+          "#110a00",
+          "#302302",
+          "#543e05",
+          "#795c0d",
+          "#a37c00",
+          "#c99e32",
+          "#efc35b",
+          "#ffedc5"
+        ]
       },
       "storm-tropical": {
         "role": "tertiary",
-        "displayName": "Tropical",
+        "displayName": "Storm Tropical",
         "canonical": "#a8327f",
-        "note": "NWS convention, externally mandated. Do not restyle toward the Kerchunk palette."
+        "layer": 1,
+        "note": "NWS storm palette (dashboard.css --alert-color). Externally mandated — do not restyle toward the house palette.",
+        "tonalRamp": [
+          "#1c0011",
+          "#460231",
+          "#750655",
+          "#a02978",
+          "#c64f9a",
+          "#ee73be",
+          "#ffabdb",
+          "#fee7f3"
+        ]
       },
       "storm-fire": {
         "role": "tertiary",
-        "displayName": "Fire",
+        "displayName": "Storm Fire",
         "canonical": "#e8501e",
-        "note": "NWS convention, externally mandated. Do not restyle toward the Kerchunk palette."
+        "layer": 1,
+        "note": "NWS storm palette (dashboard.css --alert-color). Externally mandated — do not restyle toward the house palette.",
+        "tonalRamp": [
+          "#1c0200",
+          "#460f01",
+          "#752003",
+          "#a83308",
+          "#de470f",
+          "#fb7953",
+          "#feb59f",
+          "#ffe9e3"
+        ]
       },
       "storm-civil": {
         "role": "tertiary",
-        "displayName": "Civil emergency",
+        "displayName": "Storm Civil",
         "canonical": "#c8102e",
-        "note": "NWS convention, externally mandated. Do not restyle toward the Kerchunk palette."
+        "layer": 1,
+        "note": "NWS storm palette (dashboard.css --alert-color). Externally mandated — do not restyle toward the house palette.",
+        "tonalRamp": [
+          "#1f0002",
+          "#4d000a",
+          "#800018",
+          "#b70427",
+          "#e43845",
+          "#fd7373",
+          "#fdb3af",
+          "#fee9e7"
+        ]
       },
       "storm-test": {
         "role": "tertiary",
-        "displayName": "Test",
+        "displayName": "Storm Test",
         "canonical": "#5b6b7a",
-        "note": "NWS convention, externally mandated. Do not restyle toward the Kerchunk palette."
+        "layer": 1,
+        "note": "NWS storm palette (dashboard.css --alert-color). Externally mandated — do not restyle toward the house palette.",
+        "tonalRamp": [
+          "#020c17",
+          "#192733",
+          "#354452",
+          "#536372",
+          "#748594",
+          "#96a7b8",
+          "#baccdc",
+          "#e2f1ff"
+        ]
       },
       "storm-on-light": {
         "role": "tertiary",
-        "displayName": "Storm On (light)",
+        "displayName": "Storm On Light",
         "canonical": "#ffffff",
-        "note": "Paired on-colour for a solid storm fill."
+        "layer": 1,
+        "note": "NWS storm on-colour (dashboard.css --alert-on).",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ]
       },
       "storm-on-dark": {
         "role": "tertiary",
-        "displayName": "Storm On (dark)",
+        "displayName": "Storm On Dark",
         "canonical": "#1a1205",
-        "note": "Paired on-colour for a solid storm fill."
+        "layer": 1,
+        "note": "NWS storm on-colour (dashboard.css --alert-on).",
+        "tonalRamp": [
+          "#110a01",
+          "#2c2415",
+          "#4a4131",
+          "#6a6050",
+          "#8b8170",
+          "#aea392",
+          "#d3c8b5",
+          "#f9edda"
+        ]
       },
       "storm-on-test": {
         "role": "tertiary",
-        "displayName": "Storm On (test)",
+        "displayName": "Storm On Test",
         "canonical": "#e8eef3",
-        "note": "Paired on-colour for a solid storm fill."
+        "layer": 1,
+        "note": "NWS storm on-colour (dashboard.css --alert-on).",
+        "tonalRamp": [
+          "#080c0f",
+          "#212629",
+          "#3e4347",
+          "#5d6266",
+          "#7e8388",
+          "#a0a6aa",
+          "#c4cacf",
+          "#e9eff4"
+        ]
       }
     },
     "typographyMeta": {
-      "micro": {
-        "displayName": "Micro",
-        "purpose": "Instrument legends: column headers, eyebrows, chips, badges, unit suffixes. Tracked 0.06em, usually uppercase."
+      "kc-meta": {
+        "displayName": "Meta",
+        "purpose": "Badges, cost pills, slider ends, bottom-tab labels, \"Use default\"."
       },
-      "caption": {
-        "displayName": "Caption",
-        "purpose": "Interface chrome: buttons, nav, hints, card sub-headers."
+      "kc-small": {
+        "displayName": "Small",
+        "purpose": "Hints, row meta, group titles, the LCD meta line, the status line."
       },
-      "dense": {
-        "displayName": "Dense",
-        "purpose": "Table and list body, empty states, error text."
-      },
-      "body": {
+      "kc-body": {
         "displayName": "Body",
-        "purpose": "Prose, inputs, form labels. Paragraphs cap at 48rem (~52ch)."
+        "purpose": "Prose, key labels, inputs."
       },
-      "title": {
-        "displayName": "Title",
-        "purpose": "Card headers and the masthead brand."
+      "kc-row": {
+        "displayName": "Row",
+        "purpose": "Row names and setting labels (500)."
       },
-      "lead": {
+      "kc-lead": {
         "displayName": "Lead",
-        "purpose": "Emphasised inline values: system gauges, insight totals, the now-playing frequency."
+        "purpose": "Vital values, today's totals, sheet titles, triage frequencies (700, tabular)."
       },
-      "heading": {
-        "displayName": "Heading",
-        "purpose": "Drawer and dialog headings."
+      "kc-title": {
+        "displayName": "Title",
+        "purpose": "The one page heading on Tune, Library and System (700)."
       },
-      "display-sm": {
-        "displayName": "Display SM",
-        "purpose": "The live channel name in the admin hero."
+      "kc-lcd-name": {
+        "displayName": "LCD name",
+        "purpose": "The channel name on the glass, in Glass Text."
       },
-      "display": {
-        "displayName": "Display",
-        "purpose": "Stat-tile values."
+      "kc-lcd-freq": {
+        "displayName": "LCD frequency",
+        "purpose": "The frequency on the glass — the largest thing in the admin (800, tabular, soft glow)."
       },
-      "display-lg": {
-        "displayName": "Display LG",
-        "purpose": "The drawer's frequency — the largest thing in the admin."
+      "kiosk-meta": {
+        "displayName": "Kiosk meta",
+        "purpose": "Ambient: dB readout, log heading, boot phase."
       },
-      "page-title": {
-        "displayName": "Page Title",
-        "purpose": "Admin page titles, one per page. Clamped to viewport width — off the fixed ramp on purpose."
+      "kiosk-body": {
+        "displayName": "Kiosk body",
+        "purpose": "Ambient: log rows, bank chips, hints, badges."
+      },
+      "kiosk-label": {
+        "displayName": "Kiosk label",
+        "purpose": "Ambient: map-stage secondary labels."
+      },
+      "kiosk-alert": {
+        "displayName": "Kiosk alert",
+        "purpose": "Ambient: alert banner text, weather block."
+      },
+      "kiosk-status": {
+        "displayName": "Kiosk status",
+        "purpose": "Ambient: the ACTIVE label, map-stage weather."
+      },
+      "kiosk-scan": {
+        "displayName": "Kiosk scan",
+        "purpose": "Ambient: SCANNING / RETUNING / error copy."
+      },
+      "kiosk-value": {
+        "displayName": "Kiosk value",
+        "purpose": "Ambient: temperature, map-stage frequency, counties."
+      },
+      "kiosk-headline": {
+        "displayName": "Kiosk headline",
+        "purpose": "Ambient: classic SCANNING, WARMING UP."
+      },
+      "kiosk-alert-lg": {
+        "displayName": "Kiosk alert LG",
+        "purpose": "Ambient: map-stage alert tag and temperature."
+      },
+      "kiosk-clock": {
+        "displayName": "Kiosk clock",
+        "purpose": "Ambient: clock, classic layout."
+      },
+      "kiosk-alert-xl": {
+        "displayName": "Kiosk alert XL",
+        "purpose": "Ambient: warning-tier alert tag — the loudest text in the system."
+      },
+      "kiosk-clock-lg": {
+        "displayName": "Kiosk clock LG",
+        "purpose": "Ambient: clock, map-stage."
       },
       "kiosk-display": {
-        "displayName": "Kiosk Display",
-        "purpose": "The kiosk's live channel name, read from across a room. Kiosk only."
+        "displayName": "Kiosk display",
+        "purpose": "Ambient: the live channel name (classic band), tracks viewport width."
       },
-      "admin-body": {
-        "displayName": "Admin Body",
-        "purpose": "Faceplate body copy — Schibsted Grotesk, sentence case, no all-caps labels. Admin layer only."
+      "kiosk-display-map": {
+        "displayName": "Kiosk display (map)",
+        "purpose": "Ambient: the live channel name on the map stage."
+      },
+      "kiosk-freq": {
+        "displayName": "Kiosk frequency",
+        "purpose": "Ambient: the live frequency, tracks viewport width."
       }
     },
     "shadows": [
       {
-        "name": "floating-panel",
-        "value": "-18px 0 50px rgb(0 0 0 / 0.5)",
-        "purpose": "The channel drawer sliding over the page."
+        "name": "kc-key-shadow",
+        "value": "0 2px 0 #0009, inset 0 1px 0 #ffffff12",
+        "purpose": "Admin: the one tactile shadow — keys, the current segment, the speaker key. Disabled keys drop it."
       },
       {
-        "name": "menu",
-        "value": "0 12px 36px rgb(0 0 0 / 0.5)",
-        "purpose": "The bank overflow menu."
+        "name": "kc-key-shadow-pressed",
+        "value": "0 1px 0 #0009",
+        "purpose": "Admin: a key while pressed (with a 1px translateY)."
       },
       {
-        "name": "modal",
-        "value": "0 24px 80px rgb(0 0 0 / 0.65)",
-        "purpose": "The confirm dialog."
+        "name": "kc-lift-shadow",
+        "value": "0 6px 20px #000a",
+        "purpose": "Admin: things floating above the page — the toast and the triage bulk bar."
+      },
+      {
+        "name": "kc-well-shadow",
+        "value": "inset 0 0 0 1px var(--kc-well-edge), inset 0 8px 18px #0008",
+        "purpose": "Admin: the LCD's recessed bezel. The one recessed surface."
+      },
+      {
+        "name": "kc-backdrop",
+        "value": "#000a",
+        "purpose": "Admin: flat scrim behind a modal sheet or the confirm dialog. No blur."
+      },
+      {
+        "name": "kc-lcd-glow",
+        "value": "0 0 12px color-mix(in srgb, var(--kc-glass) 35%, transparent)",
+        "purpose": "Admin's one glow: the LCD frequency (text-shadow)."
       },
       {
         "name": "over-map-card",
-        "value": "0 8px 28px rgb(0 0 0 / 0.45)",
-        "purpose": "Kiosk cards floating on the live map, where the background is arbitrary and the shadow is what keeps the card edge findable."
+        "value": "0 8px 28px rgba(0, 0, 0, 0.45)",
+        "purpose": "Ambient: kiosk cards over the live map, where the background is arbitrary and the shadow keeps the edge findable."
+      },
+      {
+        "name": "over-map-panel",
+        "value": "0 10px 34px rgba(0, 0, 0, 0.55)",
+        "purpose": "Ambient: map-stage panels and the weather alert card."
       },
       {
         "name": "live-tag-glow",
-        "value": "0 0 18px color-mix(in srgb, #ff6b35 25%, transparent)",
-        "purpose": "The system's only glow: the kiosk's live channel name. A glowing thing reads as 'on' from further away than a bright thing does."
+        "value": "0 0 18px color-mix(in srgb, var(--spark) 25%, transparent)",
+        "purpose": "Ambient's one glow: the kiosk's live channel name (text-shadow)."
       }
     ],
     "motion": [
       {
-        "name": "drawer-slide",
-        "value": "transform 0.22s cubic-bezier(0.2, 0.8, 0.3, 1)",
-        "purpose": "The channel drawer entering from the right. Quieted to 1ms under prefers-reduced-motion."
+        "name": "kc-key-press",
+        "value": "transform 60ms ease",
+        "purpose": "Admin: a key depresses 1px on :active."
       },
       {
-        "name": "control-state",
-        "value": "160ms ease",
-        "purpose": "Button border/colour/background feedback. Colour is information, so it survives prefers-reduced-motion."
+        "name": "kc-sheet-in",
+        "value": "160ms ease-out (translateY(24px) + fade)",
+        "purpose": "Admin: a modal sheet rising. Off under prefers-reduced-motion."
+      },
+      {
+        "name": "kc-toggle",
+        "value": "120ms ease",
+        "purpose": "Admin: switch thumb slide and disclosure chevron turn."
       },
       {
         "name": "meter-glide",
         "value": "width 0.25s linear",
-        "purpose": "Signal meter fill tracking dB."
+        "purpose": "Ambient: signal meter fill tracking dB."
       },
       {
         "name": "breathe",
         "value": "1.6s ease-in-out infinite",
-        "purpose": "The ACTIVE dot on the kiosk — the radio is receiving right now."
-      },
-      {
-        "name": "sweep",
-        "value": "2.4s ease-in-out infinite",
-        "purpose": "Idle scanning bar — the radio is working, not stuck."
+        "purpose": "Ambient: the ACTIVE dot on the kiosk — the radio is receiving right now."
       },
       {
         "name": "alert-pulse",
         "value": "1.6s ease-in-out infinite",
-        "purpose": "Weather alert card. Watch and warning tiers only; statement tier never pulses."
+        "purpose": "Ambient: weather alert card, watch and warning tiers only; statements never pulse."
       }
     ],
     "breakpoints": [
       {
-        "name": "phone",
-        "value": "699.98px",
-        "purpose": "Bottom tab bar, single-column forms, compact headers, triage actions move into the drawer."
-      },
-      {
-        "name": "tablet",
+        "name": "desk",
         "value": "900px",
-        "purpose": "Nav rail becomes a horizontal strip."
+        "purpose": "Admin: below it the tabs become a bottom tab bar, sheets are bottom sheets and Radio is one column; at or above it the top bar, two-column Radio, four-across vitals and the channel-detail pane (PANE_MIN_WIDTH_PX)."
       },
       {
-        "name": "laptop",
-        "value": "1100px",
-        "purpose": "Stat tiles collapse from 4+1 to two columns."
+        "name": "keys-two-up",
+        "value": "620px (container)",
+        "purpose": "Admin: the Radio key grid drops from four to two across when its column can't fit \"Pause 30 min\" on one line."
       }
     ],
     "surfaces": [
       {
         "name": "admin",
         "mode": "operate",
-        "note": "Web admin from any device. Five hash routes behind a nav rail. Phone-first ergonomics; the operator uses it standing next to the radio."
+        "note": "The Faceplate: four tabs (Radio · Tune · Library · System), Radio home. The scanner's front panel from any device; phone-first ergonomics widening to a desk layout at 900px. tokens.css layer 2 only."
       },
       {
         "name": "dashboard",
@@ -539,194 +1240,240 @@
   },
   "components": [
     {
-      "name": "Primary Button",
+      "name": "Primary Key",
       "kind": "button",
-      "refersTo": "button-primary",
-      "description": "The one filled button on a screen. Save, add, confirm.",
-      "html": "<button class=\"ds-btn-primary\">Save scanning</button>",
-      "css": ".ds-btn-primary { min-height: 2.35rem; padding: 0.45rem 0.75rem; font-family: Inter, sans-serif; font-size: 0.78rem; font-weight: 700; letter-spacing: 0.02em; color: #1c1f26; background: #ff6b35; border: 1px solid #ff6b35; border-radius: 4px; cursor: pointer; transition: border-color 160ms ease, color 160ms ease, background 160ms ease; } .ds-btn-primary:hover { background: #f9c574; border-color: #f9c574; } .ds-btn-primary:focus-visible { outline: 2px solid #f9c574; outline-offset: 2px; } .ds-btn-primary:active { transform: translateY(1px); }"
+      "refersTo": "key-primary",
+      "description": "The one sea-glass key on a screen — Listen here, Add channel, the confirm default.",
+      "html": "<button type=\"button\" class=\"ds-key ds-key--primary\"><span>Listen here</span></button>",
+      "css": ".ds-key { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 10px 14px; border: 0; border-radius: 10px; background: #262d35; color: #e6e9ee; box-shadow: 0 2px 0 #0009, inset 0 1px 0 #ffffff12; font: 600 0.94rem 'Schibsted Grotesk', system-ui, -apple-system, 'Segoe UI', sans-serif; cursor: pointer; transition: transform 60ms ease; } .ds-key:active { transform: translateY(1px); box-shadow: 0 1px 0 #0009; } .ds-key:focus-visible { outline: 2px solid #5fd4c3; outline-offset: 2px; } .ds-key:disabled { opacity: 0.45; box-shadow: none; cursor: not-allowed; } .ds-key--primary { background: #5fd4c3; color: #08231f; }"
     },
     {
-      "name": "Default Button",
+      "name": "Plain Key",
       "kind": "button",
-      "refersTo": "button-default",
-      "description": "The neutral action. Recessed fill, Steel edge at 3:1 so it is findable at rest.",
-      "html": "<button class=\"ds-btn-default\">Skip transmission</button>",
-      "css": ".ds-btn-default { min-height: 2.35rem; padding: 0.45rem 0.75rem; font-family: Inter, sans-serif; font-size: 0.78rem; font-weight: 600; letter-spacing: 0.02em; color: #f7f8f9; background: #1c1f26; border: 1px solid #747b8a; border-radius: 4px; cursor: pointer; transition: border-color 160ms ease, background 160ms ease; } .ds-btn-default:hover { border-color: #b8bcc5; background: color-mix(in srgb, #f7f8f9 8%, #1c1f26); } .ds-btn-default:focus-visible { outline: 2px solid #f9c574; outline-offset: 2px; }"
+      "refersTo": "key",
+      "description": "The neutral key: a tactile face with the one key shadow. A pressed toggle key turns hay.",
+      "html": "<button type=\"button\" class=\"ds-key\"><span>Skip</span></button> <button type=\"button\" class=\"ds-key\" aria-pressed=\"true\"><span>Pause 30 min</span></button>",
+      "css": ".ds-key { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 10px 14px; border: 0; border-radius: 10px; background: #262d35; color: #e6e9ee; box-shadow: 0 2px 0 #0009, inset 0 1px 0 #ffffff12; font: 600 0.94rem 'Schibsted Grotesk', system-ui, -apple-system, 'Segoe UI', sans-serif; cursor: pointer; transition: transform 60ms ease; } .ds-key:active { transform: translateY(1px); box-shadow: 0 1px 0 #0009; } .ds-key:focus-visible { outline: 2px solid #5fd4c3; outline-offset: 2px; } .ds-key:disabled { opacity: 0.45; box-shadow: none; cursor: not-allowed; } .ds-key[aria-pressed=\"true\"] { color: #e8c37a; }"
     },
     {
-      "name": "Danger Button",
+      "name": "Danger Key",
       "kind": "button",
-      "refersTo": "button-danger",
-      "description": "Irreversible or service-affecting: reboot, shut down, delete, lock out.",
-      "html": "<button class=\"ds-btn-danger\">Reboot appliance</button>",
-      "css": ".ds-btn-danger { min-height: 2.35rem; padding: 0.45rem 0.75rem; font-family: Inter, sans-serif; font-size: 0.78rem; font-weight: 600; letter-spacing: 0.02em; color: #f17d7b; background: #1c1f26; border: 1px solid color-mix(in srgb, #f17d7b 70%, transparent); border-radius: 4px; cursor: pointer; transition: border-color 160ms ease, background 160ms ease; } .ds-btn-danger:hover { background: color-mix(in srgb, #f17d7b 12%, #1c1f26); } .ds-btn-danger:focus-visible { outline: 2px solid #f9c574; outline-offset: 2px; }"
+      "refersTo": "key-danger",
+      "description": "Destructive: coral text on the plain face, never a coral slab. Always behind a confirm or offering Undo.",
+      "html": "<button type=\"button\" class=\"ds-key ds-key--danger\"><span>Lock out</span></button>",
+      "css": ".ds-key { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 10px 14px; border: 0; border-radius: 10px; background: #262d35; color: #e6e9ee; box-shadow: 0 2px 0 #0009, inset 0 1px 0 #ffffff12; font: 600 0.94rem 'Schibsted Grotesk', system-ui, -apple-system, 'Segoe UI', sans-serif; cursor: pointer; transition: transform 60ms ease; } .ds-key:active { transform: translateY(1px); box-shadow: 0 1px 0 #0009; } .ds-key:focus-visible { outline: 2px solid #5fd4c3; outline-offset: 2px; } .ds-key:disabled { opacity: 0.45; box-shadow: none; cursor: not-allowed; } .ds-key--danger { color: #f29b8f; }"
     },
     {
-      "name": "Icon Button",
-      "kind": "button",
-      "refersTo": "button-default",
-      "description": "No resting border or fill — the recognisable glyph in its consequence colour identifies the control. Edge appears on hover and focus.",
-      "html": "<button class=\"ds-icon-btn\" aria-label=\"Listen — audition this discovery\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M3 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a9 9 0 0 1 18 0v7a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3\"/></svg></button>",
-      "css": ".ds-icon-btn { padding: 0.28rem; margin: 0 0.12rem; line-height: 0; color: #87a7a9; background: none; border: 1px solid transparent; border-radius: 4px; cursor: pointer; transition: border-color 160ms ease, background 160ms ease; } .ds-icon-btn svg { width: 15px; height: 15px; display: block; } .ds-icon-btn:hover { background: color-mix(in srgb, #f7f8f9 8%, transparent); border-color: #747b8a; } .ds-icon-btn:focus-visible { outline: 2px solid #f9c574; outline-offset: 2px; }"
+      "name": "LCD",
+      "kind": "custom",
+      "refersTo": "lcd",
+      "description": "Signature component. Glow on glass: a recessed well whose meta line, channel name and four-decimal frequency glow sea-glass. Shows what is live.",
+      "html": "<div class=\"ds-lcd\" data-state=\"live\"><div class=\"ds-lcd__meta\"><span><span class=\"ds-meter\" aria-hidden=\"true\"><i class=\"on\"></i><i class=\"on\"></i><i class=\"on\"></i><i></i></span>Live · FM · Fire · Kansas City</span><span>−41 dB</span></div><div class=\"ds-lcd__name\">KCFD Dispatch</div><div class=\"ds-lcd__freq\">154.1300<small>MHz</small></div></div>",
+      "css": ".ds-lcd { max-width: 26rem; background: #0c1113; border-radius: 14px; padding: 16px 18px 14px; box-shadow: inset 0 0 0 1px #2a3a3a, inset 0 8px 18px #0008; font-family: 'Schibsted Grotesk', system-ui, -apple-system, 'Segoe UI', sans-serif; } .ds-lcd__meta { display: flex; justify-content: space-between; align-items: center; color: #5fd4c3; opacity: 0.75; font-size: 0.82rem; font-weight: 600; } .ds-lcd__meta > span { display: inline-flex; align-items: center; gap: 8px; } .ds-lcd__name { color: #d9f5f0; font-size: 1.5rem; font-weight: 700; line-height: 1.15; margin: 8px 0 4px; } .ds-lcd__freq { color: #5fd4c3; font-size: 2.6rem; font-weight: 800; line-height: 1; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; text-shadow: 0 0 12px color-mix(in srgb, #5fd4c3 35%, transparent); } .ds-lcd__freq small { font-size: 0.38em; font-weight: 600; letter-spacing: 0; margin-left: 6px; } .ds-meter { display: inline-flex; gap: 2px; align-items: flex-end; height: 12px; } .ds-meter i { width: 3px; background: currentColor; opacity: 0.25; border-radius: 1px; } .ds-meter i:nth-child(1) { height: 4px; } .ds-meter i:nth-child(2) { height: 7px; } .ds-meter i:nth-child(3) { height: 10px; } .ds-meter i:nth-child(4) { height: 12px; } .ds-meter i.on { opacity: 1; }"
     },
     {
-      "name": "Settings Field Row",
+      "name": "Channel List (Library)",
+      "kind": "card",
+      "refersTo": "group",
+      "description": "Library's channel list: one raised, borderless group of rows separated by the row line only. Service colour appears only as the 8px row dot; the meta line is tabular (frequency · mode · location).",
+      "html": "<ul class=\"ds-list\" aria-label=\"Channels\"><li class=\"ds-lrow\"><a class=\"ds-lrow__open\" href=\"#\"><i class=\"ds-dot\" style=\"background:#e5383b\"></i><span><span class=\"ds-lrow__name\">KCFD Dispatch</span><span class=\"ds-lrow__meta\">154.1300 · FM · Kansas City</span></span></a></li><li class=\"ds-lrow\"><a class=\"ds-lrow__open\" href=\"#\"><i class=\"ds-dot\" style=\"background:#8b5034\"></i><span><span class=\"ds-lrow__name\">BNSF Road</span><span class=\"ds-lrow__meta\">160.9200 · FM · Argentine Yard</span></span></a></li></ul>",
+      "css": ".ds-list { list-style: none; margin: 0; padding: 0; max-width: 26rem; background: #20262d; border-radius: 14px; overflow: hidden; font-family: 'Schibsted Grotesk', system-ui, -apple-system, 'Segoe UI', sans-serif; color: #e6e9ee; } .ds-lrow { border-top: 1px solid #232a31; } .ds-lrow:first-child { border-top: 0; } .ds-lrow__open { display: flex; align-items: center; gap: 10px; min-height: 44px; box-sizing: border-box; padding: 10px 16px; color: inherit; text-decoration: none; } .ds-lrow__open:hover .ds-lrow__name { color: #d9f5f0; } .ds-lrow__open:focus-visible { outline: 2px solid #5fd4c3; outline-offset: -2px; } .ds-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; } .ds-lrow__name { display: block; font-weight: 500; font-size: 1rem; } .ds-lrow__meta { display: block; color: #8d96a3; font-size: 0.82rem; font-variant-numeric: tabular-nums; }"
+    },
+    {
+      "name": "Switch Row",
       "kind": "input",
-      "refersTo": "input-field",
-      "description": "Label left, control right, helper text under the label. The recessed fill plus Steel edge is what makes a twenty-field form readable at rest.",
-      "html": "<label class=\"ds-field\"><span><b>Squelch open</b><small>Signal level above the noise floor</small></span><span class=\"ds-field-unit\"><input type=\"number\" value=\"9\"><b>dB</b></span></label>",
-      "css": ".ds-field { display: grid; grid-template-columns: minmax(12rem, 1fr) minmax(8rem, 1fr); align-items: center; gap: 1rem; padding: 0.55rem 0; border-bottom: 1px solid #4d515c; font-family: Inter, sans-serif; } .ds-field > span:first-child { display: grid; gap: 0.15rem; color: #f7f8f9; } .ds-field b { font-size: 0.88rem; font-weight: 400; } .ds-field small { color: #9299a5; font-size: 0.68rem; line-height: 1.35; } .ds-field-unit { display: flex; align-items: center; gap: 0.4rem; } .ds-field-unit b { min-width: 2rem; color: #9299a5; font-size: 0.68rem; font-weight: 500; } .ds-field input { box-sizing: border-box; width: 100%; padding: 0.38rem 0.55rem; font-family: inherit; font-size: 0.92rem; color: #f7f8f9; background: #1c1f26; border: 1px solid #747b8a; border-radius: 4px; } .ds-field input:focus { border-color: #ff6b35; outline: none; } .ds-field input:focus-visible { outline: 2px solid #f9c574; outline-offset: 2px; }"
+      "refersTo": "group",
+      "description": "A labelled on/off switch (role=switch). Off: key-face track, mute thumb. On: sea-glass track, glass-ink thumb. The whole row is the target.",
+      "html": "<label class=\"ds-switchRow\"><span>Remote listening <small>Stream the speaker to this browser — restarts scanning</small></span><input type=\"checkbox\" role=\"switch\" checked></label>",
+      "css": ".ds-switchRow { display: flex; justify-content: space-between; align-items: center; gap: 12px; max-width: 26rem; padding: 12px 16px; background: #20262d; border-radius: 14px; color: #e6e9ee; font: 400 0.94rem 'Schibsted Grotesk', system-ui, -apple-system, 'Segoe UI', sans-serif; cursor: pointer; } .ds-switchRow small { display: block; color: #8d96a3; font-size: 0.82rem; } .ds-switchRow input { appearance: none; width: 42px; height: 26px; border-radius: 13px; background: #262d35; position: relative; cursor: pointer; flex: none; margin: 0; } .ds-switchRow input::after { content: ''; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #8d96a3; transition: transform 120ms ease; } .ds-switchRow input:checked { background: #5fd4c3; } .ds-switchRow input:checked::after { transform: translateX(16px); background: #08231f; } .ds-switchRow input:focus-visible { outline: 2px solid #5fd4c3; outline-offset: 2px; }"
     },
     {
-      "name": "Nav Rail Item",
-      "kind": "nav",
-      "refersTo": "nav-item-active",
-      "description": "Icon plus a two-line label/description. Active takes panel fill, a panel edge and Signal Amber text.",
-      "html": "<a class=\"ds-nav-item ds-nav-active\" href=\"#/system\" aria-current=\"page\"><span class=\"ds-nav-ico\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z\"/></svg></span><span class=\"ds-nav-copy\"><b>System</b><small>Appliance health and controls</small></span></a>",
-      "css": ".ds-nav-item { display: flex; align-items: center; gap: 0.65rem; min-height: 3.35rem; padding: 0.6rem 0.75rem; font-family: Inter, sans-serif; font-weight: 600; font-size: 0.8rem; color: #9299a5; text-decoration: none; border: 1px solid transparent; border-radius: 8px; } .ds-nav-item:hover { color: #f7f8f9; background: #2b303b; } .ds-nav-active { color: #ff6b35; background: #2b303b; border-color: #42454e; } .ds-nav-ico { color: #b8bcc5; } .ds-nav-ico svg { width: 1.15rem; height: 1.15rem; display: block; } .ds-nav-copy { display: grid; gap: 0.1rem; } .ds-nav-copy b { color: inherit; font-size: 0.86rem; letter-spacing: 0.02em; } .ds-nav-copy small { color: #9299a5; font-size: 0.68rem; font-weight: 400; } .ds-nav-active .ds-nav-copy small { color: #b8bcc5; } .ds-nav-item:focus-visible { outline: 2px solid #f9c574; outline-offset: 2px; }"
+      "name": "Slider with Named Ends",
+      "kind": "input",
+      "refersTo": "group",
+      "description": "Label and hint, an exact typed value in sea-glass, the range, and plain-language ends. Commits on release.",
+      "html": "<div class=\"ds-slider\"><div class=\"ds-slider__head\"><div><label for=\"dsS\">Target loudness</label><small>Where every transmission is steered</small></div><span class=\"ds-slider__val\"><input type=\"number\" value=\"-18\" aria-label=\"Target loudness, exact value\"><b>dBFS</b></span></div><input id=\"dsS\" type=\"range\" min=\"-40\" max=\"-3\" step=\"1\" value=\"-18\"><div class=\"ds-slider__ends\" aria-hidden=\"true\"><span>Quieter</span><span>Louder</span></div></div>",
+      "css": ".ds-slider { max-width: 26rem; padding: 3px 16px 4px; background: #20262d; border-radius: 14px; color: #e6e9ee; font-family: 'Schibsted Grotesk', system-ui, -apple-system, 'Segoe UI', sans-serif; } .ds-slider__head { display: flex; justify-content: space-between; align-items: center; gap: 12px; line-height: 1.3; } .ds-slider__head label { font-size: 1rem; font-weight: 500; } .ds-slider__head small { display: block; color: #8d96a3; font-size: 0.82rem; } .ds-slider__val { display: inline-flex; align-items: center; gap: 6px; color: #a4acb7; font-size: 0.82rem; } .ds-slider__val input { width: 5.5em; min-height: 40px; padding: 4px 8px; border: 0; border-radius: 10px; background: #262d35; color: #5fd4c3; font: 600 0.94rem 'Schibsted Grotesk', system-ui, -apple-system, 'Segoe UI', sans-serif; text-align: right; font-variant-numeric: tabular-nums; } .ds-slider input[type=range] { display: block; width: 100%; min-height: 40px; margin: 0; accent-color: #5fd4c3; } .ds-slider__ends { display: flex; justify-content: space-between; margin-top: -12px; color: #8d96a3; font-size: 0.78rem; pointer-events: none; } .ds-slider input:focus-visible { outline: 2px solid #5fd4c3; outline-offset: 2px; }"
     },
     {
-      "name": "Verdict Chip",
+      "name": "Filter Chips",
       "kind": "chip",
       "refersTo": "chip",
-      "description": "One chip recipe: size and shape identical everywhere, only colour varies. OUTBAND — a frequency matching no known allocation — is the loud case.",
-      "html": "<span class=\"ds-chip\">97</span> <span class=\"ds-chip ds-chip-hear\">HEAR</span> <span class=\"ds-chip ds-chip-outband\">OUTBAND</span>",
-      "css": ".ds-chip { display: inline-block; padding: 0.08em 0.45em; margin-left: 0.45em; font-family: Inter, sans-serif; font-size: 0.7rem; font-weight: 600; letter-spacing: 0.04em; white-space: nowrap; color: #b8bcc5; border: 1px solid #42454e; border-radius: 4px; } .ds-chip-hear { color: #9ac35d; border-color: #9ac35d; } .ds-chip-outband { color: #f17d7b; border-color: #f17d7b; font-weight: 700; }"
+      "description": "Pill toggles (aria-pressed) that filter; pressed is a sea-glass tint. The dashed chip is the one add/manage chip.",
+      "html": "<div class=\"ds-chips\"><button type=\"button\" class=\"ds-chip\" aria-pressed=\"true\">All <b>102</b></button><button type=\"button\" class=\"ds-chip\" aria-pressed=\"false\">Rail <b>14</b></button><button type=\"button\" class=\"ds-chip ds-chip--dashed\">Manage banks</button></div>",
+      "css": ".ds-chips { display: flex; gap: 6px; flex-wrap: wrap; } .ds-chip { min-height: 40px; padding: 0 14px; border-radius: 999px; border: 0; background: #20262d; color: #a4acb7; font: 500 0.82rem 'Schibsted Grotesk', system-ui, -apple-system, 'Segoe UI', sans-serif; cursor: pointer; } .ds-chip b { font-weight: 600; margin-left: 4px; color: #8d96a3; } .ds-chip[aria-pressed=\"true\"] { background: color-mix(in srgb, #5fd4c3 16%, #20262d); color: #5fd4c3; } .ds-chip[aria-pressed=\"true\"] b { color: inherit; } .ds-chip--dashed { background: none; border: 1px dashed #232a31; } .ds-chip:focus-visible { outline: 2px solid #5fd4c3; outline-offset: 2px; }"
     },
     {
-      "name": "Stat Tile",
+      "name": "Segmented Control",
+      "kind": "nav",
+      "refersTo": "segmented",
+      "description": "A view switch made of links (each view is a route). The current segment is a key face; a count that needs attention wears the hay badge.",
+      "html": "<nav class=\"ds-seg\" aria-label=\"Library view\"><a class=\"ds-seg__item\" href=\"#\" aria-current=\"page\">Channels <b class=\"ds-seg__count\">102</b></a><a class=\"ds-seg__item\" href=\"#\">New <b class=\"ds-seg__count ds-badge\">3</b></a></nav>",
+      "css": ".ds-seg { display: flex; max-width: 28rem; background: #20262d; border-radius: 13px; padding: 3px; font-family: 'Schibsted Grotesk', system-ui, -apple-system, 'Segoe UI', sans-serif; } .ds-seg__item { flex: 1; text-align: center; padding: 10px 0; min-height: 40px; box-sizing: border-box; border-radius: 10px; color: #a4acb7; font-weight: 600; text-decoration: none; } .ds-seg__item[aria-current=\"page\"] { background: #262d35; color: #e6e9ee; box-shadow: 0 2px 0 #0009, inset 0 1px 0 #ffffff12; } .ds-seg__item:focus-visible { outline: 2px solid #5fd4c3; outline-offset: 2px; } .ds-seg__count { font-weight: 600; color: #8d96a3; margin-left: 4px; } .ds-badge { background: #e8c37a; color: #2a1d05; border-radius: 999px; padding: 0 7px; font-size: 0.78rem; font-weight: 700; } .ds-seg__count.ds-badge { color: #2a1d05; }"
+    },
+    {
+      "name": "Vital with Sparkline",
       "kind": "card",
-      "refersTo": "card-panel",
-      "description": "The glance numbers on Overview. Flat plate, hairline edge, Signal Amber value.",
-      "html": "<a class=\"ds-stat-tile\" href=\"#/triage\"><div class=\"ds-stat-label\">Triage queue</div><div class=\"ds-stat-value\">0</div><div class=\"ds-stat-sub\">inbox zero</div></a>",
-      "css": ".ds-stat-tile { display: block; padding: 0.8rem 1rem; font-family: Inter, sans-serif; background: #2b303b; border: 1px solid #42454e; border-radius: 8px; text-decoration: none; } .ds-stat-tile:hover { border-color: #f9c574; } .ds-stat-label { color: #9299a5; font-weight: 600; font-size: 0.68rem; letter-spacing: 0.06em; text-transform: uppercase; } .ds-stat-value { margin: 0.15rem 0; color: #ff6b35; font-size: 1.9rem; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1.2; } .ds-stat-sub { color: #b8bcc5; font-size: 0.75rem; } .ds-stat-tile:focus-visible { outline: 2px solid #f9c574; outline-offset: 2px; }"
-    },
-    {
-      "name": "Signal Meter",
-      "kind": "custom",
-      "refersTo": null,
-      "description": "Signature component. An LED-segment bar: green→amber→red gradient masked by hard stops to punch segment gaps. The boot progress bar uses the same treatment so warm-up and signal read as one instrument.",
-      "html": "<div class=\"ds-meter\"><div class=\"ds-meter-fill\" style=\"width:68%\"></div></div><div class=\"ds-meter-db\">-42.0 dB</div>",
-      "css": ".ds-meter { width: 100%; max-width: 340px; height: 16px; padding: 2px; background: #1c1f26; border: 1px solid #42454e; border-radius: 4px; overflow: hidden; } .ds-meter-fill { height: 100%; background: linear-gradient(90deg, #9ac35d 0 55%, #ff6b35 55% 80%, #f17d7b 80%); transition: width 0.25s linear; -webkit-mask-image: repeating-linear-gradient(90deg, #000 0 8px, transparent 8px 11px); mask-image: repeating-linear-gradient(90deg, #000 0 8px, transparent 8px 11px); } .ds-meter-db { margin-top: 0.45rem; font-family: Inter, sans-serif; font-size: 0.95rem; font-variant-numeric: tabular-nums; letter-spacing: 0.02em; color: #9299a5; }"
-    },
-    {
-      "name": "Live Channel Card",
-      "kind": "custom",
-      "refersTo": null,
-      "description": "Signature component. The kiosk's now-playing card floating over the live map — and the only place the system's one glow appears.",
-      "html": "<div class=\"ds-now\"><div class=\"ds-now-active\"><span class=\"ds-now-dot\"></span>ACTIVE</div><div class=\"ds-now-tag\">Worlds of Fun Maintenance</div><div class=\"ds-now-freq\">464.2750<span class=\"ds-now-unit\">MHz</span></div></div>",
-      "css": ".ds-now { display: inline-flex; flex-direction: column; align-items: flex-start; min-width: 22rem; max-width: 40rem; padding: 0.95rem 1.35rem 1.1rem; font-family: Inter, sans-serif; background: color-mix(in srgb, #1c1f26 90%, transparent); border: 1px solid #42454e; border-radius: 8px; box-shadow: 0 8px 28px rgb(0 0 0 / 0.45); } .ds-now-active { display: flex; align-items: center; gap: 0.6rem; font-weight: 700; font-size: 1.12rem; letter-spacing: 0.06em; color: #9ac35d; } .ds-now-dot { width: 0.7em; height: 0.7em; border-radius: 50%; background: #9ac35d; animation: ds-breathe 1.6s ease-in-out infinite; } @keyframes ds-breathe { 50% { opacity: 0.45; } } .ds-now-tag { margin-top: 0.42rem; font-size: 2.6rem; font-weight: 600; line-height: 1.08; letter-spacing: 0.01em; color: #ff6b35; text-shadow: 0 0 18px color-mix(in srgb, #ff6b35 25%, transparent); text-wrap: balance; } .ds-now-freq { margin-top: 0.4rem; font-size: 1.8rem; font-weight: 500; font-variant-numeric: tabular-nums; letter-spacing: 0.02em; color: #b8bcc5; } .ds-now-unit { margin-left: 0.4em; font-size: 0.5em; font-weight: 600; letter-spacing: 0.06em; vertical-align: 0.18em; color: #9299a5; }"
+      "refersTo": "vital",
+      "description": "A raised tile: dim label, lead-size tabular value, sea-glass sparkline. Over threshold it turns coral.",
+      "html": "<div class=\"ds-vitals\"><div class=\"ds-vital\"><span class=\"ds-vital__label\">Temperature</span><b class=\"ds-vital__value\">58 °C</b><svg class=\"ds-spark\" viewBox=\"0 0 100 28\" preserveAspectRatio=\"none\"><polyline points=\"0,20 15,18 30,19 45,14 60,15 75,12 90,13 100,11\"/></svg></div><div class=\"ds-vital ds-vital--hot\"><span class=\"ds-vital__label\">CPU</span><b class=\"ds-vital__value\">94%</b><svg class=\"ds-spark\" viewBox=\"0 0 100 28\" preserveAspectRatio=\"none\"><polyline points=\"0,18 15,14 30,12 45,9 60,7 75,5 90,4 100,3\"/></svg></div></div>",
+      "css": ".ds-vitals { display: grid; grid-template-columns: repeat(2, minmax(0, 12rem)); gap: 10px; font-family: 'Schibsted Grotesk', system-ui, -apple-system, 'Segoe UI', sans-serif; color: #e6e9ee; } .ds-vital { background: #20262d; border-radius: 14px; padding: 12px 14px; } .ds-vital__label { display: block; color: #a4acb7; font-size: 0.82rem; font-weight: 600; } .ds-vital__value { display: block; font-size: 1.25rem; font-weight: 700; font-variant-numeric: tabular-nums; margin: 2px 0 6px; } .ds-vital--hot .ds-vital__value { color: #f29b8f; } .ds-spark { width: 100%; height: 28px; display: block; } .ds-spark polyline { fill: none; stroke: #5fd4c3; stroke-width: 1.5; vector-effect: non-scaling-stroke; } .ds-vital--hot .ds-spark polyline { stroke: #f29b8f; }"
     }
   ],
   "narrative": {
-    "northStar": "The Night Watch",
-    "overview": "Kerchunk is a radio that never sleeps, watched by one person who is usually doing something else. Every surface is built for that: a dark room, a glance from across it, and exactly one thing lit. At rest the whole interface is quiet gray on near-black — panels, rules, labels, and data all sit in a narrow neutral band. Emphasis is not distributed; it is spent.\n\nThat restraint is what makes the appliance readable at speed. The operator is not reading the screen — they are checking it, from a doorway, while the radio talks. So hierarchy is carried by size and by liveness, not by decoration. Cards are flat plates with hairline borders. Numbers are tabular so columns line up and a changing digit doesn't shift its neighbours. Labels are small, uppercase and tracked so they read as instrument legends rather than as prose.\n\nThe ambient surfaces take their palette from Kerchunk's own token file (kiosk/src/frontend/tokens.css, layer 1 — frozen at the values Campfire resolved to when it was removed on 2026-09-28) and their type from a single face. It does not take its personality from hardware nostalgia: there are no bevels, no brushed metal, no fake screws. Instrument logic — legends, meters, consequence colour, tabular data — without instrument cosplay.",
+    "northStar": "The Faceplate",
+    "overview": "The admin is the scanner's front panel, not a dashboard. A real scanner has a glass display that says what is live, and a row of keys under it. The admin works the same way. An LCD (a dark recessed well whose characters glow sea-glass) shows what the radio is doing. Tactile keys sit under it. Settings live in plain-language groups of rows. Every other surface is organised around that one piece of glass.\n\nThe palette is *Night desk*: a blue-slate ground, surfaces separated by tone rather than by borders, and one live colour (sea-glass) spent on what is live or on the one primary action on the screen. The type is Schibsted Grotesk in sentence case, with tabular numerals on every number that can change.\n\nThe operator's jobs set the priorities, in this order: (A) listen to and control the radio right now, then (E) tune settings. Triage, channel curation and health come after. So Radio is home. Radio, Tune, Library and System are four tabs, and nothing else competes for navigation.\n\nIt is instrument *logic* without instrument *cosplay*. Glow on glass and a key that depresses one pixel are the only borrowed hardware cues. There are no bevels, brushed metal or fake screws.",
     "keyCharacteristics": [
-      "Dark-only. There is no light theme and no theme switch; the use scene is a dim room and a wall-mounted panel.",
-      "One loud colour, spent on live state.",
-      "Flat plates, hairline rules, tonal layering; shadow only where something genuinely floats.",
-      "Tabular numerals everywhere a number can change.",
-      "Small tracked uppercase labels; large unadorned data.",
-      "Every surface legible from across a room or from a phone held at arm's length — never optimised for only one."
+      "Dark-only. There is no light theme and no theme switch.",
+      "One live colour (sea-glass), one attention colour (hay) and one destructive colour (coral). Nothing else is coloured, except the small service dot on a channel row.",
+      "Tone separates surfaces: ground → raised group → key face. There are no borders on surfaces. --kc-line sits between rows and nowhere else.",
+      "Sentence case everywhere. No all-caps labels, no tracked legends.",
+      "Every write says what it costs before it happens (applies live, re-tunes, or restarts scanning).",
+      "Phone-first ergonomics (44px targets, a bottom tab bar, bottom sheets) that widen into a two-column desk layout at 900px."
     ],
     "rules": [
       {
-        "name": "The One Lit Thing Rule",
-        "body": "Signal Amber marks live state and nothing else. If two things on a screen are amber, one of them is wrong. Brand presence comes from restraint, not from coverage.",
+        "name": "The Emphasis Budget",
+        "body": "Sea-glass means *live* or *the one primary action on this screen*. It also marks the current selection in the same sense: the active tab, a pressed chip, a slider's fill and its value box, the current hour bar, the sparkline stroke, and a text link that resolves a status line (Undo, Use default). If sea-glass is calling for a *second* action, one of them is wrong. Hay means attention and coral means destruction, and neither is used as decoration.",
         "section": "colors"
       },
       {
-        "name": "The Frozen-Ambient Rule",
-        "body": "Layer 1 of tokens.css is a record of what the wall shows, pinned by test/tokens.test.ts. Consequence colours for ambient pages come from its numbered steps (--danger-400, --success-400, --warning-500); do not retune them as a side effect of admin work.",
+        "name": "The Layer Rule",
+        "body": "The admin reads only --kc-*. The ambient pages read only layer 1. A colour that isn't a token doesn't go in, not even as a var(--token, #hex) fallback. The one carve-out is the NWS storm palette (dashboard.css) and the wall/art canvas grounds (wall.css / art.css). These are the only literal colours outside tokens.css, and they are recorded under Ambient displays.",
         "section": "colors"
       },
       {
-        "name": "The Three-Tier Rule",
-        "body": "Text uses exactly three tiers — Bright Ink, Cool Label, Quiet Hint — and all three clear 4.5:1 on Slate Panel (12.4 / 6.9 / 4.6). There is no fourth, dimmer tier, because the dark ground does not have room for one. Anything dimmer than Quiet Hint is a glyph, not text.",
-        "section": "colors"
-      },
-      {
-        "name": "The Tabular Rule",
-        "body": "Any number that can change while being looked at — frequency, temperature, CPU, hit count, clock, dB — is font-variant-numeric: tabular-nums. A digit that changes width makes an instrument look unreliable.",
+        "name": "Sentence case",
+        "body": "Every label, key, heading and tab is in sentence case (\"Pause 30 min\", \"Save and restart scanning\"). Nothing is all-caps and nothing is letter-spaced to look like a legend.",
         "section": "typography"
       },
       {
-        "name": "The Legend Rule",
-        "body": "Uppercase is for legends, never for reading. Tracked uppercase marks a label naming a value; it is never used for a sentence, a button that isn't a legend, or body copy.",
+        "name": "The Tabular Rule",
+        "body": "Any number that can change while being looked at (frequency, dB, temperature, CPU, counts, clock) uses font-variant-numeric: tabular-nums.",
         "section": "typography"
       },
       {
         "name": "The Four-Decimal Rule",
-        "body": "Frequencies always render to four decimals (145.1300), never three. Scanner frequencies sit on a 12.5 kHz raster and three decimals misrepresents them.",
+        "body": "Frequencies render to four decimals (145.1300). Scanner frequencies sit on a 12.5 kHz raster, and three decimals misrepresents them.",
         "section": "typography"
       },
       {
-        "name": "The One Scroll Rule",
-        "body": "A page has exactly one vertical scroll region. Tables are table-layout: fixed with declared column widths at every width, so they never scroll sideways and never need an inner scroll box. Sticky table headers stick against the page, not against a nested container.",
-        "section": "layout"
+        "name": "The Scale Rule",
+        "body": "Font size comes from a --kc-t-* token, in rem. Never use px for type.",
+        "section": "typography"
       },
       {
         "name": "The Thumb Rule",
-        "body": "On coarse pointers every target is ≥44px (2.75rem). The only exemptions are glyphs whose surrounding cell or row is itself the larger target.",
+        "body": "Every target is at least 44px (inputs, chips and segments are at least 40px, with the row as the larger target). The only exemptions are glyphs whose row is itself the target.",
         "section": "layout"
       },
       {
-        "name": "The No-Glass Rule",
-        "body": "No backdrop-filter, no blur, no translucent-frosted surfaces. This is a thermal constraint first — blur over the animating WebGL map measured +6 °C on this hardware — and a visual one second. Where a card must sit over the map, raise the background opacity to 90–96% instead.",
+        "name": "The One Scroll Rule",
+        "body": "A page scrolls once. Lists are rows in a group, not tables, so nothing scrolls sideways (the chip strip is the one deliberate horizontal scroller).",
+        "section": "layout"
+      },
+      {
+        "name": "No borders on surfaces",
+        "body": "A group, card, sheet, key, input or chip never has a border. --kc-line goes between rows, and it also marks the edge where a desktop pane meets the page (box-shadow: -1px 0 0 var(--kc-line)). The only other line is the dashed outline of an \"add\" chip.",
         "section": "elevation"
       },
       {
-        "name": "The One Glow Rule",
-        "body": "Exactly one glow exists in the system: the amber text-shadow on the kiosk's live channel name. It is what makes the tag read as on rather than merely bright. Do not add a second.",
+        "name": "The One Glow",
+        "body": "The LCD frequency carries a soft sea-glass text-shadow (glow on glass). Nothing else in the admin glows.",
         "section": "elevation"
       },
       {
-        "name": "The Hairline Rule",
-        "body": "Borders are 1px. A thicker coloured border on a card, list item, callout or alert is not part of this system — emphasis comes from ground tint, type size, or the accent colour of the text itself. One documented exception: the kiosk's weather alert card encodes NWS severity through border weight (4px spine = statement, 2px ring = watch, solid fill = warning). Border weight is semantic there, read at distance, on the component whose job is to be unmissable. Nothing else may borrow it.",
-        "section": "shapes"
+        "name": "One request on the wire",
+        "body": "The appliance deadlocks on two or more concurrent requests. Every poll and every write goes through one single-flight lane, Poller.run() (admin/poller.ts). Polls run one at a time, only while the tab is visible, and only for the tab on screen, at cadences set in POLL_MS. Writes queue behind the poll pass in progress and never overlap it. While a power action (restart, reboot, shut down) is being watched, the poller pauses and run() refuses every write with \"Wait for the radio to come back.\" (PAUSED_TEXT). This keeps the watcher's probes alone on the wire. Nothing may introduce a second poller or a parallel burst.",
+        "section": "behaviour"
       },
       {
-        "name": "The Ramp Rule",
-        "body": "Font size comes from a --t-* token, never a literal. Before adding a step, check whether an existing one does the job — the ramp replaced 32 ad-hoc values, five of which sat between 0.82 and 0.88rem and carried no distinction a reader could see. The only literals allowed are the two clamps and the two em values.",
-        "section": "typography"
+        "name": "Cost-aware saving",
+        "body": "Every setting has a cost, taken from the server's PUT /api/config diff (BAND_COST in admin/engineKnobs.ts, per-field costs in tuneFields.ts), and the copy names it *before* the operator commits: - Live (\"Applies live\"): saved as you go, on change (on blur/Enter for text), with an inline \"Saved.\" that fades. Alerts, weather name, scheduling, lockouts and Maps keys are live. So are channel-detail switches, which re-tune the running engine in place with no restart. - Restarts scanning (\"restarts scanning briefly\"): batched per group behind a countdown (TUNE_APPLY_DELAY_MS, 3s). The status line says \"Applying in 3 seconds, which restarts scanning briefly. Undo available.\" A further change restarts the countdown. One batch causes one engine restart. - Heavy (Record samples, Advanced → Group shape): a hay-tinted notice with Apply / Cancel keys (Apply is the primary key) instead of a countdown. Remote listening (a Radio switch) asks in the confirm dialog instead. - Backend (\"Needs a backend restart\"): saved now, and the copy says it takes effect after System → Restart radio backend.",
+        "section": "behaviour"
       },
       {
-        "name": "The No-Pixels Rule",
-        "body": "Type is sized in rem or em, never px. Three px sizes had crept in (11, 13, 14) and silently ignored browser zoom and OS font-size settings — on an appliance read at arm's length and from across a room, that is the wrong thing to freeze.",
-        "section": "typography"
+        "name": "Never an unlabelled restart",
+        "body": "A control that restarts scanning or the backend says so on its label, hint, cost pill or confirm copy (\"Save and restart scanning\", \"Stream the speaker to this browser — restarts scanning\"). Power actions sit last on System, in coral, each behind the confirm dialog.",
+        "section": "behaviour"
       },
       {
-        "name": "The Borrowed Palette Rule",
-        "body": "Depth inks, ambient canvas grounds and the NWS storm palette are part of the system but not interchangeable with it. Nothing else may borrow them, and the storm colours are never restyled toward the Kerchunk palette — an operator reading a tornado warning from across a room is relying on a colour they already know.",
-        "section": "colors"
+        "name": "Motion only answers the operator",
+        "body": "Motion happens only in response to the operator: a key depresses (60ms), a sheet rises (160ms), a switch thumb slides and a chevron turns (120ms). The level meter moves only with live data. Nothing animates at rest, and prefers-reduced-motion turns all of it off.",
+        "section": "behaviour"
+      },
+      {
+        "name": "Focus",
+        "body": "Every interactive element shows a 2px sea-glass outline at 2px offset on :focus-visible. There is a skip link, the tab set uses aria-current, and focus returns to the opener when a sheet closes.",
+        "section": "behaviour"
+      },
+      {
+        "name": "Night Watch: One lit thing",
+        "body": "Signal Amber marks live state. If two things are amber, one of them is wrong.",
+        "section": "ambient"
+      },
+      {
+        "name": "Night Watch: One glow",
+        "body": "The amber text-shadow on the kiosk's live channel name makes it read as *on* from across the room. Don't add a second. The weather alert card's severity pulse is the documented exception, owned by the storm palette.",
+        "section": "ambient"
+      },
+      {
+        "name": "Night Watch: Flat plates",
+        "body": "Cards are --bg-subtle plates at 8px radius with 1px edges. Controls and chips are 4px, and hairline marks (insight bars, callsign chips) are 2px. Shadow appears only where a card floats over the live map (0 8px 28px / 0 10px 34px black at 45–55%), and it is what keeps the card's edge findable over arbitrary imagery.",
+        "section": "ambient"
+      },
+      {
+        "name": "Night Watch: Over the map",
+        "body": "Raise the card's background opacity to 90–96% instead of blurring it.",
+        "section": "ambient"
+      },
+      {
+        "name": "Night Watch: The weather alert card (signature)",
+        "body": "It encodes NWS severity: a statement is quiet with a 4px storm-colour spine, a watch has a 2px storm-colour ring and a slow pulse, and a warning is a solid slab of the storm colour. This is the one place border weight does semantic work. Nothing else may borrow it.",
+        "section": "ambient"
+      },
+      {
+        "name": "Night Watch: The signal meter (signature)",
+        "body": "An LED-segment bar, a green→amber→red fill masked by hard stops. The boot bar shares it, so warm-up and signal read as one instrument. A #000 inside a mask-image is a stencil, not a colour.",
+        "section": "ambient"
+      },
+      {
+        "name": "Night Watch: Scoped warning banners",
+        "body": "Warning-banner styling is scoped under .dash.mapStage, so it applies only when a Google Maps key is configured.",
+        "section": "ambient"
+      },
+      {
+        "name": "The Frozen-Ambient Rule",
+        "body": "Layer 1 of tokens.css holds the values Campfire resolved to on the appliance when Campfire was removed (2026-09-28). kiosk/test/tokens.test.ts pins them against test/fixtures/campfire-dark-resolved.json. Change them only on purpose, never as a side effect of admin work. The pages alias them locally (dashboard.css: --bg, --panel, --ink, --caution, --green, --red, …). Consequence colours come from the numbered steps (--danger-400, --success-400, --warning-500).",
+        "section": "ambient"
       }
     ],
     "dos": [
-      "Do spend Signal Amber on live state only — one lit thing per screen.",
-      "Do take ambient consequence colours from tokens.css layer 1's numbered steps.",
-      "Do give every interactive edge ≥3:1 against both its card and its own fill, and every text tier ≥4.5:1.",
+      "Do take every colour from a token in tokens.css (or PIN_COLORS for service colours), and keep the admin on layer 2 and the ambient pages on layer 1. The only literal colours outside tokens.css are the NWS storm palette (dashboard.css) and the wall/art canvas grounds (wall.css / art.css), recorded under Ambient displays.",
+      "Do keep text at 4.5:1 or better on ground, raised and key (and on the ambient panel), and non-text marks at 3:1 or better.",
       "Do use font-variant-numeric: tabular-nums on any number that can change while being watched.",
       "Do keep frequencies at four decimals.",
-      "Do declare table column widths and use table-layout: fixed, so nothing scrolls sideways.",
-      "Do raise background opacity to 90–96% when a card must sit over the live map.",
-      "Do hit 44px targets on coarse pointers, exempting only glyphs whose row or cell is already the target.",
-      "Do edit the rule that already exists rather than restating it further down the stylesheet.",
-      "Do take every font size from a --t-* ramp token; the only literals are the two clamps and the two em-relative sizes."
+      "Do make targets at least 44px, exempting only glyphs whose row is already the target.",
+      "Do use lucide-static icons only (operator mandate). Never hand-roll an SVG icon.",
+      "Do write in sentence case.",
+      "Do put one primary key on a screen, at most.",
+      "Do name a write's cost before it happens: applies live, re-tunes, or restarts scanning briefly.",
+      "Do route every request through Poller.run(), the one lane.",
+      "Do offer Undo for anything reversible, and confirm anything that isn't."
     ],
     "donts": [
-      "Don't use backdrop-filter, blur, or frosted glass anywhere. It is a measured thermal cost (+6 °C) and a visual anti-goal.",
-      "Don't add a coloured border-left/border-right thicker than 1px to a card, alert, list item or callout.",
-      "Don't add a second glow. The live channel tag owns the only one.",
+      "Don't use backdrop-filter, blur or frosted glass anywhere. Blur over the animating map measured +6 °C on this hardware.",
+      "Don't add a coloured side border (border-left / border-right thicker than 1px) to a card, alert, list item or callout. The storm card's spine is the only exception.",
+      "Don't write a var(--token, #hex) fallback. tokens.css is always loaded, and a duplicated hex drifts silently.",
+      "Don't use monospace to signal \"technical\". One face, tabular figures.",
+      "Don't reach for skeuomorphic hardware texture: bevels, brushed metal, fake screws, drop-shadowed knobs.",
       "Don't drift toward a generic dark SaaS dashboard: purple-blue gradients, soft glow cards, decorative sparklines standing in for data.",
-      "Don't reach for skeuomorphic hardware texture — bevels, brushed metal, fake screws, drop-shadowed knobs.",
-      "Don't adopt a consumer scanner-app look: bright chrome, playful colour, phone-only layouts that lose the across-the-room read.",
-      "Don't introduce a fourth text tier dimmer than Quiet Hint; make it a glyph or make it brighter.",
-      "Don't use monospace as a signal of 'technical'. One face, tabular figures.",
-      "Don't invent a second card-header grammar, or a radius between 4px and 8px.",
-      "Don't repeat a token's hex as a var(--token, #hex) fallback; tokens.css is always loaded, and a duplicated hex drifts silently.",
-      "Don't size type in px — it freezes out browser zoom and OS font-size settings.",
-      "Don't restyle the NWS storm palette toward the Kerchunk palette, and don't use a depth ink as a surface colour."
+      "Don't put a restart behind an unlabelled control, or a power action anywhere without a confirm.",
+      "Don't give surfaces borders, or put --kc-line anywhere but between rows.",
+      "Don't use all-caps or tracked-uppercase labels.",
+      "Don't build dashboard cards (stat-tile walls, a persistent status side panel) or a nav rail. The admin is four tabs and a front panel.",
+      "Don't add a second glow. The LCD frequency owns it.",
+      "Don't start a second poller or fire requests in parallel."
     ]
   }
 }

@@ -799,7 +799,8 @@ without the key show as undecodable, same as any other crypto.
 > change. Spec: `docs/superpowers/specs/2026-06-06-unified-channels-design.md`.
 > Followed by the operator-workflow redesign (PR #83) and the completed admin
 > ops surface — health alerts, 24 h channel analytics, Close Call
-> location/suppression/archive (PR #84).
+> location/suppression/archive (PR #84). The nav-rail workspace this built
+> was superseded by the Faceplate admin redesign (2026-09-29, PRs #266–#271).
 
 **The pitch.** Make the admin **home an analytics dashboard** — at-a-glance
 insights, alerts, now-playing, recent activity — and move the operational
@@ -974,6 +975,12 @@ throttling, which a bare CPU% gauge would hide.
 > Also shipped since this section was written, and not tracked as roadmap
 > ideas: `DESIGN.md` + `.impeccable/design.json` (the visual system, 2026-07-28)
 > and the admin/kiosk design remediation that produced them (PRs #207–#211).
+>
+> **Admin redesign (Faceplate) — *SHIPPED 2026-09-29 (PRs #266–#271)*.**
+> Radio-first four-tab admin (Radio · Tune · Library · System) in Kerchunk's
+> own design language (tokens.css layer 2); Campfire removed; classic admin
+> retired at the flip. Spec
+> `docs/superpowers/specs/2026-09-28-admin-redesign-design.md`.
 
 Ideas 1, 2, 4, 5, 6, 7, 8, 9, 11, **13 (network feed)**, 15, 16 are shipped or
 resolved; the stretch sweep landed CC band-sweep and remote listening

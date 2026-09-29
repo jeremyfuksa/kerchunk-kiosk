@@ -80,7 +80,7 @@ html[data-page="map"] {
    Google Maps inline label styles. */
 /* Sized off the KIOSK ramp, not the admin's. This chip's main home is the
    wall, read from across a room, and it was taking `--t-dense` — a token
-   declared only in admin.css, for tables read at arm's length. The dashboard
+   from the admin's type scale, for tables read at arm's length. The dashboard
    carries its own larger `--k-*` scale for exactly this reason; a callsign
    floating over the map is the same kind of dense instrument readout as the
    dB line, so it takes that step. */

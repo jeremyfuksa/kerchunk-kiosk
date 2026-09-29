@@ -243,7 +243,10 @@ export function curveSvg(p: CurveParams): string {
   const ticks = [-60, -40, -20, 0].map((v) => `<text x="${sx(v)}" y="${B + 12}" text-anchor="middle">${minus(String(v))}</text>`).join("");
   return (
     `<rect class="lc-hold" x="${L}" y="${T}" width="${(holdX - L).toFixed(1)}" height="${B - T}"/>` +
-    `<text x="${L + 4}" y="${T + 12}">gain held</text>` +
+    // Bottom of the hold band: the limiter label owns the top-left corner
+    // (the ceiling sits ~3 dB under 0 at the default 0.7), and a -30..-70 dB
+    // hold region is always tall enough at the bottom.
+    `<text x="${L + 4}" y="${B - 5}">gain held</text>` +
     `<line class="lc-unity" x1="${sx(CURVE_LO)}" y1="${sy(CURVE_LO)}" x2="${sx(CURVE_HI)}" y2="${sy(CURVE_HI)}"/>` +
     `<line class="lc-target" x1="${L}" y1="${sy(p.targetDb).toFixed(1)}" x2="${R}" y2="${sy(p.targetDb).toFixed(1)}"/>` +
     `<text x="${R - 2}" y="${(sy(p.targetDb) - 4).toFixed(1)}" text-anchor="end">target ${minus(fmt(p.targetDb))}</text>` +

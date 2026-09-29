@@ -98,6 +98,12 @@ body {
   background: var(--bg);
   color: var(--ink);
 }
+/* Was the classic admin's --t-body, which (by import order) set every page's
+   body size; kept so the ambient displays render exactly as before the flip. */
+html[data-page="dashboard"] body,
+html[data-page="map"] body,
+html[data-page="wall"] body,
+html[data-page="art"] body { font-size: 0.92rem; }
 
 .dash { display: flex; flex-direction: column; height: 100vh; }
 .dashBody { display: flex; flex: 1; min-height: 0; }
