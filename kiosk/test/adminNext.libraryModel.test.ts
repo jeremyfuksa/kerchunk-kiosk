@@ -124,7 +124,7 @@ describe("form parsing", () => {
   it("site: blank clears, lat/lon validated", () => {
     expect(parseSite("  ")).toBeNull();
     expect(parseSite("39.1755, -94.4861")).toEqual({ lat: 39.1755, lon: -94.4861 });
-    for (const bad of ["39.1", "91, 0", "0, 181", "a, b", "1,2,3"]) expect(() => parseSite(bad)).toThrow("Site must be 'lat, lon'");
+    for (const bad of ["39.1", "91, 0", "0, 181", "a, b", "1,2,3", "39.1,", ", -94"]) expect(() => parseSite(bad)).toThrow("Site must be 'lat, lon'");
   });
   it("site → location: keeps lookup fields, clears coordinates on blank", () => {
     const loc = { lat: 1, lon: 2, city: "X", source: "rr" };

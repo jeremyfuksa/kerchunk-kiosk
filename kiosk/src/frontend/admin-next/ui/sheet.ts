@@ -36,9 +36,13 @@ export function mountSheet(host: HTMLElement, o: { id: string; label: string }):
   dlg.querySelector(".kc-sheet__close")!.addEventListener("click", () => dlg.close());
   // A click on the modal backdrop lands on the <dialog> itself.
   dlg.addEventListener("click", (ev) => { if (ev.target === dlg && !dlg.classList.contains("kc-sheet--pane")) dlg.close(); });
-  // A non-modal dialog gets no Esc handling from the browser.
+  // A non-modal dialog gets no Esc handling from the browser. Skip when a
+  // TRUE modal (a confirm, or another sheet) sits on top — its own native Esc
+  // handling should cancel it, not also close the pane underneath.
   document.addEventListener("keydown", (ev) => {
-    if (ev.key === "Escape" && dlg.open && dlg.classList.contains("kc-sheet--pane")) dlg.close();
+    if (ev.key !== "Escape" || !dlg.open || !dlg.classList.contains("kc-sheet--pane")) return;
+    if (ev.defaultPrevented || document.querySelector("dialog:modal")) return;
+    dlg.close();
   });
   dlg.addEventListener("close", () => {
     document.documentElement.classList.remove(`${o.id}-pane-open`);

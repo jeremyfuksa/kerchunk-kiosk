@@ -195,10 +195,16 @@ export function parseTags(raw: string): string[] {
 /** "lat, lon" → coordinates; blank → null (clear the site). */
 export function parseSite(raw: string): { lat: number; lon: number } | null {
   if (!raw.trim()) return null;
-  const parts = raw.split(",").map((x) => Number(x.trim()));
-  const [lat, lon] = parts;
-  if (parts.length !== 2 || lat === undefined || lon === undefined || !Number.isFinite(lat) || !Number.isFinite(lon)
-    || Math.abs(lat) > 90 || Math.abs(lon) > 180) {
+  const trimmed = raw.split(",").map((x) => x.trim());
+  const [latRaw, lonRaw] = trimmed;
+  // Number("") is 0, not NaN — an empty part ("39.1," or ", -94") must fail,
+  // not silently coordinate-zero the missing half.
+  if (trimmed.length !== 2 || !latRaw || !lonRaw) {
+    throw new Error("Site must be 'lat, lon', like 39.1755, -94.4861");
+  }
+  const lat = Number(latRaw);
+  const lon = Number(lonRaw);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) {
     throw new Error("Site must be 'lat, lon', like 39.1755, -94.4861");
   }
   return { lat, lon };
@@ -328,7 +334,9 @@ export function bankToggles(c: Channel, banks: Bank[]): BankToggle[] {
 }
 
 /** A bank-wide edit (make audible / silent / archive all), with a snapshot of
- *  exactly what each touched channel had — Undo restores that, not a default. */
+ *  what every member of the bank had before the patch (whether or not the
+ *  patch actually changed that member's value) — Undo restores that, not a
+ *  default. */
 export function bulkPatch(
   channels: Channel[], bank: Bank, patch: Partial<Pick<Channel, "enabled" | "audible">>,
 ): { channels: Channel[]; before: Map<string, Pick<Channel, "enabled" | "audible">> } {
