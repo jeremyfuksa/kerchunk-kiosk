@@ -183,16 +183,19 @@ html[data-page="admin-next"] :focus-visible { outline: 2px solid var(--kc-glass)
 .kc-link:hover { color: var(--kc-ink); }
 @media (prefers-reduced-motion: reduce) { .kc-disclosure__chev, .kc-switchRow input::after { transition: none; } }
 
-/* ── slider (settings) ── */
-.kc-slider { padding: 10px 16px 12px; border-top: 1px solid var(--kc-line); }
+/* ── slider (settings) — compact: ~100px a row ── */
+.kc-slider { padding: 3px 16px 4px; border-top: 1px solid var(--kc-line); }
 .kc-slider:first-of-type { border-top: 0; }
 .kc-slider__head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
-.kc-slider__head label { font-size: var(--kc-t-row); font-weight: 500; }
-.kc-slider__val { display: inline-flex; align-items: center; gap: 6px; color: var(--kc-dim); font-size: var(--kc-t-small); }
+.kc-slider__text { min-width: 0; line-height: 1.3; }
+.kc-slider__line { display: flex; flex-wrap: wrap; align-items: center; gap: 0 10px; }
+.kc-slider__line label { font-size: var(--kc-t-row); font-weight: 500; }
+.kc-slider__hint { display: block; color: var(--kc-mute); font-size: var(--kc-t-small); }
+.kc-slider__val { display: inline-flex; align-items: center; gap: 6px; flex: none; color: var(--kc-dim); font-size: var(--kc-t-small); }
 .kc-slider__val input { width: 5.5em; min-height: 40px; padding: 4px 8px; border: 0; border-radius: var(--kc-r-key); background: var(--kc-key); color: var(--kc-glass); font: 600 var(--kc-t-body) var(--kc-font); text-align: right; font-variant-numeric: tabular-nums; }
-.kc-slider__hint { margin: 2px 0 8px; color: var(--kc-mute); font-size: var(--kc-t-small); }
-.kc-slider input[type="range"] { width: 100%; accent-color: var(--kc-glass); min-height: 40px; margin: 0; }
-.kc-slider__ends { display: flex; justify-content: space-between; color: var(--kc-mute); font-size: var(--kc-t-meta); }
+.kc-slider input[type="range"] { display: block; width: 100%; min-height: 40px; margin: 0; accent-color: var(--kc-glass); }
+/* The ends tuck into the range's lower padding, below the thumb; they're labels, not targets. */
+.kc-slider__ends { display: flex; justify-content: space-between; margin-top: -12px; color: var(--kc-mute); font-size: var(--kc-t-meta); line-height: 1.3; pointer-events: none; }
 .kc-slider input:disabled { opacity: 0.45; cursor: not-allowed; }
 
 /* ── Tune ── */
@@ -201,10 +204,16 @@ html[data-page="admin-next"] :focus-visible { outline: 2px solid var(--kc-glass)
 .kc-tune__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); gap: 0 18px; align-items: start; }
 .kc-tuneRow { position: relative; }
 .kc-tuneRow.is-off { opacity: 0.5; }
-/* The reset's text sits in the row's bottom strip; its 40px hit box centres
-   on that strip (over the non-interactive ends labels), above the next row. */
-.kc-reset { position: absolute; right: 16px; bottom: -11px; z-index: 1; min-height: 40px; padding: 0 2px; font-size: var(--kc-t-meta); }
-.kc-tuneRow .kc-slider { padding-bottom: 18px; border-top: 1px solid var(--kc-line); }
+/* "Use default": on a slider it sits on the label's line — a 40px hit box
+   that takes one text line of layout (negative margin over the hint, which
+   is not a target). On switch/field rows it sits in the row's bottom strip. */
+.kc-reset { min-height: 40px; margin: -9px 0; padding: 0 2px; font-size: var(--kc-t-meta); color: var(--kc-glass); }
+.kc-reset--corner { position: absolute; right: 16px; bottom: -11px; z-index: 1; margin: 0; }
+.kc-reset:disabled { cursor: not-allowed; }
+.kc-tuneRow .kc-slider { border-top: 1px solid var(--kc-line); }
+.kc-rowErr { margin: -4px 16px 8px; color: var(--kc-coral); font-size: var(--kc-t-small); }
+.kc-tuneRow[data-kind="error"] .kc-slider__val input, .kc-tuneRow[data-kind="error"] .kc-field input { box-shadow: inset 0 0 0 1px var(--kc-coral); }
+.kc-sr { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 .kc-tuneRow .kc-switchRow { margin: 0; padding: 12px 16px 20px; border-top: 1px solid var(--kc-line); border-radius: 0; background: none; }
 .kc-tuneRow .kc-switchRow > span { font-size: var(--kc-t-row); font-weight: 500; }
 .kc-tuneRow .kc-switchRow input:disabled { opacity: 0.45; cursor: not-allowed; }

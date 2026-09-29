@@ -67,19 +67,24 @@ export interface SliderOpts {
   /** What the low and high ends mean, in plain words ("Quieter", "Louder"). */
   ends: [string, string];
   disabled?: boolean;
+  /** Trusted HTML placed on the label's line (e.g. a "Use default" link). */
+  aside?: string;
 }
 
-/** A setting slider: label + typed-entry box on one line, hint, the range,
- *  then the named ends. The range carries o.id; the box `${o.id}-num`. */
+/** A setting slider, compact: label (+ aside) with the hint directly under
+ *  it, the typed-entry box on the right; then the range and the named ends.
+ *  The range carries o.id; the box `${o.id}-num`. */
 export function slider(o: SliderOpts): string {
   const dis = o.disabled ? " disabled" : "";
   const bounds = `min="${o.min}" max="${o.max}" step="${o.step}" value="${o.value}"`;
   return `<div class="kc-slider" data-slider="${o.id}">
     <div class="kc-slider__head">
-      <label for="${o.id}">${esc(o.label)}</label>
+      <div class="kc-slider__text">
+        <div class="kc-slider__line"><label for="${o.id}">${esc(o.label)}</label>${o.aside ?? ""}</div>
+        ${o.hint ? `<small class="kc-slider__hint">${esc(o.hint)}</small>` : ""}
+      </div>
       <span class="kc-slider__val"><input id="${o.id}-num" type="number" inputmode="decimal" ${bounds} aria-label="${esc(o.label)}, exact value"${dis} />${o.unit ? `<b>${esc(o.unit)}</b>` : ""}</span>
     </div>
-    ${o.hint ? `<p class="kc-slider__hint">${esc(o.hint)}</p>` : ""}
     <input id="${o.id}" type="range" ${bounds}${dis} />
     <div class="kc-slider__ends" aria-hidden="true"><span>${esc(o.ends[0])}</span><span>${esc(o.ends[1])}</span></div>
   </div>`;

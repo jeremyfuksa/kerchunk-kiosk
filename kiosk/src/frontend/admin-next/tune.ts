@@ -25,7 +25,7 @@ import { group, key, slider, switchRow } from "./ui/kit.js";
 import { POLL_MS } from "./poller.js";
 import { hrefFor } from "./route.js";
 import { ico } from "./ui/icons.js";
-import { ApplyBatcher, type BatchState } from "./batcher.js";
+import { ApplyBatcher, TUNE_APPLY_DELAY_MS, type BatchState } from "./batcher.js";
 import {
   FIELD_BY_ID, GROUP_TITLES, TUNE_FIELDS, applyTune, disabledIds, isDefault, readTune, snapValue,
   type TuneField, type TuneGroup, type TuneValue, type TuneValues,
@@ -36,6 +36,9 @@ import type { Ctx } from "./ctx.js";
 export const SAVED_SHOW_MS = 3000;
 /** How often a pending batch's countdown text is refreshed. */
 const COUNTDOWN_TICK_MS = 250;
+/** Weather-channel edits within this window go out as one save (one re-tune):
+ *  a name edit committed on blur, then a station pick, is a single change. */
+export const WX_SAVE_DELAY_MS = 1500;
 
 /** The main groups, in display order (Advanced bands follow in a disclosure). */
 const MAIN_GROUPS: readonly TuneGroup[] = ["sound", "scanning", "discovery", "alerts"];
@@ -48,12 +51,27 @@ const HEAVY_TEXT: Partial<Record<TuneGroup, string>> = {
 
 // ---- Markup (pure) -----------------------------------------------------------
 
+/** The one sentence a status line's live region announces for a batch state
+ *  (the visible countdown ticks silently beside it). */
+export function batchSay(s: BatchState, delayMs = TUNE_APPLY_DELAY_MS): string {
+  switch (s.kind) {
+    case "pending": {
+      const n = Math.round(delayMs / 1000);
+      return `Applying in ${n} second${n === 1 ? "" : "s"}, which restarts scanning briefly. Undo available.`;
+    }
+    case "saving": return "Saving.";
+    case "saved": return "Saved.";
+    case "error": return `Not saved: ${s.message}. Undo available.`;
+    default: return "";
+  }
+}
+
 /** A field's control, by kind. `v` is the UI value ("" = default). */
-export function controlHtml(f: TuneField, v: TuneValue): string {
+export function controlHtml(f: TuneField, v: TuneValue, aside = ""): string {
   const c = f.control;
   if (c.kind === "slider") {
     const n = v === "" || typeof v !== "string" ? Number(f.def) : Number(v);
-    return slider({ id: f.id, label: f.label, hint: f.hint, min: c.min, max: c.max, step: c.step, unit: c.unit, ends: c.ends, value: n });
+    return slider({ id: f.id, label: f.label, hint: f.hint, min: c.min, max: c.max, step: c.step, unit: c.unit, ends: c.ends, value: n, aside });
   }
   if (c.kind === "switch") {
     // An always-present hint slot, so a field whose hint is computed later
@@ -69,9 +87,18 @@ export function controlHtml(f: TuneField, v: TuneValue): string {
     + `<span class="kc-field__input${c.kind === "text" ? " kc-field__input--text" : ""}"><input id="${f.id}" ${attrs} value="${esc(val)}" />${unit}</span></label>`;
 }
 
+/** The per-field "Use default" button (hidden until the value isn't the default). */
+export function resetHtml(f: TuneField, corner: boolean): string {
+  return `<button type="button" class="kc-link kc-reset${corner ? " kc-reset--corner" : ""}" data-reset="${f.id}" aria-label="${esc(`Use default for ${f.label}`)}" hidden>Use default</button>`;
+}
+
+/** A field row: control, "Use default" (on a slider's label line, else the
+ *  row's corner), and a slot for a save the radio refused. */
 export function rowHtml(f: TuneField, v: TuneValue): string {
-  return `<div class="kc-tuneRow" data-row="${f.id}">${controlHtml(f, v)}`
-    + `<button type="button" class="kc-link kc-reset" data-reset="${f.id}" hidden>Use default</button></div>`;
+  const onLine = f.control.kind === "slider";
+  return `<div class="kc-tuneRow" data-row="${f.id}">${controlHtml(f, v, onLine ? resetHtml(f, false) : "")}`
+    + (onLine ? "" : resetHtml(f, true))
+    + `<p class="kc-rowErr" data-rowerr="${f.id}" hidden></p></div>`;
 }
 
 /** The Apply / Cancel bar for a group with heavy fields (hidden until used). */
@@ -83,8 +110,11 @@ export function heavyHtml(g: TuneGroup): string {
 /** A group's status line. Built once with every slot it can need; painting
  *  only sets text and toggles `hidden`. */
 export function statusHtml(g: TuneGroup | "weather", o: { restartLink?: string } = {}): string {
+  // The countdown ticks visibly but is aria-hidden; the live region hears one
+  // sentence per state change (.kc-status__say), not a number a second.
   return `<p class="kc-status" data-status="${g}" role="status" aria-live="polite">`
-    + `<span class="kc-status__batch"></span>`
+    + `<span class="kc-sr kc-status__say"></span>`
+    + `<span class="kc-status__batch" aria-hidden="true"></span>`
     + (g === "weather" ? "" : `<button type="button" class="kc-link" data-undo="${g}" hidden>Undo</button>`)
     + `<span class="kc-status__direct"></span>`
     + (o.restartLink ? `<a class="kc-link" data-restart href="${esc(o.restartLink)}" hidden>Restart radio</a>` : "")
@@ -171,6 +201,8 @@ export function mountTune(ctx: Ctx): void {
   const batchers = new Map<TuneGroup, ApplyBatcher>();
   /** Ids in a direct (live/backend/heavy) save that hasn't resolved yet. */
   const inflight = new Set<string>();
+  /** Fields whose last save was refused, with why. */
+  const rowErrors = new Map<string, string>();
 
   // ── small DOM helpers (patch only on change)
   const $ = <T extends HTMLElement>(sel: string): T | null => el.querySelector<T>(sel);
@@ -225,6 +257,16 @@ export function mountTune(ctx: Ctx): void {
     const f = FIELD_BY_ID[id];
     const b = $<HTMLButtonElement>(`[data-reset="${id}"]`);
     if (f && b) setHidden(b, isDefault(f, values[id] ?? f.def));
+    // A refused save stays flagged on its row until the field saves or is
+    // back at what the radio has — a group "Saved" never clears it.
+    if (rowErrors.has(id) && same(values[id], loaded[id])) rowErrors.delete(id);
+    const row = $(`[data-row="${id}"]`);
+    const msg = $(`[data-rowerr="${id}"]`);
+    if (!row || !msg) return;
+    const err = rowErrors.get(id) ?? "";
+    setText(msg, err);
+    setHidden(msg, err === "");
+    setKind(row, err !== "");
   }
   function paintDependents(): void {
     const off = disabledIds(values);
@@ -233,7 +275,7 @@ export function mountTune(ctx: Ctx): void {
       if (!row) continue;
       const d = off.has(f.id);
       row.classList.toggle("is-off", d);
-      row.querySelectorAll<HTMLInputElement>("input").forEach((i) => setDisabled(i, d));
+      row.querySelectorAll<HTMLInputElement | HTMLButtonElement>("input, [data-reset]").forEach((i) => setDisabled(i, d));
     }
   }
   let curveShown = "";
@@ -292,6 +334,7 @@ export function mountTune(ctx: Ctx): void {
     const st = statusEl(g);
     if (!st) return;
     const span = st.querySelector<HTMLElement>(".kc-status__batch")!;
+    setText(st.querySelector<HTMLElement>(".kc-status__say")!, batchSay(s));
     const undo = st.querySelector<HTMLButtonElement>("[data-undo]")!;
     const t = batchTimers.get(g);
     if (t) { clearTimeout(t); batchTimers.delete(g); }
@@ -321,17 +364,26 @@ export function mountTune(ctx: Ctx): void {
   // ── saving
   async function saveIds(ids: string[]): Promise<void> {
     const sent: TuneValues = Object.fromEntries(ids.map((id) => [id, values[id]!]));
-    const saved = await poller.run(async () => {
-      const cfg = await api.getConfig();
-      applyTune(cfg, ids, values);
-      return api.putConfig(cfg);
-    });
+    let saved: Config;
+    try {
+      saved = await poller.run(async () => {
+        const cfg = await api.getConfig();
+        applyTune(cfg, ids, values);
+        return api.putConfig(cfg);
+      });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      for (const id of ids) { rowErrors.set(id, `Not saved — ${msg}`); paintRow(id); }
+      throw e;
+    }
+    for (const id of ids) rowErrors.delete(id);
     cfgCache = saved;
     const fresh = readTune(saved);
     for (const id of ids) {
       loaded[id] = fresh[id]!;
       // A newer edit made while this save was in flight stays the operator's.
-      if (same(values[id], sent[id])) { values[id] = fresh[id]!; paintControl(id); paintRow(id); }
+      if (same(values[id], sent[id])) { values[id] = fresh[id]!; paintControl(id); }
+      paintRow(id);
     }
     paintDependents();
     paintPreview();
@@ -412,11 +464,17 @@ export function mountTune(ctx: Ctx): void {
     if (isSound(f)) paintCurve();
   });
   el.addEventListener("change", (e) => {
-    if (e.target instanceof Element && e.target.closest("#kcTune-weather")) { void saveWeather(); return; }
+    if (e.target instanceof Element && e.target.closest("#kcTune-weather")) { scheduleWeather(); return; }
     const hit = fieldOf(e.target);
     if (!hit) return;
     const { f, input, box } = hit;
     if (input.type === "range") { commit(f.id); return; }
+    // A half-typed number ("-", "1e") reads as "" — which would mean "use the
+    // default" and save it. Put the field back instead; nothing is committed.
+    if (input.type === "number" && input.validity.badInput) {
+      input.value = f.control.kind === "slider" ? shownValue(f, values[f.id]) : (typeof values[f.id] === "string" ? values[f.id] as string : "");
+      return;
+    }
     if (box && f.control.kind === "slider") {
       const c = f.control;
       const raw = input.value.trim();
@@ -477,12 +535,24 @@ export function mountTune(ctx: Ctx): void {
   // ── weather channel (its own route; the radio re-tunes on save)
   let wxLoaded: { freq: string; tag: string; mode: string } | null = null;
   let wxSaving = false;
+  let wxTimer: ReturnType<typeof setTimeout> | null = null;
+  let wxQueued = false;
+  /** A weather save is scheduled, running or queued: the poll must not repaint. */
+  const wxBusy = (): boolean => wxSaving || wxQueued || wxTimer !== null;
+  /** Coalesce: edits inside WX_SAVE_DELAY_MS become one save; an edit during a
+   *  save queues exactly one more, which reads the controls when it runs. */
+  function scheduleWeather(): void {
+    paintDirect("weather", "Saving…");
+    if (wxSaving) { wxQueued = true; return; }
+    if (wxTimer !== null) clearTimeout(wxTimer);
+    wxTimer = setTimeout(() => { wxTimer = null; void saveWeather(); }, WX_SAVE_DELAY_MS);
+  }
   const mhzOf = (hz: number): string => (hz / 1e6).toFixed(3);
   function paintWeather(w: Channel | null): void {
     const freq = byId<HTMLSelectElement>("kcWxFreq");
     const tag = byId<HTMLInputElement>("kcWxTag");
     const mode = byId<HTMLSelectElement>("kcWxMode");
-    if (!freq || !tag || !mode || wxSaving) return;
+    if (!freq || !tag || !mode || wxBusy()) return;
     const next = { freq: w ? mhzOf(w.freq) : "", tag: w?.alphaTag ?? "", mode: w?.mode ?? "nfm" };
     // A station outside the NOAA list (hand-edited config) still shows.
     if (next.freq && !Array.from(freq.options).some((o) => o.value === next.freq)) {
@@ -509,6 +579,7 @@ export function mountTune(ctx: Ctx): void {
     const mode = modeSel.value as Channel["mode"];
     wxSaving = true;
     paintDirect("weather", "Saving…");
+    let queuedNext = false;
     try {
       await poller.run(() => api.setWeatherChannel({ freq, alphaTag, mode, enabled: true }));
       wxLoaded = { freq: freqSel.value, tag: tag.value, mode };
@@ -516,7 +587,11 @@ export function mountTune(ctx: Ctx): void {
       paintDirect("weather", "Saved — the radio re-tunes briefly", { fade: true });
     } catch (e) {
       paintDirect("weather", e instanceof Error ? e.message : String(e), { error: true });
-    } finally { wxSaving = false; }
+    } finally {
+      wxSaving = false;
+      if (wxQueued) { wxQueued = false; queuedNext = true; }
+    }
+    if (queuedNext) scheduleWeather();
   }
 
   // ── load + refresh

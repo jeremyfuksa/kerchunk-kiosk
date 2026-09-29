@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { advancedHtml, bandHtml, rowHtml } from "../src/frontend/admin-next/tune.js";
+import { advancedHtml, bandHtml, batchSay, resetHtml, rowHtml } from "../src/frontend/admin-next/tune.js";
 import { TUNE_FIELDS, FIELD_BY_ID } from "../src/frontend/admin-next/tuneFields.js";
 import { ADVANCED_BANDS, BAND_COST, COST_LABEL } from "../src/frontend/admin/engineKnobs.js";
 
@@ -38,5 +38,40 @@ describe("Tune advanced bands", () => {
   it("escapes operator text in values", () => {
     const html = rowHtml(FIELD_BY_ID.tAlertNtfy!, `"><img src=x>`);
     expect(html).not.toContain("<img");
+  });
+});
+
+describe("Tune rows", () => {
+  it("a slider's Use default sits on its label line; others in the row corner", () => {
+    const sl = rowHtml(FIELD_BY_ID.kAgcTarget!, "");
+    const line = sl.slice(sl.indexOf("kc-slider__line"), sl.indexOf("kc-slider__val"));
+    expect(line).toContain('data-reset="kAgcTarget"');
+    expect(sl).not.toContain("kc-reset--corner");
+    expect(rowHtml(FIELD_BY_ID.tCloseCall!, true)).toContain("kc-reset--corner");
+  });
+  it("Use default names its field for assistive tech (escaped)", () => {
+    const f = { ...FIELD_BY_ID.tHang!, label: `Hang <b>"x"` };
+    const h = resetHtml(f, true);
+    expect(h).toContain('aria-label="Use default for Hang &lt;b&gt;&quot;x&quot;"');
+    expect(h).toContain(" hidden");
+  });
+  it("every row carries a hidden slot for a refused save", () => {
+    for (const f of TUNE_FIELDS) expect(rowHtml(f, f.def)).toContain(`data-rowerr="${f.id}" hidden`);
+  });
+});
+
+describe("batchSay — one announcement per state", () => {
+  it("says the countdown once, in words, with Undo", () => {
+    const a = batchSay({ kind: "pending", ids: ["x"], dueAt: 1 }, 3000);
+    const b = batchSay({ kind: "pending", ids: ["x", "y"], dueAt: 999_999 }, 3000);
+    expect(a).toBe("Applying in 3 seconds, which restarts scanning briefly. Undo available.");
+    expect(b).toBe(a); // re-arming doesn't change the sentence, so it isn't re-announced
+  });
+  it("covers the other states", () => {
+    expect(batchSay({ kind: "saving", ids: [] })).toBe("Saving.");
+    expect(batchSay({ kind: "saved" })).toBe("Saved.");
+    expect(batchSay({ kind: "error", message: "bad", ids: [] })).toBe("Not saved: bad. Undo available.");
+    expect(batchSay({ kind: "idle" })).toBe("");
+    expect(batchSay({ kind: "pending", ids: [], dueAt: 0 }, 1000)).toContain("1 second,");
   });
 });
