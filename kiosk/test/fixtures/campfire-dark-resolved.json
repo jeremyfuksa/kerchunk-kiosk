@@ -1,0 +1,23 @@
+{
+  "--bg-base": "#0e0f12",
+  "--bg-subtle": "#16181d",
+  "--border-default": "#23262d",
+  "--border-strong": "#343842",
+  "--danger-400": "#f17d7b",
+  "--danger-50": "#fef5f4",
+  "--danger-800": "#9c2524",
+  "--flamingo": "#dc3a38",
+  "--font-sans": "'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+  "--golden-amber": "#ef991f",
+  "--neutral-300": "#b8bcc5",
+  "--neutral-500": "#7a8090",
+  "--neutral-600": "#4d525e",
+  "--neutral-700": "#343842",
+  "--pine": "#4a7c7e",
+  "--spark": "#ff6b35",
+  "--success-400": "#9ac35d",
+  "--text-primary": "#f7f8f9",
+  "--text-secondary": "#9299a5",
+  "--text-tertiary": "#7a8090",
+  "--warning-500": "#f9c574"
+}
