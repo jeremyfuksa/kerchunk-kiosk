@@ -43,6 +43,20 @@ colors:
   storm-on-light: "#ffffff"
   storm-on-dark: "#1a1205"
   storm-on-test: "#e8eef3"
+  kc-ground: "#15191f"
+  kc-raised: "#20262d"
+  kc-key: "#262d35"
+  kc-line: "#232a31"
+  kc-well: "#0c1113"
+  kc-ink: "#e6e9ee"
+  kc-dim: "#a4acb7"
+  kc-mute: "#8d96a3"
+  kc-glass: "#5fd4c3"
+  kc-glass-ink: "#08231f"
+  kc-glass-text: "#d9f5f0"
+  kc-coral: "#f29b8f"
+  kc-hay: "#e8c37a"
+  kc-ok: "#7fc79a"
 typography:
   micro:
     fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
@@ -189,6 +203,12 @@ typography:
     fontSize: "clamp(2.3rem, 3.9vw, 3.85rem)"
     fontWeight: 600
     lineHeight: 1.08
+  admin-body:
+    fontFamily: "'Schibsted Grotesk', system-ui, sans-serif"
+    fontSize: "0.94rem"
+    fontWeight: 400
+    lineHeight: 1.5
+    letterSpacing: "normal"
 rounded:
   hairline: "2px"
   control: "4px"
@@ -258,7 +278,7 @@ Kerchunk is a radio that never sleeps, watched by one person who is usually doin
 
 That restraint is what makes the appliance readable at speed. The operator is not reading the screen — they are checking it, from a doorway, while the radio talks. So hierarchy is carried by size and by *liveness*, not by decoration. Cards are flat plates with hairline borders. Numbers are tabular so columns line up and a changing digit doesn't shift its neighbours. Labels are small, uppercase and tracked so they read as instrument legends rather than as prose. The one piece of theatre in the system — the amber text-shadow on the live tag — exists because a glowing thing reads as *on* from further away than a bright thing does.
 
-The system takes its palette and its ramps from Campfire, the operator's own design system, and its type from a single face. It does not take its personality from hardware nostalgia: there are no bevels, no brushed metal, no fake screws. Instrument *logic* — legends, meters, consequence colour, tabular data — without instrument *cosplay*.
+The ambient surfaces take their palette from Kerchunk's own token file (`kiosk/src/frontend/tokens.css`, layer 1 — frozen at the values Campfire resolved to when it was removed on 2026-09-28) and their type from a single face. It does not take its personality from hardware nostalgia: there are no bevels, no brushed metal, no fake screws. Instrument *logic* — legends, meters, consequence colour, tabular data — without instrument *cosplay*.
 
 **Key Characteristics:**
 - Dark-only. There is no light theme and no theme switch; the use scene is a dim room and a wall-mounted panel.
@@ -273,7 +293,7 @@ The system takes its palette and its ramps from Campfire, the operator's own des
 A narrow neutral field with one hot accent, four consequence colours, and a categorical palette reserved for the map.
 
 ### Primary
-- **Signal Amber** (`#ff6b35`): the single loud colour, and the system's whole emphasis budget. It marks what is *live right now* — the tuned channel's name, the current hour bar, the active nav item, the primary action in a form, the eyebrow above a page title. It is Campfire's `--spark` under the dark theme.
+- **Signal Amber** (`#ff6b35`): the single loud colour, and the system's whole emphasis budget. It marks what is *live right now* — the tuned channel's name, the current hour bar, the active nav item, the primary action in a form, the eyebrow above a page title. It is `--spark` in `tokens.css` layer 1.
 
 ### Secondary
 The consequence colours. These are never decorative: each one means a specific outcome, and a control wears one only when pressing it produces that outcome.
@@ -307,7 +327,7 @@ Three groups sit outside the semantic palette. They are part of the system, not 
 
 **The One Lit Thing Rule.** Signal Amber marks live state and nothing else. If two things on a screen are amber, one of them is wrong. Brand presence comes from restraint, not from coverage.
 
-**The Dark-Value Rule.** Campfire's *named* expressive tokens (`--flamingo`, `--sage`, `--pine`, `--golden-amber`) carry a second, much darker value under `.dark` — the theme this app always runs in. Aliasing them for text or edges silently lands at 2.8–3.6:1. Take consequence colours from the **numbered ramps** (`--danger-400`, `--success-400`, `--warning-500`), which are theme-independent, and lift Pine toward `--ink` because it has no ramp.
+**The Frozen-Ambient Rule.** Layer 1 of `tokens.css` is a record of what the wall shows, pinned by `test/tokens.test.ts`. Consequence colours for ambient pages come from its numbered steps (`--danger-400`, `--success-400`, `--warning-500`); do not retune them as a side effect of admin work.
 
 **The Three-Tier Rule.** Text uses exactly three tiers — Bright Ink, Cool Label, Quiet Hint — and all three clear 4.5:1 on Slate Panel (16.7 / 9.3 / 6.2). There is no fourth, dimmer tier, because the dark ground does not have room for one. Anything dimmer than Quiet Hint is a glyph, not text.
 
@@ -366,7 +386,7 @@ Responsive behaviour has three states, and the phone state is designed rather th
 
 ## Elevation & Depth
 
-Flat by default. Depth comes from tonal layering — Night Ground behind, Slate Panel on top, Night Ground again recessed inside controls — plus hairline borders. None of Campfire's `--shadow-*` ramp is used as a general elevation scale.
+Flat by default. Depth comes from tonal layering — Night Ground behind, Slate Panel on top, Night Ground again recessed inside controls — plus hairline borders. There is no shadow ramp; elevation is tonal.
 
 Shadow appears only where something genuinely floats above another layer, and it is structural rather than ambient: it says "this is a separate plane", not "this is important".
 
@@ -431,11 +451,35 @@ A horizontal LED-segment bar: a green→amber→red gradient fill masked by `rep
 ### Weather Alert Card (signature)
 The kiosk's EAS surface, and the one place colour is driven by external convention rather than by this palette. Storm type sets `--alert-color` (NWS convention: tornado red, severe amber, flood green, winter magenta, fire orange-red), and severity sets treatment: a **statement** is quiet, a **watch** takes a 2px colour ring and a slow pulse, a **warning** turns the whole card into a solid slab of the storm colour with high-contrast text. Every rule reads `--alert-color` / `--alert-on`, so retheming a storm category is a one-line swatch change.
 
+## Admin: Faceplate (tokens.css layer 2)
+
+The admin is the scanner's front panel, not a dashboard. Spec:
+`docs/superpowers/specs/2026-09-28-admin-redesign-design.md`.
+
+- **Ground and surfaces:** `--kc-ground` #15191f (blue-slate), `--kc-raised`
+  #20262d for grouped surfaces, `--kc-key` #262d35 for key faces. Surfaces are
+  separated by tone; the only hairline is `--kc-line` between rows.
+- **The LCD (signature):** a recessed `--kc-well` #0c1113 panel whose
+  characters glow `--kc-glass` #5fd4c3 — glow on glass, never a lit slab. It
+  shows what is live: meta line, channel name (`--kc-glass-text`), frequency
+  in large tabular numerals.
+- **Keys:** `--kc-key` faces with the single tactile shadow
+  (`--kc-key-shadow`); the one primary key per screen is `--kc-glass` with
+  `--kc-glass-ink` text. Destructive keys use `--kc-coral` text.
+- **Emphasis budget:** sea-glass marks only what is live or the one primary
+  action. `--kc-hay` marks needs-attention (triage badge, suggestions).
+  Service colours appear only as a row dot.
+- **Type:** Schibsted Grotesk (`--kc-font`), sentence case, no all-caps
+  labels; scale `--kc-t-meta` 0.78rem → `--kc-t-lcd-freq` 2.6rem.
+- **Shape:** keys 10px, groups 14px, sheets 18px, chips pill.
+- **Contrast:** every `--kc-*` text token ≥ 4.5:1 on ground, raised and key
+  (test/tokens.test.ts).
+
 ## Do's and Don'ts
 
 ### Do:
 - **Do** spend Signal Amber on live state only — one lit thing per screen.
-- **Do** take consequence colours from Campfire's numbered ramps (`--danger-400`, `--success-400`, `--warning-500`), never from the named expressive tokens, which are darker under `.dark`.
+- **Do** take ambient consequence colours from `tokens.css` layer 1's numbered steps.
 - **Do** give every interactive edge ≥3:1 against both its card and its own fill, and every text tier ≥4.5:1.
 - **Do** use `font-variant-numeric: tabular-nums` on any number that can change while being watched.
 - **Do** keep frequencies at four decimals.
@@ -454,4 +498,4 @@ The kiosk's EAS surface, and the one place colour is driven by external conventi
 - **Don't** introduce a fourth text tier dimmer than Quiet Hint; make it a glyph or make it brighter.
 - **Don't** use monospace as a signal of "technical". One face, tabular figures.
 - **Don't** invent a second card-header grammar, or a radius between `4px` and `8px`.
-- **Don't** repeat a Campfire token's hex as a `var(--token, #hex)` fallback; the token layer is always loaded, and a duplicated hex drifts silently.
+- **Don't** repeat a token's hex as a `var(--token, #hex)` fallback; `tokens.css` is always loaded, and a duplicated hex drifts silently.

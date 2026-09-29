@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-07-28T16:20:00Z",
+  "generatedAt": "2026-09-28T00:00:00Z",
   "title": "Design System: Kerchunk",
   "extensions": {
     "colorMeta": {
@@ -8,7 +8,7 @@
         "role": "primary",
         "displayName": "Signal Amber",
         "canonical": "#ff6b35",
-        "note": "Campfire --spark under .dark. The system's entire emphasis budget; marks live state only.",
+        "note": "`--spark` in tokens.css layer 1 (frozen from Campfire's resolved value). The system's entire emphasis budget; marks live state only.",
         "tonalRamp": [
           "#3d1405",
           "#5c1e08",
@@ -24,7 +24,7 @@
         "role": "secondary",
         "displayName": "Caution Hay",
         "canonical": "#f9c574",
-        "note": "Campfire --warning-500. Reversible-but-consequential actions, and every focus ring. 8.4:1 on slate-panel.",
+        "note": "tokens.css layer 1's `--warning-500` (frozen from Campfire). Reversible-but-consequential actions, and every focus ring. 8.4:1 on slate-panel.",
         "tonalRamp": [
           "#3a2a0c",
           "#573f12",
@@ -40,7 +40,7 @@
         "role": "secondary",
         "displayName": "Adopt Moss",
         "canonical": "#9ac35d",
-        "note": "Campfire --success-400. Additive and confirming actions. 6.5:1 on slate-panel.",
+        "note": "tokens.css layer 1's `--success-400` (frozen from Campfire). Additive and confirming actions. 6.5:1 on slate-panel.",
         "tonalRamp": [
           "#1d2a0c",
           "#2d4013",
@@ -56,7 +56,7 @@
         "role": "secondary",
         "displayName": "Destroy Coral",
         "canonical": "#f17d7b",
-        "note": "Campfire --danger-400. Irreversible or service-affecting actions, and error text. 5.0:1 on slate-panel.",
+        "note": "tokens.css layer 1's `--danger-400` (frozen from Campfire). Irreversible or service-affecting actions, and error text. 5.0:1 on slate-panel.",
         "tonalRamp": [
           "#3a1211",
           "#571b1a",
@@ -72,7 +72,7 @@
         "role": "secondary",
         "displayName": "Lifted Pine",
         "canonical": "#87a7a9",
-        "note": "Campfire --pine lifted 35% toward --ink; pine has no numbered ramp and its .dark value is 2.8:1. Passive/observational: auditioning, location, sparklines.",
+        "note": "tokens.css layer 1's `--pine` lifted 35% toward `--ink` (frozen from Campfire); pine has no numbered ramp and its resolved value is 2.8:1. Passive/observational: auditioning, location, sparklines.",
         "tonalRamp": [
           "#162223",
           "#213436",
@@ -88,7 +88,7 @@
         "role": "neutral",
         "displayName": "Night Ground",
         "canonical": "#1c1f26",
-        "note": "Campfire --neutral-950. The page field AND the recessed fill inside controls — the same value doing both is what makes an input read as cut into a panel.",
+        "note": "tokens.css layer 1's `--neutral-950` (frozen from Campfire). The page field AND the recessed fill inside controls — the same value doing both is what makes an input read as cut into a panel.",
         "tonalRamp": [
           "#0e1013",
           "#1c1f26",
@@ -104,7 +104,7 @@
         "role": "neutral",
         "displayName": "Slate Panel",
         "canonical": "#2b303b",
-        "note": "Campfire --neutral-900. Every card, table body, drawer and menu.",
+        "note": "tokens.css layer 1's `--neutral-900` (frozen from Campfire). Every card, table body, drawer and menu.",
         "tonalRamp": [
           "#0e1013",
           "#1c1f26",
@@ -120,7 +120,7 @@
         "role": "neutral",
         "displayName": "Hairline",
         "canonical": "#4d515c",
-        "note": "Campfire --neutral-700. Row separators and field dividers. Replaced an earlier token that resolved to the panel colour itself (1.00:1).",
+        "note": "tokens.css layer 1's `--neutral-700` (frozen from Campfire). Row separators and field dividers. Replaced an earlier token that resolved to the panel colour itself (1.00:1).",
         "tonalRamp": [
           "#0e1013",
           "#1c1f26",
@@ -136,7 +136,7 @@
         "role": "neutral",
         "displayName": "Steel",
         "canonical": "#747b8a",
-        "note": "Campfire --neutral-500. Two non-text jobs: the resting edge of every interactive control (3.1:1, clears WCAG 1.4.11), and decorative glyphs — carets, chevrons, the fader groove.",
+        "note": "tokens.css layer 1's `--neutral-500` (frozen from Campfire). Two non-text jobs: the resting edge of every interactive control (3.1:1, clears WCAG 1.4.11), and decorative glyphs — carets, chevrons, the fader groove.",
         "tonalRamp": [
           "#0e1013",
           "#1c1f26",
@@ -152,7 +152,7 @@
         "role": "neutral",
         "displayName": "Bright Ink",
         "canonical": "#f7f8f9",
-        "note": "Campfire --neutral-50. Primary text and data. 12.4:1 on slate-panel.",
+        "note": "tokens.css layer 1's `--neutral-50` (frozen from Campfire). Primary text and data. 12.4:1 on slate-panel.",
         "tonalRamp": [
           "#2b303b",
           "#42454e",
@@ -168,7 +168,7 @@
         "role": "neutral",
         "displayName": "Cool Label",
         "canonical": "#b8bcc5",
-        "note": "Campfire --neutral-300, reached past the semantic scale on purpose: the dark theme has no third text tier above 4.5:1, so labels and hints would otherwise be the same gray. 6.9:1.",
+        "note": "tokens.css layer 1's `--neutral-300` (frozen from Campfire), reached past the semantic scale on purpose: the dark theme has no third text tier above 4.5:1, so labels and hints would otherwise be the same gray. 6.9:1.",
         "tonalRamp": [
           "#2b303b",
           "#42454e",
@@ -184,7 +184,7 @@
         "role": "neutral",
         "displayName": "Quiet Hint",
         "canonical": "#9299a5",
-        "note": "Campfire --neutral-400. Helper text, units, column headers, empty states. 4.6:1 — the dimmest tier that is still text.",
+        "note": "tokens.css layer 1's `--neutral-400` (frozen from Campfire). Helper text, units, column headers, empty states. 4.6:1 — the dimmest tier that is still text.",
         "tonalRamp": [
           "#2b303b",
           "#42454e",
@@ -195,6 +195,104 @@
           "#edeef1",
           "#f7f8f9"
         ]
+      },
+      "kc-ground": {
+        "role": "neutral",
+        "displayName": "Faceplate Ground",
+        "canonical": "#15191f",
+        "note": "tokens.css layer 2 (admin). Blue-slate page ground for the admin Faceplate.",
+        "tonalRamp": ["#030404", "#08090b", "#0c0e12", "#111418", "#15191f", "#55585c", "#959699", "#d4d5d6"]
+      },
+      "kc-raised": {
+        "role": "neutral",
+        "displayName": "Raised Surface",
+        "canonical": "#20262d",
+        "note": "tokens.css layer 2 (admin). Grouped surfaces, one tonal step above ground.",
+        "tonalRamp": ["#050506", "#0b0e10", "#12161a", "#191e23", "#20262d", "#5d6166", "#9a9ca0", "#d6d8d9"]
+      },
+      "kc-key": {
+        "role": "neutral",
+        "displayName": "Key Face",
+        "canonical": "#262d35",
+        "note": "tokens.css layer 2 (admin). Key/button faces with the single tactile shadow (--kc-key-shadow).",
+        "tonalRamp": ["#050608", "#0e1013", "#161a1e", "#1e232a", "#262d35", "#61666c", "#9ca0a3", "#d8d9da"]
+      },
+      "kc-line": {
+        "role": "neutral",
+        "displayName": "Row Hairline",
+        "canonical": "#232a31",
+        "note": "tokens.css layer 2 (admin). The only hairline in the Faceplate — between rows.",
+        "tonalRamp": ["#050607", "#0d0f12", "#14181c", "#1c2127", "#232a31", "#5f6469", "#9b9ea1", "#d7d8da"]
+      },
+      "kc-well": {
+        "role": "neutral",
+        "displayName": "LCD Well",
+        "canonical": "#0c1113",
+        "note": "tokens.css layer 2 (admin). The recessed panel behind the LCD glow — never a lit slab.",
+        "tonalRamp": ["#020203", "#040607", "#070a0b", "#090d0f", "#0c1113", "#4e5253", "#919394", "#d3d4d4"]
+      },
+      "kc-ink": {
+        "role": "neutral",
+        "displayName": "Faceplate Ink",
+        "canonical": "#e6e9ee",
+        "note": "tokens.css layer 2 (admin). Primary admin text.",
+        "tonalRamp": ["#212122", "#525355", "#838588", "#b5b7bb", "#e6e9ee", "#edeff3", "#f4f5f7", "#fafbfc"]
+      },
+      "kc-dim": {
+        "role": "neutral",
+        "displayName": "Faceplate Dim",
+        "canonical": "#a4acb7",
+        "note": "tokens.css layer 2 (admin). Secondary admin text.",
+        "tonalRamp": ["#17191a", "#3b3d41", "#5e6269", "#818790", "#a4acb7", "#bdc3cb", "#d6d9de", "#eef0f2"]
+      },
+      "kc-mute": {
+        "role": "neutral",
+        "displayName": "Faceplate Mute",
+        "canonical": "#8d96a3",
+        "note": "tokens.css layer 2 (admin). Tertiary/muted admin text.",
+        "tonalRamp": ["#141517", "#32363a", "#51565d", "#6f7680", "#8d96a3", "#acb3bc", "#cbcfd5", "#eaecee"]
+      },
+      "kc-glass": {
+        "role": "primary",
+        "displayName": "Sea Glass",
+        "canonical": "#5fd4c3",
+        "note": "tokens.css layer 2 (admin). The Faceplate's emphasis budget — the LCD glow and the one primary key per screen. Never a lit slab, always glow on glass.",
+        "tonalRamp": ["#0e1e1c", "#224c46", "#36796f", "#4ba799", "#5fd4c3", "#8be0d3", "#b6ebe4", "#e2f7f4"]
+      },
+      "kc-glass-ink": {
+        "role": "neutral",
+        "displayName": "Glass Ink",
+        "canonical": "#08231f",
+        "note": "tokens.css layer 2 (admin). Text on the primary sea-glass key.",
+        "tonalRamp": ["#010504", "#030d0b", "#051412", "#061c18", "#08231f", "#4b5f5c", "#8f9b99", "#d2d7d6"]
+      },
+      "kc-glass-text": {
+        "role": "neutral",
+        "displayName": "LCD Channel Text",
+        "canonical": "#d9f5f0",
+        "note": "tokens.css layer 2 (admin). The LCD's channel-name glow colour.",
+        "tonalRamp": ["#1f2322", "#4e5856", "#7c8c89", "#abc1bd", "#d9f5f0", "#e3f8f4", "#eefaf8", "#f8fdfc"]
+      },
+      "kc-coral": {
+        "role": "secondary",
+        "displayName": "Faceplate Coral",
+        "canonical": "#f29b8f",
+        "note": "tokens.css layer 2 (admin). Destructive key text.",
+        "tonalRamp": ["#231614", "#563733", "#8a5952", "#be7a70", "#f29b8f", "#f6b6ae", "#f9d2cc", "#fdedeb"]
+      },
+      "kc-hay": {
+        "role": "secondary",
+        "displayName": "Faceplate Hay",
+        "canonical": "#e8c37a",
+        "note": "tokens.css layer 2 (admin). Needs-attention marker — triage badge, suggestions.",
+        "tonalRamp": ["#211c11", "#53462c", "#856f46", "#b69960", "#e8c37a", "#eed39e", "#f5e4c3", "#fbf4e7"]
+      },
+      "kc-ok": {
+        "role": "secondary",
+        "displayName": "Faceplate OK",
+        "canonical": "#7fc79a",
+        "note": "tokens.css layer 2 (admin). Healthy status.",
+        "tonalRamp": ["#121c16", "#2d4737", "#497258", "#649c79", "#7fc79a", "#a2d6b6", "#c5e6d1", "#e8f5ed"]
       },
       "service-air": {
         "role": "tertiary",
@@ -413,6 +511,10 @@
       "kiosk-display": {
         "displayName": "Kiosk Display",
         "purpose": "The kiosk's live channel name, read from across a room. Kiosk only."
+      },
+      "admin-body": {
+        "displayName": "Admin Body",
+        "purpose": "Faceplate body copy — Schibsted Grotesk, sentence case, no all-caps labels. Admin layer only."
       }
     },
     "shadows": [
@@ -603,7 +705,7 @@
   ],
   "narrative": {
     "northStar": "The Night Watch",
-    "overview": "Kerchunk is a radio that never sleeps, watched by one person who is usually doing something else. Every surface is built for that: a dark room, a glance from across it, and exactly one thing lit. At rest the whole interface is quiet gray on near-black — panels, rules, labels, and data all sit in a narrow neutral band. Emphasis is not distributed; it is spent.\n\nThat restraint is what makes the appliance readable at speed. The operator is not reading the screen — they are checking it, from a doorway, while the radio talks. So hierarchy is carried by size and by liveness, not by decoration. Cards are flat plates with hairline borders. Numbers are tabular so columns line up and a changing digit doesn't shift its neighbours. Labels are small, uppercase and tracked so they read as instrument legends rather than as prose.\n\nThe system takes its palette and its ramps from Campfire, the operator's own design system, and its type from a single face. It does not take its personality from hardware nostalgia: there are no bevels, no brushed metal, no fake screws. Instrument logic — legends, meters, consequence colour, tabular data — without instrument cosplay.",
+    "overview": "Kerchunk is a radio that never sleeps, watched by one person who is usually doing something else. Every surface is built for that: a dark room, a glance from across it, and exactly one thing lit. At rest the whole interface is quiet gray on near-black — panels, rules, labels, and data all sit in a narrow neutral band. Emphasis is not distributed; it is spent.\n\nThat restraint is what makes the appliance readable at speed. The operator is not reading the screen — they are checking it, from a doorway, while the radio talks. So hierarchy is carried by size and by liveness, not by decoration. Cards are flat plates with hairline borders. Numbers are tabular so columns line up and a changing digit doesn't shift its neighbours. Labels are small, uppercase and tracked so they read as instrument legends rather than as prose.\n\nThe ambient surfaces take their palette from Kerchunk's own token file (kiosk/src/frontend/tokens.css, layer 1 — frozen at the values Campfire resolved to when it was removed on 2026-09-28) and their type from a single face. It does not take its personality from hardware nostalgia: there are no bevels, no brushed metal, no fake screws. Instrument logic — legends, meters, consequence colour, tabular data — without instrument cosplay.",
     "keyCharacteristics": [
       "Dark-only. There is no light theme and no theme switch; the use scene is a dim room and a wall-mounted panel.",
       "One loud colour, spent on live state.",
@@ -619,8 +721,8 @@
         "section": "colors"
       },
       {
-        "name": "The Dark-Value Rule",
-        "body": "Campfire's named expressive tokens (--flamingo, --sage, --pine, --golden-amber) carry a second, much darker value under .dark — the theme this app always runs in. Aliasing them for text or edges silently lands at 2.8–3.6:1. Take consequence colours from the numbered ramps (--danger-400, --success-400, --warning-500), which are theme-independent, and lift Pine toward --ink because it has no ramp.",
+        "name": "The Frozen-Ambient Rule",
+        "body": "Layer 1 of tokens.css is a record of what the wall shows, pinned by test/tokens.test.ts. Consequence colours for ambient pages come from its numbered steps (--danger-400, --success-400, --warning-500); do not retune them as a side effect of admin work.",
         "section": "colors"
       },
       {
@@ -686,7 +788,7 @@
     ],
     "dos": [
       "Do spend Signal Amber on live state only — one lit thing per screen.",
-      "Do take consequence colours from Campfire's numbered ramps (--danger-400, --success-400, --warning-500), never from the named expressive tokens, which are darker under .dark.",
+      "Do take ambient consequence colours from tokens.css layer 1's numbered steps.",
       "Do give every interactive edge ≥3:1 against both its card and its own fill, and every text tier ≥4.5:1.",
       "Do use font-variant-numeric: tabular-nums on any number that can change while being watched.",
       "Do keep frequencies at four decimals.",
@@ -706,7 +808,7 @@
       "Don't introduce a fourth text tier dimmer than Quiet Hint; make it a glyph or make it brighter.",
       "Don't use monospace as a signal of 'technical'. One face, tabular figures.",
       "Don't invent a second card-header grammar, or a radius between 4px and 8px.",
-      "Don't repeat a Campfire token's hex as a var(--token, #hex) fallback; the token layer is always loaded, and a duplicated hex drifts silently.",
+      "Don't repeat a token's hex as a var(--token, #hex) fallback; tokens.css is always loaded, and a duplicated hex drifts silently.",
       "Don't size type in px — it freezes out browser zoom and OS font-size settings.",
       "Don't restyle the NWS storm palette toward the Kerchunk palette, and don't use a depth ink as a surface colour."
     ]
