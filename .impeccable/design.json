@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-09-28T00:00:00Z",
+  "generatedAt": "2026-09-29T01:39:43Z",
   "title": "Design System: Kerchunk",
   "extensions": {
     "colorMeta": {
@@ -200,99 +200,85 @@
         "role": "neutral",
         "displayName": "Faceplate Ground",
         "canonical": "#15191f",
-        "note": "tokens.css layer 2 (admin). Blue-slate page ground for the admin Faceplate.",
-        "tonalRamp": ["#030404", "#08090b", "#0c0e12", "#111418", "#15191f", "#55585c", "#959699", "#d4d5d6"]
+        "note": "tokens.css layer 2 (admin). Blue-slate page ground for the admin Faceplate."
       },
       "kc-raised": {
         "role": "neutral",
         "displayName": "Raised Surface",
         "canonical": "#20262d",
-        "note": "tokens.css layer 2 (admin). Grouped surfaces, one tonal step above ground.",
-        "tonalRamp": ["#050506", "#0b0e10", "#12161a", "#191e23", "#20262d", "#5d6166", "#9a9ca0", "#d6d8d9"]
+        "note": "tokens.css layer 2 (admin). Grouped surfaces, one tonal step above ground."
       },
       "kc-key": {
         "role": "neutral",
         "displayName": "Key Face",
         "canonical": "#262d35",
-        "note": "tokens.css layer 2 (admin). Key/button faces with the single tactile shadow (--kc-key-shadow).",
-        "tonalRamp": ["#050608", "#0e1013", "#161a1e", "#1e232a", "#262d35", "#61666c", "#9ca0a3", "#d8d9da"]
+        "note": "tokens.css layer 2 (admin). Key/button faces with the single tactile shadow (--kc-key-shadow)."
       },
       "kc-line": {
         "role": "neutral",
         "displayName": "Row Hairline",
         "canonical": "#232a31",
-        "note": "tokens.css layer 2 (admin). The only hairline in the Faceplate — between rows.",
-        "tonalRamp": ["#050607", "#0d0f12", "#14181c", "#1c2127", "#232a31", "#5f6469", "#9b9ea1", "#d7d8da"]
+        "note": "tokens.css layer 2 (admin). The only hairline in the Faceplate — between rows."
       },
       "kc-well": {
         "role": "neutral",
         "displayName": "LCD Well",
         "canonical": "#0c1113",
-        "note": "tokens.css layer 2 (admin). The recessed panel behind the LCD glow — never a lit slab.",
-        "tonalRamp": ["#020203", "#040607", "#070a0b", "#090d0f", "#0c1113", "#4e5253", "#919394", "#d3d4d4"]
+        "note": "tokens.css layer 2 (admin). The recessed panel behind the LCD glow — never a lit slab."
       },
       "kc-ink": {
         "role": "neutral",
         "displayName": "Faceplate Ink",
         "canonical": "#e6e9ee",
-        "note": "tokens.css layer 2 (admin). Primary admin text.",
-        "tonalRamp": ["#212122", "#525355", "#838588", "#b5b7bb", "#e6e9ee", "#edeff3", "#f4f5f7", "#fafbfc"]
+        "note": "tokens.css layer 2 (admin). Primary admin text."
       },
       "kc-dim": {
         "role": "neutral",
         "displayName": "Faceplate Dim",
         "canonical": "#a4acb7",
-        "note": "tokens.css layer 2 (admin). Secondary admin text.",
-        "tonalRamp": ["#17191a", "#3b3d41", "#5e6269", "#818790", "#a4acb7", "#bdc3cb", "#d6d9de", "#eef0f2"]
+        "note": "tokens.css layer 2 (admin). Secondary admin text."
       },
       "kc-mute": {
         "role": "neutral",
         "displayName": "Faceplate Mute",
         "canonical": "#8d96a3",
-        "note": "tokens.css layer 2 (admin). Tertiary/muted admin text.",
-        "tonalRamp": ["#141517", "#32363a", "#51565d", "#6f7680", "#8d96a3", "#acb3bc", "#cbcfd5", "#eaecee"]
+        "note": "tokens.css layer 2 (admin). Tertiary/muted admin text."
       },
       "kc-glass": {
         "role": "primary",
         "displayName": "Sea Glass",
         "canonical": "#5fd4c3",
-        "note": "tokens.css layer 2 (admin). The Faceplate's emphasis budget — the LCD glow and the one primary key per screen. Never a lit slab, always glow on glass.",
-        "tonalRamp": ["#0e1e1c", "#224c46", "#36796f", "#4ba799", "#5fd4c3", "#8be0d3", "#b6ebe4", "#e2f7f4"]
+        "note": "tokens.css layer 2 (admin). The Faceplate's emphasis budget — the LCD glow and the one primary key per screen. Never a lit slab, always glow on glass."
       },
       "kc-glass-ink": {
         "role": "neutral",
         "displayName": "Glass Ink",
         "canonical": "#08231f",
-        "note": "tokens.css layer 2 (admin). Text on the primary sea-glass key.",
-        "tonalRamp": ["#010504", "#030d0b", "#051412", "#061c18", "#08231f", "#4b5f5c", "#8f9b99", "#d2d7d6"]
+        "note": "tokens.css layer 2 (admin). Text on the primary sea-glass key."
       },
       "kc-glass-text": {
         "role": "neutral",
         "displayName": "LCD Channel Text",
         "canonical": "#d9f5f0",
-        "note": "tokens.css layer 2 (admin). The LCD's channel-name glow colour.",
-        "tonalRamp": ["#1f2322", "#4e5856", "#7c8c89", "#abc1bd", "#d9f5f0", "#e3f8f4", "#eefaf8", "#f8fdfc"]
+        "note": "tokens.css layer 2 (admin). The LCD's channel-name glow colour."
       },
       "kc-coral": {
         "role": "secondary",
         "displayName": "Faceplate Coral",
         "canonical": "#f29b8f",
-        "note": "tokens.css layer 2 (admin). Destructive key text.",
-        "tonalRamp": ["#231614", "#563733", "#8a5952", "#be7a70", "#f29b8f", "#f6b6ae", "#f9d2cc", "#fdedeb"]
+        "note": "tokens.css layer 2 (admin). Destructive key text."
       },
       "kc-hay": {
         "role": "secondary",
         "displayName": "Faceplate Hay",
         "canonical": "#e8c37a",
-        "note": "tokens.css layer 2 (admin). Needs-attention marker — triage badge, suggestions.",
-        "tonalRamp": ["#211c11", "#53462c", "#856f46", "#b69960", "#e8c37a", "#eed39e", "#f5e4c3", "#fbf4e7"]
+        "note": "tokens.css layer 2 (admin). Needs-attention marker — triage badge, suggestions."
       },
       "kc-ok": {
         "role": "secondary",
         "displayName": "Faceplate OK",
         "canonical": "#7fc79a",
-        "note": "tokens.css layer 2 (admin). Healthy status.",
-        "tonalRamp": ["#121c16", "#2d4737", "#497258", "#649c79", "#7fc79a", "#a2d6b6", "#c5e6d1", "#e8f5ed"]
+        "note": "tokens.css layer 2 (admin). Healthy status."
       },
       "service-air": {
         "role": "tertiary",
