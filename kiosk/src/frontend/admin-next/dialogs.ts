@@ -28,7 +28,32 @@ export function mountDialogs(host: HTMLElement): Dialogs {
   const toastHost = host.querySelector<HTMLElement>(".kc-toastHost")!;
   const dlg = host.querySelector<HTMLDialogElement>(".kc-confirm")!;
   const go = dlg.querySelector<HTMLButtonElement>("#kcConfirmGo")!;
+  const toastHome = toastHost.parentElement!;
   let timer: ReturnType<typeof setTimeout> | undefined;
+
+  // A showModal() dialog (a Library sheet, the confirm dialog itself, …) puts
+  // the rest of the page — including this toast host, mounted once at the app
+  // root — behind an inert barrier: Undo becomes unreachable while a sheet is
+  // open. Before showing a toast, move the host inside the top-most OPEN
+  // modal (skipping the confirm dialog, which must never host it) so it
+  // renders in that dialog's top layer and stays interactive; with no modal
+  // open, move it back home. `position: fixed` inside a dialog still tracks
+  // the viewport (nothing here sets transform/filter/perspective), so the
+  // toast's on-screen position is unchanged either way.
+  function placeToastHost(): void {
+    const modals = document.querySelectorAll<HTMLDialogElement>("dialog:modal");
+    let top: HTMLDialogElement | null = null;
+    for (const m of modals) if (m !== dlg) top = m;
+    const target = top ?? toastHome;
+    if (toastHost.parentElement === target) return;
+    target.appendChild(toastHost);
+    // A closed <dialog> goes `display: none` (it stays in the DOM), which
+    // would hide a still-live toast — and its pending Undo — along with it.
+    // Re-run this the moment ITS host closes, carrying the same live node
+    // (and whatever timer/undo closure is still attached to it) to wherever
+    // is now appropriate: the next still-open modal, or back home.
+    if (target !== toastHome) target.addEventListener("close", placeToastHost, { once: true });
+  }
 
   function close(): void {
     if (timer !== undefined) { clearTimeout(timer); timer = undefined; }
@@ -39,6 +64,7 @@ export function mountDialogs(host: HTMLElement): Dialogs {
   // and the undo path calls it again — no `this` to lose.
   const toast: Dialogs["toast"] = (text, o = {}) => {
     close();
+    placeToastHost();
     toastHost.innerHTML = `<div class="kc-toast"><span class="kc-toast__text">${esc(text)}</span>${
       o.undo ? `<button type="button" class="kc-toast__undo">Undo</button>` : ""
     }<button type="button" class="kc-toast__close" aria-label="Dismiss">${ico("close")}</button></div>`;

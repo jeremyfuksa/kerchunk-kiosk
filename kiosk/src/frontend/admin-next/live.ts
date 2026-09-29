@@ -63,7 +63,8 @@ export function withAudio(s: LiveState, a: { volume: number; muted: boolean; rem
 }
 
 export interface LcdView {
-  state: "live" | "scanning" | "monitor" | "weather" | "breakin";
+  // "detail": a Library channel shown on the glass — static, no meter
+  state: "live" | "scanning" | "monitor" | "weather" | "breakin" | "detail";
   meta: string;
   name: string;
   freq: string;

@@ -1,0 +1,135 @@
+/* Library — list, chips, detail sheet/pane, sheets, triage cards. Faceplate
+   language: tone separation, --kc-line hairlines between rows only. */
+.kc-lib__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+/* Compact header key: .kc-key is content-box, so its 44px min-height plus
+   padding rendered ~64px tall here — a hero key, not a header action. */
+.kc-lib__head .kc-key { box-sizing: border-box; min-height: 44px; padding: 8px 14px; }
+.kc-lib__head h1 { margin: 8px 0 2px; font-size: var(--kc-t-title); font-weight: 700; }
+.kc-seg { display: flex; background: var(--kc-raised); border-radius: var(--kc-r-seg); padding: 3px; margin: 10px 0 12px; max-width: 28rem; }
+.kc-seg__item { flex: 1; text-align: center; padding: 10px 0; border-radius: var(--kc-r-key); color: var(--kc-dim); font-weight: 600; text-decoration: none; min-height: 40px; box-sizing: border-box; }
+.kc-seg__item[aria-current="page"] { background: var(--kc-key); color: var(--kc-ink); box-shadow: var(--kc-key-shadow); }
+.kc-seg__count { font-weight: 600; color: var(--kc-mute); margin-left: 4px; }
+.kc-seg__count.kc-badge { color: var(--kc-hay-ink); }
+.kc-search { width: 100%; box-sizing: border-box; min-height: 44px; background: var(--kc-raised); color: var(--kc-ink); border: 0; border-radius: var(--kc-r-key); padding: 0 14px; font: inherit; }
+.kc-search::placeholder { color: var(--kc-mute); }
+.kc-chips { display: flex; gap: 6px; overflow-x: auto; padding: 10px 0 4px; scrollbar-width: none; }
+.kc-chip { flex: none; min-height: 40px; padding: 0 14px; border-radius: var(--kc-r-pill); border: 0; background: var(--kc-raised); color: var(--kc-dim); font: 500 var(--kc-t-small) var(--kc-font); cursor: pointer; }
+.kc-chip b { font-weight: 600; margin-left: 4px; color: var(--kc-mute); }
+.kc-chip[aria-pressed="true"] { background: color-mix(in srgb, var(--kc-glass) 16%, var(--kc-raised)); color: var(--kc-glass); }
+.kc-chip[aria-pressed="true"] b { color: inherit; }
+.kc-chip--dashed { background: none; box-sizing: border-box; border: 1px dashed var(--kc-line); }
+.kc-sugg { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 8px 0; padding: 10px 14px; border-radius: var(--kc-r-key); background: color-mix(in srgb, var(--kc-hay) 12%, var(--kc-ground)); color: var(--kc-hay); font-size: var(--kc-t-small); }
+.kc-sugg .kc-link { color: var(--kc-hay); min-height: 40px; }
+.kc-count { color: var(--kc-mute); font-size: var(--kc-t-small); margin: 6px 0 0; min-height: 1.2em; }
+/* Quiet gaps: an empty count (no search) or suggestions strip takes no room.
+   The count stays rendered (min-height 0, not display:none) so it remains a
+   live region for screen readers. */
+.kc-count:empty { min-height: 0; margin: 0; }
+#kcLibSugg:empty { display: none; }
+
+.kc-list--ch { background: var(--kc-raised); border-radius: var(--kc-r-group); margin-top: 8px; overflow: hidden; }
+.kc-lrow { display: flex; align-items: center; gap: 10px; padding: 0 12px 0 0; border-top: 1px solid var(--kc-line); }
+.kc-lrow:first-child { border-top: 0; }
+.kc-lrow__open { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; padding: 10px 0 10px 16px; color: inherit; text-decoration: none; min-height: 44px; }
+.kc-lrow__open:hover .kc-lrow__name { color: var(--kc-glass-text); }
+.kc-lrow[aria-current="true"] { background: color-mix(in srgb, var(--kc-glass) 8%, var(--kc-raised)); }
+.kc-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.kc-lrow__text { min-width: 0; }
+.kc-lrow__name { display: block; font-weight: 500; font-size: var(--kc-t-row); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kc-lrow__meta { color: var(--kc-mute); font-size: var(--kc-t-small); font-variant-numeric: tabular-nums; }
+.kc-spk { flex: none; width: 44px; height: 44px; border-radius: var(--kc-r-key); border: 0; background: var(--kc-key); color: var(--kc-ink); box-shadow: var(--kc-key-shadow); display: grid; place-items: center; cursor: pointer; }
+.kc-spk[aria-pressed="false"] { background: var(--kc-raised); color: var(--kc-mute); box-shadow: none; }
+.kc-spk[aria-disabled="true"] { opacity: 0.5; cursor: progress; }
+
+/* sheet: modal bottom sheet (phone, and management sheets) / right pane (desktop detail) */
+.kc-sheet { background: var(--kc-ground); color: var(--kc-ink); border: 0; padding: 0; max-width: none; max-height: none; box-sizing: border-box; }
+.kc-sheet::backdrop { background: var(--kc-backdrop); }
+.kc-sheet[open]:modal { position: fixed; inset: auto 0 0 0; width: 100%; max-height: calc(100dvh - 56px); margin: 0; border-radius: var(--kc-r-sheet) var(--kc-r-sheet) 0 0; overflow: auto; padding-bottom: env(safe-area-inset-bottom, 0px); }
+@media (min-width: 900px) {
+  .kc-sheet[open]:modal { inset: 0; margin: auto; width: min(34rem, 92vw); max-height: 86dvh; border-radius: var(--kc-r-sheet); }
+}
+.kc-sheet--pane[open] { position: fixed; top: 64px; right: 0; bottom: 0; left: auto; width: 420px; margin: 0; overflow: auto; border-radius: var(--kc-r-sheet) 0 0 0; box-shadow: -1px 0 0 var(--kc-line); z-index: 20; }
+@media (min-width: 900px) {
+  /* Only a pane opened ≥900px sets this class (mountSheet checks the same
+     breakpoint) — but a window can shrink below 900px afterward without the
+     sheet closing, so guard the reflow here too: never crush the list. */
+  html.kcDetail-pane-open .kc-lib { margin-right: 436px; }
+}
+.kc-sheet__head { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 12px 8px 18px; background: var(--kc-ground); }
+.kc-sheet__head--bare { justify-content: flex-end; padding-bottom: 4px; }
+.kc-sheet__title { margin: 0; font-size: var(--kc-t-lead); font-weight: 700; }
+.kc-sheet__close { width: 44px; height: 44px; border: 0; border-radius: var(--kc-r-key); background: var(--kc-key); color: var(--kc-ink); display: grid; place-items: center; cursor: pointer; }
+.kc-sheet__body { padding: 0 14px 18px; }
+@media (prefers-reduced-motion: no-preference) {
+  .kc-sheet[open]:modal { animation: kc-sheet-in 160ms ease-out; }
+  @keyframes kc-sheet-in { from { transform: translateY(24px); opacity: 0; } }
+}
+
+/* detail */
+.kc-keys--two { grid-template-columns: 1.4fr 1fr; }
+.kc-detail .kc-group .kc-switchRow { margin: 0; padding: 12px 16px; border-top: 1px solid var(--kc-line); border-radius: 0; background: none; }
+.kc-detail .kc-group .kc-switchRow:first-of-type { border-top: 0; }
+.kc-field { display: grid; gap: 4px; padding: 10px 16px; border-top: 1px solid var(--kc-line); }
+.kc-group > .kc-field:first-of-type { border-top: 0; }
+.kc-field label { font-size: var(--kc-t-small); color: var(--kc-dim); font-weight: 600; }
+.kc-field input, .kc-field select { min-height: 44px; background: var(--kc-key); color: var(--kc-ink); border: 0; border-radius: var(--kc-r-key); padding: 0 12px; font: inherit; }
+.kc-detail .kc-field { grid-template-columns: minmax(0, 1fr); }
+.kc-detail .kc-field input[type="text"] { width: 100%; box-sizing: border-box; }
+.kc-field input[aria-invalid="true"] { box-shadow: inset 0 0 0 2px var(--kc-coral); }
+.kc-field__hint { color: var(--kc-mute); font-size: var(--kc-t-meta); }
+.kc-fieldErr { color: var(--kc-coral); font-size: var(--kc-t-small); }
+.kc-banks { display: flex; flex-wrap: wrap; gap: 6px; }
+.kc-banks .kc-chip:not([aria-pressed="true"]) { background: var(--kc-key); }
+.kc-banks .kc-chip[aria-disabled="true"] { cursor: default; opacity: 0.8; }
+.kc-toneHeard { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; color: var(--kc-mute); font-size: var(--kc-t-small); }
+.kc-facts { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; margin: 8px 16px 12px; font-size: var(--kc-t-small); }
+.kc-facts dt { color: var(--kc-mute); }
+.kc-facts dd { margin: 0; overflow-wrap: anywhere; }
+.kc-spark { width: 100%; height: 90px; display: block; }
+.kc-spark polyline { fill: none; stroke: var(--kc-glass); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.kc-detail__status { min-height: 1.4em; margin: 10px 4px 0; color: var(--kc-dim); font-size: var(--kc-t-small); }
+.kc-detail__add { margin-top: 14px; }
+
+/* banks + suggestions sheets */
+.kc-bank { border-top: 1px solid var(--kc-line); }
+.kc-bank:first-child { border-top: 0; }
+.kc-bank > summary { list-style: none; cursor: pointer; display: flex; justify-content: space-between; gap: 10px; padding: 12px 16px; min-height: 44px; box-sizing: border-box; }
+.kc-bank > summary::-webkit-details-marker { display: none; }
+.kc-bank__info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.kc-bank__rule { color: var(--kc-mute); font-size: var(--kc-t-small); }
+.kc-bank__acts { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 16px 14px; }
+.kc-formRow { display: flex; flex-wrap: wrap; gap: 8px; padding: 4px 16px 14px; }
+.kc-formRow .kc-field, .kc-formRow .kc-keys { flex: 1 1 100%; padding: 0; border-top: 0; }
+.kc-dupSet + .kc-dupSet { margin-top: 10px; }
+.kc-dupSet__freq { padding: 8px 16px 0; font-weight: 700; font-variant-numeric: tabular-nums; }
+.kc-dupSet__tag--keep { color: var(--kc-mute); }
+.kc-dupSet__tag--drop { color: var(--kc-coral); }
+
+/* triage cards */
+.kc-cards { display: grid; gap: 10px; margin-top: 4px; }
+@media (min-width: 900px) { .kc-cards { grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); } }
+.kc-card { background: var(--kc-raised); border-radius: var(--kc-r-group); padding: 12px 14px; }
+.kc-card__top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.kc-card__freq { font-size: var(--kc-t-lead); font-weight: 700; font-variant-numeric: tabular-nums; }
+.kc-card__hits { color: var(--kc-mute); font-size: var(--kc-t-small); }
+.kc-card__guess { color: var(--kc-dim); margin: 2px 0 8px; }
+.kc-card__note { color: var(--kc-hay); font-size: var(--kc-t-small); margin: -4px 0 8px; }
+.kc-card__sample { display: flex; align-items: center; gap: 8px; color: var(--kc-mute); font-size: var(--kc-t-small); margin-bottom: 10px; }
+.kc-card__acts { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 6px; }
+.kc-card__sel { display: flex; align-items: center; gap: 8px; min-height: 40px; }
+.kc-card__sel input { width: 22px; height: 22px; accent-color: var(--kc-glass); }
+.kc-play { width: 40px; height: 40px; border-radius: 50%; border: 0; background: var(--kc-key); color: var(--kc-ink); box-shadow: var(--kc-key-shadow); display: grid; place-items: center; cursor: pointer; }
+.kc-play[data-playing] { background: var(--kc-glass); color: var(--kc-glass-ink); }
+.kc-bulkBar { position: sticky; bottom: calc(76px + env(safe-area-inset-bottom, 0px)); display: flex; gap: 8px; align-items: center; justify-content: space-between; background: var(--kc-key); border-radius: var(--kc-r-group); padding: 8px 8px 8px 16px; margin-top: 12px; box-shadow: var(--kc-lift-shadow); }
+@media (min-width: 900px) { .kc-bulkBar { bottom: 16px; } }
+.kc-lib__foot { margin-top: 14px; }
+.kc-lib__foot .kc-link, .kc-newHead .kc-link { min-height: 40px; padding: 0 4px; }
+.kc-newHead { display: flex; justify-content: space-between; align-items: center; gap: 12px; min-height: 40px; }
+.kc-newHead .kc-count { margin: 0; }
+.kc-bulkBar__keys { display: flex; gap: 6px; }
+.kc-card__acts .kc-key, .kc-bulkBar .kc-key { box-sizing: border-box; min-height: 44px; padding: 8px 14px; }
+.kc-bulkBar[hidden], .kc-newHead[hidden] { display: none; }
+.kc-supp__text { display: flex; flex-direction: column; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
+.kc-supp__text small { color: var(--kc-mute); font-size: var(--kc-t-small); }
+@media (max-width: 899px) { .kc-card__acts .kc-key span { white-space: nowrap; } }
+.kc-visuallyHidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }

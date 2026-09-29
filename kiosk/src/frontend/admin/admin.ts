@@ -100,14 +100,9 @@ export function formToChannel(form: { mhz: string; alphaTag: string; mode: strin
   return { freq: mhzToHz(form.mhz), alphaTag: form.alphaTag, mode, enabled: true, ...(form.priority ? { priority: true } : {}) };
 }
 
-type DiscoveryRow = NonNullable<Config["discoveries"]>[number];
-
-/** Bring a suppressed discovery back to triage. Clears ALL suppression
- *  bookkeeping (schema.ts: "Restoring clears these fields") — leaving a stale
- *  hitCount would let the server re-suppress it on the very next hit. */
-export function restoreDiscovery<T extends Partial<DiscoveryRow>>(d: T): T {
-  return { ...d, hitCount: undefined, lastSeenAt: undefined, suppressedAt: undefined, suppressionReason: undefined };
-}
+// Shared with admin-next (moved there in PR 4); re-exported for the tests.
+import { restoreDiscovery } from "../admin-next/libraryModel.js";
+export { restoreDiscovery };
 
 export function weatherFormToChannel(form: { mhz: string; alphaTag: string; mode: string }): Omit<Channel, "id"> {
   return formToChannel(form);

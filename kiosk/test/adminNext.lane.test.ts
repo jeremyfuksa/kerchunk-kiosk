@@ -23,6 +23,7 @@ import { join } from "node:path";
 const WRITES = [
   "putConfig", "setWeatherChannel", "skip", "setMode", "monitorStop", "setVolume", "setMuted",
   "dismissAlert", "clearAlerts", "monitor", "addChannel", "updateChannel", "deleteChannel",
+  "resolveDuplicates",
   "testAlert", "reloadKiosk", "restartBackend", "powerAction", "deleteDiscoverySample",
 ];
 
@@ -113,6 +114,8 @@ describe("admin-next write lane", () => {
     expect(files).toContain("radio.ts");
     expect(files).toContain("tune.ts");
     expect(files).toContain("shell.ts");
+    expect(files).toContain("library.ts");
+    expect(files).toContain("libraryChannels.ts");
   });
   for (const f of files) {
     it(`${f}: every write goes through poller.run`, () => {

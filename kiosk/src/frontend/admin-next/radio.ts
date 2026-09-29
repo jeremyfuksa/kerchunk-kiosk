@@ -19,7 +19,9 @@ import { ico, type IconName } from "./ui/icons.js";
 import { dbText, emptyState, group, key, lcd, meterLit, switchRow } from "./ui/kit.js";
 import { lcdKey, lcdView, type LiveState } from "./live.js";
 import { POLL_MS } from "./poller.js";
+import { hrefFor } from "./route.js";
 import type { Ctx } from "./ctx.js";
+import { ago } from "./time.js";
 
 /** How many "recently heard" rows to show. */
 export const RECENT_COUNT = 8;
@@ -45,16 +47,8 @@ type Stats = {
   byHour: number[];
 };
 
-function ago(ts: number): string {
-  const s = Math.max(0, Math.round((Date.now() - ts) / 1000));
-  if (s < 60) return "just now";
-  const m = Math.round(s / 60);
-  if (m < 60) return `${m} min ago`;
-  const h = Math.round(m / 60);
-  return h < 24 ? `${h} h ago` : new Date(ts).toLocaleDateString();
-}
-
-function airtime(ms: number): string {
+/** "42m", "1h 5m" for an airtime total (also the Library detail's 24 h summary). */
+export function airtime(ms: number): string {
   const m = Math.round(ms / 60000);
   return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`;
 }
@@ -262,18 +256,23 @@ export function mountRadio(ctx: Ctx): void {
 
   // ── Recently heard
   const recent = $("#kcRecent");
+  // Rows are focusable links: rewrite only when the markup changes, so a
+  // 10 s poll doesn't drop focus or swallow a tap.
+  let recentShown = "";
   poller.add({
     name: "recent", everyMs: POLL_MS.recent, tabs: ["radio"],
     run: async () => {
       let logs: Awaited<ReturnType<typeof api.getLogs>>;
       try { logs = await api.getLogs(); }
-      catch { if (!recent.querySelector(".kc-row")) recent.innerHTML = emptyState("Recent activity is unavailable right now."); return; }
+      catch {
+        if (!recent.querySelector(".kc-row")) { recentShown = ""; recent.innerHTML = emptyState("Recent activity is unavailable right now."); }
+        return;
+      }
       const rows = logs.slice().sort((a, b) => b.ts - a.ts).slice(0, RECENT_COUNT);
-      // Rows are plain text in this PR; tapping one opens the channel detail
-      // once Library lands (PR 4).
-      recent.innerHTML = rows.length
-        ? rows.map((r) => `<div class="kc-row"><span class="kc-row__name">${esc(r.alphaTag || fmtFreq(r.freq))}</span><span class="kc-row__meta">${ago(r.ts)}</span></div>`).join("")
+      const html = rows.length
+        ? rows.map((r) => `<a class="kc-row kc-row--link" href="${hrefFor({ tab: "library", detail: { kind: "hz", hz: r.freq } })}"><span class="kc-row__name">${esc(r.alphaTag || fmtFreq(r.freq))}</span><span class="kc-row__meta">${ago(r.ts)}</span></a>`).join("")
         : emptyState("Nothing heard yet. Transmissions appear here as they happen.");
+      if (html !== recentShown) { recentShown = html; recent.innerHTML = html; }
     },
   });
 

@@ -262,3 +262,5 @@ html[data-page="admin-next"] :focus-visible { outline: 2px solid var(--kc-glass)
 .kc-preview { margin: 0 16px 8px; color: var(--kc-dim); font-size: var(--kc-t-small); }
 .kc-preview[data-kind="error"] { color: var(--kc-coral); }
 #kcAdvanced > summary { min-height: 40px; margin: 4px 16px; }
+.kc-row--link { color: inherit; text-decoration: none; min-height: 44px; box-sizing: border-box; }
+.kc-row--link:hover .kc-row__name { color: var(--kc-glass-text); }

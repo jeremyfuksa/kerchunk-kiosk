@@ -17,6 +17,9 @@ export const POLL_MS = {
   insights: 60_000,   // Radio: channel activity (when expanded)
   alerts: 60_000,     // Radio: alert feed
   tune: 30_000,       // Tune: settings refresh (only untouched fields)
+  library: 15_000,    // Library: channels + config (discoveries, banks, lockouts) + samples
+  suggestions: 120_000, // Library: duplicates + archive suggestions
+  analytics: 30_000,  // Library: the open channel's last-24 h history
 } as const;
 
 export interface PollSpec {
@@ -78,6 +81,12 @@ export class Poller {
 
   makeDue(tab: Tab): void {
     for (const p of this.polls) if (!p.tabs || p.tabs.includes(tab)) p.lastAt = -Infinity;
+  }
+
+  /** Make one poll due now, by name — a refresh after a write, without
+   *  re-running every other poll the tab shares. Unknown names are ignored. */
+  request(name: string): void {
+    for (const p of this.polls) if (p.name === name) p.lastAt = -Infinity;
   }
 
   start(getTab: () => Tab, tickMs = POLL_TICK_MS): void {
