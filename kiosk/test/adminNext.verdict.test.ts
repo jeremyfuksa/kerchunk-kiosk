@@ -1,0 +1,17 @@
+import { describe, it, expect } from "vitest";
+import { worseVerdict } from "../src/frontend/admin-next/verdict.js";
+
+const alert = (severity: "attention" | "severe", title: string) => ({ id: "t", severity, title, message: "", help: "" });
+
+describe("worseVerdict", () => {
+  it("passes health through when there are no alerts", () => {
+    expect(worseVerdict({ verdict: "healthy", reason: "Scanning normally." }, [])).toEqual({ verdict: "healthy", text: "Scanning normally." });
+  });
+  it("an alert can only make it worse, and names the reason", () => {
+    expect(worseVerdict({ verdict: "healthy", reason: "ok" }, [alert("attention", "Running hot")])).toEqual({ verdict: "stressed", text: "Running hot" });
+    expect(worseVerdict({ verdict: "stressed", reason: "busy" }, [alert("severe", "Overheating")])).toEqual({ verdict: "trouble", text: "Overheating" });
+  });
+  it("never reads calmer than health", () => {
+    expect(worseVerdict({ verdict: "trouble", reason: "helper down" }, [alert("attention", "x")])).toEqual({ verdict: "trouble", text: "helper down" });
+  });
+});
