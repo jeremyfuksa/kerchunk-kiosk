@@ -36,8 +36,8 @@
 - Relative imports carry `.js` even from `.ts`; `tsconfig` is `strict` + `noUncheckedIndexedAccess`.
 - **The appliance deadlocks on 2+ concurrent requests.** Every Library read is a `poller.add` poll. Every write is inside a `.run(` call — `lib.run(...)` or `ctx.poller.run(...)`. Never `Promise.all` over requests. `test/adminNext.lane.test.ts` fails the build on a bare write. A poll's `run` must never call `.run(` (deadlock — see `Poller.run` doc).
 - **Write cost follows the server** (`server.ts:864-890`, `:760-790`):
-  - A single-channel add/edit via `/api/channels[/:id]` **re-tunes in place**: no warm-up overlay, no audio chop. **Always use these routes for one channel. Never `putConfig` for a single-channel change.**
-  - `putConfig` that changes the channel set, per-bank profile or channel flags (bank bulk edits, bank profile, lockout that archives a channel, duplicate resolve) **restarts scanning**. Its confirm or status copy says "restarts scanning briefly".
+  - A single-channel add/edit via `/api/channels[/:id]` **re-tunes in place**: no warm-up overlay, no audio chop. **Always use these routes for one channel. Never `putConfig` for a single-channel change.** Duplicate resolve (`POST /api/channels/duplicates/resolve`) also re-tunes (`persistAndReload` → `switchMode` → `retune`, `server.ts:899-907`) — its confirm does not mention a restart.
+  - `putConfig` that changes the channel set, per-bank profile or channel flags (bank bulk edits, bank profile, lockout that archives a channel) **restarts scanning**. Its confirm or status copy says "restarts scanning briefly".
   - `putConfig` that only touches `discoveries` / `lockoutHz` (dismiss, restore, discovery lockout with no channel) is live — no restart.
   - Creating or deleting a bank with no profile fields changes no channel's scan config — live.
 - **Channel PUT merge is shallow** (`server.ts:944`): `location` is replaced whole. Only `ctcssHz`/`dcsCode` clear with `null`. Clearing a site therefore sends `location` without `lat`/`lon`.
@@ -2114,7 +2114,7 @@ Below the list, **Create a bank** (`<details class="kc-group kc-disclosure">`): 
 A failed write in any of these shows the server message in that bank's (or the create form's) status line and keeps the form values.
 
 **Suggestions** (`openSuggestions`). Title "Suggestions". Two groups, each only when non-empty:
-- **Duplicates**: per set, "{MHz}" then its rows, "keeps" beside the first and "removed" beside the others (classic `renderDuplicates`). Then one danger key "Delete {n} duplicate row(s)". It confirms ("The most complete row for each frequency is kept. GMRS frequencies are never affected. This can't be undone. Scanning restarts briefly.") and then runs `lib.run(() => api.resolveDuplicates())`, `lib.refresh("suggestions")`, and toasts "Removed {removed} duplicate row(s)."
+- **Duplicates**: per set, "{MHz}" then its rows, "keeps" beside the first and "removed" beside the others (classic `renderDuplicates`). Then one danger key "Delete {n} duplicate row(s)". It confirms ("The most complete row for each frequency is kept. GMRS frequencies are never affected. This can't be undone.") and then runs `lib.run(() => api.resolveDuplicates())`, `lib.refresh("suggestions")`, and toasts "Removed {removed} duplicate row(s)."
 - **Not heard in 30 days**: intro "Priority and hand-located channels are never suggested." Then rows `channelName · MHz` with an **Archive** key each: `lib.run(() => api.updateChannel(id, { enabled: false }))`, toast "Archived {name}." with undo `lib.run(() => api.updateChannel(id, { enabled: true }))`, then `lib.refresh("suggestions")`. Show the first 12, as classic did.
 
 When both groups empty, show `emptyState("Nothing to review.")`.
@@ -2382,8 +2382,8 @@ gh pr create --title "feat(admin-next): Library tab — channels, detail, banks,
 The body follows the PR 3 shape:
 - **What you get**, grouped: Channels, Channel detail, Banks and suggestions, New.
 - **What each save costs**:
-  - single-channel edits re-tune, no warm-up
-  - bank bulk edits, bank profiles, lockout and duplicate cleanup restart scanning briefly and say so
+  - single-channel edits and duplicate cleanup re-tune, no warm-up
+  - bank bulk edits, bank profiles and lockout restart scanning briefly and say so
   - dismiss and restore are live
   - promote is now a re-tune, not a restart
 - **Dropped per spec** — the three items in "Decisions" 2 — ask the operator to object if any is missed.

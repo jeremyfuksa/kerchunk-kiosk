@@ -231,6 +231,21 @@ describe("resolveDetail", () => {
     expect(resolveDetail({ kind: "hz", hz: A.freq }, { ...data, channels: [twin, A] })).toEqual({ kind: "edit", channel: A });
     expect(resolveDetail({ kind: "hz", hz: 121_800_000 }, data)).toEqual({ kind: "add", draft: emptyDraft({ freq: 121_800_000 }) });
   });
+  it("by frequency with no channel offers the newest pending discovery there", () => {
+    const hz = 151_820_000;
+    const old: Discovery = { id: "cc_old", freq: hz, alphaTag: "Close Call 151.8200", ts: 10 };
+    const fresh: Discovery = { id: "cc_new", freq: hz, alphaTag: "Walmart ops", ts: 20 };
+    const hidden: Discovery = { id: "cc_sup", freq: hz, alphaTag: "Hidden", ts: 30, suppressedAt: 31 };
+    const cfg = { discoveries: [old, hidden, fresh] };
+    expect(resolveDetail({ kind: "hz", hz }, { channels: [A], cfg }))
+      .toEqual({ kind: "add", draft: draftFromDiscovery(fresh), from: fresh });
+    // Only a suppressed one there: a blank add, not the suppressed row.
+    expect(resolveDetail({ kind: "hz", hz }, { channels: [A], cfg: { discoveries: [hidden] } }))
+      .toEqual({ kind: "add", draft: emptyDraft({ freq: hz }) });
+    // A channel at the frequency still wins over a discovery.
+    const at = ch({ id: "z", freq: hz });
+    expect(resolveDetail({ kind: "hz", hz }, { channels: [at], cfg })).toEqual({ kind: "edit", channel: at });
+  });
   it("add: blank, tagged, or from a discovery that may be gone", () => {
     expect(resolveDetail({ kind: "add" }, data)).toEqual({ kind: "add", draft: emptyDraft() });
     expect(resolveDetail({ kind: "add", tag: "air" }, data)).toEqual({ kind: "add", draft: emptyDraft({ tag: "air" }) });

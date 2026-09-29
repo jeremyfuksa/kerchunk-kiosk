@@ -161,6 +161,8 @@ export function analyticsHtml(rows: HistRow[] | null): string {
 // ── Wiring ───────────────────────────────────────────────────────────────────
 
 const msg = (e: unknown): string => (e instanceof Error ? e.message : String(e));
+/** Text fields that commit on `change` — flushed if the sheet closes first. */
+const FLUSH_FIELDS = ["name", "freq", "tags", "site"] as const;
 const SWITCHES: Record<string, string> = { kcDtAudible: "audible", kcDtPriority: "priority", kcDtAlert: "alert", kcDtArchive: "archive" };
 
 export function mountDetail(lib: LibCtx, host: HTMLElement): {
@@ -179,6 +181,9 @@ export function mountDetail(lib: LibCtx, host: HTMLElement): {
   let shown: Channel | null = null;
   let adding: { draft: ChannelDraft; from?: Discovery } | null = null;
   const dirty = new Set<string>();
+  /** The raw text each field last sent (commit), so a close-time flush never
+   *  re-sends what `change` already committed. */
+  const lastSent = new Map<string, string>();
   /** Saves in flight per field (a field can have a second save queued). */
   const inflight = new Map<string, number>();
   const busy = (f: string): boolean => (inflight.get(f) ?? 0) > 0;
@@ -216,11 +221,31 @@ export function mountDetail(lib: LibCtx, host: HTMLElement): {
     const byRoute = routeClosing;
     routeClosing = false;
     const wasOpen = detail !== null;
+    flushTyped();
     detail = null; shownKey = ""; shown = null; adding = null; analyticsFreq = null;
-    dirty.clear(); inflight.clear();
+    dirty.clear(); inflight.clear(); lastSent.clear();
     if (!byRoute && wasOpen) closeNav();
-    openedFromList = false; detailsShown = 0;
+    openedFromList = false; detailsShown = 0; selfReplace = false;
   });
+
+  /** Edit mode only: text typed into a field but never committed (the sheet
+   *  closed by Back or Esc before `change` fired) still saves, through the
+   *  same path as `change`. commit() captures `shown` before its first await,
+   *  so clearing it right after is safe. An invalid value is skipped (nothing
+   *  sent); a value `change` already sent is not sent twice. */
+  function flushTyped(): void {
+    const c = shown;
+    if (!c) return;
+    for (const f of FLUSH_FIELDS) {
+      if (!dirty.has(f)) continue;
+      const el = q<HTMLInputElement>(`#${idFor(f)}`);
+      if (!el) continue;
+      const v = el.value;
+      const was = f === "freq" ? fmtFreq(c.freq) : DETAIL_FIELDS[f]!(c);
+      if (v === was || lastSent.get(f) === v) continue;
+      void commit(f, v);
+    }
+  }
 
   // ── status + field errors
   function status(text: string, o: { fade?: boolean } = {}): void {
@@ -242,7 +267,7 @@ export function mountDetail(lib: LibCtx, host: HTMLElement): {
   // ── render / patch
   function render(r: Resolved | null): void {
     clearTimeout(statusTimer);
-    dirty.clear(); inflight.clear(); modeTouched = false;
+    dirty.clear(); inflight.clear(); lastSent.clear(); modeTouched = false;
     shown = null; adding = null; analyticsFreq = null;
     if (!r) {
       shownKey = "loading"; sheet.setTitle("Channel");
@@ -310,7 +335,12 @@ export function mountDetail(lib: LibCtx, host: HTMLElement): {
     for (const id of ["kcDtPriority", "kcDtAlert"]) { const s = q<HTMLInputElement>(`#${id}`); if (s) s.disabled = archived; }
     sheet.setTitle(channelName(fresh));
     setHtml(q("#kcDtLcd"), lcdHtml(fresh, channelName(fresh)));
-    if (!busy("banks")) setHtml(q("#kcDtBanks"), banksHtml(fresh, lib.store.data?.cfg.banks ?? []));
+    if (!busy("banks")) {
+      // Re-rendered chips drop focus: put it back on the same bank's chip.
+      const chipId = active instanceof HTMLElement && active.closest("#kcDtBanks") ? active.dataset.chip ?? null : null;
+      setHtml(q("#kcDtBanks"), banksHtml(fresh, lib.store.data?.cfg.banks ?? []));
+      if (chipId !== null && document.activeElement !== active) q(`#kcDtBanks [data-chip="${CSS.escape(chipId)}"]`)?.focus();
+    }
     setHtml(q("#kcDtFacts"), factsHtml(fresh));
     setHtml(q("#kcDtHeard"), toneHeard(fresh));
     if (analyticsFreq !== fresh.freq) { analyticsFreq = fresh.freq; q("#kcDtStats")!.innerHTML = emptyState("Loading activity…"); lib.refresh("analytics"); }
@@ -343,7 +373,8 @@ export function mountDetail(lib: LibCtx, host: HTMLElement): {
       updated = await lib.run(() => api.updateChannel(c.id, patch));
     } catch (e) {
       bump(f, -1);
-      if (shown?.id !== c.id) return false;
+      // Closed (or moved on) meanwhile — e.g. a close-time flush: say so.
+      if (shown?.id !== c.id) { lib.dialogs.toast(`Couldn't save ${channelName(c)}: ${msg(e)}`); return false; }
       o.revert?.();
       if (q(`#${idFor(f)}-err`)) { fieldErr(idFor(f), msg(e)); status(""); } else status(`Couldn't save: ${msg(e)}`);
       return false;
@@ -422,6 +453,7 @@ export function mountDetail(lib: LibCtx, host: HTMLElement): {
       }
     } catch (e) { fieldErr(idFor(f), msg(e)); return; } // invalid: nothing sent, value (and dirty) kept
     if (!Object.keys(patch).length) { dirty.delete(f); return; }
+    lastSent.set(f, v);
     await save(f, patch, { sent: v });
   }
 

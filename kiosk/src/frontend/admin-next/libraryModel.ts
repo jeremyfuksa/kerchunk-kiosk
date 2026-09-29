@@ -395,7 +395,10 @@ export function resolveDetail(d: Detail, data: { channels: Channel[]; cfg: Pick<
     case "hz": {
       const at = data.channels.filter((x) => x.freq === d.hz);
       const c = at.find((x) => x.enabled) ?? at[0];
-      return c ? { kind: "edit", channel: c } : { kind: "add", draft: emptyDraft({ freq: d.hz }) };
+      if (c) return { kind: "edit", channel: c };
+      // No channel, but Close Call heard it: offer the newest pending discovery.
+      const disc = pendingDiscoveries(data.cfg).find((x) => x.freq === d.hz);
+      return disc ? { kind: "add", draft: draftFromDiscovery(disc), from: disc } : { kind: "add", draft: emptyDraft({ freq: d.hz }) };
     }
     case "add": {
       if (d.from) {

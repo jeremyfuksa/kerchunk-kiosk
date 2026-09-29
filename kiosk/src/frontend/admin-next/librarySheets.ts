@@ -394,7 +394,7 @@ export function mountSheets(lib: LibCtx, host: HTMLElement): { openBanks(): void
     const total = lib.store.dups.reduce((n, s) => n + Math.max(0, s.channels.length - 1), 0);
     const ok = await lib.dialogs.confirm({
       title: `Delete ${total} duplicate row${total === 1 ? "" : "s"}?`,
-      message: "The most complete row for each frequency is kept. GMRS frequencies are never affected. This can't be undone. Scanning restarts briefly.",
+      message: "The most complete row for each frequency is kept. GMRS frequencies are never affected. This can't be undone.",
       confirmLabel: total === 1 ? "Delete row" : "Delete rows", danger: true,
     });
     if (!ok) return;
