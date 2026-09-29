@@ -8,8 +8,9 @@
 // markup only when its face changes (same model as the shell's mini-player).
 //
 // Every fetch here rides the sequential Poller (this box deadlocks on
-// concurrent requests); user-initiated refreshes raise a flag that a
-// `when`-gated poll picks up on the next tick instead of fetching directly.
+// concurrent requests): reads are polls — user-initiated refreshes raise a
+// flag that a `when`-gated poll picks up on the next tick — and every write
+// goes through poller.run (test/adminNext.lane.test.ts enforces it).
 import type { Config } from "../../backend/config/schema.js";
 import { api } from "../lib/api.js";
 import { esc, fmtFreq } from "../lib/format.js";
@@ -181,13 +182,15 @@ export function mountRadio(ctx: Ctx): void {
   live.subscribe(paint);
   vol.addEventListener("blur", () => paint(live.state));
 
-  $<HTMLButtonElement>("#kcSkip").addEventListener("click", () => { void api.skip(); });
+  /** A write's failure, said as a toast (a bare `void` would drop it). */
+  const say = (e: unknown): void => { dialogs.toast(e instanceof Error ? e.message : String(e)); };
+  $<HTMLButtonElement>("#kcSkip").addEventListener("click", () => { poller.run(() => api.skip()).catch(say); });
   weather.addEventListener("click", async () => {
     const s = live.state;
     try {
-      if (s.monitoring) await api.monitorStop();
-      else await api.setMode(s.mode === "weather" ? "scan" : "weather");
-    } catch (e) { dialogs.toast((e as Error).message); }
+      if (s.monitoring) await poller.run(() => api.monitorStop());
+      else await poller.run(() => api.setMode(s.mode === "weather" ? "scan" : "weather"));
+    } catch (e) { say(e); }
     // The resync rides the Poller (never a direct /api/status fetch here).
     // Only the status resync: making every Radio poll due here refired all of
     // them right after an engine-restarting mode change.
@@ -196,9 +199,9 @@ export function mountRadio(ctx: Ctx): void {
   });
   pause.addEventListener("click", async () => {
     try {
-      await api.skip(PAUSE_S);
+      await poller.run(() => api.skip(PAUSE_S));
       dialogs.toast(`Paused this channel for ${durationLabel(PAUSE_S)}.`);
-    } catch (e) { dialogs.toast((e as Error).message); }
+    } catch (e) { say(e); }
   });
   lock.addEventListener("click", async () => {
     const np = live.state.nowPlaying;
@@ -211,28 +214,34 @@ export function mountRadio(ctx: Ctx): void {
     })) return;
     try {
       // Snapshot what lockout drops so Undo restores what was actually there
-      // (same rule as the classic admin's lockoutFreq).
-      const before = await api.getConfig();
-      const dropped = (before.discoveries ?? []).filter((d) => d.freq === np.freq);
-      const priorEnabled = new Map(before.channels.filter((c) => c.freq === np.freq).map((c) => [c.id, c.enabled]));
-      await api.putConfig(lockoutFreqIn(before, np.freq));
+      // (same rule as the classic admin's lockoutFreq). Read and write are one
+      // lane slot, so no poll lands between them.
+      const { dropped, priorEnabled } = await poller.run(async () => {
+        const before = await api.getConfig();
+        const out = {
+          dropped: (before.discoveries ?? []).filter((d) => d.freq === np.freq),
+          priorEnabled: new Map(before.channels.filter((c) => c.freq === np.freq).map((c) => [c.id, c.enabled])),
+        };
+        await api.putConfig(lockoutFreqIn(before, np.freq));
+        return out;
+      });
       dialogs.toast(`Locked out ${name}.`, {
-        undo: async () => {
+        undo: () => poller.run(async () => {
           const cfg: Config = await api.getConfig();
           cfg.scan = { ...cfg.scan, lockoutHz: (cfg.scan.lockoutHz ?? []).filter((f) => f !== np.freq) };
           cfg.channels = cfg.channels.map((c) => (priorEnabled.has(c.id) ? { ...c, enabled: priorEnabled.get(c.id)! } : c));
           if (dropped.length) cfg.discoveries = [...(cfg.discoveries ?? []), ...dropped];
           await api.putConfig(cfg);
-        },
+        }),
       });
-    } catch (e) { dialogs.toast((e as Error).message); }
+    } catch (e) { say(e); }
   });
 
   // `input` keeps the readout live while dragging; the write waits for `change`
   // so a drag is one request.
   vol.addEventListener("input", () => { volPct.textContent = `${vol.value}%`; });
-  vol.addEventListener("change", () => { const v = Number(vol.value); live.set({ volume: v }); void api.setVolume(v); });
-  mute.addEventListener("click", () => { const m = !live.state.muted; live.set({ muted: m }); void api.setMuted(m); });
+  vol.addEventListener("change", () => { const v = Number(vol.value); live.set({ volume: v }); poller.run(() => api.setVolume(v)).catch(say); });
+  mute.addEventListener("click", () => { const m = !live.state.muted; live.set({ muted: m }); poller.run(() => api.setMuted(m)).catch(say); });
   remote.addEventListener("change", async () => {
     const on = remote.checked;
     remoteBusy = true;
@@ -242,10 +251,12 @@ export function mountRadio(ctx: Ctx): void {
         message: "The scanner restarts briefly to rebuild its audio tap.",
         confirmLabel: on ? "Turn on" : "Turn off",
       })) { remote.checked = !on; return; }
-      const cfg = await api.getConfig();
-      await api.putConfig({ ...cfg, audio: { ...cfg.audio, remoteListening: on } });
+      await poller.run(async () => {
+        const cfg = await api.getConfig();
+        await api.putConfig({ ...cfg, audio: { ...cfg.audio, remoteListening: on } });
+      });
       live.set({ remoteListening: on });
-    } catch (e) { remote.checked = !on; dialogs.toast((e as Error).message); }
+    } catch (e) { remote.checked = !on; say(e); }
     finally { remoteBusy = false; paint(live.state); }
   });
 
@@ -360,12 +371,12 @@ export function mountRadio(ctx: Ctx): void {
     const b = (e.target as HTMLElement).closest<HTMLButtonElement>("[data-id]");
     if (!b) return;
     b.disabled = true;
-    try { await api.dismissAlert(Number(b.dataset.id)); } catch (e) { dialogs.toast((e as Error).message); }
+    try { await poller.run(() => api.dismissAlert(Number(b.dataset.id))); } catch (e) { say(e); }
     queueAlerts();
   });
   clearAll.addEventListener("click", async () => {
     if (!await dialogs.confirm({ title: "Clear all alerts?", message: "Removes every alert from the feed. Activity history is kept.", confirmLabel: "Clear all", danger: true })) return;
-    try { await api.clearAlerts(); } catch (e) { dialogs.toast((e as Error).message); }
+    try { await poller.run(() => api.clearAlerts()); } catch (e) { say(e); }
     queueAlerts();
   });
   poller.add({ name: "alerts", everyMs: POLL_MS.alerts, tabs: ["radio"], run: renderAlerts });

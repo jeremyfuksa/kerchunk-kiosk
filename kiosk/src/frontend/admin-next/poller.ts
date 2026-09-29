@@ -46,7 +46,12 @@ export class Poller {
 
   /** Run fn exclusively — after any in-flight poll pass or earlier run(), and
    *  before the next pass. The caller gets fn's result or rejection; a
-   *  rejection never blocks the lane. Used for every admin-next write. */
+   *  rejection never blocks the lane. Used for every admin-next write.
+   *
+   *  Never call run() (and await it) from inside a poll's run function, or
+   *  from inside another run(): the lane is waiting on that pass to finish,
+   *  and the pass would wait on the lane — a deadlock. A poll that needs to
+   *  write should raise a flag and let an event handler do the write. */
   run<T>(fn: () => Promise<T>): Promise<T> {
     const result = this.lane.then(() => fn());
     this.lane = result.catch(() => {});

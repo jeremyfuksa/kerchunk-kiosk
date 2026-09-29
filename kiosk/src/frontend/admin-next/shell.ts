@@ -17,7 +17,15 @@ export interface Shell {
 
 const TABS: Tab[] = ["radio", "tune", "library", "system"];
 
-export function mountShell(root: HTMLElement, live: LiveStore): Shell {
+/** What the shell needs to write: the poller's exclusive lane (every
+ *  admin-next write goes through it) and somewhere to say a failure. Passed
+ *  as callbacks so the shell imports neither the poller nor the dialogs. */
+export interface ShellIo {
+  run<T>(fn: () => Promise<T>): Promise<T>;
+  toast(text: string): void;
+}
+
+export function mountShell(root: HTMLElement, live: LiveStore, io: ShellIo): Shell {
   const tabLink = (t: Tab): string =>
     `<a class="kc-tab" data-tab="${t}" href="${hrefFor({ tab: t })}">${ico(t)}<span>${TAB_TITLES[t]}</span>${
       t === "library" ? `<b class="kc-badge kc-triage" aria-hidden="true" hidden></b>` : ""}</a>`;
@@ -63,7 +71,9 @@ export function mountShell(root: HTMLElement, live: LiveStore): Shell {
       <span class="kc-mini__name"></span><span class="kc-mini__freq" hidden></span></a>
     <button type="button" class="kc-mini__key" data-act="skip" aria-label="Skip transmission">${ico("skip")}</button>
     <button type="button" class="kc-mini__key" data-act="listen" disabled>${ico("play")}</button>`;
-  mini.querySelector('[data-act="skip"]')!.addEventListener("click", () => { void api.skip(); });
+  mini.querySelector('[data-act="skip"]')!.addEventListener("click", () => {
+    io.run(() => api.skip()).catch((e: unknown) => io.toast(e instanceof Error ? e.message : String(e)));
+  });
   mini.querySelector('[data-act="listen"]')!.addEventListener("click", () => live.toggleStream());
   const miniOpen = mini.querySelector<HTMLAnchorElement>(".kc-mini__open")!;
   const miniName = mini.querySelector<HTMLElement>(".kc-mini__name")!;

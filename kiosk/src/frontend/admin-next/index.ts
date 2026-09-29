@@ -4,7 +4,7 @@ import { api } from "../lib/api.js";
 import { mountShell } from "./shell.js";
 import { LiveStore } from "./liveStore.js";
 import { Poller, POLL_MS, POLL_TICK_MS } from "./poller.js";
-import { mountDialogs } from "./dialogs.js";
+import { mountDialogs, type Dialogs } from "./dialogs.js";
 import { glance, type SystemGlance } from "./verdict.js";
 import { withAudio } from "./live.js";
 import type { Ctx } from "./ctx.js";
@@ -16,9 +16,15 @@ import { esc } from "../lib/format.js";
 
 export function renderAdminNext(root: HTMLElement): void {
   const live = new LiveStore();
-  const shell = mountShell(root, live);
-  const dialogs = mountDialogs(root);
   const poller = new Poller();
+  // The shell writes root's markup, so the dialogs mount after it; the
+  // shell's toast reaches them through this late-bound callback.
+  let dialogs: Dialogs | null = null;
+  const shell = mountShell(root, live, {
+    run: (fn) => poller.run(fn),
+    toast: (text) => dialogs?.toast(text),
+  });
+  dialogs = mountDialogs(root);
   const ctx: Ctx = { shell, live, poller, dialogs };
 
   // Registered first: the verdict is the glance (polls run in order).
