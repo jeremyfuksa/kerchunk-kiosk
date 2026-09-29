@@ -1,5 +1,5 @@
-// Lockout / unlock as pure config transforms, shared by the classic admin and
-// admin-next (moved out of admin/admin.ts, 2026-09-28).
+// Lockout / unlock as pure config transforms, shared by the admin (moved out
+// of the classic admin, 2026-09-28).
 
 import type { Channel } from "../../backend/config/schema.js";
 

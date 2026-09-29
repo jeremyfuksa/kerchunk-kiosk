@@ -1,8 +1,8 @@
-// Hash routes for admin-next. While the classic admin is still the default
-// the new tree lives under #/next; the flip PR sets NEXT_PREFIX to "".
+// Hash routes for the admin. The new admin answers at /admin; `#/next/…`
+// from before the flip redirects (see legacyRedirect).
 export type Tab = "radio" | "tune" | "library" | "system";
 
-export const NEXT_PREFIX: string = "next";
+export const NEXT_PREFIX: string = "";
 
 export const TAB_TITLES: Record<Tab, string> = {
   radio: "Radio", tune: "Tune", library: "Library", system: "System",
@@ -75,15 +75,21 @@ export function hrefFor(r: Route): string {
   return `#/${path}`;
 }
 
-/** Classic-admin bookmarks → the new tab. null = nothing to redirect. */
+/** Classic-admin pages → the tab that does their job now. */
 const LEGACY: Record<string, Route> = {
+  home: { tab: "radio" },
   triage: { tab: "library", sub: "new" },
   channels: { tab: "library" },
   banks: { tab: "library" },
   scan: { tab: "tune" },
 };
+
+/** Where an old bookmark should go, or null when the hash is a current
+ *  route. Two eras: the classic admin's pages, and the new admin's
+ *  pre-flip home under `#/next/…` (path kept verbatim, still encoded). */
 export function legacyRedirect(hash: string): string | null {
-  const head = hash.replace(/^#\/?/, "").split("/")[0] ?? "";
-  const to = LEGACY[head];
+  const path = hash.replace(/^#\/?/, "");
+  if (path === "next" || path.startsWith("next/")) return `#/${path.replace(/^next\/?/, "")}`;
+  const to = LEGACY[path.split("/")[0] ?? ""];
   return to ? hrefFor(to) : null;
 }

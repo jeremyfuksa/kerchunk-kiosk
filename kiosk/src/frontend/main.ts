@@ -2,7 +2,6 @@
 // ambient layer for dashboard/wall/map/art and the admin's --kc-* language.
 import "./tokens.css";
 import { renderDashboard } from "./dashboard/dashboard.js";
-import { renderAdmin } from "./admin/admin.js";
 import { renderMap } from "./map/map.js";
 import { renderWall } from "./wall/wall.js";
 import { renderArt } from "./art/art.js";
@@ -19,7 +18,6 @@ const root = document.getElementById("app")!;
 // The `media="print"` swap keeps a slow or unreachable fonts.googleapis.com
 // from holding up first paint on an appliance that boots unattended.
 const FONT_QUERY: Record<string, string> = {
-  admin: "family=Inter:wght@400;500;600;700",
   dashboard: "family=Inter:wght@400;500;600;700",
   map: "family=Inter:wght@400;500;600;700",
   "admin-next": "family=Schibsted+Grotesk:wght@400;500;600;700;800",
@@ -40,33 +38,15 @@ function loadFonts(page: string): void {
 // let each page's CSS opt in via html[data-page="…"]. Without this, the wall/art
 // `overflow: hidden` body lock leaks onto the scrollable admin page.
 const RENDERERS: Array<[string, string, (root: HTMLElement) => void]> = [
-  ["/admin", "admin", renderAdmin],
+  ["/admin", "admin-next", renderAdminNext],
   ["/map", "map", renderMap],
   ["/wall", "wall", renderWall],
   ["/art", "art", renderArt],
 ];
-// admin-next is built alongside the classic admin (spec 2026-09-28): same
-// /admin path, selected by a #/next hash until the flip PR makes it default.
-const isAdminNext = location.pathname.startsWith("/admin") && location.hash.startsWith("#/next");
-const [, page, render]: [string, string, (root: HTMLElement) => void] = isAdminNext
-  ? ["/admin", "admin-next", renderAdminNext]
-  : RENDERERS.find(([prefix]) => location.pathname.startsWith(prefix))
-    ?? ["", "dashboard", renderDashboard];
+const [, page, render] = RENDERERS.find(([prefix]) => location.pathname.startsWith(prefix))
+  ?? ["", "dashboard", renderDashboard];
 
 document.documentElement.dataset.page = page;
 loadFonts(page);
 
-// Crossing between the classic admin and admin-next swaps the whole page.
-// Registered BEFORE render() so it runs ahead of either app's own hashchange
-// handler, and stops them: otherwise the outgoing app's route handler fires a
-// poll that overlaps the reload's requests (this box deadlocks on 2+
-// concurrent requests).
-if (location.pathname.startsWith("/admin")) {
-  window.addEventListener("hashchange", (e) => {
-    if (location.hash.startsWith("#/next") !== isAdminNext) {
-      e.stopImmediatePropagation();
-      location.reload();
-    }
-  });
-}
 render(root);

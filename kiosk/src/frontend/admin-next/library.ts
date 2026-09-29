@@ -1,5 +1,5 @@
 // Library — channels and new discoveries (spec §5). Composes the list, the
-// detail sheet/pane (route-driven: #/next/library/ch/<id> …), the Manage banks
+// detail sheet/pane (route-driven: #/library/ch/<id> …), the Manage banks
 // and Suggestions sheets, and the New (triage) cards.
 //
 // Every fetch rides the sequential Poller: the "library" poll loads channels,

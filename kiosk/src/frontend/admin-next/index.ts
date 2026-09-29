@@ -12,10 +12,20 @@ import { mountRadio } from "./radio.js";
 import { mountTune } from "./tune.js";
 import { mountLibrary } from "./library.js";
 import { mountSystem } from "./system.js";
-import { hrefFor } from "./route.js";
+import { hrefFor, legacyRedirect } from "./route.js";
 import { esc } from "../lib/format.js";
 
 export function renderAdminNext(root: HTMLElement): void {
+  // Old bookmarks (classic pages, the pre-flip #/next/…) land on the right
+  // tab. replaceState keeps Back from bouncing into the redirect; the
+  // hashchange guard is registered before the shell's own listener so a
+  // typed legacy hash never renders its fallback tab first.
+  const legacy = legacyRedirect(location.hash);
+  if (legacy) history.replaceState(null, "", legacy);
+  window.addEventListener("hashchange", (e) => {
+    const to = legacyRedirect(location.hash);
+    if (to) { e.stopImmediatePropagation(); location.replace(to); }
+  });
   const live = new LiveStore();
   const poller = new Poller();
   // The shell writes root's markup, so the dialogs mount after it; the

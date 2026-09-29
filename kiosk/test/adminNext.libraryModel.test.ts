@@ -6,7 +6,7 @@ import {
   hitsText, guessLine, milesBetween, discoveryNote, draftFromDiscovery, emptyDraft, parseMhz, parseTags,
   parseSite, toneValue, toneFromValue, newChannelBody, siteLocation, bankRule, profileText,
   bankFromForm, profileFromForm, withProfile, bankToggles, bulkPatch, signalSeries, defaultMode,
-  resolveDetail, detailFieldsToPatch, lockoutSnapshot,
+  resolveDetail, detailFieldsToPatch, lockoutSnapshot, restoreDiscovery,
   type Discovery,
 } from "../src/frontend/admin-next/libraryModel.js";
 import { ago } from "../src/frontend/admin-next/time.js";
@@ -278,5 +278,22 @@ describe("lockoutSnapshot", () => {
     const cfg = { version: 1, scan: { lockoutHz: [A.freq] }, audio: {}, channels: [A] } as unknown as import("../src/backend/config/schema.js").Config;
     expect(lockoutSnapshot(cfg, A.freq).wasLocked).toBe(true);
     expect(lockoutSnapshot(cfg, B.freq).wasLocked).toBe(false);
+  });
+});
+
+describe("restoreDiscovery", () => {
+  it("clears all suppression bookkeeping, not just the suppressed flag", () => {
+    // The server re-suppresses on hitCount >= 6 once suppressedAt is cleared,
+    // so a restore that leaves hitCount intact gets undone on the next hit.
+    const restored = restoreDiscovery({
+      id: "cc_1", freq: 462887500, alphaTag: "Close Call 462.8875", ts: 1,
+      hitCount: 9, lastSeenAt: 123, suppressedAt: 456, suppressionReason: "Likely repeated noise",
+    });
+    expect(restored.suppressedAt).toBeUndefined();
+    expect(restored.suppressionReason).toBeUndefined();
+    expect(restored.hitCount).toBeUndefined();
+    expect(restored.lastSeenAt).toBeUndefined();
+    expect(restored.id).toBe("cc_1"); // identity + other fields preserved
+    expect(restored.freq).toBe(462887500);
   });
 });

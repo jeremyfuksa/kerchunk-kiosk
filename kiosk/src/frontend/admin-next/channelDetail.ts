@@ -1,6 +1,6 @@
 // Library · channel detail: a bottom sheet below 900px, a right-side pane
 // above it (the list beside it stays usable). Route-driven — library.ts calls
-// show() for #/next/library/{ch,hz,add}/… and hide() when the route leaves.
+// show() for #/library/{ch,hz,add}/… and hide() when the route leaves.
 //
 // Edit mode saves as you go: every commit is one channel PUT through lib.run
 // (re-tunes in place — no restart). The markup is built once per shown
