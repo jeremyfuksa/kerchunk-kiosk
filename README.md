@@ -24,9 +24,10 @@ boot lid-closed straight into a fullscreen dashboard on an external monitor.
 - **Priority channels** (preempt within a group), **weather-only mode**
   (squelch-free NOAA hold), **SKIP** key, per-channel enable/priority.
 - **Kiosk dashboard**: now-playing (true speaker ownership), live signal
-  meter, recent-activity log. **Web admin** from any device: inline-editable
-  channel table, scan tuning knobs, volume (true dB fader), Close Call
-  controls, lockouts.
+  meter, recent-activity log. **Web admin** from any device, radio-first in
+  four tabs: Radio (live display, listen here, skip/pause/lock out, volume),
+  Tune (plain-language settings, saved as you go), Library (channels, banks,
+  Close Call triage) and System (health, vitals, lockouts, power).
 - **Appliance**: systemd-managed, boots lid-closed to the dashboard on HDMI,
   never sleeps, survives ALSA device-order races, audio settings persist.
 
