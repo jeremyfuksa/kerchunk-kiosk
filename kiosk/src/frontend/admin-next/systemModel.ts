@@ -19,8 +19,8 @@ export interface SystemSnapshot {
   coreCount: number;
 }
 
-// Warn lines — calibrated to this appliance (classic renderSystem): it idles
-// ~82-83 °C, so "hot" starts at the backend's own "running hot" line.
+// Warn lines — calibrated to this appliance (classic renderSystem): the
+// 87 °C line matches the backend's own "running hot" alert threshold.
 export const CPU_WARN_PCT = 85;
 export const HELPER_WARN_PCT_PER_CORE = 80;
 export const TEMP_WARN_C = 87;
@@ -44,8 +44,8 @@ export function vitals(sys: SystemSnapshot): { main: Vital[]; secondary: string[
   const n = sys.now;
   if (!n) return null;
   const series = (k: keyof SystemNow): Array<number | null> =>
-    sys.ring.map((r) => (typeof r[k] === "number" ? (r[k] as number) : null));
-  const cores = Math.max(1, sys.coreCount);
+    (sys.ring ?? []).map((r) => (typeof r[k] === "number" ? (r[k] as number) : null));
+  const cores = Math.max(1, sys.coreCount || 1);
   const t = n.tempC;
   const main: Vital[] = [
     {
@@ -87,9 +87,12 @@ export function uptimeText(startedAt: number | null, now: number = Date.now()): 
 }
 
 const LABEL: Record<Verdict | "unknown", string> = { healthy: "Healthy", stressed: "Degraded", trouble: "Trouble", unknown: "Unknown" };
+const VALID_VERDICTS: readonly Verdict[] = ["healthy", "stressed", "trouble"];
 
 export function verdictView(sys: SystemSnapshot | null): { verdict: Verdict | "unknown"; label: string; reason: string } {
-  if (!sys || typeof sys.health?.verdict !== "string") return { verdict: "unknown", label: LABEL.unknown, reason: UNREACHABLE_TEXT };
+  if (!sys || !VALID_VERDICTS.includes(sys.health?.verdict as Verdict)) {
+    return { verdict: "unknown", label: LABEL.unknown, reason: sys?.health?.reason || UNREACHABLE_TEXT };
+  }
   const v = worseVerdict(sys.health, sys.alerts ?? []);
   return { verdict: v.verdict, label: LABEL[v.verdict], reason: v.text };
 }

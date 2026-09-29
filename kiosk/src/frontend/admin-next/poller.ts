@@ -77,7 +77,7 @@ export class Poller {
     this.ticking = true;
     const pass = this.lane.then(async () => {
       for (const p of this.polls) {
-        if (this.hidden()) break;
+        if (this.hidden() || this.isPaused) break;
         if (p.tabs && !p.tabs.includes(tab)) continue;
         if (p.when && !p.when()) continue;
         if (this.now() - p.lastAt < p.everyMs) continue;

@@ -72,6 +72,12 @@ describe("verdictView and alertsView", () => {
     expect(verdictView(snap({ health: { verdict: "stressed", reason: "Busy." } }))).toMatchObject({ label: "Degraded" });
     expect(verdictView(null)).toEqual({ verdict: "unknown", label: "Unknown", reason: "Can't reach the radio" });
   });
+  it("falls back to unknown when health.verdict isn't a recognized value", () => {
+    const weird = snap({ health: { verdict: "bogus" as never, reason: "Odd reading." } });
+    expect(verdictView(weird)).toEqual({ verdict: "unknown", label: "Unknown", reason: "Odd reading." });
+    const noReason = snap({ health: { verdict: "bogus" as never, reason: "" } });
+    expect(verdictView(noReason)).toEqual({ verdict: "unknown", label: "Unknown", reason: "Can't reach the radio" });
+  });
   it("lists alerts, severe first, and flags protection only in safety mode", () => {
     const a = { id: "a", severity: "attention" as const, title: "A", message: "", help: "" };
     const s = { id: "s", severity: "severe" as const, title: "S", message: "", help: "" };

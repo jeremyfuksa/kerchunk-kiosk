@@ -153,4 +153,12 @@ describe("Poller.setPaused", () => {
     p.setPaused(true);
     await expect(p.run(async () => 7)).resolves.toBe(7);
   });
+  it("pausing mid-pass stops the rest of that pass", async () => {
+    const p = new Poller({ now: () => 0, hidden: () => false });
+    const ran: string[] = [];
+    p.add({ name: "a", everyMs: 0, run: async () => { ran.push("a"); p.setPaused(true); } });
+    p.add({ name: "b", everyMs: 0, run: async () => { ran.push("b"); } });
+    await p.tick("system");
+    expect(ran).toEqual(["a"]);
+  });
 });
