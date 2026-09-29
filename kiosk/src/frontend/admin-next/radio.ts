@@ -58,10 +58,8 @@ function airtime(ms: number): string {
   return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`;
 }
 
-async function getStats(sinceMs: number): Promise<Stats> {
-  const r = await fetch(`/api/stats?since=${Date.now() - sinceMs}`);
-  if (!r.ok) throw new Error(`stats ${r.status}`);
-  return await r.json() as Stats;
+function getStats(sinceMs: number): Promise<Stats> {
+  return api.getStats<Stats>(Date.now() - sinceMs);
 }
 
 export function mountRadio(ctx: Ctx): void {
@@ -196,7 +194,12 @@ export function mountRadio(ctx: Ctx): void {
     live.requestResync();
     void poller.tick("radio");
   });
-  pause.addEventListener("click", () => { void api.skip(PAUSE_S); dialogs.toast(`Paused this channel for ${durationLabel(PAUSE_S)}.`); });
+  pause.addEventListener("click", async () => {
+    try {
+      await api.skip(PAUSE_S);
+      dialogs.toast(`Paused this channel for ${durationLabel(PAUSE_S)}.`);
+    } catch (e) { dialogs.toast((e as Error).message); }
+  });
   lock.addEventListener("click", async () => {
     const np = live.state.nowPlaying;
     if (!np) return;
@@ -340,9 +343,7 @@ export function mountRadio(ctx: Ctx): void {
     alertsPending = false;
     let rows: Array<{ id: number; ts: number; freq: number; alphaTag: string }>;
     try {
-      const r = await fetch(`/api/history?kind=alert&limit=${ALERT_COUNT}`);
-      if (!r.ok) throw new Error(`alerts ${r.status}`);
-      rows = await r.json() as typeof rows;
+      rows = await api.getHistory<typeof rows>({ kind: "alert", limit: ALERT_COUNT });
     } catch {
       // Keep a list we already have; replace only the loading placeholder.
       if (!alertList.querySelector("[data-id]")) alertList.innerHTML = `<li>${emptyState("Alerts are unavailable right now.")}</li>`;
@@ -359,7 +360,7 @@ export function mountRadio(ctx: Ctx): void {
     const b = (e.target as HTMLElement).closest<HTMLButtonElement>("[data-id]");
     if (!b) return;
     b.disabled = true;
-    await api.dismissAlert(Number(b.dataset.id)).catch(() => {});
+    try { await api.dismissAlert(Number(b.dataset.id)); } catch (e) { dialogs.toast((e as Error).message); }
     queueAlerts();
   });
   clearAll.addEventListener("click", async () => {

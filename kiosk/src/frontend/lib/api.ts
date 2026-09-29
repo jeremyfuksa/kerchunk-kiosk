@@ -18,6 +18,11 @@ async function j<T>(res: Response): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+/** Resolve on 2xx, else throw the server's message (same text rules as j). */
+async function ok(res: Response): Promise<void> {
+  if (!res.ok) await j<never>(res);
+}
+
 // `/api/config` is the admin's most-called route — ~24 call sites, several on
 // timers, and a burst of six during page init. The appliance has been observed
 // to deadlock on concurrent requests (see CLAUDE.md), so callers that ask at
@@ -90,14 +95,18 @@ export const api = {
   setMode: (mode: "scan" | "weather") =>
     fetch("/api/mode", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ mode }) }).then(j<{ mode: "scan" | "weather"; state: string }>),
   skip: (holdoffSeconds?: number) =>
-    fetch("/api/scan/skip", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(holdoffSeconds ? { holdoffSeconds } : {}) }),
+    fetch("/api/scan/skip", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(holdoffSeconds ? { holdoffSeconds } : {}) }).then(ok),
   testAlert: (opts?: { alphaTag?: string; clear?: boolean }) =>
     fetch("/api/test/alert", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(opts ?? {}) }).then(j<{ ok: boolean }>),
-  dismissAlert: (id: number) => fetch(`/api/history/alerts/${id}`, { method: "DELETE" }),
+  dismissAlert: (id: number) => fetch(`/api/history/alerts/${id}`, { method: "DELETE" }).then(ok),
   clearAlerts: () => fetch("/api/history/alerts", { method: "DELETE" }).then(j<{ removed: number }>),
   reloadKiosk: () => fetch("/api/kiosk/reload", { method: "POST" }).then(j<{ ok: boolean }>),
   restartBackend: () => fetch("/api/backend/restart", { method: "POST" }).then(j<{ ok: boolean }>),
   powerAction: (action: "reboot" | "poweroff") =>
     fetch("/api/system/power", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action }) }).then(j<{ ok: boolean; action: string }>),
   getLogs: () => fetch("/api/logs").then(j<{ freq: number; alphaTag: string; ts: number }[]>),
+  getSystem: <T = unknown>() => fetch("/api/system").then(j<T>),
+  getStats: <T = unknown>(sinceMs: number) => fetch(`/api/stats?since=${sinceMs}`).then(j<T>),
+  getHistory: <T = unknown>(q: Record<string, string | number>) =>
+    fetch(`/api/history?${new URLSearchParams(Object.entries(q).map(([k, v]) => [k, String(v)]))}`).then(j<T>),
 };

@@ -27,10 +27,7 @@ export function renderAdminNext(root: HTMLElement): void {
       // A failed or non-OK answer must read "unknown", never leave the last
       // "healthy" on screen.
       let sys: SystemGlance | null = null;
-      try {
-        const r = await fetch("/api/system");
-        if (r.ok) sys = await r.json() as SystemGlance;
-      } catch { /* unreachable — shown below */ }
+      try { sys = await api.getSystem<SystemGlance>(); } catch { /* unreachable — shown below */ }
       const v = glance(sys);
       shell.setVerdict(v.verdict, v.text);
       const strip = shell.panel("radio").querySelector<HTMLElement>("#kcHealth");
