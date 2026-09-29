@@ -7,6 +7,8 @@ function fakeAudio() {
     currentTime: 0, paused: true,
     play: vi.fn(async () => { a.paused = false; }),
     pause: vi.fn(() => { a.paused = true; }),
+    removeAttribute: vi.fn(),
+    load: vi.fn(),
     addEventListener: (t: string, fn: () => void) => { (handlers[t] ??= []).push(fn); },
     fire: (t: string) => { for (const fn of handlers[t] ?? []) fn(); },
   };
@@ -23,6 +25,9 @@ describe("SamplePlayer", () => {
     expect(p.playingId).toBe("cc_1");
     p.toggle("cc_2", 6);
     expect(made[0]!.pause).toHaveBeenCalled();
+    // Stopping releases the source so the element stops buffering.
+    expect(made[0]!.removeAttribute).toHaveBeenCalledWith("src");
+    expect(made[0]!.load).toHaveBeenCalled();
     expect(p.playingId).toBe("cc_2");
     p.toggle("cc_2", 6);
     expect(p.playingId).toBeNull();

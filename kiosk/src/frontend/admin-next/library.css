@@ -127,6 +127,7 @@
 .kc-newHead { display: flex; justify-content: space-between; align-items: center; gap: 12px; min-height: 40px; }
 .kc-newHead .kc-count { margin: 0; }
 .kc-bulkBar__keys { display: flex; gap: 6px; }
+.kc-card__acts .kc-key, .kc-bulkBar .kc-key { box-sizing: border-box; min-height: 44px; padding: 8px 14px; }
 .kc-bulkBar[hidden], .kc-newHead[hidden] { display: none; }
 .kc-supp__text { display: flex; flex-direction: column; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
 .kc-supp__text small { color: var(--kc-mute); font-size: var(--kc-t-small); }

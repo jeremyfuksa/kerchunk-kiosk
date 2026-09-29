@@ -21,8 +21,12 @@ export class SamplePlayer {
 
   stop(): void {
     if (!this.cur) return;
-    this.cur.audio.pause();
+    const { audio } = this.cur;
     this.cur = null;
+    audio.pause();
+    // Release the source so the element stops buffering the clip.
+    audio.removeAttribute("src");
+    audio.load();
     this.notify();
   }
 

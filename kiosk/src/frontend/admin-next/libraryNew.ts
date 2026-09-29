@@ -140,6 +140,18 @@ export function mountNew(lib: LibCtx, host: HTMLElement): { paint(): void } {
     selectBtn.setAttribute("aria-pressed", String(selecting));
   }
 
+  /** Where focus goes when the control that had it is gone: Select, else the
+   *  empty state's link, else the Library heading (never the page body). */
+  function focusFallback(): void {
+    if (!selectBtn.hidden) { selectBtn.focus(); return; }
+    const link = cards.querySelector<HTMLElement>(".kc-empty a");
+    if (link) { link.focus(); return; }
+    const h = host.closest(".kc-lib")?.querySelector<HTMLElement>("h1");
+    if (!h) return;
+    if (!h.hasAttribute("tabindex")) h.setAttribute("tabindex", "-1");
+    h.focus();
+  }
+
   function paint(): void {
     const d = lib.store.data;
     if (!d) {
@@ -178,10 +190,8 @@ export function mountNew(lib: LibCtx, host: HTMLElement): { paint(): void } {
         const all = [...cards.querySelectorAll<HTMLElement>(".kc-card")];
         const same = all.find((c) => c.dataset.id === focusId) ?? all[Math.min(focusIdx, all.length - 1)];
         const target = (focusSel ? same?.querySelector<HTMLElement>(focusSel) : null)
-          ?? same?.querySelector<HTMLElement>("a.kc-key, .kc-card__sel input")
-          ?? (selectBtn.hidden ? null : selectBtn)
-          ?? cards.querySelector<HTMLElement>(".kc-empty a");
-        target?.focus();
+          ?? same?.querySelector<HTMLElement>("a.kc-key, .kc-card__sel input");
+        if (target) target.focus(); else focusFallback();
       }
     }
     paintChecks();
@@ -252,7 +262,7 @@ export function mountNew(lib: LibCtx, host: HTMLElement): { paint(): void } {
     try {
       await removeDiscoveries(lib, new Set(selected), { lockout });
       setSelecting(false);
-      selectBtn.focus();
+      focusFallback();
     } catch (e) {
       lib.dialogs.toast(`Couldn't ${lockout ? "lock them out" : "dismiss them"}: ${msg(e)}`);
     } finally {
