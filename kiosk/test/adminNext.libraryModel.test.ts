@@ -6,6 +6,7 @@ import {
   hitsText, guessLine, milesBetween, discoveryNote, draftFromDiscovery, emptyDraft, parseMhz, parseTags,
   parseSite, toneValue, toneFromValue, newChannelBody, siteLocation, bankRule, profileText,
   bankFromForm, profileFromForm, withProfile, bankToggles, bulkPatch, signalSeries, defaultMode,
+  resolveDetail, detailFieldsToPatch, lockoutSnapshot,
   type Discovery,
 } from "../src/frontend/admin-next/libraryModel.js";
 import { ago } from "../src/frontend/admin-next/time.js";
@@ -215,5 +216,46 @@ describe("ago", () => {
     expect(ago(1_000_000, 1_000_000 + 30_000)).toBe("just now");
     expect(ago(0, 5 * 60_000)).toBe("5 min ago");
     expect(ago(0, 3 * 3_600_000)).toBe("3 h ago");
+  });
+});
+
+describe("resolveDetail", () => {
+  const disc: Discovery = { id: "cc_1", freq: 462_562_500, alphaTag: "Close Call 462.5625", ts: 1 };
+  const data = { channels: [A, B, C], cfg: { discoveries: [disc] } };
+  it("finds a channel by id, or says it's gone", () => {
+    expect(resolveDetail({ kind: "ch", id: "a" }, data)).toEqual({ kind: "edit", channel: A });
+    expect(resolveDetail({ kind: "ch", id: "zz" }, data)).toEqual({ kind: "gone", message: "This channel is no longer in the library." });
+  });
+  it("by frequency prefers a tracked channel, else offers to add it", () => {
+    const twin = ch({ id: "a2", freq: A.freq, enabled: false });
+    expect(resolveDetail({ kind: "hz", hz: A.freq }, { ...data, channels: [twin, A] })).toEqual({ kind: "edit", channel: A });
+    expect(resolveDetail({ kind: "hz", hz: 121_800_000 }, data)).toEqual({ kind: "add", draft: emptyDraft({ freq: 121_800_000 }) });
+  });
+  it("add: blank, tagged, or from a discovery that may be gone", () => {
+    expect(resolveDetail({ kind: "add" }, data)).toEqual({ kind: "add", draft: emptyDraft() });
+    expect(resolveDetail({ kind: "add", tag: "air" }, data)).toEqual({ kind: "add", draft: emptyDraft({ tag: "air" }) });
+    expect(resolveDetail({ kind: "add", from: "cc_1" }, data)).toEqual({ kind: "add", draft: draftFromDiscovery(disc), from: disc });
+    expect(resolveDetail({ kind: "add", from: "cc_x" }, data)).toEqual({
+      kind: "gone", message: "That discovery was already added, dismissed or locked out." });
+  });
+});
+
+describe("detailFieldsToPatch", () => {
+  it("repaints only changed fields the operator isn't touching", () => {
+    const next = { ...A, alphaTag: "New name", audible: false, mode: "fm" as const, priority: true };
+    expect(detailFieldsToPatch(A, next, { focused: null, dirty: new Set(), inflight: new Set() }).sort())
+      .toEqual(["audible", "mode", "name", "priority"]);
+    expect(detailFieldsToPatch(A, next, { focused: "name", dirty: new Set(["mode"]), inflight: new Set(["audible"]) }))
+      .toEqual(["priority"]);
+    expect(detailFieldsToPatch(A, A, { focused: null, dirty: new Set(), inflight: new Set() })).toEqual([]);
+  });
+});
+
+describe("lockoutSnapshot", () => {
+  it("captures dropped discoveries and prior enabled flags at the frequency", () => {
+    const cfg = { version: 1, scan: {}, audio: {}, channels: [A, { ...C, freq: A.freq }], discoveries: [{ id: "d", freq: A.freq, alphaTag: "", ts: 0 }] } as unknown as import("../src/backend/config/schema.js").Config;
+    const s = lockoutSnapshot(cfg, A.freq);
+    expect(s.discoveries.map((d) => d.id)).toEqual(["d"]);
+    expect([...s.enabled.entries()]).toEqual([["a", true], ["c", false]]);
   });
 });

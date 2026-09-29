@@ -7,6 +7,7 @@ import { matchesBank, serviceFor } from "../../backend/config/banks.js";
 import { fmtFreq } from "../lib/format.js";
 import type { ArchiveRec, DuplicateSet } from "../lib/api.js";
 import { ago } from "./time.js";
+import type { Detail } from "./route.js";
 
 export type Discovery = NonNullable<Config["discoveries"]>[number];
 export type Mode = Channel["mode"];
@@ -369,4 +370,67 @@ export function signalSeries(rows: HistRow[], W: number, H: number): {
     return `${x.toFixed(1)},${y.toFixed(1)}`;
   }).join(" ");
   return { active, airtimeMs: active.reduce((n, r) => n + (r.durationMs ?? 0), 0), samples: sig.length, min, max, points };
+}
+
+// ── Detail ────────────────────────────────────────────────────────────────────
+
+export type Resolved =
+  | { kind: "edit"; channel: Channel }
+  | { kind: "add"; draft: ChannelDraft; from?: Discovery }
+  | { kind: "gone"; message: string };
+
+export function resolveDetail(d: Detail, data: { channels: Channel[]; cfg: Pick<Config, "discoveries"> }): Resolved {
+  switch (d.kind) {
+    case "ch": {
+      const c = data.channels.find((x) => x.id === d.id);
+      return c ? { kind: "edit", channel: c } : { kind: "gone", message: "This channel is no longer in the library." };
+    }
+    case "hz": {
+      const at = data.channels.filter((x) => x.freq === d.hz);
+      const c = at.find((x) => x.enabled) ?? at[0];
+      return c ? { kind: "edit", channel: c } : { kind: "add", draft: emptyDraft({ freq: d.hz }) };
+    }
+    case "add": {
+      if (d.from) {
+        const disc = (data.cfg.discoveries ?? []).find((x) => x.id === d.from);
+        return disc ? { kind: "add", draft: draftFromDiscovery(disc), from: disc }
+          : { kind: "gone", message: "That discovery was already added, dismissed or locked out." };
+      }
+      return { kind: "add", draft: emptyDraft({ tag: d.tag }) };
+    }
+  }
+}
+
+/** Detail fields, by the id the DOM uses, and how to read each from a channel. */
+export const DETAIL_FIELDS: Record<string, (c: Channel) => string> = {
+  audible: (c) => String(c.audible !== false),
+  priority: (c) => String(!!c.priority),
+  alert: (c) => String(!!c.alert),
+  archive: (c) => String(!c.enabled),
+  name: (c) => c.alphaTag,
+  mode: (c) => c.mode,
+  freq: (c) => String(c.freq),
+  tone: (c) => toneValue(c),
+  tags: (c) => (c.tags ?? []).join(", "),
+  site: (c) => (c.location?.lat != null ? `${c.location.lat}, ${c.location.lon}` : ""),
+};
+
+/** After a poll, which fields to repaint from `next`: those whose value
+ *  changed and that the operator isn't focused on, hasn't edited unsaved,
+ *  and isn't saving right now. */
+export function detailFieldsToPatch(
+  c: Channel, next: Channel, o: { focused: string | null; dirty: ReadonlySet<string>; inflight: ReadonlySet<string> },
+): string[] {
+  return Object.entries(DETAIL_FIELDS)
+    .filter(([id, read]) => read(c) !== read(next) && id !== o.focused && !o.dirty.has(id) && !o.inflight.has(id))
+    .map(([id]) => id);
+}
+
+/** What a lockout will remove, so Undo restores exactly that (classic
+ *  lockoutFreq's snapshot): the discoveries it drops and each channel's
+ *  prior enabled flag at the frequency. */
+export function lockoutSnapshot(cfg: Config, freq: number): { discoveries: Discovery[]; enabled: Map<string, boolean> } {
+  const enabled = new Map<string, boolean>();
+  for (const c of cfg.channels) if (c.freq === freq) enabled.set(c.id, c.enabled);
+  return { discoveries: (cfg.discoveries ?? []).filter((d) => d.freq === freq), enabled };
 }

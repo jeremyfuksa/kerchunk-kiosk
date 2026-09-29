@@ -47,7 +47,8 @@ type Stats = {
   byHour: number[];
 };
 
-function airtime(ms: number): string {
+/** "42m", "1h 5m" for an airtime total (also the Library detail's 24 h summary). */
+export function airtime(ms: number): string {
   const m = Math.round(ms / 60000);
   return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`;
 }

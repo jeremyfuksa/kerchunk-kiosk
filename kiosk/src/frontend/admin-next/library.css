@@ -76,6 +76,7 @@
 .kc-field__hint { color: var(--kc-mute); font-size: var(--kc-t-meta); }
 .kc-fieldErr { color: var(--kc-coral); font-size: var(--kc-t-small); }
 .kc-banks { display: flex; flex-wrap: wrap; gap: 6px; }
+.kc-banks .kc-chip:not([aria-pressed="true"]) { background: var(--kc-key); }
 .kc-banks .kc-chip[aria-disabled="true"] { cursor: default; opacity: 0.8; }
 .kc-toneHeard { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; color: var(--kc-mute); font-size: var(--kc-t-small); }
 .kc-facts { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; margin: 8px 16px 12px; font-size: var(--kc-t-small); }
