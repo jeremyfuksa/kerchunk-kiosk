@@ -1,6 +1,9 @@
 /* Library — list, chips, detail sheet/pane, sheets, triage cards. Faceplate
    language: tone separation, --kc-line hairlines between rows only. */
 .kc-lib__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+/* Compact header key: .kc-key is content-box, so its 44px min-height plus
+   padding rendered ~64px tall here — a hero key, not a header action. */
+.kc-lib__head .kc-key { box-sizing: border-box; min-height: 44px; padding: 8px 14px; }
 .kc-lib__head h1 { margin: 8px 0 2px; font-size: var(--kc-t-title); font-weight: 700; }
 .kc-seg { display: flex; background: var(--kc-raised); border-radius: var(--kc-r-seg); padding: 3px; margin: 10px 0 12px; max-width: 28rem; }
 .kc-seg__item { flex: 1; text-align: center; padding: 10px 0; border-radius: var(--kc-r-key); color: var(--kc-dim); font-weight: 600; text-decoration: none; min-height: 40px; box-sizing: border-box; }
@@ -18,6 +21,11 @@
 .kc-sugg { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 8px 0; padding: 10px 14px; border-radius: var(--kc-r-key); background: color-mix(in srgb, var(--kc-hay) 12%, var(--kc-ground)); color: var(--kc-hay); font-size: var(--kc-t-small); }
 .kc-sugg .kc-link { color: var(--kc-hay); min-height: 40px; }
 .kc-count { color: var(--kc-mute); font-size: var(--kc-t-small); margin: 6px 0 0; min-height: 1.2em; }
+/* Quiet gaps: an empty count (no search) or suggestions strip takes no room.
+   The count stays rendered (min-height 0, not display:none) so it remains a
+   live region for screen readers. */
+.kc-count:empty { min-height: 0; margin: 0; }
+#kcLibSugg:empty { display: none; }
 
 .kc-list--ch { background: var(--kc-raised); border-radius: var(--kc-r-group); margin-top: 8px; overflow: hidden; }
 .kc-lrow { display: flex; align-items: center; gap: 10px; padding: 0 12px 0 0; border-top: 1px solid var(--kc-line); }
@@ -31,7 +39,7 @@
 .kc-lrow__meta { color: var(--kc-mute); font-size: var(--kc-t-small); font-variant-numeric: tabular-nums; }
 .kc-spk { flex: none; width: 44px; height: 44px; border-radius: var(--kc-r-key); border: 0; background: var(--kc-key); color: var(--kc-ink); box-shadow: var(--kc-key-shadow); display: grid; place-items: center; cursor: pointer; }
 .kc-spk[aria-pressed="false"] { background: var(--kc-raised); color: var(--kc-mute); box-shadow: none; }
-.kc-spk:disabled { opacity: 0.5; cursor: progress; }
+.kc-spk[aria-disabled="true"] { opacity: 0.5; cursor: progress; }
 
 /* sheet: modal bottom sheet (phone, and management sheets) / right pane (desktop detail) */
 .kc-sheet { background: var(--kc-ground); color: var(--kc-ink); border: 0; padding: 0; max-width: none; max-height: none; box-sizing: border-box; }

@@ -255,16 +255,23 @@ export function mountRadio(ctx: Ctx): void {
 
   // ── Recently heard
   const recent = $("#kcRecent");
+  // Rows are focusable links: rewrite only when the markup changes, so a
+  // 10 s poll doesn't drop focus or swallow a tap.
+  let recentShown = "";
   poller.add({
     name: "recent", everyMs: POLL_MS.recent, tabs: ["radio"],
     run: async () => {
       let logs: Awaited<ReturnType<typeof api.getLogs>>;
       try { logs = await api.getLogs(); }
-      catch { if (!recent.querySelector(".kc-row")) recent.innerHTML = emptyState("Recent activity is unavailable right now."); return; }
+      catch {
+        if (!recent.querySelector(".kc-row")) { recentShown = ""; recent.innerHTML = emptyState("Recent activity is unavailable right now."); }
+        return;
+      }
       const rows = logs.slice().sort((a, b) => b.ts - a.ts).slice(0, RECENT_COUNT);
-      recent.innerHTML = rows.length
+      const html = rows.length
         ? rows.map((r) => `<a class="kc-row kc-row--link" href="${hrefFor({ tab: "library", detail: { kind: "hz", hz: r.freq } })}"><span class="kc-row__name">${esc(r.alphaTag || fmtFreq(r.freq))}</span><span class="kc-row__meta">${ago(r.ts)}</span></a>`).join("")
         : emptyState("Nothing heard yet. Transmissions appear here as they happen.");
+      if (html !== recentShown) { recentShown = html; recent.innerHTML = html; }
     },
   });
 

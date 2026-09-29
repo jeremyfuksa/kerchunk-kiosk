@@ -54,23 +54,30 @@ export function mountChannels(lib: LibCtx, host: HTMLElement, o: { openBanks(): 
 
   rows.addEventListener("click", (ev) => {
     const b = (ev.target as HTMLElement).closest<HTMLButtonElement>(".kc-spk");
-    if (!b || b.disabled) return;
+    // aria-disabled (not the disabled property) while a save is in flight,
+    // so a keyboard user's focus stays on the key.
+    if (!b || b.getAttribute("aria-disabled") === "true") return;
     const id = b.dataset.id!;
     const next = b.getAttribute("aria-pressed") !== "true";
     pending.set(id, next);
     paintSpeaker(b, next, true);
     lib.run(() => api.updateChannel(id, { audible: next }))
-      .then(() => { pending.delete(id); })
+      .then(() => {
+        pending.delete(id);
+        paintSpeaker(b, next, false);
+        rowsShown = "";
+      })
       .catch((e: unknown) => {
         pending.delete(id);
         paintSpeaker(b, !next, false);
+        rowsShown = "";
         lib.dialogs.toast(`Couldn't change the speaker: ${e instanceof Error ? e.message : String(e)}`);
       });
   });
 
   function paintSpeaker(b: HTMLButtonElement, on: boolean, busy: boolean): void {
     b.setAttribute("aria-pressed", String(on));
-    b.disabled = busy;
+    if (busy) b.setAttribute("aria-disabled", "true"); else b.removeAttribute("aria-disabled");
     b.innerHTML = ico(on ? "speaker" : "speakerOff");
   }
 
@@ -83,7 +90,7 @@ export function mountChannels(lib: LibCtx, host: HTMLElement, o: { openBanks(): 
         <i class="kc-dot" style="background:${colorFor(c.freq, "active", c.tags)}" aria-hidden="true"></i>
         <span class="kc-lrow__text"><span class="kc-lrow__name">${esc(name)}</span><span class="kc-lrow__meta">${esc(rowMeta(c))}</span></span>
       </a>
-      ${c.enabled ? `<button type="button" class="kc-spk" data-id="${esc(c.id)}" aria-pressed="${audible}"${busy ? " disabled" : ""}
+      ${c.enabled ? `<button type="button" class="kc-spk" data-id="${esc(c.id)}" aria-pressed="${audible}"${busy ? ' aria-disabled="true"' : ""}
         aria-label="Play ${esc(name)} through the speaker">${ico(audible ? "speaker" : "speakerOff")}</button>` : ""}
     </div>`;
   }

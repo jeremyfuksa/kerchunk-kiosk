@@ -33,6 +33,7 @@ export function mountLibrary(ctx: Ctx): void {
       <a class="kc-key kc-key--primary" id="kcLibAdd" href="${hrefFor({ tab: "library", detail: { kind: "add" } })}">${ico("plus")}<span>Add channel</span></a>
     </header>
     <div id="kcLibSeg"></div>
+    <p class="kc-empty" id="kcLibLoading">${esc("Loading the library…")}</p>
     <div id="kcLibChannels"></div>
     <div id="kcLibNew" hidden></div>
   </div>`;
@@ -124,7 +125,7 @@ export function mountLibrary(ctx: Ctx): void {
     ev.preventDefault(); s.focus(); s.select();
   });
 
-  // First paint before any data: say so.
-  if (!store.data) chHost.insertAdjacentHTML("afterbegin", `<p class="kc-empty" id="kcLibLoading">${esc("Loading the library…")}</p>`);
+  // "Loading the library…" (above both views, so it shows whichever is first)
+  // goes on the first poll result, data or error.
   store.subscribe(() => { el.querySelector("#kcLibLoading")?.remove(); });
 }
