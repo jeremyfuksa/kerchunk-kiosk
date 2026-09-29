@@ -23,6 +23,7 @@ import { join } from "node:path";
 const WRITES = [
   "putConfig", "setWeatherChannel", "skip", "setMode", "monitorStop", "setVolume", "setMuted",
   "dismissAlert", "clearAlerts", "monitor", "addChannel", "updateChannel", "deleteChannel",
+  "resolveDuplicates",
   "testAlert", "reloadKiosk", "restartBackend", "powerAction", "deleteDiscoverySample",
 ];
 

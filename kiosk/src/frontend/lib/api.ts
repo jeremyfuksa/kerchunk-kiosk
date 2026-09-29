@@ -1,5 +1,10 @@
 import type { Config, Channel } from "../../backend/config/schema.js";
 
+/** GET /api/channels/duplicates — richest row first in each set. */
+export interface DuplicateSet { freq: number; channels: Array<{ channel: Channel; completeness: number }> }
+/** GET /api/recommendations/archive — tracked channels not heard in 30 days. */
+export interface ArchiveRec { id: string; freq: number; alphaTag: string; audible: boolean }
+
 async function j<T>(res: Response): Promise<T> {
   if (!res.ok) {
     const text = await res.text();
@@ -71,6 +76,10 @@ export const api = {
   addChannel: (c: Omit<Channel, "id">) =>
     fetch("/api/channels", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(c) }).then(j<Channel>),
   deleteChannel: (id: string) => fetch(`/api/channels/${id}`, { method: "DELETE" }),
+  getDuplicates: () => fetch("/api/channels/duplicates").then(j<DuplicateSet[]>),
+  resolveDuplicates: () =>
+    fetch("/api/channels/duplicates/resolve", { method: "POST" }).then(j<{ removed: number; setsResolved: number }>),
+  getArchiveRecommendations: () => fetch("/api/recommendations/archive").then(j<ArchiveRec[]>),
   // ctcssHz / dcsCode: null clears a set tone or code (the server merges
   // patches field-wise).
   updateChannel: (id: string, patch: Partial<Omit<Channel, "id" | "ctcssHz" | "dcsCode">> & { ctcssHz?: number | null; dcsCode?: string | null }) =>

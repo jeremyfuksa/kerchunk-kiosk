@@ -1,7 +1,6 @@
 // Hash routes for admin-next. While the classic admin is still the default
 // the new tree lives under #/next; the flip PR sets NEXT_PREFIX to "".
 export type Tab = "radio" | "tune" | "library" | "system";
-export interface Route { tab: Tab; sub?: "new" }
 
 export const NEXT_PREFIX: string = "next";
 
@@ -15,18 +14,64 @@ function segments(hash: string): string[] {
   return parts;
 }
 
+/** What the Library's detail sheet shows: a channel by id, the first channel
+ *  on a frequency (Radio's "Recently heard" links), or a new channel — blank,
+ *  pre-filled from a discovery, or pre-tagged for a bank. */
+export type Detail =
+  | { kind: "ch"; id: string }
+  | { kind: "hz"; hz: number }
+  | { kind: "add"; from?: string; tag?: string };
+
+export interface Route { tab: Tab; sub?: "new"; detail?: Detail }
+
+function decode(s: string | undefined): string | null {
+  if (!s) return null;
+  try { return decodeURIComponent(s); } catch { return null; }
+}
+
+function parseDetail(rest: string[]): Detail | null {
+  const [kind, a, b] = rest;
+  if (kind === "ch") { const id = decode(a); return id ? { kind: "ch", id } : null; }
+  if (kind === "hz") {
+    const hz = Number(a);
+    return Number.isInteger(hz) && hz > 0 ? { kind: "hz", hz } : null;
+  }
+  if (kind === "add") {
+    if (a === "from") { const from = decode(b); return from ? { kind: "add", from } : { kind: "add" }; }
+    if (a === "tag") { const tag = decode(b); return tag ? { kind: "add", tag } : { kind: "add" }; }
+    return { kind: "add" };
+  }
+  return null;
+}
+
 export function parseRoute(hash: string): Route {
-  const [head, sub] = segments(hash);
+  const [head, ...rest] = segments(hash);
   switch (head) {
     case "tune": return { tab: "tune" };
-    case "library": return sub === "new" ? { tab: "library", sub: "new" } : { tab: "library" };
+    case "library": {
+      if (rest[0] === "new") return { tab: "library", sub: "new" };
+      const detail = parseDetail(rest);
+      return detail ? { tab: "library", detail } : { tab: "library" };
+    }
     case "system": return { tab: "system" };
     default: return { tab: "radio" };
   }
 }
 
+function detailPath(d: Detail): string[] {
+  switch (d.kind) {
+    case "ch": return ["ch", encodeURIComponent(d.id)];
+    case "hz": return ["hz", String(d.hz)];
+    case "add":
+      return d.from ? ["add", "from", encodeURIComponent(d.from)]
+        : d.tag ? ["add", "tag", encodeURIComponent(d.tag)] : ["add"];
+  }
+}
+
 export function hrefFor(r: Route): string {
-  const path = [NEXT_PREFIX, r.tab === "radio" ? "" : r.tab, r.sub ?? ""].filter(Boolean).join("/");
+  const path = [
+    NEXT_PREFIX, r.tab === "radio" ? "" : r.tab, r.sub ?? "", ...(r.detail ? detailPath(r.detail) : []),
+  ].filter(Boolean).join("/");
   return `#/${path}`;
 }
 

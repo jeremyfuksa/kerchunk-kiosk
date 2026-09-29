@@ -31,4 +31,28 @@ describe("admin-next routes", () => {
     expect(legacyRedirect("#/system")).toBeNull();
     expect(legacyRedirect("#/next/tune")).toBeNull();
   });
+  it("parses library detail routes", () => {
+    expect(parseRoute("#/next/library/ch/ch_ab12")).toEqual({ tab: "library", detail: { kind: "ch", id: "ch_ab12" } });
+    expect(parseRoute("#/next/library/hz/146520000")).toEqual({ tab: "library", detail: { kind: "hz", hz: 146_520_000 } });
+    expect(parseRoute("#/next/library/add")).toEqual({ tab: "library", detail: { kind: "add" } });
+    expect(parseRoute("#/next/library/add/from/cc_1")).toEqual({ tab: "library", detail: { kind: "add", from: "cc_1" } });
+    expect(parseRoute("#/next/library/add/tag/air%20band")).toEqual({ tab: "library", detail: { kind: "add", tag: "air band" } });
+  });
+  it("ignores malformed detail routes", () => {
+    expect(parseRoute("#/next/library/hz/abc")).toEqual({ tab: "library" });
+    expect(parseRoute("#/next/library/hz/-5")).toEqual({ tab: "library" });
+    expect(parseRoute("#/next/library/ch/")).toEqual({ tab: "library" });
+    expect(parseRoute("#/next/library/ch/%E0%A4%A")).toEqual({ tab: "library" });
+  });
+  it("round-trips detail routes", () => {
+    for (const r of [
+      { tab: "library", detail: { kind: "ch", id: "ch_x/y" } },
+      { tab: "library", detail: { kind: "hz", hz: 462_562_500 } },
+      { tab: "library", detail: { kind: "add" } },
+      { tab: "library", detail: { kind: "add", from: "cc_9" } },
+      { tab: "library", detail: { kind: "add", tag: "rail" } },
+    ] as const) {
+      expect(parseRoute(hrefFor(r))).toEqual(r);
+    }
+  });
 });

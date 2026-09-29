@@ -108,3 +108,20 @@ describe("Poller.run (write lane)", () => {
     expect(max).toBe(1);
   });
 });
+
+describe("Poller.request", () => {
+  it("makes only the named poll due", async () => {
+    const p = new Poller({ now: () => 1_000, hidden: () => false });
+    const ran: string[] = [];
+    p.add({ name: "a", everyMs: 60_000, run: async () => { ran.push("a"); } });
+    p.add({ name: "b", everyMs: 60_000, run: async () => { ran.push("b"); } });
+    await p.tick("library");
+    expect(ran).toEqual(["a", "b"]);
+    p.request("b");
+    await p.tick("library");
+    expect(ran).toEqual(["a", "b", "b"]);
+    p.request("nope"); // unknown names are ignored
+    await p.tick("library");
+    expect(ran).toEqual(["a", "b", "b"]);
+  });
+});

@@ -1814,4 +1814,18 @@ describe("typed api routes", () => {
     vi.stubGlobal("fetch", reply(200, { ok: true }));
     await expect(api.skip()).resolves.toBeUndefined();
   });
+  it("library suggestion routes return their bodies and reject on non-OK", async () => {
+    const f = reply(200, [{ freq: 146_520_000, channels: [] }]);
+    vi.stubGlobal("fetch", f);
+    await expect(api.getDuplicates()).resolves.toEqual([{ freq: 146_520_000, channels: [] }]);
+    expect(f).toHaveBeenCalledWith("/api/channels/duplicates");
+    vi.stubGlobal("fetch", reply(404, { error: "no history store" }));
+    await expect(api.getArchiveRecommendations()).rejects.toThrow("no history store");
+  });
+  it("resolveDuplicates POSTs and returns the tally", async () => {
+    const f = reply(200, { removed: 2, setsResolved: 1 });
+    vi.stubGlobal("fetch", f);
+    await expect(api.resolveDuplicates()).resolves.toEqual({ removed: 2, setsResolved: 1 });
+    expect(f).toHaveBeenCalledWith("/api/channels/duplicates/resolve", { method: "POST" });
+  });
 });
