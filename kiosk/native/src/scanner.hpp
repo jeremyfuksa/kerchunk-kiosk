@@ -5,6 +5,7 @@
 #include <nlohmann/json.hpp>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "constants.hpp"
@@ -98,6 +99,10 @@ class Scanner {
   Params p_;
   Emit emit_;
   std::vector<LaneState> lanes_;
+  // Skip holdoffs by channel id. A lane's skip_until dies with the lane when a hop reassigns the
+  // slot, so the admin's "Pause 30 min" lasted one rotation; assign() restores it from here.
+  // Cleared only by a helper restart (hardware-scanner temp-lockout semantics).
+  std::unordered_map<std::string, double> skip_until_by_id_;
   std::vector<TxEpisode> tx_;   // parallel to lanes_
   int audible_ = -1;
   float gate_ = 0;
