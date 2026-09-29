@@ -28,6 +28,14 @@ export function renderAdminNext(root: HTMLElement): void {
       shell.setVerdict(v.verdict, v.text);
     },
   });
+  // WS `status` events set live.resyncPending rather than fetching directly
+  // (this box deadlocks on concurrent requests) — this poll picks it up on
+  // the next tick, sequenced with everything else.
+  poller.add({
+    name: "status", everyMs: 0,
+    when: () => live.resyncPending,
+    run: async () => { live.resyncPending = false; await live.syncStatus(); },
+  });
   poller.add({
     name: "audio+triage", everyMs: POLL_MS.audio,
     run: async () => {
@@ -36,6 +44,12 @@ export function renderAdminNext(root: HTMLElement): void {
       shell.setTriageCount((cfg.discoveries ?? []).length);
     },
   });
+  // Runs once at start (everyMs: Infinity never comes due again on its own);
+  // a route change's makeDue may re-run it too, which is harmless.
+  poller.add({
+    name: "weather", everyMs: Number.POSITIVE_INFINITY,
+    run: () => live.loadWeatherChannel(),
+  });
 
   renderPlaceholder(shell.panel("tune"), "tune");
   renderPlaceholder(shell.panel("library"), "library");
@@ -43,7 +57,6 @@ export function renderAdminNext(root: HTMLElement): void {
   mountRadioTab(ctx);
 
   live.connect();
-  void live.syncStatus().then(() => live.loadWeatherChannel());
   shell.onRoute((r) => { poller.makeDue(r.tab); void poller.tick(r.tab); });
   poller.start(() => shell.route().tab);
   void poller.tick(shell.route().tab);

@@ -1,6 +1,5 @@
 // admin-next chrome: wordmark, four tabs (top bar ≥900px, bottom bar below),
 // health verdict, and the mini-player that follows you off the Radio tab.
-import { esc } from "../lib/format.js";
 import { api } from "../lib/api.js";
 import { ico } from "./ui/icons.js";
 import { hrefFor, parseRoute, TAB_TITLES, type Route, type Tab } from "./route.js";
@@ -56,18 +55,51 @@ export function mountShell(root: HTMLElement, live: LiveStore): Shell {
     for (const fn of routeSubs) fn(current);
   }
 
+  // Built once: WS `signal` events update dbfs ~4×/s during a transmission,
+  // and a rebuilt-every-paint mini-player dropped focus and swallowed clicks
+  // that landed mid-rebuild. Only the fields that actually changed are
+  // touched on each paint.
+  mini.innerHTML = `<a class="kc-mini__open" href="${hrefFor({ tab: "radio" })}">
+      <span class="kc-mini__name"></span><span class="kc-mini__freq" hidden></span></a>
+    <button type="button" class="kc-mini__key" data-act="skip" aria-label="Skip transmission">${ico("skip")}</button>
+    <button type="button" class="kc-mini__key" data-act="listen" disabled>${ico("play")}</button>`;
+  mini.querySelector('[data-act="skip"]')!.addEventListener("click", () => { void api.skip(); });
+  mini.querySelector('[data-act="listen"]')!.addEventListener("click", () => live.toggleStream());
+  const miniOpen = mini.querySelector<HTMLAnchorElement>(".kc-mini__open")!;
+  const miniName = mini.querySelector<HTMLElement>(".kc-mini__name")!;
+  const miniFreq = mini.querySelector<HTMLElement>(".kc-mini__freq")!;
+  const miniListen = mini.querySelector<HTMLButtonElement>('[data-act="listen"]')!;
+  let miniPainted: { name: string; freq: string; streaming: boolean; listenEnabled: boolean } | null = null;
+
   function paintMini(): void {
     // Radio IS the player — no mini-player there.
     mini.hidden = current.tab === "radio";
     if (mini.hidden) return;
     const v = lcdView(live.state);
-    mini.innerHTML = `<a class="kc-mini__open" href="${hrefFor({ tab: "radio" })}" aria-label="Open radio">
-        <span class="kc-mini__name">${esc(v.name)}</span>${v.freq ? `<span class="kc-mini__freq">${esc(v.freq)}</span>` : ""}</a>
-      <button type="button" class="kc-mini__key" data-act="skip" aria-label="Skip transmission">${ico("skip")}</button>
-      <button type="button" class="kc-mini__key" data-act="listen" aria-label="${live.streaming ? "Stop listening" : "Listen here"}"${
-        live.state.remoteListening || live.streaming ? "" : " disabled"}>${ico(live.streaming ? "stop" : "play")}</button>`;
-    mini.querySelector('[data-act="skip"]')!.addEventListener("click", () => { void api.skip(); });
-    mini.querySelector('[data-act="listen"]')!.addEventListener("click", () => live.toggleStream());
+    const next = {
+      name: v.name, freq: v.freq, streaming: live.streaming,
+      listenEnabled: live.state.remoteListening || live.streaming,
+    };
+    const prev = miniPainted;
+    if (prev && prev.name === next.name && prev.freq === next.freq
+      && prev.streaming === next.streaming && prev.listenEnabled === next.listenEnabled) return;
+    miniPainted = next;
+
+    if (!prev || prev.name !== next.name) {
+      miniName.textContent = next.name;
+      miniOpen.setAttribute("aria-label", `Open radio: ${next.name}`);
+    }
+    if (!prev || prev.freq !== next.freq) {
+      miniFreq.hidden = !next.freq;
+      miniFreq.textContent = next.freq;
+    }
+    if (!prev || prev.listenEnabled !== next.listenEnabled) {
+      miniListen.disabled = !next.listenEnabled;
+    }
+    if (!prev || prev.streaming !== next.streaming) {
+      miniListen.setAttribute("aria-label", next.streaming ? "Stop listening" : "Listen here");
+      miniListen.innerHTML = ico(next.streaming ? "stop" : "play");
+    }
   }
   live.subscribe(paintMini);
 

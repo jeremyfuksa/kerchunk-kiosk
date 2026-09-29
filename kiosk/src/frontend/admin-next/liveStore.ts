@@ -12,6 +12,14 @@ export class LiveStore {
   private readonly subs = new Set<(s: LiveState) => void>();
   private readonly alertSubs = new Set<() => void>();
 
+  // Set when a WS `status` event says the store needs a fresh /api/status —
+  // never fetched directly from here. This appliance deadlocks on concurrent
+  // requests, so the resync rides the same sequential Poller as everything
+  // else; a poll with `when: () => live.resyncPending` picks this up within
+  // one tick (1s).
+  resyncPending = true;
+  requestResync(): void { this.resyncPending = true; }
+
   subscribe(fn: (s: LiveState) => void): () => void {
     this.subs.add(fn); fn(this.state);
     return () => this.subs.delete(fn);
@@ -28,7 +36,7 @@ export class LiveStore {
     new ReconnectingWs(`${proto}://${location.host}/ws`, (ev) => {
       const r = reduceEvent(this.state, ev);
       if (r.state !== this.state) this.set(r.state);
-      if (r.resync) void this.syncStatus();
+      if (r.resync) this.requestResync();
       if (r.alert) for (const fn of this.alertSubs) fn();
     }).connect();
   }
