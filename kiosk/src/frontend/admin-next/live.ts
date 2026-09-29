@@ -94,3 +94,11 @@ export function lcdView(s: LiveState): LcdView {
   }
   return { state: "scanning", meta: "Scanning", name: "Scanning…", freq: "", silent, canLock: false };
 }
+
+/** Identity of what the LCD shows, minus the signal level: the Radio tab
+ *  rebuilds the LCD markup only when this changes (dbfs moves ~4×/s during a
+ *  transmission and is patched in place instead). `canLock` is derived from
+ *  `state`, so it isn't part of the key. */
+export function lcdKey(v: LcdView): string {
+  return [v.state, v.meta, v.name, v.freq, v.silent ?? ""].join("\u0000");
+}

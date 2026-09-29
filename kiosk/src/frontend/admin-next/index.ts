@@ -7,6 +7,9 @@ import { Poller, POLL_MS } from "./poller.js";
 import { mountDialogs, type Dialogs } from "./dialogs.js";
 import { worseVerdict, type SystemAlert, type Verdict } from "./verdict.js";
 import { renderPlaceholder } from "./placeholder.js";
+import { mountRadio } from "./radio.js";
+import { hrefFor } from "./route.js";
+import { esc } from "../lib/format.js";
 
 export interface Ctx { shell: Shell; live: LiveStore; poller: Poller; dialogs: Dialogs }
 
@@ -26,6 +29,12 @@ export function renderAdminNext(root: HTMLElement): void {
       };
       const v = worseVerdict(sys.health, sys.alerts);
       shell.setVerdict(v.verdict, v.text);
+      const strip = shell.panel("radio").querySelector<HTMLElement>("#kcHealth");
+      if (strip) {
+        strip.hidden = v.verdict === "healthy";
+        strip.dataset.verdict = v.verdict;
+        strip.innerHTML = v.verdict === "healthy" ? "" : `<span>${esc(v.text)}</span><a href="${hrefFor({ tab: "system" })}">Open System</a>`;
+      }
     },
   });
   // WS `status` events set live.resyncPending rather than fetching directly
@@ -54,15 +63,10 @@ export function renderAdminNext(root: HTMLElement): void {
   renderPlaceholder(shell.panel("tune"), "tune");
   renderPlaceholder(shell.panel("library"), "library");
   renderPlaceholder(shell.panel("system"), "system");
-  mountRadioTab(ctx);
+  mountRadio(ctx);
 
   live.connect();
   shell.onRoute((r) => { poller.makeDue(r.tab); void poller.tick(r.tab); });
   poller.start(() => shell.route().tab);
   void poller.tick(shell.route().tab);
-}
-
-// Replaced in Task 16 by `import { mountRadio } from "./radio.js"`.
-function mountRadioTab(ctx: Ctx): void {
-  ctx.shell.panel("radio").textContent = "Radio";
 }
