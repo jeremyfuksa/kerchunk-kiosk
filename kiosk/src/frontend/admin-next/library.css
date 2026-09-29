@@ -95,9 +95,15 @@
 .kc-bank:first-child { border-top: 0; }
 .kc-bank > summary { list-style: none; cursor: pointer; display: flex; justify-content: space-between; gap: 10px; padding: 12px 16px; min-height: 44px; box-sizing: border-box; }
 .kc-bank > summary::-webkit-details-marker { display: none; }
+.kc-bank__info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .kc-bank__rule { color: var(--kc-mute); font-size: var(--kc-t-small); }
 .kc-bank__acts { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 16px 14px; }
 .kc-formRow { display: flex; flex-wrap: wrap; gap: 8px; padding: 4px 16px 14px; }
+.kc-formRow .kc-field, .kc-formRow .kc-keys { flex: 1 1 100%; padding: 0; border-top: 0; }
+.kc-dupSet + .kc-dupSet { margin-top: 10px; }
+.kc-dupSet__freq { padding: 8px 16px 0; font-weight: 700; font-variant-numeric: tabular-nums; }
+.kc-dupSet__tag--keep { color: var(--kc-mute); }
+.kc-dupSet__tag--drop { color: var(--kc-coral); }
 
 /* triage cards */
 .kc-cards { display: grid; gap: 10px; margin-top: 4px; }
