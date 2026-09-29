@@ -35,30 +35,34 @@ export function mountDialogs(host: HTMLElement): Dialogs {
     toastHost.innerHTML = "";
   }
 
+  // A local function, not a method: callers pass `dialogs.toast` around bare,
+  // and the undo path calls it again — no `this` to lose.
+  const toast: Dialogs["toast"] = (text, o = {}) => {
+    close();
+    toastHost.innerHTML = `<div class="kc-toast"><span class="kc-toast__text">${esc(text)}</span>${
+      o.undo ? `<button type="button" class="kc-toast__undo">Undo</button>` : ""
+    }<button type="button" class="kc-toast__close" aria-label="Dismiss">${ico("close")}</button></div>`;
+    toastHost.querySelector(".kc-toast__close")!.addEventListener("click", close);
+    const undo = o.undo;
+    if (undo) {
+      const b = toastHost.querySelector<HTMLButtonElement>(".kc-toast__undo")!;
+      b.addEventListener("click", async () => {
+        if (timer !== undefined) { clearTimeout(timer); timer = undefined; }
+        b.disabled = true; b.textContent = "Undoing…";
+        try { await undo(); close(); toast("Undone."); }
+        catch (e) {
+          b.disabled = false; b.textContent = "Undo";
+          const line = toastHost.querySelector<HTMLElement>(".kc-toast__text");
+          if (line) line.textContent = (e as Error).message;
+          timer = setTimeout(close, o.ms ?? TOAST_MS);
+        }
+      });
+    }
+    timer = setTimeout(close, o.ms ?? TOAST_MS);
+  };
+
   return {
-    toast(text, o = {}) {
-      close();
-      toastHost.innerHTML = `<div class="kc-toast"><span class="kc-toast__text">${esc(text)}</span>${
-        o.undo ? `<button type="button" class="kc-toast__undo">Undo</button>` : ""
-      }<button type="button" class="kc-toast__close" aria-label="Dismiss">${ico("close")}</button></div>`;
-      toastHost.querySelector(".kc-toast__close")!.addEventListener("click", close);
-      const undo = o.undo;
-      if (undo) {
-        const b = toastHost.querySelector<HTMLButtonElement>(".kc-toast__undo")!;
-        b.addEventListener("click", async () => {
-          if (timer !== undefined) { clearTimeout(timer); timer = undefined; }
-          b.disabled = true; b.textContent = "Undoing…";
-          try { await undo(); close(); this.toast("Undone."); }
-          catch (e) {
-            b.disabled = false; b.textContent = "Undo";
-            const line = toastHost.querySelector<HTMLElement>(".kc-toast__text");
-            if (line) line.textContent = (e as Error).message;
-            timer = setTimeout(close, o.ms ?? TOAST_MS);
-          }
-        });
-      }
-      timer = setTimeout(close, o.ms ?? TOAST_MS);
-    },
+    toast,
     confirm(o) {
       // A double-fired destructive action (e.g. a double-tapped "Lock out")
       // must not throw (showModal() on an already-open <dialog> raises
