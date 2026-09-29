@@ -1,8 +1,8 @@
-// Enforces spec §2 / Ruling 10: every admin-next write goes through the
+// Enforces spec §2 / Ruling 10: every admin write goes through the
 // poller's exclusive lane (`poller.run(...)`), because this appliance
 // deadlocks on concurrent requests and a write racing a poll is exactly that.
 //
-// A textual heuristic, not a type check. For each admin-next/*.ts source it
+// A textual heuristic, not a type check. For each admin/*.ts source it
 // blanks comments, string literals and template-literal text (keeping ${…}
 // expressions), then requires every `api.<write>(` call to sit inside the
 // parentheses of some enclosing `.run(` call. Limits:
@@ -92,7 +92,7 @@ export function laneViolations(src: string): string[] {
   return bad;
 }
 
-describe("admin-next write lane", () => {
+describe("admin write lane", () => {
   it("the heuristic catches a bare write and accepts one inside .run(", () => {
     expect(laneViolations(`b.onclick = () => { void api.skip(); };`)).toEqual(["api.skip @ line 1"]);
     expect(laneViolations(`poller.run(() => api.skip()).catch(say);`)).toEqual([]);
@@ -108,9 +108,9 @@ describe("admin-next write lane", () => {
     expect(laneViolations("const t = `${ api.skip() }`;")).toEqual(["api.skip @ line 1"]);
   });
 
-  const dir = join(import.meta.dirname, "../src/frontend/admin-next");
+  const dir = join(import.meta.dirname, "../src/frontend/admin");
   const files = readdirSync(dir, { recursive: true, encoding: "utf8" }).filter((f) => f.endsWith(".ts"));
-  it("finds the admin-next sources", () => {
+  it("finds the admin sources", () => {
     expect(files).toContain("radio.ts");
     expect(files).toContain("tune.ts");
     expect(files).toContain("shell.ts");

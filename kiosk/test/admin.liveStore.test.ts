@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { LiveStore } from "../src/frontend/admin-next/liveStore.js";
+import { LiveStore } from "../src/frontend/admin/liveStore.js";
 
 // connect()/toggleStream() touch browser globals (WebSocket, Audio, location)
 // that don't exist under the node test environment — covered by the

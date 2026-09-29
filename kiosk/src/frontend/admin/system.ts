@@ -8,7 +8,7 @@
 // PAUSED: the watcher's probes are then the only requests on the wire (this
 // box deadlocks on concurrent requests). Those probes are the one sanctioned
 // read outside the lane — they call api.getStatus on the watcher's own
-// timers. Every other write rides poller.run (test/adminNext.lane.test.ts
+// timers. Every other write rides poller.run (test/admin.lane.test.ts
 // enforces it), and poller.run refuses while paused, so no tab can write
 // alongside the probes. The power send itself goes through run() BEFORE
 // the pause.

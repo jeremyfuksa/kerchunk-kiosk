@@ -1,4 +1,4 @@
-// admin-next chrome: wordmark, four tabs (top bar ≥900px, bottom bar below),
+// the admin chrome: wordmark, four tabs (top bar ≥900px, bottom bar below),
 // health verdict, and the mini-player that follows you off the Radio tab.
 import { api } from "../lib/api.js";
 import { ico } from "./ui/icons.js";
@@ -18,7 +18,7 @@ export interface Shell {
 const TABS: Tab[] = ["radio", "tune", "library", "system"];
 
 /** What the shell needs to write: the poller's exclusive lane (every
- *  admin-next write goes through it) and somewhere to say a failure. Passed
+ *  every admin write goes through it) and somewhere to say a failure. Passed
  *  as callbacks so the shell imports neither the poller nor the dialogs. */
 export interface ShellIo {
   run<T>(fn: () => Promise<T>): Promise<T>;

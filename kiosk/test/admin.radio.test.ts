@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { durationLabel, PAUSE_S } from "../src/frontend/admin-next/radio.js";
+import { durationLabel, PAUSE_S } from "../src/frontend/admin/radio.js";
 
 describe("Pause key label", () => {
   it("is derived from PAUSE_S", () => {

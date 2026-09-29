@@ -1,4 +1,4 @@
-// Radio — admin-next home: the faceplate. LCD for what's live, keys for what
+// Radio — the admin home: the faceplate. LCD for what's live, keys for what
 // you can do about it, then volume, recently heard, activity and alerts.
 // Handlers are the classic Now panel's, ported (same API calls, same guards).
 //
@@ -10,7 +10,7 @@
 // Every fetch here rides the sequential Poller (this box deadlocks on
 // concurrent requests): reads are polls — user-initiated refreshes raise a
 // flag that a `when`-gated poll picks up on the next tick — and every write
-// goes through poller.run (test/adminNext.lane.test.ts enforces it).
+// goes through poller.run (test/admin.lane.test.ts enforces it).
 import type { Config } from "../../backend/config/schema.js";
 import { api } from "../lib/api.js";
 import { esc, fmtFreq } from "../lib/format.js";
@@ -300,7 +300,7 @@ export function mountRadio(ctx: Ctx): void {
   });
 
   // ── Channel activity (only fetched while expanded)
-  const IN_KEY = "kerchunk.adminNext.insightHours";
+  const IN_KEY = "kerchunk.admin.insightHours";
   let inHours = 24;
   try { inHours = Number(localStorage.getItem(IN_KEY)) || 24; } catch { /* private mode */ }
   const insights = $<HTMLDetailsElement>("#kcInsights");

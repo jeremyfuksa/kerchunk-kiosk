@@ -1,6 +1,6 @@
 // Library · Manage banks and Suggestions sheets. One sheet element serves
 // both (mountSheet is called once); openBanks()/openSuggestions() retitle it
-// and swap the body. Every write is inside lib.run (test/adminNext.lane.test.ts
+// and swap the body. Every write is inside lib.run (test/admin.lane.test.ts
 // enforces it) — read-modify-write through getConfig/putConfig for bank
 // edits, a single call for duplicate/discovery actions.
 //

@@ -1,4 +1,4 @@
-// HTML-string builders for admin-next. Strings, not nodes: callers render with
+// HTML-string builders for the admin. Strings, not nodes: callers render with
 // innerHTML and wire events by id/data-attributes, like the rest of the app.
 import { esc } from "../../lib/format.js";
 import { ico, type IconName } from "./icons.js";

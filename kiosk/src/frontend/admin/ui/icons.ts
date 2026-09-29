@@ -1,4 +1,4 @@
-// Every glyph in admin-next comes from lucide-static (operator mandate).
+// Every glyph in the admin comes from lucide-static (operator mandate).
 import radio from "lucide-static/icons/radio.svg?raw";
 import tune from "lucide-static/icons/sliders-horizontal.svg?raw";
 import library from "lucide-static/icons/library.svg?raw";

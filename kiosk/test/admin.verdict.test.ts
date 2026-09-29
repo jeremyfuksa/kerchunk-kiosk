@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { glance, UNREACHABLE_TEXT, worseVerdict } from "../src/frontend/admin-next/verdict.js";
+import { glance, UNREACHABLE_TEXT, worseVerdict } from "../src/frontend/admin/verdict.js";
 
 const alert = (severity: "attention" | "severe", title: string) => ({ id: "t", severity, title, message: "", help: "" });
 

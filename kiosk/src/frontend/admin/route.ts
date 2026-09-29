@@ -2,16 +2,12 @@
 // from before the flip redirects (see legacyRedirect).
 export type Tab = "radio" | "tune" | "library" | "system";
 
-export const NEXT_PREFIX: string = "";
-
 export const TAB_TITLES: Record<Tab, string> = {
   radio: "Radio", tune: "Tune", library: "Library", system: "System",
 };
 
 function segments(hash: string): string[] {
-  const parts = hash.replace(/^#\/?/, "").split("/").filter(Boolean);
-  if (NEXT_PREFIX && parts[0] === NEXT_PREFIX) parts.shift();
-  return parts;
+  return hash.replace(/^#\/?/, "").split("/").filter(Boolean);
 }
 
 /** What the Library's detail sheet shows: a channel by id, the first channel
@@ -70,7 +66,7 @@ function detailPath(d: Detail): string[] {
 
 export function hrefFor(r: Route): string {
   const path = [
-    NEXT_PREFIX, r.tab === "radio" ? "" : r.tab, r.sub ?? "", ...(r.detail ? detailPath(r.detail) : []),
+    r.tab === "radio" ? "" : r.tab, r.sub ?? "", ...(r.detail ? detailPath(r.detail) : []),
   ].filter(Boolean).join("/");
   return `#/${path}`;
 }

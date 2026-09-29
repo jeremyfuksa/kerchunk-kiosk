@@ -5,7 +5,7 @@ import { renderDashboard } from "./dashboard/dashboard.js";
 import { renderMap } from "./map/map.js";
 import { renderWall } from "./wall/wall.js";
 import { renderArt } from "./art/art.js";
-import { renderAdminNext } from "./admin-next/index.js";
+import { renderAdmin } from "./admin/index.js";
 
 const root = document.getElementById("app")!;
 
@@ -21,7 +21,7 @@ const root = document.getElementById("app")!;
 const FONT_QUERY: Record<string, string> = {
   dashboard: "family=Inter:wght@400;500;600;700",
   map: "family=Inter:wght@400;500;600;700",
-  "admin-next": "family=Schibsted+Grotesk:wght@400;500;600;700;800",
+  admin: "family=Schibsted+Grotesk:wght@400;500;600;700;800",
 };
 
 function loadFonts(page: string): void {
@@ -39,7 +39,7 @@ function loadFonts(page: string): void {
 // let each page's CSS opt in via html[data-page="…"]. Without this, the wall/art
 // `overflow: hidden` body lock leaks onto the scrollable admin page.
 const RENDERERS: Array<[string, string, (root: HTMLElement) => void]> = [
-  ["/admin", "admin-next", renderAdminNext],
+  ["/admin", "admin", renderAdmin],
   ["/map", "map", renderMap],
   ["/wall", "wall", renderWall],
   ["/art", "art", renderArt],

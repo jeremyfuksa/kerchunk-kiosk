@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { SamplePlayer, sampleUrl } from "../src/frontend/admin-next/samples.js";
+import { SamplePlayer, sampleUrl } from "../src/frontend/admin/samples.js";
 
 function fakeAudio() {
   const handlers: Record<string, Array<() => void>> = {};

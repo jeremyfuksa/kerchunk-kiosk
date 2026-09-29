@@ -4,7 +4,7 @@
 // channel set, so scanning restarts briefly).
 //
 // One read, a System-tab poll of /api/config; every write rides
-// ctx.poller.run (test/adminNext.lane.test.ts). While a power action is being
+// ctx.poller.run (test/admin.lane.test.ts). While a power action is being
 // watched the poller is paused and its probes must be alone on the wire:
 // poller.run itself rejects then, and the early `paused` checks here just
 // say so (with the same text) before a confirm or "Saving…".

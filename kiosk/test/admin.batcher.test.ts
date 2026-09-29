@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { ApplyBatcher, TUNE_APPLY_DELAY_MS, type BatchState } from "../src/frontend/admin-next/batcher.js";
+import { ApplyBatcher, TUNE_APPLY_DELAY_MS, type BatchState } from "../src/frontend/admin/batcher.js";
 
 beforeEach(() => { vi.useFakeTimers(); });
 afterEach(() => { vi.useRealTimers(); });

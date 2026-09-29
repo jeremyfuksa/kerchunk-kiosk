@@ -5,7 +5,7 @@
 // Every fetch rides the sequential Poller: the "library" poll loads channels,
 // then config, then (when recording) the sample index, one after another;
 // "suggestions" loads duplicates and archive ideas less often; writes go
-// through lib.run (test/adminNext.lane.test.ts enforces it).
+// through lib.run (test/admin.lane.test.ts enforces it).
 import "./library.css";
 import { api } from "../lib/api.js";
 import { esc } from "../lib/format.js";

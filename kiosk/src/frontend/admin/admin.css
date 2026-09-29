@@ -1,20 +1,20 @@
-/* admin-next — Faceplate × Night desk (spec 2026-09-28). Scoped: every page's
+/* the admin — Faceplate × Night desk (spec 2026-09-28). Scoped: every page's
    CSS is bundled globally, so everything here hangs off
-   html[data-page="admin-next"] and every class is kc-prefixed. Colours come
+   html[data-page="admin"] and every class is kc-prefixed. Colours come
    only from tokens.css layer 2. */
-html[data-page="admin-next"] { color-scheme: dark; background: var(--kc-ground); }
-html[data-page="admin-next"] body {
+html[data-page="admin"] { color-scheme: dark; background: var(--kc-ground); }
+html[data-page="admin"] body {
   margin: 0; background: var(--kc-ground); color: var(--kc-ink);
   font: 400 var(--kc-t-body)/1.5 var(--kc-font);
   -webkit-font-smoothing: antialiased;
 }
-html[data-page="admin-next"] :focus-visible { outline: 2px solid var(--kc-glass); outline-offset: 2px; }
+html[data-page="admin"] :focus-visible { outline: 2px solid var(--kc-glass); outline-offset: 2px; }
 /* :where() keeps this at (0,0,1) so it never outranks .kc-key--primary's
    (0,1,0) — an anchor-rendered primary key (e.g. an "Open
    classic …" link) must show its dark ink, not the ambient link colour. */
-:where(html[data-page="admin-next"]) a { color: inherit; }
+:where(html[data-page="admin"]) a { color: inherit; }
 @media (prefers-reduced-motion: reduce) {
-  html[data-page="admin-next"] * { transition: none !important; animation: none !important; }
+  html[data-page="admin"] * { transition: none !important; animation: none !important; }
 }
 
 .kc-ico { width: 1.1em; height: 1.1em; flex: none; }

@@ -3,7 +3,7 @@ import type { Config } from "../src/backend/config/schema.js";
 import {
   sparkPoints, vitals, uptimeText, verdictView, alertsView, withMaps, mapsState, unlockSnapshot,
   SYSTEM_ACTION_COPY, TEST_ALERTS, TEMP_WARN_C, type SystemSnapshot,
-} from "../src/frontend/admin-next/systemModel.js";
+} from "../src/frontend/admin/systemModel.js";
 
 const now = {
   ts: 1, cpuPct: 34, helperCpuPct: 20, helperRssMb: 60, load1: 1, memUsedPct: 41, backendRssMb: 90,

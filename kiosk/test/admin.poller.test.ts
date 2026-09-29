@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { Poller } from "../src/frontend/admin-next/poller.js";
+import { Poller } from "../src/frontend/admin/poller.js";
 
 function harness() {
   let t = 0;

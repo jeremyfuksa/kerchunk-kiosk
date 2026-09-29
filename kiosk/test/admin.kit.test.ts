@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { dbText, key, lcd, group, meterLit, METER_FLOOR_DB, slider, switchRow, segmented, chip, field } from "../src/frontend/admin-next/ui/kit.js";
-import { initialLive, lcdKey, lcdView, reduceEvent } from "../src/frontend/admin-next/live.js";
+import { dbText, key, lcd, group, meterLit, METER_FLOOR_DB, slider, switchRow, segmented, chip, field } from "../src/frontend/admin/ui/kit.js";
+import { initialLive, lcdKey, lcdView, reduceEvent } from "../src/frontend/admin/live.js";
 
 describe("ui kit", () => {
   it("key escapes its label and carries variant + disabled", () => {

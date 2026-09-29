@@ -8,8 +8,8 @@ import {
   bankFromForm, profileFromForm, withProfile, bankToggles, bulkPatch, signalSeries, defaultMode,
   resolveDetail, detailFieldsToPatch, lockoutSnapshot, restoreDiscovery,
   type Discovery,
-} from "../src/frontend/admin-next/libraryModel.js";
-import { ago } from "../src/frontend/admin-next/time.js";
+} from "../src/frontend/admin/libraryModel.js";
+import { ago } from "../src/frontend/admin/time.js";
 
 const ch = (o: Partial<Channel> & { id: string; freq: number }): Channel =>
   ({ alphaTag: "", mode: "nfm", enabled: true, ...o });

@@ -7,7 +7,7 @@ import type { Tab } from "./route.js";
  *  a pending status resync). */
 export const POLL_TICK_MS = 1_000;
 
-/** Tuning knobs — every admin-next poll cadence lives here. */
+/** Tuning knobs — every admin poll cadence lives here. */
 export const POLL_MS = {
   verdict: 30_000,    // every tab: top-bar health verdict
   status: 60_000,     // every tab: /api/status at least this often (sooner on a WS resync)
@@ -65,7 +65,7 @@ export class Poller {
 
   /** Run fn exclusively — after any in-flight poll pass or earlier run(), and
    *  before the next pass. The caller gets fn's result or rejection; a
-   *  rejection never blocks the lane. Used for every admin-next write.
+   *  rejection never blocks the lane. Used for every admin write.
    *
    *  While paused it rejects at once with PAUSED_TEXT and fn never runs: a
    *  power action is being watched, its probes must be alone on the wire,

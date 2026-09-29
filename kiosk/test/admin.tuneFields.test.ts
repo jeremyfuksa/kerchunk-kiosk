@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
 import type { Config } from "../src/backend/config/schema.js";
-import { KNOB_FIELDS } from "../src/frontend/admin-next/engineKnobs.js";
+import { KNOB_FIELDS } from "../src/frontend/admin/engineKnobs.js";
 import {
   TUNE_FIELDS, FIELD_BY_ID, readTune, applyTune, disabledIds, snapValue, isDefault, isNoChange, isNoOp, parseSweep,
-} from "../src/frontend/admin-next/tuneFields.js";
+} from "../src/frontend/admin/tuneFields.js";
 
 const base = (): Config => ({
   version: 1,

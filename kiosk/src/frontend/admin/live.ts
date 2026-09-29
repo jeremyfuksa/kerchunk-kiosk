@@ -1,4 +1,4 @@
-// Live radio state for admin-next, as pure functions (the classic admin kept
+// Live radio state for the admin, as pure functions (the classic admin kept
 // this in closure locals inside a 2,900-line function). Mirrors the classic
 // Now panel's rules exactly: `audible` (speaker ownership) wins once seen;
 // before that `active`/`idle` drive the display; `status` resets and resyncs.

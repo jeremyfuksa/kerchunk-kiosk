@@ -4,7 +4,7 @@ import type { Config } from "../src/backend/config/schema.js";
 import {
   KNOB_FIELDS, KNOB_BY_ID, readKnob, parseKnob, knobUi, windowError, applyKnobs,
   dirtyBands, saveCost, BAND_COST, loudnessOut, loudnessCurve, curveSvg, previewGroups, previewText, revisitHint,
-} from "../src/frontend/admin-next/engineKnobs.js";
+} from "../src/frontend/admin/engineKnobs.js";
 
 const baseCfg = (): Config => ({
   channels: [], banks: [],

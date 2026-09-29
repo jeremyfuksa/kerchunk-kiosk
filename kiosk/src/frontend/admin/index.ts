@@ -1,5 +1,5 @@
-// admin-next entry: composes shell, live store, poller, dialogs and tabs.
-import "./admin-next.css";
+// the admin entry: composes shell, live store, poller, dialogs and tabs.
+import "./admin.css";
 import { api } from "../lib/api.js";
 import { mountShell } from "./shell.js";
 import { LiveStore } from "./liveStore.js";
@@ -15,7 +15,7 @@ import { mountSystem } from "./system.js";
 import { hrefFor, legacyRedirect } from "./route.js";
 import { esc } from "../lib/format.js";
 
-export function renderAdminNext(root: HTMLElement): void {
+export function renderAdmin(root: HTMLElement): void {
   // Old bookmarks (classic pages, the pre-flip #/next/…) land on the right
   // tab. replaceState keeps Back from bouncing into the redirect; the
   // hashchange guard is registered before the shell's own listener so a

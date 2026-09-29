@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { parseRoute, hrefFor, legacyRedirect } from "../src/frontend/admin-next/route.js";
+import { parseRoute, hrefFor, legacyRedirect } from "../src/frontend/admin/route.js";
 
-describe("admin-next routes", () => {
+describe("admin routes", () => {
   it("defaults to radio", () => {
     expect(parseRoute("")).toEqual({ tab: "radio" });
     expect(parseRoute("#")).toEqual({ tab: "radio" });

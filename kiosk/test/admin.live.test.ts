@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { initialLive, reduceEvent, withStatus, withAudio, lcdView } from "../src/frontend/admin-next/live.js";
+import { initialLive, reduceEvent, withStatus, withAudio, lcdView } from "../src/frontend/admin/live.js";
 import { fmtFreq } from "../src/frontend/lib/format.js";
 import type { Channel } from "../src/backend/config/schema.js";
 

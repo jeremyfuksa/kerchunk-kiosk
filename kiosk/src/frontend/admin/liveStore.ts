@@ -1,4 +1,4 @@
-// Owns the live radio state for admin-next: one WebSocket (the same feed the
+// Owns the live radio state for the admin: one WebSocket (the same feed the
 // dashboard uses; the hub replays the current audible channel on connect),
 // plus /api/status and the audio slice of /api/config, merged through the
 // pure reducers in live.ts. Every consumer (LCD, keys, mini-player) renders
