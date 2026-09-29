@@ -77,3 +77,34 @@ describe("Poller", () => {
     });
   });
 });
+
+describe("Poller.run (write lane)", () => {
+  it("waits for an in-flight poll pass, and the next pass waits for it", async () => {
+    const log: string[] = [];
+    let release!: () => void;
+    const p = new Poller({ now: () => 0, hidden: () => false });
+    p.add({ name: "slow", everyMs: 0, run: () => new Promise<void>((r) => { log.push("poll:start"); release = () => { log.push("poll:end"); r(); }; }) });
+    const pass = p.tick("radio");
+    await Promise.resolve();
+    const write = p.run(async () => { log.push("write"); return 7; });
+    await Promise.resolve();
+    expect(log).toEqual(["poll:start"]);
+    release();
+    await expect(write).resolves.toBe(7);
+    await pass;
+    expect(log).toEqual(["poll:start", "poll:end", "write"]);
+  });
+  it("a rejected run rejects its caller but not the lane", async () => {
+    const p = new Poller({ now: () => 0, hidden: () => false });
+    await expect(p.run(async () => { throw new Error("nope"); })).rejects.toThrow("nope");
+    await expect(p.run(async () => "ok")).resolves.toBe("ok");
+  });
+  it("runs queued writes in order, one at a time", async () => {
+    const p = new Poller({ now: () => 0, hidden: () => false });
+    let inFlight = 0; let max = 0; const order: number[] = [];
+    const w = (n: number) => p.run(async () => { inFlight++; max = Math.max(max, inFlight); await Promise.resolve(); order.push(n); inFlight--; });
+    await Promise.all([w(1), w(2), w(3)]);
+    expect(order).toEqual([1, 2, 3]);
+    expect(max).toBe(1);
+  });
+});
