@@ -15,8 +15,10 @@ import close from "lucide-static/icons/x.svg?raw";
 import external from "lucide-static/icons/arrow-up-right.svg?raw";
 import chevron from "lucide-static/icons/chevron-right.svg?raw";
 import trash from "lucide-static/icons/trash-2.svg?raw";
-
-const ICONS = { radio, tune, library, system, play, stop, skip, weather, pause, lockout, volume, volumeOff, close, external, chevron, trash } as const;
+import plus from "lucide-static/icons/plus.svg?raw";
+import check from "lucide-static/icons/check.svg?raw";
+// speaker reuses volume-2; speakerOff reuses volume-x
+const ICONS = { radio, tune, library, system, play, stop, skip, weather, pause, lockout, volume, volumeOff, close, external, chevron, trash, plus, check, speaker: volume, speakerOff: volumeOff } as const;
 export type IconName = keyof typeof ICONS;
 
 export function ico(name: IconName, cls = "kc-ico"): string {

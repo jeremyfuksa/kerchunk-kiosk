@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { dbText, key, lcd, group, meterLit, METER_FLOOR_DB, slider, switchRow } from "../src/frontend/admin-next/ui/kit.js";
+import { dbText, key, lcd, group, meterLit, METER_FLOOR_DB, slider, switchRow, segmented, chip, field } from "../src/frontend/admin-next/ui/kit.js";
 import { initialLive, lcdKey, lcdView, reduceEvent } from "../src/frontend/admin-next/live.js";
 
 describe("ui kit", () => {
@@ -80,5 +80,41 @@ describe("lcdKey", () => {
     expect(lcdKey(lcdView({ ...live, muted: true }))).not.toBe(k);
     const other = reduceEvent(live, { type: "audible", channel: { ...(ch as object), freq: 462_587_500, alphaTag: "Ch 2" } as never, ts: 4 }).state;
     expect(lcdKey(lcdView(other))).not.toBe(k);
+  });
+});
+
+describe("segmented", () => {
+  it("renders links with the current one marked and counts", () => {
+    const html = segmented({
+      label: "Library view", current: "new",
+      items: [
+        { id: "channels", label: "Channels", href: "#/next/library", count: 102 },
+        { id: "new", label: "New", href: "#/next/library/new", count: 3, attention: true },
+      ],
+    });
+    expect(html).toContain('aria-label="Library view"');
+    expect(html).toMatch(/href="#\/next\/library\/new"[^>]*aria-current="page"/);
+    expect(html).not.toMatch(/href="#\/next\/library"[^>]*aria-current/);
+    expect(html).toContain('<b class="kc-seg__count">102</b>');
+    expect(html).toContain('<b class="kc-seg__count kc-badge">3</b>');
+  });
+});
+
+describe("chip", () => {
+  it("is a pressed-state button that escapes its label", () => {
+    const html = chip({ id: "bank:a", label: "<Air>", count: 15, pressed: true });
+    expect(html).toContain('data-chip="bank:a"');
+    expect(html).toContain('aria-pressed="true"');
+    expect(html).toContain("&lt;Air&gt;");
+    expect(html).toContain("<b>15</b>");
+  });
+});
+
+describe("field", () => {
+  it("labels the control and carries a hidden error slot", () => {
+    const html = field({ id: "kcX", label: "Name", control: '<input id="kcX">', hint: "Shown on the wall" });
+    expect(html).toContain('<label for="kcX">Name</label>');
+    expect(html).toContain('id="kcX-err"');
+    expect(html).toContain("hidden");
   });
 });

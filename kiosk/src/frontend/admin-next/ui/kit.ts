@@ -95,3 +95,29 @@ export function switchRow(o: { id: string; label: string; hint?: string; checked
   return `<label class="kc-switchRow"><span>${esc(o.label)}${o.hint ? ` <small>${esc(o.hint)}</small>` : ""}</span>`
     + `<input id="${o.id}" type="checkbox" role="switch"${o.checked ? " checked" : ""}${o.disabled ? " disabled" : ""} /></label>`;
 }
+
+/** A two-or-more-way view switch made of links (each view is a route). */
+export function segmented(o: {
+  label: string; current: string;
+  items: Array<{ id: string; label: string; href: string; count?: number; attention?: boolean }>;
+}): string {
+  return `<nav class="kc-seg" aria-label="${esc(o.label)}">${o.items.map((it) =>
+    `<a class="kc-seg__item" data-seg="${esc(it.id)}" href="${esc(it.href)}"${it.id === o.current ? ' aria-current="page"' : ""}>`
+    + `${esc(it.label)}${it.count !== undefined ? ` <b class="kc-seg__count${it.attention ? " kc-badge" : ""}">${it.count}</b>` : ""}</a>`,
+  ).join("")}</nav>`;
+}
+
+/** A filter chip: a toggle button (aria-pressed), optional count. */
+export function chip(o: { id: string; label: string; count?: number; pressed?: boolean; attrs?: string; dashed?: boolean }): string {
+  return `<button type="button" class="kc-chip${o.dashed ? " kc-chip--dashed" : ""}" data-chip="${esc(o.id)}"`
+    + `${o.pressed === undefined ? "" : ` aria-pressed="${o.pressed}"`}${o.attrs ? ` ${o.attrs}` : ""}>`
+    + `${esc(o.label)}${o.count !== undefined ? ` <b>${o.count}</b>` : ""}</button>`;
+}
+
+/** A labelled settings field around a trusted control, with the error line
+ *  the caller fills (and un-hides) on a refused value. */
+export function field(o: { id: string; label: string; control: string; hint?: string }): string {
+  return `<div class="kc-field"><label for="${o.id}">${esc(o.label)}</label>${o.control}`
+    + `${o.hint ? `<small class="kc-field__hint">${esc(o.hint)}</small>` : ""}`
+    + `<small class="kc-fieldErr" id="${o.id}-err" role="alert" hidden></small></div>`;
+}
