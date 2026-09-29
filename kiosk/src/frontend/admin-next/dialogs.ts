@@ -60,6 +60,10 @@ export function mountDialogs(host: HTMLElement): Dialogs {
       timer = setTimeout(close, o.ms ?? TOAST_MS);
     },
     confirm(o) {
+      // A double-fired destructive action (e.g. a double-tapped "Lock out")
+      // must not throw (showModal() on an already-open <dialog> raises
+      // InvalidStateError) or stack a second confirm on top of the first.
+      if (dlg.open) return Promise.resolve(false);
       dlg.querySelector("#kcConfirmTitle")!.textContent = o.title;
       dlg.querySelector("#kcConfirmMsg")!.textContent = o.message;
       go.textContent = o.confirmLabel;
