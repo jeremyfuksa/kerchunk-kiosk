@@ -105,4 +105,17 @@ describe("helpers", () => {
     expect(isDefault(FIELD_BY_ID.tCloseCall!, false)).toBe(false);
     expect(isDefault(FIELD_BY_ID.tGroupDwell!, "3000")).toBe(true);
   });
+  it("isDefault compares text fields as strings, not numbers", () => {
+    // "0" and "" are numerically equal (Number("0") === Number("")) but must
+    // not both read as default for a free-text field.
+    expect(isDefault(FIELD_BY_ID.tSameFips!, "0")).toBe(false);
+    expect(isDefault(FIELD_BY_ID.tSweep!, "")).toBe(true);
+  });
+  it("applyTune falls back to the field's default when a value is omitted, not OFF", () => {
+    // A missing value must not fall through to "" and read as OFF for a switch.
+    const cfg = set(base(), "tCloseCall", false);
+    expect(cfg.scan.closeCall).toBe(false);
+    applyTune(cfg, ["tCloseCall"], {});
+    expect(cfg.scan.closeCall).toBe(true); // tCloseCall's engine default is ON
+  });
 });

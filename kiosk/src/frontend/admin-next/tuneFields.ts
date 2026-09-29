@@ -242,7 +242,7 @@ export function readTune(cfg: Config): TuneValues {
 export function applyTune(cfg: Config, ids: readonly string[], values: TuneValues): Config {
   for (const id of ids) {
     const f = FIELD_BY_ID[id];
-    if (f) f.write(cfg, values[id] ?? "");
+    if (f) f.write(cfg, values[id] ?? f.def);
   }
   return cfg;
 }
@@ -265,5 +265,8 @@ export function snapValue(f: TuneField, n: number): number {
 
 export function isDefault(f: TuneField, v: TuneValue): boolean {
   if (typeof v === "boolean" || typeof f.def === "boolean") return v === f.def;
+  // Text fields (URLs, FIPS lists, sweep ranges) aren't numeric: "0" and ""
+  // are equal under Number() but not the same value for a free-text field.
+  if (f.control.kind === "text") return v.trim() === str(f.def);
   return v.trim() === "" || Number(v) === Number(f.def);
 }
