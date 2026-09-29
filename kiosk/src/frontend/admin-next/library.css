@@ -106,3 +106,4 @@
 @media (min-width: 900px) { .kc-bulkBar { bottom: 16px; } }
 .kc-lib__foot { margin-top: 14px; }
 @media (max-width: 899px) { .kc-card__acts .kc-key span { white-space: nowrap; } }
+.kc-visuallyHidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }

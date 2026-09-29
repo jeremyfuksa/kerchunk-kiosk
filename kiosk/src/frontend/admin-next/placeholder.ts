@@ -1,13 +1,12 @@
-// Interim panels for tabs not rebuilt yet (PRs 4–5 replace these). Each links
+// Interim panels for tabs not rebuilt yet (PR 5 replaces this). Each links
 // to the working classic-admin page for the same job.
 import type { Tab } from "./route.js";
 
-const CLASSIC: Record<Exclude<Tab, "radio" | "tune">, { href: string; what: string }> = {
-  library: { href: "/admin#/channels", what: "Channels and Triage" },
+const CLASSIC: Record<Exclude<Tab, "radio" | "tune" | "library">, { href: string; what: string }> = {
   system: { href: "/admin#/system", what: "System" },
 };
 
-export function renderPlaceholder(el: HTMLElement, tab: Exclude<Tab, "radio" | "tune">): void {
+export function renderPlaceholder(el: HTMLElement, tab: Exclude<Tab, "radio" | "tune" | "library">): void {
   const c = CLASSIC[tab];
   el.innerHTML = `<div class="kc-placeholder">
     <p>This tab is being rebuilt. ${c.what} still works in the classic admin.</p>

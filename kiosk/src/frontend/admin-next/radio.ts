@@ -19,6 +19,7 @@ import { ico, type IconName } from "./ui/icons.js";
 import { dbText, emptyState, group, key, lcd, meterLit, switchRow } from "./ui/kit.js";
 import { lcdKey, lcdView, type LiveState } from "./live.js";
 import { POLL_MS } from "./poller.js";
+import { hrefFor } from "./route.js";
 import type { Ctx } from "./ctx.js";
 import { ago } from "./time.js";
 
@@ -261,10 +262,8 @@ export function mountRadio(ctx: Ctx): void {
       try { logs = await api.getLogs(); }
       catch { if (!recent.querySelector(".kc-row")) recent.innerHTML = emptyState("Recent activity is unavailable right now."); return; }
       const rows = logs.slice().sort((a, b) => b.ts - a.ts).slice(0, RECENT_COUNT);
-      // Rows are plain text in this PR; tapping one opens the channel detail
-      // once Library lands (PR 4).
       recent.innerHTML = rows.length
-        ? rows.map((r) => `<div class="kc-row"><span class="kc-row__name">${esc(r.alphaTag || fmtFreq(r.freq))}</span><span class="kc-row__meta">${ago(r.ts)}</span></div>`).join("")
+        ? rows.map((r) => `<a class="kc-row kc-row--link" href="${hrefFor({ tab: "library", detail: { kind: "hz", hz: r.freq } })}"><span class="kc-row__name">${esc(r.alphaTag || fmtFreq(r.freq))}</span><span class="kc-row__meta">${ago(r.ts)}</span></a>`).join("")
         : emptyState("Nothing heard yet. Transmissions appear here as they happen.");
     },
   });
