@@ -4,20 +4,27 @@ import { api } from "../lib/api.js";
 import { mountShell } from "./shell.js";
 import { LiveStore } from "./liveStore.js";
 import { Poller, POLL_MS, POLL_TICK_MS } from "./poller.js";
-import { mountDialogs } from "./dialogs.js";
+import { mountDialogs, type Dialogs } from "./dialogs.js";
 import { glance, type SystemGlance } from "./verdict.js";
 import { withAudio } from "./live.js";
 import type { Ctx } from "./ctx.js";
 import { renderPlaceholder } from "./placeholder.js";
 import { mountRadio } from "./radio.js";
+import { mountTune } from "./tune.js";
 import { hrefFor } from "./route.js";
 import { esc } from "../lib/format.js";
 
 export function renderAdminNext(root: HTMLElement): void {
   const live = new LiveStore();
-  const shell = mountShell(root, live);
-  const dialogs = mountDialogs(root);
   const poller = new Poller();
+  // The shell writes root's markup, so the dialogs mount after it; the
+  // shell's toast reaches them through this late-bound callback.
+  let dialogs: Dialogs | null = null;
+  const shell = mountShell(root, live, {
+    run: (fn) => poller.run(fn),
+    toast: (text) => dialogs?.toast(text),
+  });
+  dialogs = mountDialogs(root);
   const ctx: Ctx = { shell, live, poller, dialogs };
 
   // Registered first: the verdict is the glance (polls run in order).
@@ -27,10 +34,7 @@ export function renderAdminNext(root: HTMLElement): void {
       // A failed or non-OK answer must read "unknown", never leave the last
       // "healthy" on screen.
       let sys: SystemGlance | null = null;
-      try {
-        const r = await fetch("/api/system");
-        if (r.ok) sys = await r.json() as SystemGlance;
-      } catch { /* unreachable — shown below */ }
+      try { sys = await api.getSystem<SystemGlance>(); } catch { /* unreachable — shown below */ }
       const v = glance(sys);
       shell.setVerdict(v.verdict, v.text);
       const strip = shell.panel("radio").querySelector<HTMLElement>("#kcHealth");
@@ -67,10 +71,10 @@ export function renderAdminNext(root: HTMLElement): void {
     run: () => live.loadWeatherChannel(),
   });
 
-  renderPlaceholder(shell.panel("tune"), "tune");
   renderPlaceholder(shell.panel("library"), "library");
   renderPlaceholder(shell.panel("system"), "system");
   mountRadio(ctx);
+  mountTune(ctx);
 
   live.connect();
   shell.onRoute((r) => { poller.makeDue(r.tab); void poller.tick(r.tab); });

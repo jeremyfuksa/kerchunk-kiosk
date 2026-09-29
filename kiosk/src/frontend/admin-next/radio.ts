@@ -8,14 +8,15 @@
 // markup only when its face changes (same model as the shell's mini-player).
 //
 // Every fetch here rides the sequential Poller (this box deadlocks on
-// concurrent requests); user-initiated refreshes raise a flag that a
-// `when`-gated poll picks up on the next tick instead of fetching directly.
+// concurrent requests): reads are polls — user-initiated refreshes raise a
+// flag that a `when`-gated poll picks up on the next tick — and every write
+// goes through poller.run (test/adminNext.lane.test.ts enforces it).
 import type { Config } from "../../backend/config/schema.js";
 import { api } from "../lib/api.js";
 import { esc, fmtFreq } from "../lib/format.js";
 import { lockoutFreqIn } from "../lib/lockout.js";
 import { ico, type IconName } from "./ui/icons.js";
-import { dbText, emptyState, group, key, lcd, meterLit } from "./ui/kit.js";
+import { dbText, emptyState, group, key, lcd, meterLit, switchRow } from "./ui/kit.js";
 import { lcdKey, lcdView, type LiveState } from "./live.js";
 import { POLL_MS } from "./poller.js";
 import type { Ctx } from "./ctx.js";
@@ -58,10 +59,8 @@ function airtime(ms: number): string {
   return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`;
 }
 
-async function getStats(sinceMs: number): Promise<Stats> {
-  const r = await fetch(`/api/stats?since=${Date.now() - sinceMs}`);
-  if (!r.ok) throw new Error(`stats ${r.status}`);
-  return await r.json() as Stats;
+function getStats(sinceMs: number): Promise<Stats> {
+  return api.getStats<Stats>(Date.now() - sinceMs);
 }
 
 export function mountRadio(ctx: Ctx): void {
@@ -84,7 +83,7 @@ export function mountRadio(ctx: Ctx): void {
           <input id="kcVol" type="range" min="0" max="100" />
           <button type="button" class="kc-key" id="kcMute" aria-pressed="false"></button>
         </div>
-        <label class="kc-switchRow"><span>Remote listening <small>Stream the speaker to this browser — restarts scanning</small></span><input id="kcRemote" type="checkbox" role="switch" /></label>
+        ${switchRow({ id: "kcRemote", label: "Remote listening", hint: "Stream the speaker to this browser — restarts scanning", checked: false })}
         ${group("Recently heard", `<div id="kcRecent">${emptyState("Loading…")}</div>`)}
       </div>
       <div class="kc-radio__side">
@@ -183,20 +182,27 @@ export function mountRadio(ctx: Ctx): void {
   live.subscribe(paint);
   vol.addEventListener("blur", () => paint(live.state));
 
-  $<HTMLButtonElement>("#kcSkip").addEventListener("click", () => { void api.skip(); });
+  /** A write's failure, said as a toast (a bare `void` would drop it). */
+  const say = (e: unknown): void => { dialogs.toast(e instanceof Error ? e.message : String(e)); };
+  $<HTMLButtonElement>("#kcSkip").addEventListener("click", () => { poller.run(() => api.skip()).catch(say); });
   weather.addEventListener("click", async () => {
     const s = live.state;
     try {
-      if (s.monitoring) await api.monitorStop();
-      else await api.setMode(s.mode === "weather" ? "scan" : "weather");
-    } catch (e) { dialogs.toast((e as Error).message); }
+      if (s.monitoring) await poller.run(() => api.monitorStop());
+      else await poller.run(() => api.setMode(s.mode === "weather" ? "scan" : "weather"));
+    } catch (e) { say(e); }
     // The resync rides the Poller (never a direct /api/status fetch here).
     // Only the status resync: making every Radio poll due here refired all of
     // them right after an engine-restarting mode change.
     live.requestResync();
     void poller.tick("radio");
   });
-  pause.addEventListener("click", () => { void api.skip(PAUSE_S); dialogs.toast(`Paused this channel for ${durationLabel(PAUSE_S)}.`); });
+  pause.addEventListener("click", async () => {
+    try {
+      await poller.run(() => api.skip(PAUSE_S));
+      dialogs.toast(`Paused this channel for ${durationLabel(PAUSE_S)}.`);
+    } catch (e) { say(e); }
+  });
   lock.addEventListener("click", async () => {
     const np = live.state.nowPlaying;
     if (!np) return;
@@ -208,28 +214,34 @@ export function mountRadio(ctx: Ctx): void {
     })) return;
     try {
       // Snapshot what lockout drops so Undo restores what was actually there
-      // (same rule as the classic admin's lockoutFreq).
-      const before = await api.getConfig();
-      const dropped = (before.discoveries ?? []).filter((d) => d.freq === np.freq);
-      const priorEnabled = new Map(before.channels.filter((c) => c.freq === np.freq).map((c) => [c.id, c.enabled]));
-      await api.putConfig(lockoutFreqIn(before, np.freq));
+      // (same rule as the classic admin's lockoutFreq). Read and write are one
+      // lane slot, so no poll lands between them.
+      const { dropped, priorEnabled } = await poller.run(async () => {
+        const before = await api.getConfig();
+        const out = {
+          dropped: (before.discoveries ?? []).filter((d) => d.freq === np.freq),
+          priorEnabled: new Map(before.channels.filter((c) => c.freq === np.freq).map((c) => [c.id, c.enabled])),
+        };
+        await api.putConfig(lockoutFreqIn(before, np.freq));
+        return out;
+      });
       dialogs.toast(`Locked out ${name}.`, {
-        undo: async () => {
+        undo: () => poller.run(async () => {
           const cfg: Config = await api.getConfig();
           cfg.scan = { ...cfg.scan, lockoutHz: (cfg.scan.lockoutHz ?? []).filter((f) => f !== np.freq) };
           cfg.channels = cfg.channels.map((c) => (priorEnabled.has(c.id) ? { ...c, enabled: priorEnabled.get(c.id)! } : c));
           if (dropped.length) cfg.discoveries = [...(cfg.discoveries ?? []), ...dropped];
           await api.putConfig(cfg);
-        },
+        }),
       });
-    } catch (e) { dialogs.toast((e as Error).message); }
+    } catch (e) { say(e); }
   });
 
   // `input` keeps the readout live while dragging; the write waits for `change`
   // so a drag is one request.
   vol.addEventListener("input", () => { volPct.textContent = `${vol.value}%`; });
-  vol.addEventListener("change", () => { const v = Number(vol.value); live.set({ volume: v }); void api.setVolume(v); });
-  mute.addEventListener("click", () => { const m = !live.state.muted; live.set({ muted: m }); void api.setMuted(m); });
+  vol.addEventListener("change", () => { const v = Number(vol.value); live.set({ volume: v }); poller.run(() => api.setVolume(v)).catch(say); });
+  mute.addEventListener("click", () => { const m = !live.state.muted; live.set({ muted: m }); poller.run(() => api.setMuted(m)).catch(say); });
   remote.addEventListener("change", async () => {
     const on = remote.checked;
     remoteBusy = true;
@@ -239,10 +251,12 @@ export function mountRadio(ctx: Ctx): void {
         message: "The scanner restarts briefly to rebuild its audio tap.",
         confirmLabel: on ? "Turn on" : "Turn off",
       })) { remote.checked = !on; return; }
-      const cfg = await api.getConfig();
-      await api.putConfig({ ...cfg, audio: { ...cfg.audio, remoteListening: on } });
+      await poller.run(async () => {
+        const cfg = await api.getConfig();
+        await api.putConfig({ ...cfg, audio: { ...cfg.audio, remoteListening: on } });
+      });
       live.set({ remoteListening: on });
-    } catch (e) { remote.checked = !on; dialogs.toast((e as Error).message); }
+    } catch (e) { remote.checked = !on; say(e); }
     finally { remoteBusy = false; paint(live.state); }
   });
 
@@ -340,9 +354,7 @@ export function mountRadio(ctx: Ctx): void {
     alertsPending = false;
     let rows: Array<{ id: number; ts: number; freq: number; alphaTag: string }>;
     try {
-      const r = await fetch(`/api/history?kind=alert&limit=${ALERT_COUNT}`);
-      if (!r.ok) throw new Error(`alerts ${r.status}`);
-      rows = await r.json() as typeof rows;
+      rows = await api.getHistory<typeof rows>({ kind: "alert", limit: ALERT_COUNT });
     } catch {
       // Keep a list we already have; replace only the loading placeholder.
       if (!alertList.querySelector("[data-id]")) alertList.innerHTML = `<li>${emptyState("Alerts are unavailable right now.")}</li>`;
@@ -359,12 +371,12 @@ export function mountRadio(ctx: Ctx): void {
     const b = (e.target as HTMLElement).closest<HTMLButtonElement>("[data-id]");
     if (!b) return;
     b.disabled = true;
-    await api.dismissAlert(Number(b.dataset.id)).catch(() => {});
+    try { await poller.run(() => api.dismissAlert(Number(b.dataset.id))); } catch (e) { say(e); }
     queueAlerts();
   });
   clearAll.addEventListener("click", async () => {
     if (!await dialogs.confirm({ title: "Clear all alerts?", message: "Removes every alert from the feed. Activity history is kept.", confirmLabel: "Clear all", danger: true })) return;
-    try { await api.clearAlerts(); } catch (e) { dialogs.toast((e as Error).message); }
+    try { await poller.run(() => api.clearAlerts()); } catch (e) { say(e); }
     queueAlerts();
   });
   poller.add({ name: "alerts", everyMs: POLL_MS.alerts, tabs: ["radio"], run: renderAlerts });

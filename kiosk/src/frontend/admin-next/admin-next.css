@@ -182,3 +182,83 @@ html[data-page="admin-next"] :focus-visible { outline: 2px solid var(--kc-glass)
 .kc-link { background: none; border: 0; color: var(--kc-dim); font: 600 var(--kc-t-small) var(--kc-font); cursor: pointer; padding: 6px 0; }
 .kc-link:hover { color: var(--kc-ink); }
 @media (prefers-reduced-motion: reduce) { .kc-disclosure__chev, .kc-switchRow input::after { transition: none; } }
+
+/* ── slider (settings) — compact: ~100px a row ── */
+.kc-slider { padding: 3px 16px 4px; border-top: 1px solid var(--kc-line); }
+.kc-slider:first-of-type { border-top: 0; }
+.kc-slider__head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.kc-slider__text { min-width: 0; line-height: 1.3; }
+.kc-slider__line { display: flex; flex-wrap: wrap; align-items: center; gap: 0 10px; }
+.kc-slider__line label { font-size: var(--kc-t-row); font-weight: 500; }
+.kc-slider__hint { display: block; color: var(--kc-mute); font-size: var(--kc-t-small); }
+.kc-slider__val { display: inline-flex; align-items: center; gap: 6px; flex: none; color: var(--kc-dim); font-size: var(--kc-t-small); }
+.kc-slider__val input { width: 5.5em; min-height: 40px; padding: 4px 8px; border: 0; border-radius: var(--kc-r-key); background: var(--kc-key); color: var(--kc-glass); font: 600 var(--kc-t-body) var(--kc-font); text-align: right; font-variant-numeric: tabular-nums; }
+.kc-slider input[type="range"] { display: block; width: 100%; min-height: 40px; margin: 0; accent-color: var(--kc-glass); }
+/* The ends tuck into the range's lower padding, below the thumb; they're labels, not targets. */
+.kc-slider__ends { display: flex; justify-content: space-between; margin-top: -12px; color: var(--kc-mute); font-size: var(--kc-t-meta); line-height: 1.3; pointer-events: none; }
+.kc-slider input:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* ── Tune ── */
+.kc-tune__head h1 { margin: 8px 0 2px; font-size: var(--kc-t-title); font-weight: 700; }
+.kc-tune__head p { margin: 0 0 6px; color: var(--kc-dim); }
+.kc-tune__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); gap: 0 18px; align-items: start; }
+.kc-tuneRow { position: relative; }
+.kc-tuneRow.is-off { opacity: 0.5; }
+/* "Use default": on a slider it sits on the label's line — a 40px hit box
+   that takes one text line of layout (negative margin over the hint, which
+   is not a target). On switch/field rows it sits in the row's bottom strip. */
+.kc-reset { min-height: 40px; margin: -9px 0; padding: 0 2px; font-size: var(--kc-t-meta); color: var(--kc-glass); }
+.kc-reset--corner { position: absolute; right: 16px; bottom: -11px; z-index: 1; margin: 0; }
+.kc-reset:disabled { cursor: not-allowed; }
+.kc-tuneRow .kc-slider { border-top: 1px solid var(--kc-line); }
+.kc-rowErr { margin: -4px 16px 8px; color: var(--kc-coral); font-size: var(--kc-t-small); }
+/* Clear of the row's corner "Use default" (bottom-right, over the row edge). */
+.kc-rowErr--corner { padding-right: 88px; }
+.kc-tuneRow[data-kind="error"] .kc-slider__val input, .kc-tuneRow[data-kind="error"] .kc-field input { box-shadow: inset 0 0 0 1px var(--kc-coral); }
+.kc-sr { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.kc-tuneRow .kc-switchRow { margin: 0; padding: 12px 16px 20px; border-top: 1px solid var(--kc-line); border-radius: 0; background: none; }
+.kc-tuneRow .kc-switchRow > span { font-size: var(--kc-t-row); font-weight: 500; }
+.kc-tuneRow .kc-switchRow input:disabled { opacity: 0.45; cursor: not-allowed; }
+.kc-group__title + .kc-tuneRow > *, .kc-curve + .kc-tuneRow > * { border-top: 0; }
+.kc-field { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px 12px; padding: 10px 16px 18px; border-top: 1px solid var(--kc-line); }
+.kc-field__label { flex: 1 1 11em; font-size: var(--kc-t-row); font-weight: 500; min-width: 0; }
+.kc-field__label small { display: block; color: var(--kc-mute); font-size: var(--kc-t-small); font-weight: 400; }
+.kc-field__input { display: inline-flex; align-items: center; gap: 6px; color: var(--kc-dim); font-size: var(--kc-t-small); flex: none; }
+.kc-field input, .kc-field select {
+  min-height: 40px; padding: 6px 10px; border: 0; border-radius: var(--kc-r-key);
+  background: var(--kc-key); color: var(--kc-ink); font: 400 var(--kc-t-body) var(--kc-font);
+}
+.kc-field select { max-width: min(16em, 52vw); cursor: pointer; }
+.kc-field input:disabled { opacity: 0.45; cursor: not-allowed; }
+.kc-field input[type="number"] { width: 6em; text-align: right; font-variant-numeric: tabular-nums; }
+/* Free text takes the rest of the line, or a line of its own when narrow. */
+.kc-field__input--text { flex: 1 1 14em; }
+.kc-field input[type="text"] { width: 100%; min-width: 0; }
+.kc-status { display: flex; flex-wrap: wrap; align-items: center; gap: 0 10px; min-height: 40px; margin: 0; padding: 0 16px 4px; color: var(--kc-dim); font-size: var(--kc-t-small); }
+.kc-status [data-kind="error"] { color: var(--kc-coral); }
+.kc-status .kc-link { min-height: 40px; padding: 0 4px; color: var(--kc-glass); }
+/* Focus lands on the line programmatically (after Undo/Apply/Cancel hides
+   the key pressed) — no ring for that; keyboard focus rings stay. */
+.kc-status:focus:not(:focus-visible) { outline: none; }
+.kc-heavy { margin: 4px 16px 8px; padding: 10px 12px; border-radius: var(--kc-r-key); background: color-mix(in srgb, var(--kc-hay) 12%, var(--kc-raised)); }
+.kc-heavy[hidden] { display: none; }
+.kc-heavy__text { margin: 0 0 8px; color: var(--kc-hay); }
+.kc-heavy__keys { display: flex; gap: 8px; }
+.kc-curve { margin: 4px 16px 6px; }
+.kc-curve svg { width: 100%; max-width: 420px; height: auto; display: block; }
+.kc-curve figcaption { color: var(--kc-mute); font-size: var(--kc-t-small); }
+.kc-curve .lc-hold { fill: var(--kc-ink); opacity: 0.04; }
+.kc-curve .lc-unity { stroke: var(--kc-mute); stroke-dasharray: 3 4; }
+.kc-curve .lc-target { stroke: var(--kc-glass); stroke-opacity: 0.35; }
+.kc-curve .lc-ceil { stroke: var(--kc-hay); stroke-opacity: 0.5; stroke-dasharray: 2 3; }
+.kc-curve .lc-curve { fill: none; stroke: var(--kc-glass); stroke-width: 2.25; stroke-linejoin: round; }
+.kc-curve .lc-axis { stroke: var(--kc-line); }
+.kc-curve text { fill: var(--kc-mute); font: 8.5px var(--kc-font); }
+.kc-band { padding: 6px 0 4px; border-top: 1px solid var(--kc-line); }
+.kc-band h3 { margin: 10px 16px 2px; font-size: var(--kc-t-row); font-weight: 600; }
+.kc-band__sub { margin: 12px 16px 0; color: var(--kc-dim); font-size: var(--kc-t-small); font-weight: 600; }
+.kc-cost { margin-left: 6px; padding: 1px 8px; border-radius: var(--kc-r-pill); background: var(--kc-key); color: var(--kc-dim); font-size: var(--kc-t-meta); font-weight: 600; white-space: nowrap; }
+.kc-band__purpose { margin: 0 16px 6px; color: var(--kc-mute); font-size: var(--kc-t-small); }
+.kc-preview { margin: 0 16px 8px; color: var(--kc-dim); font-size: var(--kc-t-small); }
+.kc-preview[data-kind="error"] { color: var(--kc-coral); }
+#kcAdvanced > summary { min-height: 40px; margin: 4px 16px; }

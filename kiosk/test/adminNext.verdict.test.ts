@@ -31,4 +31,8 @@ describe("glance", () => {
   it("no response reads unknown, never a stale healthy", () => {
     expect(glance(null)).toEqual({ verdict: "unknown", text: UNREACHABLE_TEXT });
   });
+  it("a body without health reads unknown, never stale-healthy", () => {
+    expect(glance({} as never).verdict).toBe("unknown");
+    expect(glance({ health: {} } as never).verdict).toBe("unknown");
+  });
 });

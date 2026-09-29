@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { dbText, key, lcd, group, meterLit, METER_FLOOR_DB } from "../src/frontend/admin-next/ui/kit.js";
+import { dbText, key, lcd, group, meterLit, METER_FLOOR_DB, slider, switchRow } from "../src/frontend/admin-next/ui/kit.js";
 import { initialLive, lcdKey, lcdView, reduceEvent } from "../src/frontend/admin-next/live.js";
 
 describe("ui kit", () => {
@@ -45,6 +45,24 @@ describe("ui kit", () => {
     expect(meterLit(5)).toBe(4);
     expect(dbText(null)).toBe("");
     expect(dbText(-41.4)).toBe("−41 dB");
+  });
+});
+
+describe("slider / switchRow", () => {
+  it("slider pairs a range and a typed-entry box with named ends", () => {
+    const h = slider({ id: "kAgcTarget", label: "Target <loud>", hint: "Where it lands", min: -40, max: -3, step: 1, value: -18, unit: "dBFS", ends: ["Quieter", "Louder"] });
+    expect(h).toContain('id="kAgcTarget" type="range" min="-40" max="-3" step="1" value="-18"');
+    expect(h).toContain('id="kAgcTarget-num" type="number"');
+    expect(h).toContain('<label for="kAgcTarget">Target &lt;loud&gt;</label>');
+    expect(h).toContain(">Quieter<");
+    expect(h).toContain(">Louder<");
+    expect(h).not.toContain(" disabled");
+  });
+  it("slider and switchRow honour disabled", () => {
+    expect(slider({ id: "a", label: "A", min: 0, max: 1, step: 1, value: 0, unit: "", ends: ["x", "y"], disabled: true })).toContain(" disabled");
+    const s = switchRow({ id: "kcRemote", label: "Remote listening", hint: "Stream it", checked: true, disabled: true });
+    expect(s).toContain('<input id="kcRemote" type="checkbox" role="switch" checked disabled');
+    expect(s).toContain('class="kc-switchRow"');
   });
 });
 

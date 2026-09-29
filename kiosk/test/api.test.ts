@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Server } from "node:http";
 import { createServer } from "../src/backend/server.js";
+import { api } from "../src/frontend/lib/api.js";
 import { ConfigStore } from "../src/backend/config/ConfigStore.js";
 import { ActivityLog } from "../src/backend/activityLog.js";
 import { WsHub } from "../src/backend/ws.js";
@@ -1780,5 +1781,37 @@ describe("Close Call sample recording (server wiring)", () => {
     const samples = clipSamples(ccSampleDir, FREQ);
     expect(samples.some((v) => v === 999)).toBe(false);
     expect(samples.every((v) => v === 111)).toBe(true);
+  });
+});
+
+// ── Typed frontend api.ts routes (mocked fetch; no server) ──
+const reply = (status: number, body: unknown) =>
+  vi.fn(async () => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } }));
+
+describe("typed api routes", () => {
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  it("getStats builds the query and returns the body", async () => {
+    const f = reply(200, { totalHits: 3 });
+    vi.stubGlobal("fetch", f);
+    await expect(api.getStats<{ totalHits: number }>(1234)).resolves.toEqual({ totalHits: 3 });
+    expect(f).toHaveBeenCalledWith("/api/stats?since=1234");
+  });
+  it("getHistory encodes its params", async () => {
+    const f = reply(200, []);
+    vi.stubGlobal("fetch", f);
+    await api.getHistory({ kind: "alert", limit: 25 });
+    expect(f).toHaveBeenCalledWith("/api/history?kind=alert&limit=25");
+  });
+  it("getSystem rejects on a non-OK answer", async () => {
+    vi.stubGlobal("fetch", reply(503, { error: "busy" }));
+    await expect(api.getSystem()).rejects.toThrow("busy");
+  });
+  it("skip and dismissAlert reject on non-OK and resolve on OK", async () => {
+    vi.stubGlobal("fetch", reply(500, { error: "no engine" }));
+    await expect(api.skip(1800)).rejects.toThrow("no engine");
+    await expect(api.dismissAlert(4)).rejects.toThrow("no engine");
+    vi.stubGlobal("fetch", reply(200, { ok: true }));
+    await expect(api.skip()).resolves.toBeUndefined();
   });
 });

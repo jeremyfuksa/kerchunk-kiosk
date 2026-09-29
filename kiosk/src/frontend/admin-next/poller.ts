@@ -16,6 +16,7 @@ export const POLL_MS = {
   activity: 60_000,   // Radio: today's totals + by-hour
   insights: 60_000,   // Radio: channel activity (when expanded)
   alerts: 60_000,     // Radio: alert feed
+  tune: 30_000,       // Tune: settings refresh (only untouched fields)
 } as const;
 
 export interface PollSpec {
@@ -40,10 +41,27 @@ export class Poller {
 
   add(p: PollSpec): void { this.polls.push({ ...p, lastAt: -Infinity }); }
 
+  /** Serialises poll passes and run() writes: nothing overlaps on the wire. */
+  private lane: Promise<unknown> = Promise.resolve();
+
+  /** Run fn exclusively — after any in-flight poll pass or earlier run(), and
+   *  before the next pass. The caller gets fn's result or rejection; a
+   *  rejection never blocks the lane. Used for every admin-next write.
+   *
+   *  Never call run() (and await it) from inside a poll's run function, or
+   *  from inside another run(): the lane is waiting on that pass to finish,
+   *  and the pass would wait on the lane — a deadlock. A poll that needs to
+   *  write should raise a flag and let an event handler do the write. */
+  run<T>(fn: () => Promise<T>): Promise<T> {
+    const result = this.lane.then(() => fn());
+    this.lane = result.catch(() => {});
+    return result;
+  }
+
   async tick(tab: Tab): Promise<void> {
     if (this.ticking || this.hidden()) return;
     this.ticking = true;
-    try {
+    const pass = this.lane.then(async () => {
       for (const p of this.polls) {
         if (this.hidden()) break;
         if (p.tabs && !p.tabs.includes(tab)) continue;
@@ -53,7 +71,9 @@ export class Poller {
         // Sequential on purpose — see the header.
         await p.run().catch(() => {});
       }
-    } finally { this.ticking = false; }
+    });
+    this.lane = pass.catch(() => {});
+    try { await pass; } finally { this.ticking = false; }
   }
 
   makeDue(tab: Tab): void {

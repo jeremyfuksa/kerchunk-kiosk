@@ -29,7 +29,7 @@ export interface SystemGlance {
 /** The top-bar verdict line (spec §2: "<reason> · <temp>°C"), from one
  *  /api/system response, or the unknown state when there is none. */
 export function glance(sys: SystemGlance | null): { verdict: Glance; text: string } {
-  if (!sys) return { verdict: "unknown", text: UNREACHABLE_TEXT };
+  if (!sys || typeof sys.health?.verdict !== "string") return { verdict: "unknown", text: UNREACHABLE_TEXT };
   const v = worseVerdict(sys.health, sys.alerts);
   const t = sys.now?.tempC;
   const reason = v.text.replace(/\.$/, "");
