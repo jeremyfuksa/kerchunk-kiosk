@@ -5,13 +5,13 @@ import { ico } from "./ui/icons.js";
 import { hrefFor, parseRoute, TAB_TITLES, type Route, type Tab } from "./route.js";
 import { lcdView } from "./live.js";
 import type { LiveStore } from "./liveStore.js";
-import type { Verdict } from "./verdict.js";
+import type { Glance } from "./verdict.js";
 
 export interface Shell {
   panel(tab: Tab): HTMLElement;
   route(): Route;
   onRoute(fn: (r: Route) => void): void;
-  setVerdict(v: Verdict, text: string): void;
+  setVerdict(v: Glance, text: string): void;
   setTriageCount(n: number): void;
 }
 
@@ -20,7 +20,7 @@ const TABS: Tab[] = ["radio", "tune", "library", "system"];
 export function mountShell(root: HTMLElement, live: LiveStore): Shell {
   const tabLink = (t: Tab): string =>
     `<a class="kc-tab" data-tab="${t}" href="${hrefFor({ tab: t })}">${ico(t)}<span>${TAB_TITLES[t]}</span>${
-      t === "library" ? `<b class="kc-badge kc-triage" hidden></b>` : ""}</a>`;
+      t === "library" ? `<b class="kc-badge kc-triage" aria-hidden="true" hidden></b>` : ""}</a>`;
   root.innerHTML = `
     <div class="kc-app">
       <button type="button" class="kc-skipLink">Skip to content</button>
@@ -121,9 +121,14 @@ export function mountShell(root: HTMLElement, live: LiveStore): Shell {
       el.querySelector("span")!.textContent = text;
     },
     setTriageCount(n) {
+      // aria-label on a bare <b> is ignored by screen readers: the count goes
+      // into the Library link's accessible name and the badge is aria-hidden.
       root.querySelectorAll<HTMLElement>(".kc-triage").forEach((b) => {
         b.hidden = n === 0; b.textContent = String(n);
-        b.setAttribute("aria-label", `${n} to review`);
+      });
+      root.querySelectorAll<HTMLAnchorElement>('.kc-tab[data-tab="library"]').forEach((a) => {
+        if (n === 0) a.removeAttribute("aria-label");
+        else a.setAttribute("aria-label", `${TAB_TITLES.library}, ${n} to review`);
       });
     },
   };

@@ -5,7 +5,7 @@
 // from `state` via subscribe — one source, no drift between them.
 import { api } from "../lib/api.js";
 import { ReconnectingWs } from "../lib/wsClient.js";
-import { initialLive, reduceEvent, withAudio, withStatus, type LiveState } from "./live.js";
+import { initialLive, reduceEvent, withStatus, type LiveState } from "./live.js";
 
 export class LiveStore {
   state: LiveState = initialLive;
@@ -19,6 +19,12 @@ export class LiveStore {
   // one tick (1s).
   resyncPending = true;
   requestResync(): void { this.resyncPending = true; }
+  /** When /api/status was last fetched — the status poll also runs on a
+   *  minimum cadence, in case a WS event was missed. */
+  statusAt = Number.NEGATIVE_INFINITY;
+  statusDue(now: number, everyMs: number): boolean {
+    return this.resyncPending || now - this.statusAt >= everyMs;
+  }
 
   subscribe(fn: (s: LiveState) => void): () => void {
     this.subs.add(fn); fn(this.state);
@@ -38,15 +44,21 @@ export class LiveStore {
       if (r.state !== this.state) this.set(r.state);
       if (r.resync) this.requestResync();
       if (r.alert) for (const fn of this.alertSubs) fn();
-    }).connect();
+    }, { onOpen: () => this.onSocketOpen() }).connect();
   }
 
-  async syncStatus(): Promise<void> {
+  /** (Re)connected: anything that happened while the socket was down is
+   *  lost, so drop what's playing (the hub replays the current audible
+   *  channel on connect) and queue a sequential /api/status resync. */
+  onSocketOpen(): void {
+    this.set({ nowPlaying: null, audibleDriven: false });
+    this.requestResync();
+  }
+
+  async syncStatus(now = Date.now()): Promise<void> {
+    this.resyncPending = false;
+    this.statusAt = now;
     try { this.set(withStatus(this.state, await api.getStatus())); } catch { /* transient */ }
-  }
-
-  async syncAudio(): Promise<void> {
-    try { this.set(withAudio(this.state, (await api.getConfig()).audio)); } catch { /* transient */ }
   }
 
   // In-browser listening: one <audio> on the endless-WAV stream, recreated per

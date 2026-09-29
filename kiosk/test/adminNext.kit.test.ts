@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { dbText, key, lcd, group, meterLit } from "../src/frontend/admin-next/ui/kit.js";
+import { dbText, key, lcd, group, meterLit, METER_FLOOR_DB } from "../src/frontend/admin-next/ui/kit.js";
 import { initialLive, lcdKey, lcdView, reduceEvent } from "../src/frontend/admin-next/live.js";
 
 describe("ui kit", () => {
@@ -28,6 +28,15 @@ describe("ui kit", () => {
     const s = reduceEvent(initialLive, { type: "audible", channel: { id: "a", freq: 118_400_000, alphaTag: "A", mode: "am", enabled: true } as never, ts: 1 }).state;
     expect(lcd(lcdView(s))).toContain('<span class="kc-lcd__db" aria-hidden="true"></span>');
     expect(lcd(lcdView(initialLive))).not.toContain("kc-lcd__db");
+  });
+  it("lcd markup is not itself a live region (the persistent host is)", () => {
+    expect(lcd(lcdView(initialLive))).not.toContain("aria-live");
+    expect(lcd(lcdView(initialLive))).not.toContain('role="status"');
+  });
+  it("meter floor is the knob: at the floor no bars, halfway two", () => {
+    expect(meterLit(METER_FLOOR_DB)).toBe(0);
+    expect(meterLit(METER_FLOOR_DB / 2)).toBe(2);
+    expect(meterLit(0)).toBe(4);
   });
   it("meterLit / dbText map dBFS for in-place level updates", () => {
     expect(meterLit(null)).toBe(0);

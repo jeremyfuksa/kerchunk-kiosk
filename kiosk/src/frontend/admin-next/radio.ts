@@ -18,7 +18,7 @@ import { ico, type IconName } from "./ui/icons.js";
 import { dbText, emptyState, group, key, lcd, meterLit } from "./ui/kit.js";
 import { lcdKey, lcdView, type LiveState } from "./live.js";
 import { POLL_MS } from "./poller.js";
-import type { Ctx } from "./index.js";
+import type { Ctx } from "./ctx.js";
 
 /** How many "recently heard" rows to show. */
 export const RECENT_COUNT = 8;
@@ -26,6 +26,17 @@ export const RECENT_COUNT = 8;
 export const INSIGHT_COUNT = 8;
 /** How many alerts the Alerts group lists. */
 export const ALERT_COUNT = 25;
+/** How long the Pause key suppresses the current channel, in seconds (drives
+ *  both the API call and the key's label). */
+export const PAUSE_S = 1800;
+
+/** "30 min", "1 h", "1 h 30 min" for a whole-minute duration. */
+export function durationLabel(s: number): string {
+  const m = Math.round(s / 60);
+  const h = Math.floor(m / 60);
+  const r = m % 60;
+  return h === 0 ? `${r} min` : r === 0 ? `${h} h` : `${h} h ${r} min`;
+}
 
 type Stats = {
   totalHits: number; totalAirtimeMs: number; discoveries: number;
@@ -60,12 +71,12 @@ export function mountRadio(ctx: Ctx): void {
     <div class="kc-radio">
       <div class="kc-radio__main">
         <div id="kcHealth" class="kc-healthStrip" hidden></div>
-        <div id="kcLcd"></div>
+        <div id="kcLcd" role="status" aria-live="polite" aria-atomic="true"></div>
         <div class="kc-keys">
           ${key({ id: "kcListen", label: "Listen here", icon: "play", variant: "primary", wide: true })}
           ${key({ id: "kcSkip", label: "Skip", icon: "skip", title: "Force-close the current transmission" })}
           ${key({ id: "kcWeather", label: "Weather", icon: "weather", title: "Park the radio on the NOAA weather channel" })}
-          ${key({ id: "kcPause", label: "Pause 30 min", icon: "pause", title: "Suppress this channel for 30 minutes (clears on restart)" })}
+          ${key({ id: "kcPause", label: `Pause ${durationLabel(PAUSE_S)}`, icon: "pause", title: `Suppress this channel for ${durationLabel(PAUSE_S)} (clears on restart)` })}
           ${key({ id: "kcLock", label: "Lock out", icon: "lockout", variant: "danger", title: "Stop scanning this frequency and never Close-Call it" })}
         </div>
         <div class="kc-volume">
@@ -74,10 +85,10 @@ export function mountRadio(ctx: Ctx): void {
           <button type="button" class="kc-key" id="kcMute" aria-pressed="false"></button>
         </div>
         <label class="kc-switchRow"><span>Remote listening <small>Stream the speaker to this browser — restarts scanning</small></span><input id="kcRemote" type="checkbox" role="switch" /></label>
-        ${group("Recently heard", `<div id="kcRecent"></div>`)}
+        ${group("Recently heard", `<div id="kcRecent">${emptyState("Loading…")}</div>`)}
       </div>
       <div class="kc-radio__side">
-        ${group("Today", `<div id="kcToday"></div>`)}
+        ${group("Today", `<div id="kcToday">${emptyState("Loading…")}</div>`)}
         <details class="kc-group kc-disclosure" id="kcInsights">
           <summary class="kc-group__title"><span>Channel activity</span>${ico("chevron", "kc-ico kc-disclosure__chev")}</summary>
           <div class="kc-periods" role="group" aria-label="Period">
@@ -85,7 +96,7 @@ export function mountRadio(ctx: Ctx): void {
           </div>
           <div id="kcInBody"></div>
         </details>
-        ${group("Alerts", `<ul id="kcAlerts" class="kc-list"></ul><div class="kc-group__foot"><button type="button" class="kc-link" id="kcClearAlerts" hidden>Clear all</button></div>`)}
+        ${group("Alerts", `<ul id="kcAlerts" class="kc-list"><li>${emptyState("Loading…")}</li></ul><div class="kc-group__foot"><button type="button" class="kc-link" id="kcClearAlerts" hidden>Clear all</button></div>`)}
       </div>
     </div>`;
 
@@ -163,8 +174,10 @@ export function mountRadio(ctx: Ctx): void {
       if (vol.value !== vs) vol.value = vs;
       setText(volPct, `${s.volume}%`);
     }
+    // A toggle keeps one label; its state is aria-pressed (a label that flips
+    // to "Muted" reads as the opposite action to a screen reader).
     setAttr(mute, "aria-pressed", String(s.muted));
-    if (s.muted) face(mute, "volumeOff", "Muted"); else face(mute, "volume", "Mute");
+    face(mute, s.muted ? "volumeOff" : "volume", "Mute");
     if (!remoteBusy && document.activeElement !== remote && remote.checked !== s.remoteListening) remote.checked = s.remoteListening;
   }
   live.subscribe(paint);
@@ -178,11 +191,12 @@ export function mountRadio(ctx: Ctx): void {
       else await api.setMode(s.mode === "weather" ? "scan" : "weather");
     } catch (e) { dialogs.toast((e as Error).message); }
     // The resync rides the Poller (never a direct /api/status fetch here).
+    // Only the status resync: making every Radio poll due here refired all of
+    // them right after an engine-restarting mode change.
     live.requestResync();
-    poller.makeDue("radio");
     void poller.tick("radio");
   });
-  pause.addEventListener("click", () => { void api.skip(1800); dialogs.toast("Paused this channel for 30 minutes."); });
+  pause.addEventListener("click", () => { void api.skip(PAUSE_S); dialogs.toast(`Paused this channel for ${durationLabel(PAUSE_S)}.`); });
   lock.addEventListener("click", async () => {
     const np = live.state.nowPlaying;
     if (!np) return;
@@ -237,7 +251,10 @@ export function mountRadio(ctx: Ctx): void {
   poller.add({
     name: "recent", everyMs: POLL_MS.recent, tabs: ["radio"],
     run: async () => {
-      const rows = (await api.getLogs()).slice().sort((a, b) => b.ts - a.ts).slice(0, RECENT_COUNT);
+      let logs: Awaited<ReturnType<typeof api.getLogs>>;
+      try { logs = await api.getLogs(); }
+      catch { if (!recent.querySelector(".kc-row")) recent.innerHTML = emptyState("Recent activity is unavailable right now."); return; }
+      const rows = logs.slice().sort((a, b) => b.ts - a.ts).slice(0, RECENT_COUNT);
       // Rows are plain text in this PR; tapping one opens the channel detail
       // once Library lands (PR 4).
       recent.innerHTML = rows.length
@@ -251,7 +268,11 @@ export function mountRadio(ctx: Ctx): void {
   poller.add({
     name: "today", everyMs: POLL_MS.activity, tabs: ["radio"],
     run: async () => {
-      const st = await getStats(86_400_000);
+      let st: Stats;
+      // Say so rather than keep a blank (or stale) group: the Poller swallows
+      // a throw, and nothing else would.
+      try { st = await getStats(86_400_000); }
+      catch { if (!today.querySelector(".kc-today")) today.innerHTML = emptyState("Today's activity is unavailable right now."); return; }
       const max = Math.max(1, ...st.byHour);
       const nowH = new Date().getHours();
       const total = st.byHour.reduce((a, b) => a + b, 0);
@@ -317,9 +338,16 @@ export function mountRadio(ctx: Ctx): void {
   function queueAlerts(): void { alertsPending = true; void poller.tick("radio"); }
   async function renderAlerts(): Promise<void> {
     alertsPending = false;
-    const r = await fetch(`/api/history?kind=alert&limit=${ALERT_COUNT}`);
-    if (!r.ok) throw new Error(`alerts ${r.status}`);
-    const rows = await r.json() as Array<{ id: number; ts: number; freq: number; alphaTag: string }>;
+    let rows: Array<{ id: number; ts: number; freq: number; alphaTag: string }>;
+    try {
+      const r = await fetch(`/api/history?kind=alert&limit=${ALERT_COUNT}`);
+      if (!r.ok) throw new Error(`alerts ${r.status}`);
+      rows = await r.json() as typeof rows;
+    } catch {
+      // Keep a list we already have; replace only the loading placeholder.
+      if (!alertList.querySelector("[data-id]")) alertList.innerHTML = `<li>${emptyState("Alerts are unavailable right now.")}</li>`;
+      return;
+    }
     clearAll.hidden = rows.length === 0;
     alertList.innerHTML = rows.length
       ? rows.map((a) => `<li class="kc-row"><span>${esc(a.alphaTag || fmtFreq(a.freq))}<small class="kc-row__meta"> ${ago(a.ts)}</small></span>
