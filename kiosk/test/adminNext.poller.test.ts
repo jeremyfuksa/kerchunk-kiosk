@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { Poller } from "../src/frontend/admin-next/poller.js";
 
 function harness() {
@@ -53,5 +53,27 @@ describe("Poller", () => {
     p.add({ name: "b", run: async () => { log.push("b"); }, everyMs: 1, when: () => false });
     await p.tick("radio"); hidden = false; await p.tick("radio");
     expect(log).toEqual(["a"]);
+  });
+
+  describe("start", () => {
+    afterEach(() => {
+      vi.unstubAllGlobals();
+      vi.useRealTimers();
+    });
+
+    it("a second start() is a no-op", async () => {
+      vi.useFakeTimers();
+      const addEventListener = vi.fn();
+      vi.stubGlobal("document", { hidden: false, addEventListener });
+      const p = new Poller({ hidden: () => false });
+      let count = 0;
+      p.add({ name: "a", run: async () => { count++; }, everyMs: 1 });
+      const getTab = () => "radio" as const;
+      p.start(getTab, 1000);
+      p.start(getTab, 1000);
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(count).toBe(1);
+      expect(addEventListener).toHaveBeenCalledTimes(1);
+    });
   });
 });

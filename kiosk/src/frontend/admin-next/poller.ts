@@ -24,6 +24,7 @@ export interface PollSpec {
 export class Poller {
   private readonly polls: Array<PollSpec & { lastAt: number }> = [];
   private ticking = false;
+  private started = false;
   private readonly now: () => number;
   private readonly hidden: () => boolean;
 
@@ -55,6 +56,8 @@ export class Poller {
   }
 
   start(getTab: () => Tab, tickMs = 1_000): void {
+    if (this.started) return;
+    this.started = true;
     setInterval(() => { void this.tick(getTab()); }, tickMs);
     document.addEventListener("visibilitychange", () => {
       if (!document.hidden) { this.makeDue(getTab()); void this.tick(getTab()); }
