@@ -48,6 +48,7 @@ colors:
   kc-key: "#262d35"
   kc-line: "#232a31"
   kc-well: "#0c1113"
+  kc-well-edge: "#2a3a3a"
   kc-ink: "#e6e9ee"
   kc-dim: "#a4acb7"
   kc-mute: "#8d96a3"
@@ -56,6 +57,7 @@ colors:
   kc-glass-text: "#d9f5f0"
   kc-coral: "#f29b8f"
   kc-hay: "#e8c37a"
+  kc-hay-ink: "#2a1d05"
   kc-ok: "#7fc79a"
 typography:
   micro:
@@ -460,7 +462,8 @@ The admin is the scanner's front panel, not a dashboard. Spec:
   #20262d for grouped surfaces, `--kc-key` #262d35 for key faces. Surfaces are
   separated by tone; the only hairline is `--kc-line` between rows.
 - **The LCD (signature):** a recessed `--kc-well` #0c1113 panel whose
-  characters glow `--kc-glass` #5fd4c3 — glow on glass, never a lit slab. It
+  characters glow `--kc-glass` #5fd4c3 — glow on glass, never a lit slab
+  (bezel hairline `--kc-well-edge` #2a3a3a). It
   shows what is live: meta line, channel name (`--kc-glass-text`), frequency
   in large tabular numerals.
 - **Keys:** `--kc-key` faces with the single tactile shadow
@@ -473,7 +476,8 @@ The admin is the scanner's front panel, not a dashboard. Spec:
   labels; scale `--kc-t-meta` 0.78rem → `--kc-t-lcd-freq` 2.6rem.
 - **Shape:** keys 10px, groups 14px, sheets 18px, chips pill.
 - **Contrast:** every `--kc-*` text token ≥ 4.5:1 on ground, raised and key,
-  with `--kc-glass-ink` measured on `--kc-glass` (9.2:1) (test/tokens.test.ts).
+  with `--kc-glass-ink` measured on `--kc-glass` (9.2:1) and `--kc-hay-ink`
+  (badge text) on `--kc-hay` (9.8:1) (test/tokens.test.ts).
 
 ## Do's and Don'ts
 

@@ -28,6 +28,9 @@ describe("tokens.css layer 2 (admin language) contrast", () => {
   it("--kc-glass-ink on --kc-glass ≥ 4.5:1", () => {
     expect(contrast(v("--kc-glass-ink"), v("--kc-glass"))).toBeGreaterThanOrEqual(4.5);
   });
+  it("--kc-hay-ink on --kc-hay ≥ 4.5:1 (triage badge)", () => {
+    expect(contrast(v("--kc-hay-ink"), v("--kc-hay"))).toBeGreaterThanOrEqual(4.5);
+  });
   it("LCD text on --kc-well ≥ 4.5:1", () => {
     expect(contrast(v("--kc-glass"), v("--kc-well"))).toBeGreaterThanOrEqual(4.5);
     expect(contrast(v("--kc-glass-text"), v("--kc-well"))).toBeGreaterThanOrEqual(4.5);
