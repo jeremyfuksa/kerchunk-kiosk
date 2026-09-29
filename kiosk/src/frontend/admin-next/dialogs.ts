@@ -45,7 +45,14 @@ export function mountDialogs(host: HTMLElement): Dialogs {
     let top: HTMLDialogElement | null = null;
     for (const m of modals) if (m !== dlg) top = m;
     const target = top ?? toastHome;
-    if (toastHost.parentElement !== target) target.appendChild(toastHost);
+    if (toastHost.parentElement === target) return;
+    target.appendChild(toastHost);
+    // A closed <dialog> goes `display: none` (it stays in the DOM), which
+    // would hide a still-live toast — and its pending Undo — along with it.
+    // Re-run this the moment ITS host closes, carrying the same live node
+    // (and whatever timer/undo closure is still attached to it) to wherever
+    // is now appropriate: the next still-open modal, or back home.
+    if (target !== toastHome) target.addEventListener("close", placeToastHost, { once: true });
   }
 
   function close(): void {

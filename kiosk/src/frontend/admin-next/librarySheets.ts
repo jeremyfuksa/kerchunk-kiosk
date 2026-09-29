@@ -42,7 +42,10 @@ function summaryLine(b: Bank, n: number): string {
 const numInput = (id: string, value: number | undefined, attrs: string): string =>
   `<input id="${id}" type="number" placeholder="global" value="${value !== undefined ? String(value) : ""}" ${attrs} />`;
 
-function bankGroupHtml(b: Bank, channels: Channel[], expanded: ReadonlySet<string>): string {
+// `status` is the current status-line text for this bank (or "create") —
+// threaded in so a re-render (which rebuilds the whole subtree) doesn't wipe
+// a message like "Saved — …" that a click handler already set.
+function bankGroupHtml(b: Bank, channels: Channel[], expanded: ReadonlySet<string>, status: string): string {
   const n = channels.filter((c) => c.enabled && matchesBank(c, b)).length;
   const id = esc(b.id);
   const addHref = hrefFor({ tab: "library", detail: { kind: "add", ...(b.tags?.[0] ? { tag: b.tags[0] } : {}) } });
@@ -56,7 +59,7 @@ function bankGroupHtml(b: Bank, channels: Channel[], expanded: ReadonlySet<strin
       ${field({ id: `kcBank-${id}-hang`, label: "Hang time", hint: "ms", control: numInput(`kcBank-${id}-hang`, b.hangMs, 'min="100" step="100"') })}
       ${field({ id: `kcBank-${id}-dwell`, label: "Dwell weight", hint: "×, 2 = twice as long", control: numInput(`kcBank-${id}-dwell`, b.dwellWeight, 'min="0.1" step="0.1"') })}
       <div class="kc-keys">${key({ id: `kcBankSave-${id}`, label: "Save profile", wide: true })}</div>
-      <p class="kc-detail__status" id="kcBank-${id}-status" role="status" aria-live="polite"></p>
+      <p class="kc-detail__status" id="kcBank-${id}-status" role="status" aria-live="polite">${esc(status)}</p>
     </div>
     <div class="kc-bank__acts">
       ${key({ id: `kcBankAudible-${id}`, label: "Make audible" })}
@@ -68,7 +71,7 @@ function bankGroupHtml(b: Bank, channels: Channel[], expanded: ReadonlySet<strin
   </details>`;
 }
 
-function createBankHtml(open: boolean): string {
+function createBankHtml(open: boolean, status: string): string {
   return `<details class="kc-group kc-disclosure" id="kcLibBankCreate"${open ? " open" : ""}>
     <summary class="kc-group__title"><span>Create a bank</span>${ico("chevron", "kc-ico kc-disclosure__chev")}</summary>
     ${field({ id: "kcBankNewName", label: "Name", control: `<input id="kcBankNewName" type="text" />` })}
@@ -77,7 +80,7 @@ function createBankHtml(open: boolean): string {
     ${field({ id: "kcBankNewHi", label: "To MHz", control: `<input id="kcBankNewHi" type="number" min="0" step="0.001" />` })}
     ${field({ id: "kcBankNewTags", label: "Tags", hint: "Comma-separated", control: `<input id="kcBankNewTags" type="text" placeholder="air, rail, ham" />` })}
     <div class="kc-keys">${key({ id: "kcBankNewSave", label: "Create bank", icon: "plus", variant: "primary", wide: true })}</div>
-    <p class="kc-detail__status" id="kcBankNewStatus" role="status" aria-live="polite"></p>
+    <p class="kc-detail__status" id="kcBankNewStatus" role="status" aria-live="polite">${esc(status)}</p>
   </details>`;
 }
 
@@ -120,6 +123,17 @@ export function mountSheets(lib: LibCtx, host: HTMLElement): { openBanks(): void
    *  alone across a re-render until the edit is saved, its bank is deleted,
    *  or the sheet closes. */
   const dirty = new Set<string>();
+  /** Bank ids (or "create") to force-render on the NEXT store update, bypassing
+   *  the dirty/focus skip — used right after a write succeeds, when the store
+   *  doesn't have the fresh data yet (lib.run's refresh is fire-and-forget) but
+   *  focus is still sitting on the key that triggered it, inside the tracked
+   *  form. Consumed (and re-checked against `dirty`, in case the operator
+   *  started editing again before the fresh data arrived) in the store
+   *  subscription, never rendered against stale data. */
+  const pendingForce = new Set<string>();
+  /** Current status-line text per bank id (or "create") — survives a
+   *  subtree rebuild, since `bankGroupHtml`/`createBankHtml` read it back in. */
+  const statusText = new Map<string, string>();
   const expanded = new Set<string>();
   let createOpen = false;
   /** The rec ids shown the last time renderSuggestions actually repainted —
@@ -134,6 +148,9 @@ export function mountSheets(lib: LibCtx, host: HTMLElement): { openBanks(): void
     const a = document.activeElement;
     return !!el && a instanceof HTMLElement && el.contains(a);
   }
+  function isStillDirty(k: string): boolean {
+    return dirty.has(k === "create" ? "create" : `bank:${k}`);
+  }
   function focusKey(): string | null {
     const a = document.activeElement;
     return a instanceof HTMLElement && body.contains(a) && a.id ? a.id : null;
@@ -142,8 +159,10 @@ export function mountSheets(lib: LibCtx, host: HTMLElement): { openBanks(): void
     if (id) byId(id)?.focus();
   }
 
-  function setStatus(id: string, text: string): void {
-    const el = byId(id);
+  /** `key` is a bank id, or "create" for the create-a-bank form. */
+  function setStatus(key: string, text: string): void {
+    statusText.set(key, text);
+    const el = byId(key === "create" ? "kcBankNewStatus" : `kcBank-${key}-status`);
     if (el) el.textContent = text;
   }
 
@@ -152,8 +171,7 @@ export function mountSheets(lib: LibCtx, host: HTMLElement): { openBanks(): void
   // replace, so a form the operator is mid-typing in — its bank id (or
   // "create") is in `dirty`, or it currently holds focus — is skipped while
   // every other bank still repaints. `force` bypasses that skip for specific
-  // keys (used right after a save/create succeeds, when the target key is
-  // clean but focus is still sitting on the key that triggered it).
+  // keys (see `pendingForce` above).
   function renderBanks(force: true | ReadonlySet<string> | false = false): void {
     if (mode !== "banks" || !sheet.isOpen()) return;
     if (!body.querySelector("#kcBankList")) {
@@ -165,11 +183,23 @@ export function mountSheets(lib: LibCtx, host: HTMLElement): { openBanks(): void
     const channels = lib.store.data?.channels ?? [];
     const forced = (k: string): boolean => force === true || (force !== false && force.has(k));
 
-    // Drop rows for banks that no longer exist (and any dirty flag for them —
-    // there's nothing left to save).
+    // Drop rows for banks that no longer exist (and any dirty/status state for
+    // them — there's nothing left to save). If focus was inside the row being
+    // dropped, hand it to the neighbouring bank's summary once the pass below
+    // is done (a captured element reference would go stale if that neighbour
+    // also gets its own outerHTML replaced later in this same pass).
+    let focusAfterDeleteBankId: string | null | undefined; // undefined = nothing removed
     for (const el of Array.from(list.children) as HTMLElement[]) {
       const id = el.dataset.bank;
-      if (id && !banks.some((b) => b.id === id)) { el.remove(); dirty.delete(`bank:${id}`); }
+      if (id && !banks.some((b) => b.id === id)) {
+        if (isFocusedWithin(el)) {
+          const neighbor = (el.nextElementSibling ?? el.previousElementSibling) as HTMLElement | null;
+          focusAfterDeleteBankId = neighbor?.dataset.bank ?? null;
+        }
+        el.remove();
+        dirty.delete(`bank:${id}`);
+        statusText.delete(id);
+      }
     }
 
     if (!banks.length) {
@@ -179,7 +209,7 @@ export function mountSheets(lib: LibCtx, host: HTMLElement): { openBanks(): void
       for (const b of banks) {
         const existing = list.querySelector<HTMLElement>(`[data-bank="${CSS.escape(b.id)}"]`);
         if (!forced(b.id) && (dirty.has(`bank:${b.id}`) || isFocusedWithin(existing))) continue;
-        const html = bankGroupHtml(b, channels, expanded);
+        const html = bankGroupHtml(b, channels, expanded, statusText.get(b.id) ?? "");
         if (existing) {
           if (existing.outerHTML === html) continue;
           const fk = focusKey();
@@ -192,12 +222,19 @@ export function mountSheets(lib: LibCtx, host: HTMLElement): { openBanks(): void
     }
 
     if (forced("create") || !(dirty.has("create") || isFocusedWithin(createHost))) {
-      const html = createBankHtml(createOpen);
+      const html = createBankHtml(createOpen, statusText.get("create") ?? "");
       if (createHost.innerHTML !== html) {
         const fk = focusKey();
         createHost.innerHTML = html;
         restoreFocus(fk);
       }
+    }
+
+    if (focusAfterDeleteBankId !== undefined) {
+      const target = focusAfterDeleteBankId
+        ? list.querySelector<HTMLElement>(`[data-bank="${CSS.escape(focusAfterDeleteBankId)}"] summary`)
+        : null;
+      (target ?? createHost.querySelector<HTMLElement>("summary") ?? closeButton())?.focus();
     }
   }
 
@@ -209,21 +246,28 @@ export function mountSheets(lib: LibCtx, host: HTMLElement): { openBanks(): void
     const dwell = byId<HTMLInputElement>(`kcBank-${id}-dwell`)?.value ?? "";
     const f: ProfileForm = { open, hang, dwell };
     let p: Profile;
-    try { p = profileFromForm(f); } catch (e) { setStatus(`kcBank-${id}-status`, msg(e)); return; }
-    if (profileText(withProfile(bank, p)) === profileText(bank)) { setStatus(`kcBank-${id}-status`, "No change."); return; }
-    setStatus(`kcBank-${id}-status`, "Saving…");
+    try { p = profileFromForm(f); } catch (e) { setStatus(id, msg(e)); return; }
+    if (profileText(withProfile(bank, p)) === profileText(bank)) {
+      dirty.delete(`bank:${id}`);
+      setStatus(id, "No change.");
+      return;
+    }
+    setStatus(id, "Saving…");
     try {
       await lib.run(async () => {
         const cfg = await api.getConfig();
         cfg.banks = (cfg.banks ?? []).map((x) => (x.id === id ? withProfile(x, p) : x));
         await api.putConfig(cfg);
       });
-    } catch (e) { setStatus(`kcBank-${id}-status`, msg(e)); return; }
+    } catch (e) { setStatus(id, msg(e)); return; }
     dirty.delete(`bank:${id}`);
-    setStatus(`kcBank-${id}-status`, "Saved — scanning restarted briefly.");
-    // The form is clean now, but focus is still on the Save key (inside the
-    // form container this render would otherwise skip) — force just this bank.
-    renderBanks(new Set([id]));
+    setStatus(id, "Saved — scanning restarted briefly.");
+    // lib.run's refresh is fire-and-forget: the store doesn't have the fresh
+    // profile yet, so rendering now would show pre-save values and — since
+    // focus is still on the Save key, inside this form — get stuck that way.
+    // Mark this bank for a forced render on the NEXT store update instead,
+    // once the fresh data has actually landed.
+    pendingForce.add(id);
   }
 
   async function bulk(id: string, kind: "audible" | "silent" | "archive"): Promise<void> {
@@ -294,23 +338,24 @@ export function mountSheets(lib: LibCtx, host: HTMLElement): { openBanks(): void
     };
     let bank: Bank;
     try { bank = bankFromForm(f, `bk_${crypto.randomUUID().slice(0, 8)}`); }
-    catch (e) { setStatus("kcBankNewStatus", msg(e)); return; }
-    setStatus("kcBankNewStatus", "Creating…");
+    catch (e) { setStatus("create", msg(e)); return; }
+    setStatus("create", "Creating…");
     try {
       await lib.run(async () => {
         const cfg = await api.getConfig();
         cfg.banks = [...(cfg.banks ?? []), bank];
         await api.putConfig(cfg);
       });
-    } catch (e) { setStatus("kcBankNewStatus", msg(e)); return; }
+    } catch (e) { setStatus("create", msg(e)); return; }
     dirty.delete("create");
     for (const id of ["kcBankNewName", "kcBankNewLo", "kcBankNewHi", "kcBankNewTags"]) { const el = byId<HTMLInputElement>(id); if (el) el.value = ""; }
     const band = byId<HTMLSelectElement>("kcBankNewBand"); if (band) band.value = "";
-    setStatus("kcBankNewStatus", "");
+    setStatus("create", "");
     lib.dialogs.toast(`Created ${bank.name}.`);
-    // Clean now, but focus is on the Create key inside the form container —
-    // force so the new bank shows up in the list immediately.
-    renderBanks(new Set(["create"]));
+    // No forced render needed: the create form's own fields were already
+    // reset above (live), and a bank id not yet in the DOM is always
+    // appended on the next store update regardless of dirty/focus — only an
+    // EXISTING bank's patch is ever skippable.
   }
 
   // ── Suggestions ──────────────────────────────────────────────────────────
@@ -416,12 +461,19 @@ export function mountSheets(lib: LibCtx, host: HTMLElement): { openBanks(): void
   }, true);
 
   lib.store.subscribe(() => {
-    if (mode === "banks") renderBanks();
-    else if (mode === "suggestions") renderSuggestions();
+    if (mode === "banks") {
+      // Consume any pending forced keys now that fresh data may have
+      // arrived — but drop one if the operator started editing it again
+      // before the refresh landed; forcing a render into a live edit would
+      // be exactly the overwrite this whole scheme exists to prevent.
+      const ids = [...pendingForce].filter((k) => !isStillDirty(k));
+      pendingForce.clear();
+      renderBanks(ids.length ? new Set(ids) : false);
+    } else if (mode === "suggestions") renderSuggestions();
   });
 
   sheet.onClose(() => {
-    mode = null; lastSuggestionsHtml = ""; prevRecIds = []; dirty.clear();
+    mode = null; lastSuggestionsHtml = ""; prevRecIds = []; dirty.clear(); pendingForce.clear(); statusText.clear();
     if (pendingNav) {
       const href = pendingNav;
       pendingNav = null;
