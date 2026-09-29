@@ -17,7 +17,7 @@ import { NOAA_CHANNELS } from "../../backend/config/noaa.js";
 import { DEFAULT_GROUP_DWELL_MS } from "../../backend/config/engineDefaults.js";
 import {
   ADVANCED_BANDS, BAND_COST, COST_LABEL, KNOB_BY_ID, curveSvg, knobUi, loudnessCurve,
-  previewGroups, previewText, revisitHint, type Band, type KnobValues,
+  parseKnob, previewGroups, previewText, revisitHint, type Band, type KnobValues,
 } from "../admin/engineKnobs.js";
 import { api } from "../lib/api.js";
 import { esc } from "../lib/format.js";
@@ -27,7 +27,7 @@ import { hrefFor } from "./route.js";
 import { ico } from "./ui/icons.js";
 import { ApplyBatcher, TUNE_APPLY_DELAY_MS, type BatchState } from "./batcher.js";
 import {
-  FIELD_BY_ID, GROUP_TITLES, TUNE_FIELDS, applyTune, disabledIds, isDefault, readTune, snapValue,
+  FIELD_BY_ID, GROUP_TITLES, TUNE_FIELDS, applyTune, disabledIds, isDefault, isNoChange, readTune, snapValue,
   type TuneField, type TuneGroup, type TuneValue, type TuneValues,
 } from "./tuneFields.js";
 import type { Ctx } from "./ctx.js";
@@ -61,7 +61,7 @@ export function batchSay(s: BatchState, delayMs = TUNE_APPLY_DELAY_MS): string {
     }
     case "saving": return "Saving.";
     case "saved": return "Saved.";
-    case "error": return `Not saved: ${s.message}. Undo available.`;
+    case "error": return `Not saved: ${s.message}. Retry or undo available.`;
     default: return "";
   }
 }
@@ -98,7 +98,7 @@ export function rowHtml(f: TuneField, v: TuneValue): string {
   const onLine = f.control.kind === "slider";
   return `<div class="kc-tuneRow" data-row="${f.id}">${controlHtml(f, v, onLine ? resetHtml(f, false) : "")}`
     + (onLine ? "" : resetHtml(f, true))
-    + `<p class="kc-rowErr" data-rowerr="${f.id}" hidden></p></div>`;
+    + `<p class="kc-rowErr${onLine ? "" : " kc-rowErr--corner"}" id="kcErr-${f.id}" data-rowerr="${f.id}" hidden></p></div>`;
 }
 
 /** The Apply / Cancel bar for a group with heavy fields (hidden until used). */
@@ -112,11 +112,15 @@ export function heavyHtml(g: TuneGroup): string {
 export function statusHtml(g: TuneGroup | "weather", o: { restartLink?: string } = {}): string {
   // The countdown ticks visibly but is aria-hidden; the live region hears one
   // sentence per state change (.kc-status__say), not a number a second.
-  return `<p class="kc-status" data-status="${g}" role="status" aria-live="polite">`
+  // tabindex="-1": focus lands here when the Undo / Retry / Apply / Cancel
+  // the operator just pressed hides itself.
+  return `<p class="kc-status" data-status="${g}" role="status" aria-live="polite" tabindex="-1">`
     + `<span class="kc-sr kc-status__say"></span>`
     + `<span class="kc-status__batch" aria-hidden="true"></span>`
-    + (g === "weather" ? "" : `<button type="button" class="kc-link" data-undo="${g}" hidden>Undo</button>`)
+    + (g === "weather" ? "" : `<button type="button" class="kc-link" data-retry="${g}" hidden>Retry</button>`
+      + `<button type="button" class="kc-link" data-undo="${g}" hidden>Undo</button>`)
     + `<span class="kc-status__direct"></span>`
+    + `<button type="button" class="kc-link" data-redo="${g}" hidden>Retry</button>`
     + (o.restartLink ? `<a class="kc-link" data-restart href="${esc(o.restartLink)}" hidden>Restart radio</a>` : "")
     + `</p>`;
 }
@@ -232,8 +236,13 @@ export function mountTune(ctx: Ctx): void {
   /** The unit next to a slider's box; a 0-means-off field says so. */
   function paintUnit(f: TuneField, v: string): void {
     if (f.control.kind !== "slider") return;
+    const off = KNOB_BY_ID[f.id]?.allowZero === true && Number(v) === 0;
     const b = $(`[data-slider="${f.id}"] .kc-slider__val b`);
-    if (b) setText(b, KNOB_BY_ID[f.id]?.allowZero && Number(v) === 0 ? "Off" : f.control.unit);
+    if (b) setText(b, off ? "Off" : f.control.unit);
+    // A range announces a bare number otherwise ("9", not "9 dB").
+    const range = byId<HTMLInputElement>(f.id);
+    const say = off ? "Off" : `${v} ${f.control.unit}`.trim();
+    if (range && range.getAttribute("aria-valuetext") !== say) range.setAttribute("aria-valuetext", say);
   }
   function paintControl(id: string): void {
     const f = FIELD_BY_ID[id];
@@ -267,6 +276,15 @@ export function mountTune(ctx: Ctx): void {
     setText(msg, err);
     setHidden(msg, err === "");
     setKind(row, err !== "");
+    row.querySelectorAll<HTMLInputElement>("input").forEach((i) => {
+      if (err) {
+        if (i.getAttribute("aria-invalid") !== "true") i.setAttribute("aria-invalid", "true");
+        if (i.getAttribute("aria-describedby") !== msg.id) i.setAttribute("aria-describedby", msg.id);
+      } else if (i.hasAttribute("aria-invalid")) {
+        i.removeAttribute("aria-invalid");
+        i.removeAttribute("aria-describedby");
+      }
+    });
   }
   function paintDependents(): void {
     const off = disabledIds(values);
@@ -277,6 +295,9 @@ export function mountTune(ctx: Ctx): void {
       row.classList.toggle("is-off", d);
       row.querySelectorAll<HTMLInputElement | HTMLButtonElement>("input, [data-reset]").forEach((i) => setDisabled(i, d));
     }
+    // A greyed-out field's pending Apply can't be applied (or cancelled) from
+    // a disabled row, so its bar goes with it.
+    for (const g of heavy.keys()) paintHeavy(g);
   }
   let curveShown = "";
   function paintCurve(): void {
@@ -307,8 +328,10 @@ export function mountTune(ctx: Ctx): void {
     });
     setText(out, previewText(pv));
     setKind(out, !pv.ok);
+    // Apply also waits for every shape field to be in range (previewGroups
+    // clamps what it's given, so an out-of-range entry can still preview ok).
     const apply = byId<HTMLButtonElement>("kcApply-shape");
-    if (apply) setDisabled(apply, !pv.ok);
+    if (apply) setDisabled(apply, !pv.ok || fieldsOf("shape").some((f) => invalid(f, values[f.id] ?? f.def) !== null));
     const hint = $('[data-row="kRevisit"] small');
     if (hint) setText(hint, revisitHint(pv));
   }
@@ -316,8 +339,13 @@ export function mountTune(ctx: Ctx): void {
   // ── status lines: a batch part (countdown / Undo) and a direct part
   //    (live saves), painted independently so neither hides the other.
   const directTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  /** What a direct status line's Retry re-runs (set with a failed save). */
+  const directRetry = new Map<string, () => void>();
   function statusEl(g: TuneGroup | "weather"): HTMLElement | null { return $(`[data-status="${g}"]`); }
-  function paintDirect(g: TuneGroup | "weather", text: string, o: { error?: boolean; fade?: boolean; restart?: boolean } = {}): void {
+  /** Move focus to a group's status line — after the key the operator just
+   *  pressed (Undo, Retry, Apply, Cancel) hides itself. */
+  function focusStatus(g: TuneGroup | "weather"): void { statusEl(g)?.focus(); }
+  function paintDirect(g: TuneGroup | "weather", text: string, o: { error?: boolean; fade?: boolean; restart?: boolean; retry?: () => void } = {}): void {
     const st = statusEl(g);
     if (!st) return;
     const span = st.querySelector<HTMLElement>(".kc-status__direct")!;
@@ -325,6 +353,9 @@ export function mountTune(ctx: Ctx): void {
     setKind(span, !!o.error);
     const link = st.querySelector<HTMLElement>("[data-restart]");
     if (link) setHidden(link, !o.restart);
+    if (o.retry) directRetry.set(g, o.retry); else directRetry.delete(g);
+    const redo = st.querySelector<HTMLButtonElement>("[data-redo]");
+    if (redo) setHidden(redo, !o.retry);
     const t = directTimers.get(g);
     if (t) { clearTimeout(t); directTimers.delete(g); }
     if (o.fade) directTimers.set(g, setTimeout(() => { directTimers.delete(g); paintDirect(g, ""); }, SAVED_SHOW_MS));
@@ -336,6 +367,7 @@ export function mountTune(ctx: Ctx): void {
     const span = st.querySelector<HTMLElement>(".kc-status__batch")!;
     setText(st.querySelector<HTMLElement>(".kc-status__say")!, batchSay(s));
     const undo = st.querySelector<HTMLButtonElement>("[data-undo]")!;
+    setHidden(st.querySelector<HTMLButtonElement>("[data-retry]")!, s.kind !== "error");
     const t = batchTimers.get(g);
     if (t) { clearTimeout(t); batchTimers.delete(g); }
     let text = "";
@@ -388,8 +420,10 @@ export function mountTune(ctx: Ctx): void {
     paintDependents();
     paintPreview();
   }
-  /** Save ids now; resolves true when saved (the status line says either way). */
-  async function saveNow(g: TuneGroup, ids: string[]): Promise<boolean> {
+  /** Save ids now; resolves true when saved (the status line says either way).
+   *  A failure offers Retry on the status line unless `retry` is false (a
+   *  heavy Apply keeps its Apply bar for that). */
+  async function saveNow(g: TuneGroup, ids: string[], o: { retry?: boolean } = {}): Promise<boolean> {
     const backend = ids.some((id) => FIELD_BY_ID[id]?.cost === "backend");
     for (const id of ids) inflight.add(id);
     paintDirect(g, "Saving…");
@@ -398,7 +432,9 @@ export function mountTune(ctx: Ctx): void {
       paintDirect(g, backend ? "Saved — used after the next radio restart" : "Saved", { fade: !backend, restart: backend });
       return true;
     } catch (e) {
-      paintDirect(g, e instanceof Error ? e.message : String(e), { error: true });
+      paintDirect(g, e instanceof Error ? e.message : String(e), {
+        error: true, retry: o.retry === false ? undefined : () => { void saveNow(g, ids); },
+      });
       return false;
     } finally {
       for (const id of ids) inflight.delete(id);
@@ -416,26 +452,51 @@ export function mountTune(ctx: Ctx): void {
   }
   function paintHeavy(g: TuneGroup): void {
     const bar = $(`[data-heavy="${g}"]`);
-    if (bar) setHidden(bar, (heavy.get(g)?.size ?? 0) === 0);
+    const off = disabledIds(values);
+    if (bar) setHidden(bar, ![...(heavy.get(g) ?? [])].some((id) => !off.has(id)));
   }
   const isSound = (f: TuneField): boolean => f.group === "sound" || f.group === "loudness";
+
+  /** Why v can't be saved for f, or null. A dry run of the field's own write
+   *  against the last-loaded config, so a bad entry is flagged on its row
+   *  before anything is queued. Group-shape fields check their own bounds
+   *  only: rate and window are validated together (by the preview and the
+   *  save), and a rate entered ahead of its window must not read as an error. */
+  function invalid(f: TuneField, v: TuneValue): string | null {
+    try {
+      const k = KNOB_BY_ID[f.id];
+      if (f.group === "shape") { if (k && typeof v === "string") parseKnob(k, v); }
+      else if (cfgCache) f.write(structuredClone(cfgCache), v);
+      return null;
+    } catch (e) { return e instanceof Error ? e.message : String(e); }
+  }
 
   /** After every operator change: repaint what depends on it, then route by cost. */
   function commit(id: string): void {
     const f = FIELD_BY_ID[id];
     if (!f) return;
+    const g = f.group;
+    const queued = f.cost === "scan" || f.cost === "heavy";
+    // Back at what the radio has (moved and put back, or an unset field set to
+    // its displayed default): nothing to send — sending the default
+    // explicitly would restart the scanner for nothing.
+    const noChange = queued && isNoChange(f, values[id] ?? f.def, loaded[id] ?? f.def);
+    if (noChange) { values[id] = loaded[id] ?? f.def; paintControl(id); }
+    const err = noChange ? null : invalid(f, values[id] ?? f.def);
+    if (err) rowErrors.set(id, err); else rowErrors.delete(id);
     paintRow(id);
     paintDependents();
     if (isSound(f)) paintCurve();
-    if (f.group === "shape" || id === "tGroupDwell") paintPreview();
-    if (f.cost === "live" || f.cost === "backend") void saveNow(f.group, [id]);
-    else if (f.cost === "scan") batcher(f.group).change(id);
-    else {
-      // Changing it back to what's saved needs no Apply.
-      const set = heavySet(f.group);
-      if (same(values[id], loaded[id])) set.delete(id); else set.add(id);
-      paintHeavy(f.group);
+    if (g === "shape" || id === "tGroupDwell") paintPreview();
+    if (noChange || err) {
+      // Nothing (valid) to save: take it out of its batch or Apply bar.
+      if (f.cost === "scan") batchers.get(g)?.drop(id);
+      else if (f.cost === "heavy") { heavy.get(g)?.delete(id); paintHeavy(g); }
+      return;
     }
+    if (f.cost === "live" || f.cost === "backend") void saveNow(g, [id]);
+    else if (f.cost === "scan") batcher(g).change(id);
+    else { heavySet(g).add(id); paintHeavy(g); }
   }
   function revert(ids: readonly string[]): void {
     for (const id of ids) { values[id] = loaded[id]!; paintControl(id); paintRow(id); }
@@ -499,7 +560,7 @@ export function mountTune(ctx: Ctx): void {
     if (e.key === "Enter" && t instanceof HTMLInputElement && t.type === "text") { e.preventDefault(); t.blur(); }
   });
   el.addEventListener("click", (e) => {
-    const t = (e.target as HTMLElement).closest<HTMLElement>("[data-reset], [data-undo], [id^='kcApply-'], [id^='kcCancel-']");
+    const t = (e.target as HTMLElement).closest<HTMLElement>("[data-reset], [data-undo], [data-retry], [data-redo], [id^='kcApply-'], [id^='kcCancel-']");
     if (!t) return;
     if (t.dataset.reset) {
       const f = FIELD_BY_ID[t.dataset.reset];
@@ -512,22 +573,47 @@ export function mountTune(ctx: Ctx): void {
     if (t.dataset.undo) {
       const g = t.dataset.undo as TuneGroup;
       revert(batcher(g).undo());
+      focusStatus(g);
+      return;
+    }
+    if (t.dataset.retry) {
+      const g = t.dataset.retry as TuneGroup;
+      focusStatus(g);
+      void batcher(g).flush();
+      return;
+    }
+    if (t.dataset.redo) {
+      const g = t.dataset.redo as TuneGroup | "weather";
+      const again = directRetry.get(g);
+      focusStatus(g);
+      paintDirect(g, "");
+      again?.();
       return;
     }
     const m = /^kc(Apply|Cancel)-(.+)$/.exec(t.id);
     if (!m) return;
     const g = m[2] as TuneGroup;
-    const ids = [...(heavy.get(g) ?? [])];
+    const heavyIds = [...(heavy.get(g) ?? [])];
     heavy.get(g)?.clear();
     paintHeavy(g);
-    if (!ids.length) return;
-    if (m[1] === "Cancel") { revert(ids); return; }
-    void saveNow(g, ids).then((ok) => {
-      // Refused (e.g. a window wider than the rate): keep the change and its
-      // Apply bar so the operator can fix it or cancel.
+    focusStatus(g);
+    if (!heavyIds.length) return;
+    if (m[1] === "Cancel") { revert(heavyIds); return; }
+    // The group's countdown batch goes out in the same save: one PUT, one
+    // scanner restart — not an Apply now and a countdown restart after it.
+    const b = batchers.get(g);
+    const batched = b && (b.state.kind === "pending" || b.state.kind === "error") ? b.undo() : [];
+    const ids = [...new Set([...heavyIds, ...batched])];
+    void saveNow(g, ids, { retry: false }).then((ok) => {
+      // Refused (e.g. a window wider than the rate): keep the change — the
+      // folded-in batch too — behind the Apply bar so the operator can fix
+      // it, apply again, or cancel.
       if (ok) return;
       const set = heavySet(g);
-      for (const id of ids) if (!same(values[id], loaded[id])) set.add(id);
+      for (const id of ids) {
+        const f = FIELD_BY_ID[id];
+        if (f && !isNoChange(f, values[id] ?? f.def, loaded[id] ?? f.def)) set.add(id);
+      }
       paintHeavy(g);
     });
   });
@@ -542,7 +628,8 @@ export function mountTune(ctx: Ctx): void {
   /** Coalesce: edits inside WX_SAVE_DELAY_MS become one save; an edit during a
    *  save queues exactly one more, which reads the controls when it runs. */
   function scheduleWeather(): void {
-    paintDirect("weather", "Saving…");
+    // Nothing is on the wire yet: "Saving…" waits for saveWeather.
+    paintDirect("weather", "Saving shortly");
     if (wxSaving) { wxQueued = true; return; }
     if (wxTimer !== null) clearTimeout(wxTimer);
     wxTimer = setTimeout(() => { wxTimer = null; void saveWeather(); }, WX_SAVE_DELAY_MS);
@@ -586,7 +673,9 @@ export function mountTune(ctx: Ctx): void {
       ctx.live.set({ weatherChannel: { freq, alphaTag, mode } });
       paintDirect("weather", "Saved — the radio re-tunes briefly", { fade: true });
     } catch (e) {
-      paintDirect("weather", e instanceof Error ? e.message : String(e), { error: true });
+      paintDirect("weather", e instanceof Error ? e.message : String(e), {
+        error: true, retry: () => { if (wxBusy()) scheduleWeather(); else void saveWeather(); },
+      });
     } finally {
       wxSaving = false;
       if (wxQueued) { wxQueued = false; queuedNext = true; }

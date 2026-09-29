@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { advancedHtml, bandHtml, batchSay, resetHtml, rowHtml } from "../src/frontend/admin-next/tune.js";
+import { advancedHtml, bandHtml, batchSay, resetHtml, rowHtml, statusHtml } from "../src/frontend/admin-next/tune.js";
 import { TUNE_FIELDS, FIELD_BY_ID } from "../src/frontend/admin-next/tuneFields.js";
 import { ADVANCED_BANDS, BAND_COST, COST_LABEL } from "../src/frontend/admin/engineKnobs.js";
 
@@ -58,6 +58,25 @@ describe("Tune rows", () => {
   it("every row carries a hidden slot for a refused save", () => {
     for (const f of TUNE_FIELDS) expect(rowHtml(f, f.def)).toContain(`data-rowerr="${f.id}" hidden`);
   });
+  it("the error slot has an id inputs can point aria-describedby at; a corner row's clears Use default", () => {
+    expect(rowHtml(FIELD_BY_ID.tAlertCool!, "")).toContain('class="kc-rowErr kc-rowErr--corner" id="kcErr-tAlertCool"');
+    expect(rowHtml(FIELD_BY_ID.kAgcTarget!, "")).toContain('class="kc-rowErr" id="kcErr-kAgcTarget"');
+  });
+});
+
+describe("Tune status line", () => {
+  it("is focusable by script and offers Retry beside Undo, hidden until needed", () => {
+    const h = statusHtml("scanning");
+    expect(h).toContain('tabindex="-1"');
+    expect(h).toMatch(/data-retry="scanning" hidden>Retry<\/button><button[^>]*data-undo="scanning" hidden>/);
+    expect(h).toContain('data-redo="scanning" hidden>Retry');
+  });
+  it("weather has no batch (no Undo) but can retry a failed save", () => {
+    const h = statusHtml("weather");
+    expect(h).not.toContain("data-undo");
+    expect(h).not.toContain("data-retry");
+    expect(h).toContain('data-redo="weather" hidden>Retry');
+  });
 });
 
 describe("batchSay — one announcement per state", () => {
@@ -70,7 +89,7 @@ describe("batchSay — one announcement per state", () => {
   it("covers the other states", () => {
     expect(batchSay({ kind: "saving", ids: [] })).toBe("Saving.");
     expect(batchSay({ kind: "saved" })).toBe("Saved.");
-    expect(batchSay({ kind: "error", message: "bad", ids: [] })).toBe("Not saved: bad. Undo available.");
+    expect(batchSay({ kind: "error", message: "bad", ids: [] })).toBe("Not saved: bad. Retry or undo available.");
     expect(batchSay({ kind: "idle" })).toBe("");
     expect(batchSay({ kind: "pending", ids: [], dueAt: 0 }, 1000)).toContain("1 second,");
   });
