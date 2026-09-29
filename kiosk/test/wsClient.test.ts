@@ -33,6 +33,29 @@ describe("ReconnectingWs", () => {
     vi.useRealTimers();
   });
 
+  it("calls onOpen on the first open and on every reconnect", () => {
+    FakeSocket.instances = [];
+    vi.useFakeTimers();
+    let opens = 0;
+    const r = new ReconnectingWs("ws://x/ws", () => {}, { SocketImpl: FakeSocket as any, reconnectMs: 10, onOpen: () => { opens++; } });
+    r.connect();
+    expect(opens).toBe(0);
+    FakeSocket.instances[0]!.open();
+    expect(opens).toBe(1);
+    FakeSocket.instances[0]!.close();
+    vi.advanceTimersByTime(11);
+    FakeSocket.instances[1]!.open();
+    expect(opens).toBe(2);
+    vi.useRealTimers();
+  });
+
+  it("works without onOpen (existing callers)", () => {
+    FakeSocket.instances = [];
+    const r = new ReconnectingWs("ws://x/ws", () => {}, { SocketImpl: FakeSocket as any });
+    r.connect();
+    expect(() => FakeSocket.instances[0]!.open()).not.toThrow();
+  });
+
   it("keeps reconnecting with a capped backoff, and resets after a good open", () => {
     FakeSocket.instances = [];
     vi.useFakeTimers();
