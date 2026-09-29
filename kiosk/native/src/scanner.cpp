@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <iterator>
 #include <stdexcept>
 #include <string>
 
@@ -61,6 +62,7 @@ void Scanner::assign(int i, const ChannelCmd& c) {
     if (c.dcs) L.dcs = dcs_canonical(*c.dcs);
     else L.ctcss_hz = c.ctcss_hz;
   }
+  if (auto it = skip_until_by_id_.find(c.id); it != skip_until_by_id_.end()) L.skip_until = it->second;
   L.warmup_polls = (int)WARMUP_MS / POLL_MS;
   // Only parked slots are (re)assigned, and park() already ended their episode; drop any
   // leftover rather than attribute it to the new id.
@@ -292,6 +294,9 @@ long long Scanner::skip(double holdoff_s, double now) {
     try { return std::stoll(id.substr(3)); } catch (...) { return 0; }
   }
   L.skip_until = now + holdoff_s;
+  for (auto it = skip_until_by_id_.begin(); it != skip_until_by_id_.end();)   // drop expired
+    it = it->second <= now ? skip_until_by_id_.erase(it) : std::next(it);
+  skip_until_by_id_[id] = L.skip_until;
   return 0;
 }
 

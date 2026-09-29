@@ -32,6 +32,12 @@ struct Sim {
 kc::ChannelCmd ch(const std::string& id, bool priority = false, bool audible = true) {
   kc::ChannelCmd c; c.id = id; c.freq_hz = 146e6; c.priority = priority; c.audible = audible; return c;
 }
+
+size_t opens_of(const Sim& m, const std::string& id) {
+  size_t n = 0;
+  for (auto& e : m.of("open")) if (e["id"] == id) n++;
+  return n;
+}
 }  // namespace
 
 TEST(scanner_tune_emits_tuned_and_slots) {
@@ -371,6 +377,44 @@ TEST(scanner_skip_holdoff_expires_and_reopens) {
   CHECK(m.of("open").size() == 1);                       // no reopen yet
   m.run(0.3);                                            // holdoff passed, still keyed -> reopens
   CHECK(m.of("open").size() == 2);
+}
+
+TEST(scanner_skip_holdoff_survives_a_hop_away_and_back) {
+  // Admin "Pause 30 min" = skip(1800). The holdoff lived only on the lane, and
+  // assign() builds a fresh LaneState on every hop, so one rotation (~15 s)
+  // later the paused channel opened again (2026-09-28).
+  Sim m;
+  m.s.tune(146e6, {ch("a")}, false);
+  m.run(0.8);
+  m.set(0, KEYED, true);
+  m.run(0.2);
+  CHECK(m.of("open").size() == 1);
+  CHECK(m.s.skip(10, m.t) == 0);
+  m.set(0, FLOOR, false);                               // slot 0 idle while "b" holds it
+  m.s.tune(147e6, {ch("b")}, false);                    // hop away...
+  m.run(0.5);
+  m.s.tune(146e6, {ch("a")}, false);                    // ...and back, well inside 10 s
+  m.run(0.8);                                           // warm-up with the floor learned idle
+  m.set(0, KEYED, true);
+  m.run(0.5);                                           // keyed again
+  CHECK(opens_of(m, "a") == 1);                         // still paused: no reopen
+}
+
+TEST(scanner_skip_holdoff_after_a_hop_still_expires) {
+  Sim m;
+  m.s.tune(146e6, {ch("a")}, false);
+  m.run(0.8);
+  m.set(0, KEYED, true);
+  m.run(0.2);
+  CHECK(m.s.skip(0.5, m.t) == 0);
+  m.set(0, FLOOR, false);
+  m.s.tune(147e6, {ch("b")}, false);
+  m.run(0.6);                                           // holdoff over while away
+  m.s.tune(146e6, {ch("a")}, false);
+  m.run(0.8);
+  m.set(0, KEYED, true);
+  m.run(0.5);
+  CHECK(opens_of(m, "a") == 2);                         // opens again normally
 }
 
 TEST(scanner_alert_expiry_leaves_other_audible_lane_unchanged) {
