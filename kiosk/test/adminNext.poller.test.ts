@@ -125,3 +125,32 @@ describe("Poller.request", () => {
     expect(ran).toEqual(["a", "b", "b"]);
   });
 });
+
+describe("Poller.setPaused", () => {
+  it("skips passes while paused and makes everything due on resume", async () => {
+    let t = 1_000;
+    const p = new Poller({ now: () => t, hidden: () => false });
+    const ran: string[] = [];
+    p.add({ name: "a", everyMs: 60_000, run: async () => { ran.push("a"); } });
+    await p.tick("system");
+    expect(ran).toEqual(["a"]);
+    p.setPaused(true);
+    expect(p.paused).toBe(true);
+    t += 120_000;
+    await p.tick("system");
+    expect(ran).toEqual(["a"]); // paused: nothing runs even though it's due
+    p.setPaused(false);
+    await p.tick("system");
+    expect(ran).toEqual(["a", "a"]);
+    t += 1_000;
+    p.setPaused(true);
+    p.setPaused(false); // resume makes it due again right away
+    await p.tick("system");
+    expect(ran).toEqual(["a", "a", "a"]);
+  });
+  it("run() still works while paused (the send itself goes through the lane)", async () => {
+    const p = new Poller({ now: () => 0, hidden: () => false });
+    p.setPaused(true);
+    await expect(p.run(async () => 7)).resolves.toBe(7);
+  });
+});

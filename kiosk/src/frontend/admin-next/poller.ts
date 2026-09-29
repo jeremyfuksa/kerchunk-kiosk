@@ -20,6 +20,7 @@ export const POLL_MS = {
   library: 15_000,    // Library: channels + config (discoveries, banks, lockouts) + samples
   suggestions: 120_000, // Library: duplicates + archive suggestions
   analytics: 30_000,  // Library: the open channel's last-24 h history
+  system: 5_000,      // System: /api/system (verdict card, vitals + sparklines)
 } as const;
 
 export interface PollSpec {
@@ -34,6 +35,16 @@ export class Poller {
   private readonly polls: Array<PollSpec & { lastAt: number }> = [];
   private ticking = false;
   private started = false;
+  private isPaused = false;
+  get paused(): boolean { return this.isPaused; }
+
+  /** Stop polling (e.g. while a restart/reboot is in flight — the action
+   *  watcher's probes must be the only requests on the wire). Resuming makes
+   *  every poll due so the screen catches up at once. run() is unaffected. */
+  setPaused(p: boolean): void {
+    this.isPaused = p;
+    if (!p) for (const q of this.polls) q.lastAt = -Infinity;
+  }
   private readonly now: () => number;
   private readonly hidden: () => boolean;
 
@@ -62,7 +73,7 @@ export class Poller {
   }
 
   async tick(tab: Tab): Promise<void> {
-    if (this.ticking || this.hidden()) return;
+    if (this.ticking || this.hidden() || this.isPaused) return;
     this.ticking = true;
     const pass = this.lane.then(async () => {
       for (const p of this.polls) {
