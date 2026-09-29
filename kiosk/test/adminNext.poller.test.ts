@@ -148,10 +148,14 @@ describe("Poller.setPaused", () => {
     await p.tick("system");
     expect(ran).toEqual(["a", "a", "a"]);
   });
-  it("run() still works while paused (the send itself goes through the lane)", async () => {
+  it("run() refuses while paused (the watcher's probes stay alone) and works again after unpause", async () => {
     const p = new Poller({ now: () => 0, hidden: () => false });
     p.setPaused(true);
-    await expect(p.run(async () => 7)).resolves.toBe(7);
+    let called = false;
+    await expect(p.run(async () => { called = true; return 7; })).rejects.toThrow("Wait for the radio to come back.");
+    expect(called).toBe(false);
+    p.setPaused(false);
+    await expect(p.run(async () => 8)).resolves.toBe(8);
   });
   it("pausing mid-pass stops the rest of that pass", async () => {
     const p = new Poller({ now: () => 0, hidden: () => false });

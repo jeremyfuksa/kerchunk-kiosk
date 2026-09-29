@@ -96,7 +96,8 @@ describe("maps", () => {
   });
   it("refuses without a display block", () => {
     expect(() => withMaps({} as Config, "k", "")).toThrow("Set a weather location first — the map needs coordinates.");
-    expect(withMaps({} as Config, "", "")).toEqual({});
+    const bare = {} as Config;
+    expect(withMaps(bare, "", "")).toBe(bare); // unchanged ⇒ the same object, so the caller skips the PUT
   });
   it("says whether a key is set", () => {
     expect(mapsState(base)).toBe("connected");

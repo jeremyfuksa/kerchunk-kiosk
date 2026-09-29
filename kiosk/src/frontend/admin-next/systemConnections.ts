@@ -5,8 +5,9 @@
 //
 // One read, a System-tab poll of /api/config; every write rides
 // ctx.poller.run (test/adminNext.lane.test.ts). While a power action is being
-// watched the poller is paused and its probes must be alone on the wire, so
-// every write here refuses with WAIT_TEXT instead.
+// watched the poller is paused and its probes must be alone on the wire:
+// poller.run itself rejects then, and the early `paused` checks here just
+// say so (with the same text) before a confirm or "Saving…".
 //
 // The Maps key is secret-ish: it only ever lands in its input's `.value`,
 // never in text anywhere else on the page.
@@ -17,11 +18,11 @@ import { unlockFreqIn } from "../lib/lockout.js";
 import { emptyState, field, group } from "./ui/kit.js";
 import { ico } from "./ui/icons.js";
 import { mountSheet } from "./ui/sheet.js";
-import { POLL_MS } from "./poller.js";
+import { PAUSED_TEXT, POLL_MS } from "./poller.js";
 import { mapsState, unlockSnapshot, withMaps } from "./systemModel.js";
 import type { Ctx } from "./ctx.js";
 
-const WAIT_TEXT = "Wait for the radio to come back.";
+const WAIT_TEXT = PAUSED_TEXT;
 const msg = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 
 /** A status line's text; errors are wrapped so `.kc-status [data-kind="error"]`
@@ -98,8 +99,11 @@ export function mountConnections(ctx: Ctx, host: HTMLElement): void {
     try {
       await ctx.poller.run(async () => {
         const c = await api.getConfig();
-        // withMaps throws (before anything is sent) without a display block.
-        await api.putConfig(withMaps(c, sent.get(keyEl)!, sent.get(idEl)!));
+        // withMaps throws (before anything is sent) without a display block,
+        // and hands back the same config when there's nothing to write (no
+        // display block and both fields empty): skip the PUT then.
+        const next = withMaps(c, sent.get(keyEl)!, sent.get(idEl)!);
+        if (next !== c) await api.putConfig(next);
       });
       for (const [el, v] of sent) if (el.value === v) dirty.delete(el);
       setStatus(mapsStatusEl, "Saved. Refresh the kiosk screen to use it.");
@@ -209,6 +213,7 @@ export function mountConnections(ctx: Ctx, host: HTMLElement): void {
     if (!row) return;
     if (row.dataset.conn === "maps") {
       maps.open({ title: "Google Maps" });
+      mapsStatusEl.textContent = ""; // a result from an earlier open isn't news
       fillMaps();
     } else if (row.dataset.conn === "lockouts") {
       locks.open({ title: "Locked-out frequencies" });
@@ -221,7 +226,7 @@ export function mountConnections(ctx: Ctx, host: HTMLElement): void {
   });
 
   ctx.poller.add({
-    name: "connections", everyMs: POLL_MS.audio, tabs: ["system"],
+    name: "connections", everyMs: POLL_MS.connections, tabs: ["system"],
     run: async () => { try { cfg = await api.getConfig(); paint(); } catch { /* keep last */ } },
   });
 }

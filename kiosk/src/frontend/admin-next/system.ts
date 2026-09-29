@@ -9,7 +9,9 @@
 // box deadlocks on concurrent requests). Those probes are the one sanctioned
 // read outside the lane — they call api.getStatus on the watcher's own
 // timers. Every other write rides poller.run (test/adminNext.lane.test.ts
-// enforces it).
+// enforces it), and poller.run refuses while paused, so no tab can write
+// alongside the probes. The power send itself goes through run() BEFORE
+// the pause.
 import "./system.css";
 import { api } from "../lib/api.js";
 import { esc } from "../lib/format.js";
@@ -17,6 +19,7 @@ import { SystemActionWatcher } from "../lib/systemActionWatcher.js";
 import { emptyState, group } from "./ui/kit.js";
 import { ico } from "./ui/icons.js";
 import { POLL_MS } from "./poller.js";
+import { glance } from "./verdict.js";
 import { hrefFor } from "./route.js";
 import {
   alertsView, SYSTEM_ACTION_COPY, TEST_ALERTS, uptimeText, verdictView, vitals,
@@ -43,6 +46,7 @@ function setStatus(node: HTMLElement, text: string, error: boolean): void {
   node.replaceChildren(span);
 }
 
+const STALE_TEXT = "Readings are out of date.";
 const PROTECTION_NOTE = "Protection is on: the box is above its thermal limit. Close Call and sweep ranges stay off until it cools.";
 
 export function mountSystem(ctx: Ctx): void {
@@ -97,6 +101,8 @@ export function mountSystem(ctx: Ctx): void {
   }
 
   function paintUptime(): void {
+    // While a power action is watched the process is going away: no uptime.
+    if (watching) { setText(upEl, ""); return; }
     const local = Date.now();
     const fresh = lastServerTs !== null && local - lastServerAt <= 2 * POLL_MS.system;
     // Fresh: server time advanced by the local time elapsed since receipt.
@@ -111,9 +117,15 @@ export function mountSystem(ctx: Ctx): void {
     setText(reasonEl, v.reason);
     if (sys?.now && typeof sys.now.ts === "number") { lastServerTs = sys.now.ts; lastServerAt = Date.now(); }
     paintUptime();
-    if (!sys) return;
+    if (!sys) {
+      // No answer: an old alert list would read as current.
+      lastAlertSig = "";
+      if (alertsEl.innerHTML) alertsEl.innerHTML = "";
+      return;
+    }
     const { protection, alerts } = alertsView(sys);
-    const sig = `${protection}|${alerts.map((a) => a.id + ":" + a.severity).join(",")}`;
+    // Title and message too: backend alert messages embed live temperatures.
+    const sig = JSON.stringify([protection, alerts.map((a) => [a.id, a.severity, a.title, a.message])]);
     if (sig === lastAlertSig) return;
     lastAlertSig = sig;
     alertsEl.innerHTML = (protection ? `<p class="kc-protect">${PROTECTION_NOTE}</p>` : "")
@@ -125,9 +137,14 @@ export function mountSystem(ctx: Ctx): void {
 
   function paintVitals(sys: SystemSnapshot | null): void {
     const v = sys ? vitals(sys) : null;
+    // A failed read keeps the last readings on screen, dimmed and labelled
+    // out of date; the next good read restores them.
+    vitalsEl.classList.toggle("kc-vitals--stale", !sys && !!lastVitals);
     if (!v) {
       if (!lastVitals) {
         vitalsEl.innerHTML = emptyState(sys ? "No readings yet — they appear within a minute." : "Readings are unavailable right now.");
+      } else if (!sys) {
+        setText(moreEl, STALE_TEXT);
       }
       return;
     }
@@ -150,6 +167,9 @@ export function mountSystem(ctx: Ctx): void {
       try { sys = await api.getSystem<SystemSnapshot>(); } catch { /* shown as unknown */ }
       paintVerdict(sys);
       paintVitals(sys);
+      // Same read, same verdict: keep the top bar in step with the card.
+      const g = glance(sys);
+      ctx.shell.setVerdict(g.verdict, g.text);
     },
   });
 
@@ -163,10 +183,11 @@ export function mountSystem(ctx: Ctx): void {
     if (clear) kioskTimer = setTimeout(() => { kioskStatusEl.textContent = ""; }, KIOSK_STATUS_MS);
   }
   const kioskBtns = [...el.querySelectorAll<HTMLButtonElement>("[data-kiosk]")];
+  const kioskSending = new Set<HTMLButtonElement>(); // keys with a send in flight
   el.querySelector<HTMLElement>("#kcSysKiosk")!.addEventListener("click", (e) => {
     const btn = (e.target as HTMLElement).closest<HTMLButtonElement>("[data-kiosk]");
     // Paused = a power action is being watched: its probes must stay alone.
-    if (!btn || btn.disabled || ctx.poller.paused) return;
+    if (!btn || btn.disabled || busy || ctx.poller.paused) return;
     const kind = btn.dataset.kiosk;
     let send: () => Promise<unknown>;
     let done: string;
@@ -185,11 +206,12 @@ export function mountSystem(ctx: Ctx): void {
     } else {
       return;
     }
-    btn.disabled = true;
+    kioskSending.add(btn);
+    syncKeys();
     void send()
       .then(() => kioskStatus(done, true))
       .catch((err: unknown) => kioskStatus(err instanceof Error ? err.message : String(err), true, true))
-      .finally(() => { btn.disabled = watching; });
+      .finally(() => { kioskSending.delete(btn); syncKeys(); });
   });
 
   // ── Power ────────────────────────────────────────────────────────────────
@@ -216,14 +238,25 @@ export function mountSystem(ctx: Ctx): void {
       if (known) b.removeAttribute("title");
       else b.title = "Waiting for the radio's status…";
     }
-    for (const b of kioskBtns) if (watching) b.disabled = true;
+    // Kiosk keys are off from confirm until settle too, and while their own
+    // send is in flight.
+    for (const b of kioskBtns) b.disabled = busy || kioskSending.has(b);
   }
   function settle(): void {
     busy = false;
     watching = false;
-    for (const b of kioskBtns) b.disabled = false;
-    ctx.poller.setPaused(false);
+    ctx.poller.setPaused(false); // every poll due: the verdict and System polls repaint
     syncKeys();
+  }
+  /** While a power action is watched the polls are paused, so nothing else
+   *  would repaint the verdict: show it as unknown (card and top bar) rather
+   *  than a frozen "Healthy". settle() unpauses and the polls repaint it. */
+  function paintWatching(text: string): void {
+    if (card.dataset.verdict !== "unknown") card.dataset.verdict = "unknown";
+    setText(labelEl, "Unknown");
+    setText(reasonEl, text);
+    setText(upEl, "");
+    ctx.shell.setVerdict("unknown", text);
   }
   async function runAction(action: SystemAction): Promise<void> {
     const copy = SYSTEM_ACTION_COPY[action];
@@ -260,9 +293,17 @@ export function mountSystem(ctx: Ctx): void {
       timeoutMs: WATCH_TIMEOUT_MS, probeTimeoutMs: WATCH_PROBE_TIMEOUT_MS,
       onPhase: (phase) => {
         switch (phase) {
-          case "pending": powerStatus(copy.pending); break;
-          case "down": powerStatus(copy.down); break;
-          case "back": powerStatus(copy.back, BACK_MESSAGE_MS); settle(); ctx.live.requestResync(); break;
+          case "pending": powerStatus(copy.pending); paintWatching(copy.pending); break;
+          case "down": powerStatus(copy.down); paintWatching(copy.down); break;
+          case "back":
+            powerStatus(copy.back, BACK_MESSAGE_MS);
+            // The old startedAt belongs to the process that just went away: a
+            // quick second action must wait for the new one's (syncKeys holds
+            // the power keys off while it's null).
+            ctx.live.set({ startedAt: null });
+            settle();
+            ctx.live.requestResync();
+            break;
           case "unchanged": powerStatus(copy.unchanged); settle(); break;
         }
       },
