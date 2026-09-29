@@ -36,7 +36,7 @@
 - Relative imports carry `.js` even from `.ts`; `tsconfig` is `strict` + `noUncheckedIndexedAccess`.
 - **The appliance deadlocks on 2+ concurrent requests.** Every Library read is a `poller.add` poll. Every write is inside a `.run(` call — `lib.run(...)` or `ctx.poller.run(...)`. Never `Promise.all` over requests. `test/adminNext.lane.test.ts` fails the build on a bare write. A poll's `run` must never call `.run(` (deadlock — see `Poller.run` doc).
 - **Write cost follows the server** (`server.ts:864-890`, `:760-790`):
-  - A single-channel add/edit via `/api/channels[/:id]` **re-tunes in place**: no warm-up overlay, no audio chop. **Always use these routes for one channel. Never `putConfig` for a single-channel change.** Duplicate resolve (`POST /api/channels/duplicates/resolve`) also re-tunes (`persistAndReload` → `switchMode` → `retune`, `server.ts:899-907`) — its confirm does not mention a restart.
+  - A single-channel add/edit via `/api/channels[/:id]` **re-tunes in place**: no warm-up overlay, no audio chop. **Always use these routes for one channel. Never `putConfig` for a single-channel change.** Duplicate resolve (`POST /api/channels/duplicates/resolve`) also re-tunes (`persistAndReload` → `switchMode` → `retune`, `server.ts:915-924`) — its confirm does not mention a restart.
   - `putConfig` that changes the channel set, per-bank profile or channel flags (bank bulk edits, bank profile, lockout that archives a channel) **restarts scanning**. Its confirm or status copy says "restarts scanning briefly".
   - `putConfig` that only touches `discoveries` / `lockoutHz` (dismiss, restore, discovery lockout with no channel) is live — no restart.
   - Creating or deleting a bank with no profile fields changes no channel's scan config — live.
