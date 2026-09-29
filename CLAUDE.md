@@ -230,7 +230,7 @@ even with green checks.
   (`src/backend/engine/`), with three implementations: `WidebandEngine`
   (default; spawns the `kerchunk-dsp` C++ helper), `RtlFmEngine` (sequential
   fallback) and `FakeEngine` (tests). `WidebandEngine` passes `--quiet-db` from
-  `scan.nativeQuietDb` (kerchunk-dsp's own dB scale, default −6) and runs
+  `scan.nativeQuietDb` (kerchunk-dsp's own dB scale, default −7) and runs
   liveness watchdogs (ready-timeout and silence-timeout) on the helper.
   Selected via `KERCHUNK_ENGINE=wideband|native|rtlfm|fake` — `native` is an
   alias for `wideband` (the appliance's systemd drop-in still sets it). Because tests use `FakeEngine`,
