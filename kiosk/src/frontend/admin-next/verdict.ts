@@ -14,3 +14,24 @@ export function worseVerdict(health: { verdict: Verdict; reason: string }, alert
   }
   return { verdict: health.verdict, text: health.reason };
 }
+
+/** What the top bar can show: a real verdict, or "unknown" when /api/system
+ *  didn't answer — never a stale "healthy". */
+export type Glance = Verdict | "unknown";
+export const UNREACHABLE_TEXT = "Can't reach the radio";
+
+export interface SystemGlance {
+  health: { verdict: Verdict; reason: string };
+  alerts: SystemAlert[];
+  now?: { tempC?: number | null } | null;
+}
+
+/** The top-bar verdict line (spec §2: "<reason> · <temp>°C"), from one
+ *  /api/system response, or the unknown state when there is none. */
+export function glance(sys: SystemGlance | null): { verdict: Glance; text: string } {
+  if (!sys) return { verdict: "unknown", text: UNREACHABLE_TEXT };
+  const v = worseVerdict(sys.health, sys.alerts);
+  const t = sys.now?.tempC;
+  const reason = v.text.replace(/\.$/, "");
+  return { verdict: v.verdict, text: typeof t === "number" && Number.isFinite(t) ? `${reason} · ${Math.round(t)}°C` : reason };
+}
