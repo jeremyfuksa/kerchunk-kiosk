@@ -395,7 +395,10 @@ is used as decoration.
 
 **The Layer Rule.** The admin reads only `--kc-*`. The ambient pages read
 only layer 1. A colour that isn't a token doesn't go in, not even as a
-`var(--token, #hex)` fallback.
+`var(--token, #hex)` fallback. The one carve-out is the NWS storm palette
+(`dashboard.css`) and the wall/art canvas grounds (`wall.css` / `art.css`).
+These are the only literal colours outside `tokens.css`, and they are
+recorded under Ambient displays.
 
 ## Typography
 
@@ -598,7 +601,9 @@ is danger for destructive actions.
 `.kc-status`: one line per group (and per sheet) that says what just
 happened to *this* group's settings. It shows "Applying in 3 seconds, which
 restarts scanning briefly. Undo available.", "Saved.", an error in coral, or
-a Retry / Undo / Apply link in sea-glass. It takes no room when idle. Focus
+a Retry / Undo / Apply link in sea-glass. It keeps a 40px line reserved
+even when idle, so a message never shifts the rows. Only the System page
+collapses an empty one. Focus
 moves to it when the key that was pressed disappears. It does the toast's job
 where a toast would be too far from the setting.
 
@@ -633,7 +638,8 @@ come back." (`PAUSED_TEXT`). This keeps the watcher's probes alone on the
 wire. Nothing may introduce a second poller or a parallel burst.
 
 **Cost-aware saving.** Every setting has a cost, taken from the server's
-`PUT /api/config` diff (`BAND_COST`, `tuneFields.ts`), and the copy names it
+`PUT /api/config` diff (`BAND_COST` in `admin/engineKnobs.ts`, per-field
+costs in `tuneFields.ts`), and the copy names it
 *before* the operator commits:
 - **Live** ("Applies live"): saved as you go, on change (on blur/Enter for
   text), with an inline "Saved." that fades. Alerts, weather name,
@@ -643,8 +649,9 @@ wire. Nothing may introduce a second poller or a parallel burst.
   behind a countdown (`TUNE_APPLY_DELAY_MS`, 3s). The status line says
   "Applying in 3 seconds, which restarts scanning briefly. Undo available." A
   further change restarts the countdown. One batch causes one engine restart.
-- **Heavy** (Record samples, Remote listening, Advanced → Group shape): an
-  explicit hay "Apply" / "Cancel" instead of a countdown.
+- **Heavy** (Record samples, Advanced → Group shape): a hay-tinted notice
+  with Apply / Cancel keys (Apply is the primary key) instead of a countdown.
+  Remote listening (a Radio switch) asks in the confirm dialog instead.
 - **Backend** ("Needs a backend restart"): saved now, and the copy says it
   takes effect after System → Restart radio backend.
 
@@ -716,7 +723,7 @@ purpose, never as a side effect of admin work. The pages alias them locally
 
 ### Type
 Inter, one face for display, body and data (`FONT_QUERY` for dashboard and
-map; the wall uses system-ui). The kiosk has its own larger ramp, `--k-*`,
+map; the wall canvas uses system-ui, and the art canvas draws no text). The kiosk has its own larger ramp, `--k-*`,
 from `--k-meta` 0.95rem to `--k-clock-lg` 3.7rem, with `--k-alert-xl` 3.3rem
 as the loudest text in the system. Two clamps track viewport width for the
 live channel name and its frequency. It follows the same tabular and
@@ -754,7 +761,9 @@ legends read at distance.
 ### Do (both layers)
 - **Do** take every colour from a token in `tokens.css` (or `PIN_COLORS` for
   service colours), and keep the admin on layer 2 and the ambient pages on
-  layer 1.
+  layer 1. The only literal colours outside `tokens.css` are the NWS storm
+  palette (`dashboard.css`) and the wall/art canvas grounds (`wall.css` /
+  `art.css`), recorded under Ambient displays.
 - **Do** keep text at 4.5:1 or better on ground, raised and key (and on the
   ambient panel), and non-text marks at 3:1 or better.
 - **Do** use `font-variant-numeric: tabular-nums` on any number that can

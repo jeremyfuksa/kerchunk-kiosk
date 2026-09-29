@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-09-29T21:49:28Z",
+  "generatedAt": "2026-09-29T21:55:38Z",
   "title": "Design System: Kerchunk",
   "extensions": {
     "colorMeta": {
@@ -1272,12 +1272,12 @@
       "css": ".ds-lcd { max-width: 26rem; background: #0c1113; border-radius: 14px; padding: 16px 18px 14px; box-shadow: inset 0 0 0 1px #2a3a3a, inset 0 8px 18px #0008; font-family: 'Schibsted Grotesk', system-ui, -apple-system, 'Segoe UI', sans-serif; } .ds-lcd__meta { display: flex; justify-content: space-between; align-items: center; color: #5fd4c3; opacity: 0.75; font-size: 0.82rem; font-weight: 600; } .ds-lcd__meta > span { display: inline-flex; align-items: center; gap: 8px; } .ds-lcd__name { color: #d9f5f0; font-size: 1.5rem; font-weight: 700; line-height: 1.15; margin: 8px 0 4px; } .ds-lcd__freq { color: #5fd4c3; font-size: 2.6rem; font-weight: 800; line-height: 1; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; text-shadow: 0 0 12px color-mix(in srgb, #5fd4c3 35%, transparent); } .ds-lcd__freq small { font-size: 0.38em; font-weight: 600; letter-spacing: 0; margin-left: 6px; } .ds-meter { display: inline-flex; gap: 2px; align-items: flex-end; height: 12px; } .ds-meter i { width: 3px; background: currentColor; opacity: 0.25; border-radius: 1px; } .ds-meter i:nth-child(1) { height: 4px; } .ds-meter i:nth-child(2) { height: 7px; } .ds-meter i:nth-child(3) { height: 10px; } .ds-meter i:nth-child(4) { height: 12px; } .ds-meter i.on { opacity: 1; }"
     },
     {
-      "name": "Group with Rows",
+      "name": "Channel List (Library)",
       "kind": "card",
       "refersTo": "group",
-      "description": "A raised, borderless group with a small dim sentence-case title; rows separated by the row line only. Service colour appears only as the row dot.",
-      "html": "<section class=\"ds-group\" aria-label=\"Recently heard\"><h2 class=\"ds-group__title\">Recently heard</h2><a class=\"ds-row\" href=\"#\"><span class=\"ds-row__name\"><i class=\"ds-dot\" style=\"background:#e5383b\"></i>KCFD Dispatch</span><span class=\"ds-row__meta\">154.1300 · 2 min</span></a><a class=\"ds-row\" href=\"#\"><span class=\"ds-row__name\"><i class=\"ds-dot\" style=\"background:#8b5034\"></i>BNSF Road</span><span class=\"ds-row__meta\">160.9200 · 9 min</span></a></section>",
-      "css": ".ds-group { max-width: 26rem; background: #20262d; border-radius: 14px; padding: 6px 0 8px; font-family: 'Schibsted Grotesk', system-ui, -apple-system, 'Segoe UI', sans-serif; color: #e6e9ee; } .ds-group__title { margin: 10px 16px 6px; font-size: 0.82rem; font-weight: 600; color: #a4acb7; } .ds-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; min-height: 44px; box-sizing: border-box; padding: 10px 16px; border-top: 1px solid #232a31; font-size: 1rem; color: inherit; text-decoration: none; } .ds-group__title + .ds-row { border-top: 0; } .ds-row:hover .ds-row__name { color: #d9f5f0; } .ds-row:focus-visible { outline: 2px solid #5fd4c3; outline-offset: -2px; } .ds-row__name { display: inline-flex; align-items: center; gap: 10px; } .ds-dot { width: 8px; height: 8px; border-radius: 50%; } .ds-row__meta { color: #8d96a3; font-size: 0.82rem; font-variant-numeric: tabular-nums; white-space: nowrap; }"
+      "description": "Library's channel list: one raised, borderless group of rows separated by the row line only. Service colour appears only as the 8px row dot; the meta line is tabular (frequency · mode · location).",
+      "html": "<ul class=\"ds-list\" aria-label=\"Channels\"><li class=\"ds-lrow\"><a class=\"ds-lrow__open\" href=\"#\"><i class=\"ds-dot\" style=\"background:#e5383b\"></i><span><span class=\"ds-lrow__name\">KCFD Dispatch</span><span class=\"ds-lrow__meta\">154.1300 · FM · Kansas City</span></span></a></li><li class=\"ds-lrow\"><a class=\"ds-lrow__open\" href=\"#\"><i class=\"ds-dot\" style=\"background:#8b5034\"></i><span><span class=\"ds-lrow__name\">BNSF Road</span><span class=\"ds-lrow__meta\">160.9200 · FM · Argentine Yard</span></span></a></li></ul>",
+      "css": ".ds-list { list-style: none; margin: 0; padding: 0; max-width: 26rem; background: #20262d; border-radius: 14px; overflow: hidden; font-family: 'Schibsted Grotesk', system-ui, -apple-system, 'Segoe UI', sans-serif; color: #e6e9ee; } .ds-lrow { border-top: 1px solid #232a31; } .ds-lrow:first-child { border-top: 0; } .ds-lrow__open { display: flex; align-items: center; gap: 10px; min-height: 44px; box-sizing: border-box; padding: 10px 16px; color: inherit; text-decoration: none; } .ds-lrow__open:hover .ds-lrow__name { color: #d9f5f0; } .ds-lrow__open:focus-visible { outline: 2px solid #5fd4c3; outline-offset: -2px; } .ds-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; } .ds-lrow__name { display: block; font-weight: 500; font-size: 1rem; } .ds-lrow__meta { display: block; color: #8d96a3; font-size: 0.82rem; font-variant-numeric: tabular-nums; }"
     },
     {
       "name": "Switch Row",
@@ -1339,7 +1339,7 @@
       },
       {
         "name": "The Layer Rule",
-        "body": "The admin reads only --kc-*. The ambient pages read only layer 1. A colour that isn't a token doesn't go in, not even as a var(--token, #hex) fallback.",
+        "body": "The admin reads only --kc-*. The ambient pages read only layer 1. A colour that isn't a token doesn't go in, not even as a var(--token, #hex) fallback. The one carve-out is the NWS storm palette (dashboard.css) and the wall/art canvas grounds (wall.css / art.css). These are the only literal colours outside tokens.css, and they are recorded under Ambient displays.",
         "section": "colors"
       },
       {
@@ -1389,7 +1389,7 @@
       },
       {
         "name": "Cost-aware saving",
-        "body": "Every setting has a cost, taken from the server's PUT /api/config diff (BAND_COST, tuneFields.ts), and the copy names it *before* the operator commits: - Live (\"Applies live\"): saved as you go, on change (on blur/Enter for text), with an inline \"Saved.\" that fades. Alerts, weather name, scheduling, lockouts and Maps keys are live. So are channel-detail switches, which re-tune the running engine in place with no restart. - Restarts scanning (\"restarts scanning briefly\"): batched per group behind a countdown (TUNE_APPLY_DELAY_MS, 3s). The status line says \"Applying in 3 seconds, which restarts scanning briefly. Undo available.\" A further change restarts the countdown. One batch causes one engine restart. - Heavy (Record samples, Remote listening, Advanced → Group shape): an explicit hay \"Apply\" / \"Cancel\" instead of a countdown. - Backend (\"Needs a backend restart\"): saved now, and the copy says it takes effect after System → Restart radio backend.",
+        "body": "Every setting has a cost, taken from the server's PUT /api/config diff (BAND_COST in admin/engineKnobs.ts, per-field costs in tuneFields.ts), and the copy names it *before* the operator commits: - Live (\"Applies live\"): saved as you go, on change (on blur/Enter for text), with an inline \"Saved.\" that fades. Alerts, weather name, scheduling, lockouts and Maps keys are live. So are channel-detail switches, which re-tune the running engine in place with no restart. - Restarts scanning (\"restarts scanning briefly\"): batched per group behind a countdown (TUNE_APPLY_DELAY_MS, 3s). The status line says \"Applying in 3 seconds, which restarts scanning briefly. Undo available.\" A further change restarts the countdown. One batch causes one engine restart. - Heavy (Record samples, Advanced → Group shape): a hay-tinted notice with Apply / Cancel keys (Apply is the primary key) instead of a countdown. Remote listening (a Radio switch) asks in the confirm dialog instead. - Backend (\"Needs a backend restart\"): saved now, and the copy says it takes effect after System → Restart radio backend.",
         "section": "behaviour"
       },
       {
@@ -1449,7 +1449,7 @@
       }
     ],
     "dos": [
-      "Do take every colour from a token in tokens.css (or PIN_COLORS for service colours), and keep the admin on layer 2 and the ambient pages on layer 1.",
+      "Do take every colour from a token in tokens.css (or PIN_COLORS for service colours), and keep the admin on layer 2 and the ambient pages on layer 1. The only literal colours outside tokens.css are the NWS storm palette (dashboard.css) and the wall/art canvas grounds (wall.css / art.css), recorded under Ambient displays.",
       "Do keep text at 4.5:1 or better on ground, raised and key (and on the ambient panel), and non-text marks at 3:1 or better.",
       "Do use font-variant-numeric: tabular-nums on any number that can change while being watched.",
       "Do keep frequencies at four decimals.",
