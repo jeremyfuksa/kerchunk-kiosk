@@ -20,6 +20,7 @@ import { dbText, emptyState, group, key, lcd, meterLit, switchRow } from "./ui/k
 import { lcdKey, lcdView, type LiveState } from "./live.js";
 import { POLL_MS } from "./poller.js";
 import type { Ctx } from "./ctx.js";
+import { ago } from "./time.js";
 
 /** How many "recently heard" rows to show. */
 export const RECENT_COUNT = 8;
@@ -44,15 +45,6 @@ type Stats = {
   topChannels: Array<{ alphaTag: string; freq: number; hits: number; airtimeMs: number }>;
   byHour: number[];
 };
-
-function ago(ts: number): string {
-  const s = Math.max(0, Math.round((Date.now() - ts) / 1000));
-  if (s < 60) return "just now";
-  const m = Math.round(s / 60);
-  if (m < 60) return `${m} min ago`;
-  const h = Math.round(m / 60);
-  return h < 24 ? `${h} h ago` : new Date(ts).toLocaleDateString();
-}
 
 function airtime(ms: number): string {
   const m = Math.round(ms / 60000);
