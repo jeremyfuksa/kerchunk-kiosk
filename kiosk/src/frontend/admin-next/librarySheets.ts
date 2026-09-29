@@ -6,11 +6,13 @@
 //
 // The bank list re-renders on every store update while the sheet is open, but
 // a profile form (or the create-a-bank form) that the operator is mid-typing
-// in is left alone: the whole body is skipped while any field is dirty or
-// focused, so a poll landing mid-edit can't overwrite what they typed. On a
-// render that does happen, `<details>` open/closed state and DOM focus (by
-// element id — every id here is a stable bank id, not a rebuilt list index)
-// are restored.
+// in is left alone: only that ONE bank's `<details>` (or the create form) is
+// skipped, patched node-by-node rather than via one big innerHTML replace, so
+// a poll landing mid-edit can't overwrite what's being typed there while
+// everything else (other banks' counts/profiles, a bank added or removed
+// elsewhere) still stays current. `<details>` open/closed state and DOM focus
+// (by element id — every id here is a stable bank id, not a rebuilt list
+// index) are restored across a patch.
 import type { Bank, Channel } from "../../backend/config/schema.js";
 import { matchesBank } from "../../backend/config/banks.js";
 import { api, type ArchiveRec, type DuplicateSet } from "../lib/api.js";
@@ -110,21 +112,27 @@ export function mountSheets(lib: LibCtx, host: HTMLElement): { openBanks(): void
   const sheet = mountSheet(host, { id: "kcLibSheet", label: "Banks" });
   const body = sheet.body;
   const byId = <T extends HTMLElement>(id: string): T | null => document.getElementById(id) as T | null;
+  const closeButton = (): HTMLElement | null => host.querySelector<HTMLElement>("#kcLibSheet .kc-sheet__close");
 
   let mode: "banks" | "suggestions" | null = null;
-  let renderedKind: "banks" | "suggestions" | null = null;
-  let lastBanksHtml = "";
   let lastSuggestionsHtml = "";
-  /** Bank ids (or "create") with an unsaved edit — that form is left alone
-   *  across a re-render until the edit is saved or the sheet closes. */
+  /** Bank ids (or "create") with an unsaved edit — that ONE form is left
+   *  alone across a re-render until the edit is saved, its bank is deleted,
+   *  or the sheet closes. */
   const dirty = new Set<string>();
   const expanded = new Set<string>();
   let createOpen = false;
+  /** The rec ids shown the last time renderSuggestions actually repainted —
+   *  lets an Archive click that removes a row hand focus to the row that
+   *  took its place. */
+  let prevRecIds: string[] = [];
+  /** Set by the "Add channel here" click; consumed once, after the sheet's
+   *  own close event has restored focus to whatever opened it. */
+  let pendingNav: string | null = null;
 
-  function isDirtyOrFocused(): boolean {
-    if (dirty.size > 0) return true;
+  function isFocusedWithin(el: Element | null): boolean {
     const a = document.activeElement;
-    return a instanceof HTMLElement && body.contains(a) && !!a.closest("[data-bank-form], #kcLibBankCreate");
+    return !!el && a instanceof HTMLElement && el.contains(a);
   }
   function focusKey(): string | null {
     const a = document.activeElement;
@@ -140,25 +148,57 @@ export function mountSheets(lib: LibCtx, host: HTMLElement): { openBanks(): void
   }
 
   // ── Manage banks ───────────────────────────────────────────────────────────
-  function banksHtml(): string {
+  // Patched per bank (and the create form) rather than one big innerHTML
+  // replace, so a form the operator is mid-typing in — its bank id (or
+  // "create") is in `dirty`, or it currently holds focus — is skipped while
+  // every other bank still repaints. `force` bypasses that skip for specific
+  // keys (used right after a save/create succeeds, when the target key is
+  // clean but focus is still sitting on the key that triggered it).
+  function renderBanks(force: true | ReadonlySet<string> | false = false): void {
+    if (mode !== "banks" || !sheet.isOpen()) return;
+    if (!body.querySelector("#kcBankList")) {
+      body.innerHTML = `<div class="kc-group" id="kcBankList"></div><div id="kcBankCreateHost"></div>`;
+    }
+    const list = body.querySelector<HTMLElement>("#kcBankList")!;
+    const createHost = body.querySelector<HTMLElement>("#kcBankCreateHost")!;
     const banks = lib.store.data?.cfg.banks ?? [];
     const channels = lib.store.data?.channels ?? [];
-    const list = banks.length
-      ? `<div class="kc-group">${banks.map((b) => bankGroupHtml(b, channels, expanded)).join("")}</div>`
-      : emptyState("No banks yet.");
-    return `${list}${createBankHtml(createOpen)}`;
-  }
+    const forced = (k: string): boolean => force === true || (force !== false && force.has(k));
 
-  function renderBanks(force = false): void {
-    if (mode !== "banks" || !sheet.isOpen()) return;
-    if (!force && isDirtyOrFocused()) return;
-    const html = banksHtml();
-    if (!force && renderedKind === "banks" && html === lastBanksHtml) return;
-    lastBanksHtml = html;
-    renderedKind = "banks";
-    const fk = focusKey();
-    body.innerHTML = html;
-    restoreFocus(fk);
+    // Drop rows for banks that no longer exist (and any dirty flag for them —
+    // there's nothing left to save).
+    for (const el of Array.from(list.children) as HTMLElement[]) {
+      const id = el.dataset.bank;
+      if (id && !banks.some((b) => b.id === id)) { el.remove(); dirty.delete(`bank:${id}`); }
+    }
+
+    if (!banks.length) {
+      if (!list.querySelector(".kc-empty")) list.innerHTML = emptyState("No banks yet.");
+    } else {
+      list.querySelector(".kc-empty")?.remove();
+      for (const b of banks) {
+        const existing = list.querySelector<HTMLElement>(`[data-bank="${CSS.escape(b.id)}"]`);
+        if (!forced(b.id) && (dirty.has(`bank:${b.id}`) || isFocusedWithin(existing))) continue;
+        const html = bankGroupHtml(b, channels, expanded);
+        if (existing) {
+          if (existing.outerHTML === html) continue;
+          const fk = focusKey();
+          existing.outerHTML = html;
+          restoreFocus(fk);
+        } else {
+          list.insertAdjacentHTML("beforeend", html);
+        }
+      }
+    }
+
+    if (forced("create") || !(dirty.has("create") || isFocusedWithin(createHost))) {
+      const html = createBankHtml(createOpen);
+      if (createHost.innerHTML !== html) {
+        const fk = focusKey();
+        createHost.innerHTML = html;
+        restoreFocus(fk);
+      }
+    }
   }
 
   async function saveProfile(id: string): Promise<void> {
@@ -181,6 +221,9 @@ export function mountSheets(lib: LibCtx, host: HTMLElement): { openBanks(): void
     } catch (e) { setStatus(`kcBank-${id}-status`, msg(e)); return; }
     dirty.delete(`bank:${id}`);
     setStatus(`kcBank-${id}-status`, "Saved — scanning restarted briefly.");
+    // The form is clean now, but focus is still on the Save key (inside the
+    // form container this render would otherwise skip) — force just this bank.
+    renderBanks(new Set([id]));
   }
 
   async function bulk(id: string, kind: "audible" | "silent" | "archive"): Promise<void> {
@@ -196,6 +239,9 @@ export function mountSheets(lib: LibCtx, host: HTMLElement): { openBanks(): void
     }
     const patch = kind === "audible" ? { enabled: true, audible: true } : kind === "silent" ? { enabled: true, audible: false } : { enabled: false };
     const label = kind === "audible" ? "Made audible" : kind === "silent" ? "Made silent" : "Archived";
+    // Archive's confirm already says so; audible/silent have no confirm, so
+    // the toast is where the restart gets said.
+    const restartNote = kind === "archive" ? "" : " Scanning restarted briefly.";
     let before = new Map<string, Pick<Channel, "enabled" | "audible">>();
     try {
       await lib.run(async () => {
@@ -208,8 +254,8 @@ export function mountSheets(lib: LibCtx, host: HTMLElement): { openBanks(): void
         await api.putConfig(cfg);
       });
     } catch (e) { lib.dialogs.toast(`Couldn't update ${bank.name}: ${msg(e)}`); return; }
-    if (!before.size) return;
-    lib.dialogs.toast(`${label} — ${before.size} channel${before.size === 1 ? "" : "s"}.`, {
+    if (!before.size) { lib.dialogs.toast(`No channels in ${bank.name}.`); return; }
+    lib.dialogs.toast(`${label} — ${before.size} channel${before.size === 1 ? "" : "s"}.${restartNote}`, {
       undo: () => lib.run(async () => {
         const cfg = await api.getConfig();
         cfg.channels = cfg.channels.map((c) => (before.has(c.id) ? { ...c, ...before.get(c.id)! } : c));
@@ -221,8 +267,10 @@ export function mountSheets(lib: LibCtx, host: HTMLElement): { openBanks(): void
   async function deleteBank(id: string): Promise<void> {
     const bank = lib.store.data?.cfg.banks?.find((b) => b.id === id);
     if (!bank) return;
+    const hasProfile = !!profileText(bank);
     const ok = await lib.dialogs.confirm({
-      title: `Delete bank ${bank.name}?`, message: "Its channels stay in the library and keep scanning.",
+      title: `Delete bank ${bank.name}?`,
+      message: `Its channels stay in the library and keep scanning.${hasProfile ? " Scanning restarts briefly." : ""}`,
       confirmLabel: "Delete bank", danger: true,
     });
     if (!ok) return;
@@ -232,7 +280,8 @@ export function mountSheets(lib: LibCtx, host: HTMLElement): { openBanks(): void
         cfg.banks = (cfg.banks ?? []).filter((x) => x.id !== id);
         await api.putConfig(cfg);
       });
-    } catch (e) { lib.dialogs.toast(`Couldn't delete ${bank.name}: ${msg(e)}`); }
+    } catch (e) { lib.dialogs.toast(`Couldn't delete ${bank.name}: ${msg(e)}`); return; }
+    dirty.delete(`bank:${id}`);
   }
 
   async function createBank(): Promise<void> {
@@ -259,16 +308,41 @@ export function mountSheets(lib: LibCtx, host: HTMLElement): { openBanks(): void
     const band = byId<HTMLSelectElement>("kcBankNewBand"); if (band) band.value = "";
     setStatus("kcBankNewStatus", "");
     lib.dialogs.toast(`Created ${bank.name}.`);
+    // Clean now, but focus is on the Create key inside the form container —
+    // force so the new bank shows up in the list immediately.
+    renderBanks(new Set(["create"]));
   }
 
   // ── Suggestions ──────────────────────────────────────────────────────────
+  // Whole-body replace (no per-row forms to protect here), but focus is
+  // preserved across it: the row's own key if it's still there, else the row
+  // that took its place, else the sheet's close button.
   function renderSuggestions(force = false): void {
     if (mode !== "suggestions" || !sheet.isOpen()) return;
-    const html = suggestionsHtml(lib.store.dups, lib.store.recs);
-    if (!force && renderedKind === "suggestions" && html === lastSuggestionsHtml) return;
+    const dups = lib.store.dups;
+    const recs = lib.store.recs;
+    const html = suggestionsHtml(dups, recs);
+    if (!force && html === lastSuggestionsHtml) return;
     lastSuggestionsHtml = html;
-    renderedKind = "suggestions";
+
+    const active = document.activeElement;
+    const focusedId = active instanceof HTMLElement && body.contains(active) ? active.id : null;
+    const focusedRecId = focusedId ? /^kcLibArchiveRec-(.+)$/.exec(focusedId)?.[1] ?? null : null;
+    const oldRecIds = prevRecIds;
+    const oldIdx = focusedRecId ? oldRecIds.indexOf(focusedRecId) : -1;
+
     body.innerHTML = html;
+    prevRecIds = recs.map((r) => r.id);
+
+    if (!focusedId) return; // nothing was focused — a background poll must not steal it
+    let target = byId<HTMLElement>(focusedId);
+    if (!target && oldIdx >= 0) {
+      for (const idx of [oldIdx + 1, oldIdx - 1]) {
+        const candId = oldRecIds[idx];
+        if (candId) { target = byId<HTMLElement>(`kcLibArchiveRec-${candId}`); if (target) break; }
+      }
+    }
+    (target ?? closeButton())?.focus();
   }
 
   async function resolveDuplicatesAction(): Promise<void> {
@@ -291,7 +365,9 @@ export function mountSheets(lib: LibCtx, host: HTMLElement): { openBanks(): void
     const name = rec ? channelName(rec) : "channel";
     try { await lib.run(() => api.updateChannel(id, { enabled: false })); }
     catch (e) { lib.dialogs.toast(`Couldn't archive ${name}: ${msg(e)}`); return; }
-    lib.dialogs.toast(`Archived ${name}.`, { undo: async () => { await lib.run(() => api.updateChannel(id, { enabled: true })); } });
+    lib.dialogs.toast(`Archived ${name}.`, {
+      undo: async () => { await lib.run(() => api.updateChannel(id, { enabled: true })); lib.refresh("suggestions"); },
+    });
     lib.refresh("suggestions");
   }
 
@@ -308,7 +384,16 @@ export function mountSheets(lib: LibCtx, host: HTMLElement): { openBanks(): void
     if ((id = idAfter(el.id, "kcBankAudible-"))) { void bulk(id, "audible"); return; }
     if ((id = idAfter(el.id, "kcBankSilent-"))) { void bulk(id, "silent"); return; }
     if ((id = idAfter(el.id, "kcBankArchive-"))) { void bulk(id, "archive"); return; }
-    if ((id = idAfter(el.id, "kcBankAdd-"))) { sheet.close(); return; } // let the <a>'s navigation continue
+    if ((id = idAfter(el.id, "kcBankAdd-"))) {
+      // Close first, navigate after — in the sheet's own close handler, once
+      // it's restored focus to whatever opened it — so the detail sheet that
+      // the new hash opens is the last thing to grab focus, not the sheet
+      // this leaves behind. A real <a> would otherwise navigate mid-close.
+      ev.preventDefault();
+      pendingNav = el.getAttribute("href");
+      sheet.close();
+      return;
+    }
     if ((id = idAfter(el.id, "kcBankDelete-"))) { void deleteBank(id); return; }
     if (el.id === "kcBankNewSave") { void createBank(); return; }
     if (el.id === "kcLibDupResolve") { void resolveDuplicatesAction(); return; }
@@ -335,7 +420,19 @@ export function mountSheets(lib: LibCtx, host: HTMLElement): { openBanks(): void
     else if (mode === "suggestions") renderSuggestions();
   });
 
-  sheet.onClose(() => { mode = null; renderedKind = null; dirty.clear(); });
+  sheet.onClose(() => {
+    mode = null; lastSuggestionsHtml = ""; prevRecIds = []; dirty.clear();
+    if (pendingNav) {
+      const href = pendingNav;
+      pendingNav = null;
+      // If the hash is already what "Add channel here" points to (the add
+      // detail for this bank's tag is already open beside/behind this
+      // sheet), a hash assignment fires no navigation event and the detail
+      // wouldn't (re)open — but it's already showing the right thing, so
+      // there's nothing to do: closing to it, not to nothing.
+      if (location.hash !== href) location.hash = href;
+    }
+  });
 
   return {
     openBanks() { mode = "banks"; sheet.open({ title: "Manage banks" }); renderBanks(true); },
