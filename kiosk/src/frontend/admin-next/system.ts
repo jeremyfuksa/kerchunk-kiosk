@@ -33,6 +33,16 @@ export const WATCH_PROBE_TIMEOUT_MS = 4000; // a rebooting host swallows connect
 export const BACK_MESSAGE_MS = 8000;        // how long "…is back" stays
 export const KIOSK_STATUS_MS = 6000;        // how long a kiosk-action result stays
 
+/** A status line's text; errors are wrapped so `.kc-status [data-kind="error"]`
+ *  paints them coral. Always textContent — server error text is untrusted. */
+function setStatus(node: HTMLElement, text: string, error: boolean): void {
+  if (!error) { node.textContent = text; return; }
+  const span = document.createElement("span");
+  span.dataset.kind = "error";
+  span.textContent = text;
+  node.replaceChildren(span);
+}
+
 const PROTECTION_NOTE = "Protection is on: the box is above its thermal limit. Close Call and sweep ranges stay off until it cools.";
 
 export function mountSystem(ctx: Ctx): void {
@@ -74,8 +84,11 @@ export function mountSystem(ctx: Ctx): void {
 
   // ── Verdict, uptime, alerts ──────────────────────────────────────────────
   // The most recent snapshot's `now.ts` is server time: uptime is measured
-  // against it so a phone with a skewed clock still reads right.
+  // against it so a phone with a skewed clock still reads right. It's only
+  // trusted while fresh (off the System tab the poll stops); a stale one
+  // falls back to the local clock.
   let lastServerTs: number | null = null;
+  let lastServerAt = 0; // local receipt time of lastServerTs
   let lastAlertSig = "";
   let lastVitals = "";
 
@@ -84,7 +97,11 @@ export function mountSystem(ctx: Ctx): void {
   }
 
   function paintUptime(): void {
-    setText(upEl, uptimeText(ctx.live.state.startedAt, lastServerTs ?? Date.now()));
+    const local = Date.now();
+    const fresh = lastServerTs !== null && local - lastServerAt <= 2 * POLL_MS.system;
+    // Fresh: server time advanced by the local time elapsed since receipt.
+    const now = fresh ? lastServerTs! + (local - lastServerAt) : local;
+    setText(upEl, uptimeText(ctx.live.state.startedAt, now));
   }
 
   function paintVerdict(sys: SystemSnapshot | null): void {
@@ -92,7 +109,7 @@ export function mountSystem(ctx: Ctx): void {
     if (card.dataset.verdict !== v.verdict) card.dataset.verdict = v.verdict;
     setText(labelEl, v.label);
     setText(reasonEl, v.reason);
-    if (sys?.now && typeof sys.now.ts === "number") lastServerTs = sys.now.ts;
+    if (sys?.now && typeof sys.now.ts === "number") { lastServerTs = sys.now.ts; lastServerAt = Date.now(); }
     paintUptime();
     if (!sys) return;
     const { protection, alerts } = alertsView(sys);
@@ -135,20 +152,21 @@ export function mountSystem(ctx: Ctx): void {
       paintVitals(sys);
     },
   });
-  ctx.live.subscribe(() => paintUptime());
 
   // ── Kiosk screen ─────────────────────────────────────────────────────────
   let alertIdx = 0;
   let kioskTimer: ReturnType<typeof setTimeout> | undefined;
-  function kioskStatus(text: string, clear: boolean): void {
+  function kioskStatus(text: string, clear: boolean, error = false): void {
     if (kioskTimer !== undefined) clearTimeout(kioskTimer);
     kioskTimer = undefined;
-    kioskStatusEl.textContent = text;
+    setStatus(kioskStatusEl, text, error);
     if (clear) kioskTimer = setTimeout(() => { kioskStatusEl.textContent = ""; }, KIOSK_STATUS_MS);
   }
+  const kioskBtns = [...el.querySelectorAll<HTMLButtonElement>("[data-kiosk]")];
   el.querySelector<HTMLElement>("#kcSysKiosk")!.addEventListener("click", (e) => {
     const btn = (e.target as HTMLElement).closest<HTMLButtonElement>("[data-kiosk]");
-    if (!btn || btn.disabled) return;
+    // Paused = a power action is being watched: its probes must stay alone.
+    if (!btn || btn.disabled || ctx.poller.paused) return;
     const kind = btn.dataset.kiosk;
     let send: () => Promise<unknown>;
     let done: string;
@@ -157,8 +175,9 @@ export function mountSystem(ctx: Ctx): void {
       send = () => ctx.poller.run(() => api.reloadKiosk());
       done = "Refresh sent.";
     } else if (kind === "alert") {
-      const tag = TEST_ALERTS[alertIdx++ % TEST_ALERTS.length]!;
-      send = () => ctx.poller.run(() => api.testAlert({ alphaTag: tag }));
+      const tag = TEST_ALERTS[alertIdx % TEST_ALERTS.length]!;
+      // The cycle advances only once this type actually showed.
+      send = () => ctx.poller.run(() => api.testAlert({ alphaTag: tag })).then(() => { alertIdx++; });
       done = `Showing “${tag}” on the kiosk — press again for the next type.`;
     } else if (kind === "clear") {
       send = () => ctx.poller.run(() => api.testAlert({ clear: true }));
@@ -169,23 +188,42 @@ export function mountSystem(ctx: Ctx): void {
     btn.disabled = true;
     void send()
       .then(() => kioskStatus(done, true))
-      .catch((err: unknown) => kioskStatus(err instanceof Error ? err.message : String(err), true))
-      .finally(() => { btn.disabled = false; });
+      .catch((err: unknown) => kioskStatus(err instanceof Error ? err.message : String(err), true, true))
+      .finally(() => { btn.disabled = watching; });
   });
 
   // ── Power ────────────────────────────────────────────────────────────────
   const powerBtns = [...el.querySelectorAll<HTMLButtonElement>("[data-power]")];
   let watcher: SystemActionWatcher | undefined;
   let powerTimer: ReturnType<typeof setTimeout> | undefined;
-  function powerStatus(text: string, clearMs?: number): void {
+  // True from confirm until the watcher settles (or the send fails): every
+  // System key is off, since the watcher's probes must be alone on the wire.
+  let busy = false;
+  let watching = false;
+  function powerStatus(text: string, clearMs?: number, error = false): void {
     if (powerTimer !== undefined) clearTimeout(powerTimer);
     powerTimer = undefined;
-    powerStatusEl.textContent = text;
+    setStatus(powerStatusEl, text, error);
     if (clearMs !== undefined) powerTimer = setTimeout(() => { powerStatusEl.textContent = ""; }, clearMs);
   }
+  /** Power keys need the running process's startedAt: without a baseline
+   *  the watcher can't tell a restarted process from the one it asked, and
+   *  a real restart could read as "didn't restart". */
+  function syncKeys(): void {
+    const known = ctx.live.state.startedAt !== null;
+    for (const b of powerBtns) {
+      b.disabled = busy || !known;
+      if (known) b.removeAttribute("title");
+      else b.title = "Waiting for the radio's status…";
+    }
+    for (const b of kioskBtns) if (watching) b.disabled = true;
+  }
   function settle(): void {
-    for (const b of powerBtns) b.disabled = false;
+    busy = false;
+    watching = false;
+    for (const b of kioskBtns) b.disabled = false;
     ctx.poller.setPaused(false);
+    syncKeys();
   }
   async function runAction(action: SystemAction): Promise<void> {
     const copy = SYSTEM_ACTION_COPY[action];
@@ -195,18 +233,24 @@ export function mountSystem(ctx: Ctx): void {
       confirmLabel: copy.confirmLabel, danger: true,
     });
     if (!ok) return;
-    const baseline = ctx.live.state.startedAt ?? undefined;
-    for (const b of powerBtns) b.disabled = true;
+    const baseline = ctx.live.state.startedAt;
+    if (baseline === null || busy) return; // keys are off without one; belt and braces
+    busy = true;
+    syncKeys();
     powerStatus(copy.pending);
     try {
       await ctx.poller.run(() => (action === "restart" ? api.restartBackend() : api.powerAction(action)));
     } catch (e) {
       // The send failed, so nothing is going down: recover now.
-      powerStatus(e instanceof Error ? e.message : String(e));
-      for (const b of powerBtns) b.disabled = false;
+      powerStatus(e instanceof Error ? e.message : String(e), undefined, true);
+      busy = false;
+      syncKeys();
       return;
     }
-    // From here the watcher's probes are the only requests: pause the polls.
+    // From here the watcher's probes are the only requests: pause the polls
+    // and take the kiosk keys off with the power keys.
+    watching = true;
+    syncKeys();
     ctx.poller.setPaused(true);
     watcher?.stop();
     watcher = new SystemActionWatcher({
@@ -227,8 +271,11 @@ export function mountSystem(ctx: Ctx): void {
   }
   el.querySelector<HTMLElement>("#kcSysPower")!.addEventListener("click", (e) => {
     const btn = (e.target as HTMLElement).closest<HTMLButtonElement>("[data-power]");
-    if (!btn || btn.disabled) return;
+    if (!btn || btn.disabled || busy) return;
     const action = btn.dataset.power;
     if (action === "restart" || action === "reboot" || action === "poweroff") void runAction(action);
   });
+
+  // Uptime and the power keys' baseline both follow the live store.
+  ctx.live.subscribe(() => { paintUptime(); syncKeys(); });
 }
