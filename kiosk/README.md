@@ -44,7 +44,7 @@ Squelch is per-channel power over an adaptive group noise floor **and** FM
 quieting detection, with fade ramps, a speaker AGC/compressor that levels
 every transmission, and a peak limiter. The defaults (thresholds, hang times,
 fade/AGC/limiter constants) live in `native/src/constants.hpp`; the operator
-knobs are `scan.openAboveFloorDb`, `scan.nativeQuietDb` (quieting, default −6
+knobs are `scan.openAboveFloorDb`, `scan.nativeQuietDb` (quieting, default −7
 on the helper's own dB scale; lower = stricter), `scan.nativeAmGainDb`, and
 the `audio.agc*` / `audio.limiter*` loudness knobs (see
 [`docs/DEPLOY.md`](../docs/DEPLOY.md)) in config.

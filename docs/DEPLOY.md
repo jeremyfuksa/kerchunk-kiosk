@@ -121,7 +121,7 @@ Notes:
   filters, speaker AGC/limiter, watchdogs) is editable under Settings → **Sound**
   and **Advanced (engine)**. Each band says what a save costs; blank = default.
 - The quieting knob is `scan.nativeQuietDb` (the helper's own dB scale,
-  default −6; lower = stricter), exposed in the admin as "Quieting
+  default −7; lower = stricter), exposed in the admin as "Quieting
   threshold". Legacy configs may still hold the retired GNU-Radio-scale
   `noiseQuietDb` / `detectVia`; the schema strips them on load.
 - `scan.nativeAmGainDb` (dB, −30…+20, default 0) balances airband/AM loudness

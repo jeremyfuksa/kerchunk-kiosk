@@ -178,7 +178,7 @@ export const configSchema = z.object({
     // (rejects spurs/AGC pumping/broadband bursts — non-voice junk). On
     // kerchunk-dsp's own scale: lower = more quieted; dead channels read ~-2,
     // keyed carriers ~-30. Passed as --quiet-db. Omitted = the helper's
-    // QUIET_DB_DEFAULT (-6). (Legacy configs may still carry the retired
+    // QUIET_DB_DEFAULT (-7). (Legacy configs may still carry the retired
     // GNU-Radio-scale `noiseQuietDb` — the schema strips it on load.)
     nativeQuietDb: z.number().optional(),
     // AM speaker gain offset (dB): balances airband loudness against FM by

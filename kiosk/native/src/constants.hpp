@@ -65,9 +65,11 @@ inline constexpr double QUIET_HYST_DB = 2.0;
 // --quiet-db.
 // 2026-09-27 txstats calibration (15.5k real episodes, 23 h, kiosk/bench/squelch_calibrate.py): -6 and
 // -7 both sit at the knee in every band. With two junk channels archived, -7 loses 1 weak 2 m open
-// for 7 fewer junk carriers; the appliance runs scan.nativeQuietDb -7. The default stays -6 until
-// data logged at -7 confirms it.
-inline constexpr double QUIET_DB_DEFAULT = -6.0;
+// for 7 fewer junk carriers; the appliance runs scan.nativeQuietDb -7.
+// 2026-09-28 re-run on 22.5 h logged AT -7 (11.4k episodes): -7 is the knee in every band (2 m 6
+// lost/2 junk vs -6's 6/7; VHF -6 would admit 13 barely-quieted 161.55 carriers; UHF loses 1 open,
+// -8 loses 5; airband none) -> default moved to -7.
+inline constexpr double QUIET_DB_DEFAULT = -7.0;
 inline constexpr double FLOOR_ALPHA_UP = 0.01005;  // GR 0.02 per 20 ms
 inline constexpr double FLOOR_ALPHA_DOWN = 0.1056; // GR 0.2 per 20 ms
 inline constexpr double SKIP_HOLDOFF_S = 10.0;
