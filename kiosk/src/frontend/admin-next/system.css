@@ -1,0 +1,37 @@
+/* System — verdict card, vitals, action rows. Faceplate language: tone
+   separation, --kc-line between rows only; coral for power, hay for attention. */
+.kc-sys__head h1 { margin: 8px 0 2px; font-size: var(--kc-t-title); font-weight: 700; }
+.kc-verdictCard { padding: 14px 16px; }
+.kc-verdictCard__line { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; font-size: var(--kc-t-lead); }
+.kc-verdictCard__dot { width: 10px; height: 10px; border-radius: 50%; background: var(--kc-mute); align-self: center; flex: none; }
+.kc-verdictCard[data-verdict="healthy"] .kc-verdictCard__dot { background: var(--kc-ok); }
+.kc-verdictCard[data-verdict="stressed"] .kc-verdictCard__dot { background: var(--kc-hay); }
+.kc-verdictCard[data-verdict="trouble"] .kc-verdictCard__dot { background: var(--kc-coral); }
+.kc-verdictCard__line span { color: var(--kc-dim); font-size: var(--kc-t-body); }
+.kc-verdictCard__up { margin: 4px 0 0 20px; color: var(--kc-mute); font-size: var(--kc-t-small); min-height: 1.2em; }
+.kc-verdictCard__up:empty { display: none; }
+.kc-protect { margin: 12px 0 0; padding: 10px 12px; border-radius: var(--kc-r-key); background: color-mix(in srgb, var(--kc-hay) 12%, var(--kc-ground)); color: var(--kc-hay); font-size: var(--kc-t-small); }
+.kc-alert { display: grid; gap: 2px; margin-top: 10px; padding: 10px 12px; border-radius: var(--kc-r-key); background: var(--kc-key); font-size: var(--kc-t-small); }
+.kc-alert[data-severity="severe"] b { color: var(--kc-coral); }
+.kc-alert[data-severity="attention"] b { color: var(--kc-hay); }
+.kc-alert span { color: var(--kc-ink); }
+.kc-alert small { color: var(--kc-mute); }
+.kc-alert .kc-link { justify-self: start; display: inline-flex; align-items: center; min-height: 40px; }
+.kc-vitals { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
+@media (min-width: 900px) { .kc-vitals { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.kc-vital { background: var(--kc-raised); border-radius: var(--kc-r-group); padding: 12px 14px; min-width: 0; }
+.kc-vital__label { display: block; color: var(--kc-dim); font-size: var(--kc-t-small); font-weight: 600; }
+.kc-vital__value { display: block; font-size: var(--kc-t-lead); font-weight: 700; font-variant-numeric: tabular-nums; margin: 2px 0 6px; overflow-wrap: anywhere; }
+.kc-vital--hot .kc-vital__value { color: var(--kc-coral); }
+.kc-spark2 { width: 100%; height: 28px; display: block; }
+.kc-spark2 polyline { fill: none; stroke: var(--kc-glass); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.kc-vital--hot .kc-spark2 polyline { stroke: var(--kc-coral); }
+.kc-vitals__more { margin: 8px 4px 0; color: var(--kc-mute); font-size: var(--kc-t-small); min-height: 1.2em; }
+.kc-row--btn { width: 100%; box-sizing: border-box; min-height: 48px; background: none; border: 0; border-top: 1px solid var(--kc-line); color: var(--kc-ink); font: inherit; text-align: left; justify-content: flex-start; gap: 12px; cursor: pointer; }
+.kc-group__title + .kc-row--btn { border-top: 0; }
+.kc-row--btn:hover { background: color-mix(in srgb, var(--kc-ink) 4%, transparent); }
+.kc-row--btn:disabled { opacity: 0.5; cursor: progress; }
+.kc-row--danger { color: var(--kc-coral); }
+.kc-row__end { margin-left: auto; color: var(--kc-mute); font-size: var(--kc-t-small); display: inline-flex; align-items: center; gap: 4px; }
+/* An idle status line takes no room; the group grows only while it speaks. */
+.kc-sys .kc-status:empty { min-height: 0; padding: 0; }

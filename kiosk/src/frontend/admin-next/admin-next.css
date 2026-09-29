@@ -10,7 +10,7 @@ html[data-page="admin-next"] body {
 }
 html[data-page="admin-next"] :focus-visible { outline: 2px solid var(--kc-glass); outline-offset: 2px; }
 /* :where() keeps this at (0,0,1) so it never outranks .kc-key--primary's
-   (0,1,0) — an anchor-rendered primary key (e.g. the placeholder's "Open
+   (0,1,0) — an anchor-rendered primary key (e.g. an "Open
    classic …" link) must show its dark ink, not the ambient link colour. */
 :where(html[data-page="admin-next"]) a { color: inherit; }
 @media (prefers-reduced-motion: reduce) {
@@ -117,8 +117,6 @@ html[data-page="admin-next"] :focus-visible { outline: 2px solid var(--kc-glass)
 .kc-row:first-of-type { border-top: 0; }
 .kc-row__meta { color: var(--kc-mute); font-size: var(--kc-t-small); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .kc-empty { margin: 6px 16px 10px; color: var(--kc-mute); font-size: var(--kc-t-small); }
-.kc-placeholder { background: var(--kc-raised); border-radius: var(--kc-r-group); padding: 24px 20px; margin-top: 14px; max-width: 36rem; }
-.kc-placeholder p { margin: 0 0 14px; color: var(--kc-dim); }
 
 /* ── dialogs ── */
 .kc-toastHost { position: fixed; left: 50%; bottom: calc(84px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); z-index: 30; }
