@@ -182,3 +182,15 @@ html[data-page="admin-next"] :focus-visible { outline: 2px solid var(--kc-glass)
 .kc-link { background: none; border: 0; color: var(--kc-dim); font: 600 var(--kc-t-small) var(--kc-font); cursor: pointer; padding: 6px 0; }
 .kc-link:hover { color: var(--kc-ink); }
 @media (prefers-reduced-motion: reduce) { .kc-disclosure__chev, .kc-switchRow input::after { transition: none; } }
+
+/* ── slider (settings) ── */
+.kc-slider { padding: 10px 16px 12px; border-top: 1px solid var(--kc-line); }
+.kc-slider:first-of-type { border-top: 0; }
+.kc-slider__head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.kc-slider__head label { font-size: var(--kc-t-row); font-weight: 500; }
+.kc-slider__val { display: inline-flex; align-items: center; gap: 6px; color: var(--kc-dim); font-size: var(--kc-t-small); }
+.kc-slider__val input { width: 5.5em; min-height: 36px; padding: 4px 8px; border: 0; border-radius: var(--kc-r-key); background: var(--kc-key); color: var(--kc-glass); font: 600 var(--kc-t-body) var(--kc-font); text-align: right; font-variant-numeric: tabular-nums; }
+.kc-slider__hint { margin: 2px 0 8px; color: var(--kc-mute); font-size: var(--kc-t-small); }
+.kc-slider input[type="range"] { width: 100%; accent-color: var(--kc-glass); min-height: 28px; }
+.kc-slider__ends { display: flex; justify-content: space-between; color: var(--kc-mute); font-size: var(--kc-t-meta); }
+.kc-slider input:disabled { opacity: 0.45; cursor: not-allowed; }

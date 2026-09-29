@@ -15,7 +15,7 @@ import { api } from "../lib/api.js";
 import { esc, fmtFreq } from "../lib/format.js";
 import { lockoutFreqIn } from "../lib/lockout.js";
 import { ico, type IconName } from "./ui/icons.js";
-import { dbText, emptyState, group, key, lcd, meterLit } from "./ui/kit.js";
+import { dbText, emptyState, group, key, lcd, meterLit, switchRow } from "./ui/kit.js";
 import { lcdKey, lcdView, type LiveState } from "./live.js";
 import { POLL_MS } from "./poller.js";
 import type { Ctx } from "./ctx.js";
@@ -82,7 +82,7 @@ export function mountRadio(ctx: Ctx): void {
           <input id="kcVol" type="range" min="0" max="100" />
           <button type="button" class="kc-key" id="kcMute" aria-pressed="false"></button>
         </div>
-        <label class="kc-switchRow"><span>Remote listening <small>Stream the speaker to this browser — restarts scanning</small></span><input id="kcRemote" type="checkbox" role="switch" /></label>
+        ${switchRow({ id: "kcRemote", label: "Remote listening", hint: "Stream the speaker to this browser — restarts scanning", checked: false })}
         ${group("Recently heard", `<div id="kcRecent">${emptyState("Loading…")}</div>`)}
       </div>
       <div class="kc-radio__side">

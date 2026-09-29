@@ -60,3 +60,33 @@ export function group(title: string, bodyHtml: string, o: { id?: string } = {}):
 export function emptyState(text: string): string {
   return `<p class="kc-empty">${esc(text)}</p>`;
 }
+
+export interface SliderOpts {
+  id: string; label: string; hint?: string;
+  min: number; max: number; step: number; value: number; unit: string;
+  /** What the low and high ends mean, in plain words ("Quieter", "Louder"). */
+  ends: [string, string];
+  disabled?: boolean;
+}
+
+/** A setting slider: label + typed-entry box on one line, hint, the range,
+ *  then the named ends. The range carries o.id; the box `${o.id}-num`. */
+export function slider(o: SliderOpts): string {
+  const dis = o.disabled ? " disabled" : "";
+  const bounds = `min="${o.min}" max="${o.max}" step="${o.step}" value="${o.value}"`;
+  return `<div class="kc-slider" data-slider="${o.id}">
+    <div class="kc-slider__head">
+      <label for="${o.id}">${esc(o.label)}</label>
+      <span class="kc-slider__val"><input id="${o.id}-num" type="number" inputmode="decimal" ${bounds} aria-label="${esc(o.label)}, exact value"${dis} />${o.unit ? `<b>${esc(o.unit)}</b>` : ""}</span>
+    </div>
+    ${o.hint ? `<p class="kc-slider__hint">${esc(o.hint)}</p>` : ""}
+    <input id="${o.id}" type="range" ${bounds}${dis} />
+    <div class="kc-slider__ends" aria-hidden="true"><span>${esc(o.ends[0])}</span><span>${esc(o.ends[1])}</span></div>
+  </div>`;
+}
+
+/** A labelled on/off switch row (checkbox with role="switch"). */
+export function switchRow(o: { id: string; label: string; hint?: string; checked: boolean; disabled?: boolean }): string {
+  return `<label class="kc-switchRow"><span>${esc(o.label)}${o.hint ? ` <small>${esc(o.hint)}</small>` : ""}</span>`
+    + `<input id="${o.id}" type="checkbox" role="switch"${o.checked ? " checked" : ""}${o.disabled ? " disabled" : ""} /></label>`;
+}
