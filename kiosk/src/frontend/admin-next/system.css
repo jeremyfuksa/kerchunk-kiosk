@@ -35,3 +35,7 @@
 .kc-row__end { margin-left: auto; color: var(--kc-mute); font-size: var(--kc-t-small); display: inline-flex; align-items: center; gap: 4px; }
 /* An idle status line takes no room; the group grows only while it speaks. */
 .kc-sys .kc-status:empty { min-height: 0; padding: 0; }
+
+/* ── Connections sheets ─────────────────────────────────────────────────── */
+.kc-sheet .kc-row .kc-key { box-sizing: border-box; min-height: 44px; padding: 8px 14px; }
+.kc-conn__intro { margin: 4px 4px 12px; color: var(--kc-dim); font-size: var(--kc-t-small); }
