@@ -8,10 +8,10 @@ import { mountDialogs, type Dialogs } from "./dialogs.js";
 import { glance, type SystemGlance } from "./verdict.js";
 import { withAudio } from "./live.js";
 import type { Ctx } from "./ctx.js";
-import { renderPlaceholder } from "./placeholder.js";
 import { mountRadio } from "./radio.js";
 import { mountTune } from "./tune.js";
 import { mountLibrary } from "./library.js";
+import { mountSystem } from "./system.js";
 import { hrefFor } from "./route.js";
 import { esc } from "../lib/format.js";
 
@@ -72,10 +72,10 @@ export function renderAdminNext(root: HTMLElement): void {
     run: () => live.loadWeatherChannel(),
   });
 
-  renderPlaceholder(shell.panel("system"), "system");
   mountRadio(ctx);
   mountTune(ctx);
   mountLibrary(ctx);
+  mountSystem(ctx);
 
   live.connect();
   shell.onRoute((r) => { poller.makeDue(r.tab); void poller.tick(r.tab); });

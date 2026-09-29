@@ -19,11 +19,15 @@ export interface LiveState {
   volume: number;
   remoteListening: boolean;
   dbfs: number | null;
+  /** Backend process start (from /api/status) — uptime, and the
+   *  system-action watcher's baseline. */
+  startedAt: number | null;
 }
 
 export const initialLive: LiveState = {
   mode: "scan", breakIn: false, monitoring: null, nowPlaying: null, audibleDriven: false,
   weatherChannel: null, muted: false, volume: 100, remoteListening: false, dbfs: null,
+  startedAt: null,
 };
 
 const tuned = (c: Channel): Tuned => ({ freq: c.freq, alphaTag: c.alphaTag, mode: c.mode });
@@ -49,12 +53,13 @@ export function reduceEvent(s: LiveState, ev: EngineEvent): { state: LiveState; 
   }
 }
 
-export function withStatus(s: LiveState, st: { mode: LiveState["mode"]; monitor: Channel | null; breakIn?: boolean }): LiveState {
+export function withStatus(s: LiveState, st: { mode: LiveState["mode"]; monitor: Channel | null; breakIn?: boolean; startedAt?: number }): LiveState {
   return {
     ...s,
     mode: st.mode,
     breakIn: st.breakIn === true,
     monitoring: st.mode === "monitor" && st.monitor ? tuned(st.monitor) : null,
+    startedAt: typeof st.startedAt === "number" ? st.startedAt : s.startedAt,
   };
 }
 

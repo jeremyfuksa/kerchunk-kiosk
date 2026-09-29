@@ -116,6 +116,8 @@ describe("admin-next write lane", () => {
     expect(files).toContain("shell.ts");
     expect(files).toContain("library.ts");
     expect(files).toContain("libraryChannels.ts");
+    expect(files).toContain("system.ts");
+    expect(files).toContain("systemConnections.ts");
   });
   for (const f of files) {
     it(`${f}: every write goes through poller.run`, () => {

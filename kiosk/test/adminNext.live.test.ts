@@ -72,3 +72,13 @@ describe("lcdView", () => {
     expect(lcdView(withAudio(initialLive, { volume: 40, muted: false })).silent).toBeNull();
   });
 });
+
+describe("startedAt", () => {
+  it("is null until a status carries it, then kept when a status omits it", () => {
+    expect(initialLive.startedAt).toBeNull();
+    const a = withStatus(initialLive, { mode: "scan", monitor: null, startedAt: 111 });
+    expect(a.startedAt).toBe(111);
+    expect(withStatus(a, { mode: "scan", monitor: null }).startedAt).toBe(111);
+    expect(withStatus(a, { mode: "scan", monitor: null, startedAt: 222 }).startedAt).toBe(222);
+  });
+});

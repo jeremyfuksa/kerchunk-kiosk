@@ -125,3 +125,44 @@ describe("Poller.request", () => {
     expect(ran).toEqual(["a", "b", "b"]);
   });
 });
+
+describe("Poller.setPaused", () => {
+  it("skips passes while paused and makes everything due on resume", async () => {
+    let t = 1_000;
+    const p = new Poller({ now: () => t, hidden: () => false });
+    const ran: string[] = [];
+    p.add({ name: "a", everyMs: 60_000, run: async () => { ran.push("a"); } });
+    await p.tick("system");
+    expect(ran).toEqual(["a"]);
+    p.setPaused(true);
+    expect(p.paused).toBe(true);
+    t += 120_000;
+    await p.tick("system");
+    expect(ran).toEqual(["a"]); // paused: nothing runs even though it's due
+    p.setPaused(false);
+    await p.tick("system");
+    expect(ran).toEqual(["a", "a"]);
+    t += 1_000;
+    p.setPaused(true);
+    p.setPaused(false); // resume makes it due again right away
+    await p.tick("system");
+    expect(ran).toEqual(["a", "a", "a"]);
+  });
+  it("run() refuses while paused (the watcher's probes stay alone) and works again after unpause", async () => {
+    const p = new Poller({ now: () => 0, hidden: () => false });
+    p.setPaused(true);
+    let called = false;
+    await expect(p.run(async () => { called = true; return 7; })).rejects.toThrow("Wait for the radio to come back.");
+    expect(called).toBe(false);
+    p.setPaused(false);
+    await expect(p.run(async () => 8)).resolves.toBe(8);
+  });
+  it("pausing mid-pass stops the rest of that pass", async () => {
+    const p = new Poller({ now: () => 0, hidden: () => false });
+    const ran: string[] = [];
+    p.add({ name: "a", everyMs: 0, run: async () => { ran.push("a"); p.setPaused(true); } });
+    p.add({ name: "b", everyMs: 0, run: async () => { ran.push("b"); } });
+    await p.tick("system");
+    expect(ran).toEqual(["a"]);
+  });
+});

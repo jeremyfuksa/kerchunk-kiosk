@@ -20,7 +20,12 @@ export const POLL_MS = {
   library: 15_000,    // Library: channels + config (discoveries, banks, lockouts) + samples
   suggestions: 120_000, // Library: duplicates + archive suggestions
   analytics: 30_000,  // Library: the open channel's last-24 h history
+  system: 5_000,      // System: /api/system (verdict card, vitals + sparklines)
+  connections: 15_000, // System: /api/config for the Maps state + locked-out frequencies
 } as const;
+
+/** What a write refused during a paused (power-action) watch says. */
+export const PAUSED_TEXT = "Wait for the radio to come back.";
 
 export interface PollSpec {
   name: string;
@@ -34,6 +39,17 @@ export class Poller {
   private readonly polls: Array<PollSpec & { lastAt: number }> = [];
   private ticking = false;
   private started = false;
+  private isPaused = false;
+  get paused(): boolean { return this.isPaused; }
+
+  /** Stop polling (e.g. while a restart/reboot is in flight — the action
+   *  watcher's probes must be the only requests on the wire). Resuming makes
+   *  every poll due so the screen catches up at once. While paused, run()
+   *  rejects too (see run), so no write can join the probes. */
+  setPaused(p: boolean): void {
+    this.isPaused = p;
+    if (!p) for (const q of this.polls) q.lastAt = -Infinity;
+  }
   private readonly now: () => number;
   private readonly hidden: () => boolean;
 
@@ -51,22 +67,29 @@ export class Poller {
    *  before the next pass. The caller gets fn's result or rejection; a
    *  rejection never blocks the lane. Used for every admin-next write.
    *
+   *  While paused it rejects at once with PAUSED_TEXT and fn never runs: a
+   *  power action is being watched, its probes must be alone on the wire,
+   *  and a write queued behind a rebooting host would hang the lane. The
+   *  power send itself is issued before setPaused(true), so nothing
+   *  legitimate needs the lane while paused.
+   *
    *  Never call run() (and await it) from inside a poll's run function, or
    *  from inside another run(): the lane is waiting on that pass to finish,
    *  and the pass would wait on the lane — a deadlock. A poll that needs to
    *  write should raise a flag and let an event handler do the write. */
   run<T>(fn: () => Promise<T>): Promise<T> {
+    if (this.isPaused) return Promise.reject(new Error(PAUSED_TEXT));
     const result = this.lane.then(() => fn());
     this.lane = result.catch(() => {});
     return result;
   }
 
   async tick(tab: Tab): Promise<void> {
-    if (this.ticking || this.hidden()) return;
+    if (this.ticking || this.hidden() || this.isPaused) return;
     this.ticking = true;
     const pass = this.lane.then(async () => {
       for (const p of this.polls) {
-        if (this.hidden()) break;
+        if (this.hidden() || this.isPaused) break;
         if (p.tabs && !p.tabs.includes(tab)) continue;
         if (p.when && !p.when()) continue;
         if (this.now() - p.lastAt < p.everyMs) continue;
