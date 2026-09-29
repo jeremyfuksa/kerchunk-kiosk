@@ -951,7 +951,9 @@ export function renderAdmin(root: HTMLElement): void {
     const cfg = await api.getConfig();
     const alerts = await fetch(`/api/history?kind=alert&since=${since}&limit=200`)
       .then((r) => (r.ok ? r.json() : []));
-    const pending = (cfg.discoveries ?? []).length;
+    // Suppressed discoveries sit outside triage (see renderDiscoveries), so
+    // they don't count toward the badge.
+    const pending = (cfg.discoveries ?? []).filter((d) => !d.suppressedAt).length;
     const navBadge = root.querySelector<HTMLElement>("#navDcCount");
     if (navBadge) navBadge.textContent = pending > 0 ? String(pending) : "";
     const byHour = stats.byHour as number[];
