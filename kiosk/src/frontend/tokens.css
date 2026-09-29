@@ -1,0 +1,75 @@
+/* ── Kerchunk design tokens ──────────────────────────────────────────────
+   Replaces @jeremyfuksa/campfire (removed 2026-09-28, spec
+   docs/superpowers/specs/2026-09-28-admin-redesign-design.md). Two layers:
+
+   LAYER 1 — ambient surfaces (dashboard, wall, map, art). Every property
+   those pages referenced from Campfire, at the value Campfire resolved to on
+   the appliance under `.dark` (night-ramp retune, campfire#59) — now frozen
+   as plain `:root` declarations below, not gated on a `.dark` class
+   (index.html's class="dark" is vestigial). Frozen: the wall's look is
+   proven identical by test/tokens.test.ts against
+   test/fixtures/campfire-dark-resolved.json. Change these only on purpose.
+
+   LAYER 2 — the admin language (`--kc-*`): Faceplate structure, Night desk
+   palette. Measured contrast (WCAG 2.x) on ground / raised / key:
+     ink 14.5 / 12.5 / 11.4   dim 7.7 / 6.7 / 6.1   mute 5.9 / 5.1 / 4.7
+     glass 9.8 / 8.5 / 7.8    coral 8.3 / 7.2 / 6.5  hay 10.5 / 9.1 / 8.3
+     ok 8.9 / 7.7 / 7.0       glass-ink on glass 9.2
+   (test/tokens.test.ts fails any text token under 4.5:1.) */
+
+:root {
+  /* ── Layer 1: ambient surfaces ── */
+  --neutral-300: #b8bcc5;
+  --neutral-500: #7a8090;
+  --neutral-600: #4d525e;
+  --neutral-700: #343842;
+  --bg-base: #0e0f12;
+  --bg-subtle: #16181d;
+  --border-default: #23262d;
+  --border-strong: #343842;
+  --text-primary: #f7f8f9;
+  --text-secondary: #9299a5;
+  --text-tertiary: #7a8090;
+  --spark: #ff6b35;
+  --pine: #4a7c7e;
+  --flamingo: #dc3a38;
+  --golden-amber: #ef991f;
+  --warning-500: #f9c574;
+  --success-400: #9ac35d;
+  --danger-400: #f17d7b;
+  --danger-50: #fef5f4;
+  --danger-800: #9c2524;
+  --font-sans: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+
+  /* ── Layer 2: admin (Faceplate × Night desk) ── */
+  --kc-ground: #15191f;      /* page ground, blue-slate */
+  --kc-raised: #20262d;      /* grouped surfaces */
+  --kc-key: #262d35;         /* key / button face */
+  --kc-line: #232a31;        /* row separators — the only hairline */
+  --kc-well: #0c1113;        /* LCD glass */
+  --kc-ink: #e6e9ee;
+  --kc-dim: #a4acb7;
+  --kc-mute: #8d96a3;
+  --kc-glass: #5fd4c3;       /* LIVE — the emphasis budget */
+  --kc-glass-ink: #08231f;   /* text on glass */
+  --kc-glass-text: #d9f5f0;  /* LCD channel name */
+  --kc-coral: #f29b8f;       /* destructive */
+  --kc-hay: #e8c37a;         /* needs attention */
+  --kc-ok: #7fc79a;          /* healthy */
+
+  --kc-font: "Schibsted Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --kc-t-meta: 0.78rem;
+  --kc-t-small: 0.82rem;
+  --kc-t-body: 0.94rem;
+  --kc-t-row: 1rem;
+  --kc-t-lead: 1.25rem;
+  --kc-t-title: 1.6rem;
+  --kc-t-lcd-name: 1.5rem;
+  --kc-t-lcd-freq: 2.6rem;
+
+  --kc-r-key: 10px;
+  --kc-r-group: 14px;
+  --kc-r-sheet: 18px;
+  --kc-r-pill: 999px;
+  --kc-key-shadow: 0 2px 0 #0009, inset 0 1px 0 #ffffff12;
+}

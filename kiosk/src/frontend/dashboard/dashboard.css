@@ -4,9 +4,11 @@
 
 :root {
   color-scheme: dark;
-  /* Campfire design-system tokens (@jeremyfuksa/campfire/tokens.css, .dark
-     theme on <html>). Local names kept as a mapping layer so the layout CSS
-     reads the same; values are ALL Campfire. */
+  /* Kerchunk design tokens (tokens.css, layer 1). These are the values
+     Campfire resolved to under `.dark`, frozen in tokens.css as plain
+     `:root` declarations (index.html's class="dark" is now vestigial).
+     Local names kept as a mapping layer so the layout CSS reads the same;
+     values are ALL from tokens.css. */
   --bg: var(--bg-base);
   --panel: var(--bg-subtle);
   --panel-edge: var(--border-default);
@@ -15,7 +17,7 @@
      text-tertiary at 3.11:1 on --panel: below AA, and this is the surface
      read from FURTHEST away — it painted the Recent log, the dB readout,
      SCANNING, the clock date, the boot phase and the bank chips.
-     Now: --ink 12.4 · --label 6.9 · --dim 4.6 · --mark 3.1 (glyphs only). */
+     Now: --ink 16.7 · --label 9.3 · --dim 6.2 · --mark 4.5 (glyphs only). */
   --ink: var(--text-primary);
   --label: var(--neutral-300);
   --dim: var(--text-secondary);
@@ -24,10 +26,12 @@
   --amber-soft: color-mix(in srgb, var(--spark) 55%, transparent);
   /* Consequence colours come from the numbered ramps, NOT from Campfire's
      named expressive tokens: --flamingo/--sage/--pine/--golden-amber each
-     carry a second, much darker value under `.dark` (the theme this kiosk
-     always runs in), which put ACTIVE, the muted badge and the spectrum chip
-     at 2.8–3.6:1. Read from across a room, that is the wrong direction.
-     Now: --red 5.0:1  --green 6.5:1  --caution 8.4:1  --blue 5.1:1 on --panel. */
+     resolved to a second, much darker value under `.dark` (the theme this
+     kiosk always runs in), which put ACTIVE, the muted badge and the
+     spectrum chip at 2.8–3.6:1. Read from across a room, that was the wrong
+     direction, so the numbered steps are still preferred for consequence
+     colours. Now: --red 6.7:1  --green 8.7:1  --caution 11.2:1  --blue 6.9:1
+     on --panel. */
   --caution: var(--warning-500);
   --green: var(--success-400);
   --red: var(--danger-400);
@@ -54,7 +58,7 @@
 
 /* Inter throughout (spec 2026-07-16): one face for display, body, and data.
    Scoped to this page — the CSS bundle is global and wall/art keep the
-   Campfire faces. html[data-page] outranks Campfire's :root/.dark tokens.
+   Campfire faces. html[data-page] outranks tokens.css's :root tokens.
 
    There is deliberately no local `--mono` / `--cond` alias. Both used to exist
    and both resolved to Inter after the one-face spec landed, so seventeen
