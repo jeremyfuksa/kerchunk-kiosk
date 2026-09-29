@@ -16,7 +16,7 @@
           "#a13a12",
           "#c74e1c",
           "#ff6b35",
-          "#ff9straight",
+          "#ff9c68",
           "#ffc9b0"
         ]
       },
@@ -24,7 +24,7 @@
         "role": "secondary",
         "displayName": "Caution Hay",
         "canonical": "#f9c574",
-        "note": "tokens.css layer 1's `--warning-500` (frozen from Campfire). Reversible-but-consequential actions, and every focus ring. 8.4:1 on slate-panel.",
+        "note": "tokens.css layer 1's `--warning-500` (frozen from Campfire). Reversible-but-consequential actions, and every focus ring. 11.2:1 on slate-panel.",
         "tonalRamp": [
           "#3a2a0c",
           "#573f12",
@@ -40,7 +40,7 @@
         "role": "secondary",
         "displayName": "Adopt Moss",
         "canonical": "#9ac35d",
-        "note": "tokens.css layer 1's `--success-400` (frozen from Campfire). Additive and confirming actions. 6.5:1 on slate-panel.",
+        "note": "tokens.css layer 1's `--success-400` (frozen from Campfire). Additive and confirming actions. 8.7:1 on slate-panel.",
         "tonalRamp": [
           "#1d2a0c",
           "#2d4013",
@@ -56,7 +56,7 @@
         "role": "secondary",
         "displayName": "Destroy Coral",
         "canonical": "#f17d7b",
-        "note": "tokens.css layer 1's `--danger-400` (frozen from Campfire). Irreversible or service-affecting actions, and error text. 5.0:1 on slate-panel.",
+        "note": "tokens.css layer 1's `--danger-400` (frozen from Campfire). Irreversible or service-affecting actions, and error text. 6.7:1 on slate-panel.",
         "tonalRamp": [
           "#3a1211",
           "#571b1a",
@@ -87,114 +87,44 @@
       "night-ground": {
         "role": "neutral",
         "displayName": "Night Ground",
-        "canonical": "#1c1f26",
-        "note": "tokens.css layer 1's `--neutral-950` (frozen from Campfire). The page field AND the recessed fill inside controls — the same value doing both is what makes an input read as cut into a panel.",
-        "tonalRamp": [
-          "#0e1013",
-          "#1c1f26",
-          "#2b303b",
-          "#42454e",
-          "#4d515c",
-          "#5e6371",
-          "#747b8a",
-          "#9299a5"
-        ]
+        "canonical": "#0e0f12",
+        "note": "tokens.css layer 1's `--bg-base` (frozen from Campfire). The page field AND the recessed fill inside controls — the same value doing both is what makes an input read as cut into a panel."
       },
       "slate-panel": {
         "role": "neutral",
         "displayName": "Slate Panel",
-        "canonical": "#2b303b",
-        "note": "tokens.css layer 1's `--neutral-900` (frozen from Campfire). Every card, table body, drawer and menu.",
-        "tonalRamp": [
-          "#0e1013",
-          "#1c1f26",
-          "#2b303b",
-          "#42454e",
-          "#4d515c",
-          "#5e6371",
-          "#747b8a",
-          "#9299a5"
-        ]
+        "canonical": "#16181d",
+        "note": "tokens.css layer 1's `--bg-subtle` (frozen from Campfire). Every card, table body, drawer and menu."
       },
       "hairline": {
         "role": "neutral",
         "displayName": "Hairline",
-        "canonical": "#4d515c",
-        "note": "tokens.css layer 1's `--neutral-700` (frozen from Campfire). Row separators and field dividers. Replaced an earlier token that resolved to the panel colour itself (1.00:1).",
-        "tonalRamp": [
-          "#0e1013",
-          "#1c1f26",
-          "#2b303b",
-          "#42454e",
-          "#4d515c",
-          "#5e6371",
-          "#747b8a",
-          "#9299a5"
-        ]
+        "canonical": "#343842",
+        "note": "tokens.css layer 1's `--border-strong`/`--neutral-700` (frozen from Campfire). Row separators and field dividers. Replaced an earlier token that resolved to the panel colour itself (1.00:1)."
       },
       "steel": {
         "role": "neutral",
         "displayName": "Steel",
-        "canonical": "#747b8a",
-        "note": "tokens.css layer 1's `--neutral-500` (frozen from Campfire). Two non-text jobs: the resting edge of every interactive control (3.1:1, clears WCAG 1.4.11), and decorative glyphs — carets, chevrons, the fader groove.",
-        "tonalRamp": [
-          "#0e1013",
-          "#1c1f26",
-          "#2b303b",
-          "#42454e",
-          "#4d515c",
-          "#5e6371",
-          "#747b8a",
-          "#9299a5"
-        ]
+        "canonical": "#7a8090",
+        "note": "tokens.css layer 1's `--neutral-500` (frozen from Campfire). Two non-text jobs: the resting edge of every interactive control (3.1:1, clears WCAG 1.4.11), and decorative glyphs — carets, chevrons, the fader groove."
       },
       "bright-ink": {
         "role": "neutral",
         "displayName": "Bright Ink",
         "canonical": "#f7f8f9",
-        "note": "tokens.css layer 1's `--neutral-50` (frozen from Campfire). Primary text and data. 12.4:1 on slate-panel.",
-        "tonalRamp": [
-          "#2b303b",
-          "#42454e",
-          "#5e6371",
-          "#747b8a",
-          "#9299a5",
-          "#b8bcc5",
-          "#edeef1",
-          "#f7f8f9"
-        ]
+        "note": "tokens.css layer 1's `--text-primary` (frozen from Campfire). Primary text and data. 16.7:1 on slate-panel."
       },
       "cool-label": {
         "role": "neutral",
         "displayName": "Cool Label",
         "canonical": "#b8bcc5",
-        "note": "tokens.css layer 1's `--neutral-300` (frozen from Campfire), reached past the semantic scale on purpose: the dark theme has no third text tier above 4.5:1, so labels and hints would otherwise be the same gray. 6.9:1.",
-        "tonalRamp": [
-          "#2b303b",
-          "#42454e",
-          "#5e6371",
-          "#747b8a",
-          "#9299a5",
-          "#b8bcc5",
-          "#edeef1",
-          "#f7f8f9"
-        ]
+        "note": "tokens.css layer 1's `--neutral-300` (frozen from Campfire), reached past the semantic scale on purpose: the dark theme has no third text tier above 4.5:1, so labels and hints would otherwise be the same gray. 9.3:1 on slate-panel."
       },
       "quiet-hint": {
         "role": "neutral",
         "displayName": "Quiet Hint",
         "canonical": "#9299a5",
-        "note": "tokens.css layer 1's `--neutral-400` (frozen from Campfire). Helper text, units, column headers, empty states. 4.6:1 — the dimmest tier that is still text.",
-        "tonalRamp": [
-          "#2b303b",
-          "#42454e",
-          "#5e6371",
-          "#747b8a",
-          "#9299a5",
-          "#b8bcc5",
-          "#edeef1",
-          "#f7f8f9"
-        ]
+        "note": "tokens.css layer 1's `--text-secondary` (frozen from Campfire). Helper text, units, column headers, empty states. 6.2:1 on slate-panel — the dimmest tier that is still text."
       },
       "kc-ground": {
         "role": "neutral",
