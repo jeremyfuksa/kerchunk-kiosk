@@ -8,7 +8,7 @@ html[data-page="admin-next"] body {
   font: 400 var(--kc-t-body)/1.5 var(--kc-font);
   -webkit-font-smoothing: antialiased;
 }
-html[data-page="admin-next"] :focus-visible { outline: 2px solid var(--kc-glass); outline-offset: 2px; border-radius: 4px; }
+html[data-page="admin-next"] :focus-visible { outline: 2px solid var(--kc-glass); outline-offset: 2px; }
 /* :where() keeps this at (0,0,1) so it never outranks .kc-key--primary's
    (0,1,0) — an anchor-rendered primary key (e.g. the placeholder's "Open
    classic …" link) must show its dark ink, not the ambient link colour. */
@@ -35,7 +35,7 @@ html[data-page="admin-next"] :focus-visible { outline: 2px solid var(--kc-glass)
 .kc-tab:hover { color: var(--kc-ink); }
 .kc-tab[aria-current="page"] { color: var(--kc-glass); background: var(--kc-raised); }
 .kc-badge {
-  background: var(--kc-hay); color: #2a1d05; border-radius: var(--kc-r-pill);
+  background: var(--kc-hay); color: var(--kc-hay-ink); border-radius: var(--kc-r-pill);
   padding: 0 7px; font-size: var(--kc-t-meta); font-weight: 700;
 }
 .kc-verdict { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; color: var(--kc-dim); text-decoration: none; font-size: var(--kc-t-small); }
@@ -81,16 +81,20 @@ html[data-page="admin-next"] :focus-visible { outline: 2px solid var(--kc-glass)
   font: 600 var(--kc-t-body) var(--kc-font); cursor: pointer; text-decoration: none;
   transition: transform 60ms ease;
 }
-.kc-key:active:not(:disabled) { transform: translateY(1px); box-shadow: 0 1px 0 #0009; }
+.kc-key:active:not(:disabled) { transform: translateY(1px); box-shadow: var(--kc-key-shadow-pressed); }
 .kc-key:disabled { opacity: 0.45; cursor: not-allowed; box-shadow: none; }
 .kc-key--primary { background: var(--kc-glass); color: var(--kc-glass-ink); }
 .kc-key--danger { color: var(--kc-coral); }
 .kc-key--wide { width: 100%; font-size: var(--kc-t-row); }
+/* Labels stay on one line ("Pause 30 min" wrapped at 1440 px). */
+.kc-key > span { white-space: nowrap; }
+/* Toggle keys keep one label; the pressed state shows in colour too. */
+.kc-key[aria-pressed="true"] { color: var(--kc-hay); }
 
 /* ── LCD (glow on glass) ── */
 .kc-lcd {
   background: var(--kc-well); border-radius: var(--kc-r-group); padding: 16px 18px 14px;
-  box-shadow: inset 0 0 0 1px #2a3a3a, inset 0 8px 18px #0008;
+  box-shadow: var(--kc-well-shadow);
 }
 .kc-lcd__meta { display: flex; justify-content: space-between; align-items: center; color: var(--kc-glass); opacity: 0.75; font-size: var(--kc-t-small); font-weight: 600; }
 .kc-lcd__meta > span { display: inline-flex; align-items: center; gap: 8px; }
@@ -118,11 +122,11 @@ html[data-page="admin-next"] :focus-visible { outline: 2px solid var(--kc-glass)
 
 /* ── dialogs ── */
 .kc-toastHost { position: fixed; left: 50%; bottom: calc(84px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); z-index: 30; }
-.kc-toast { display: flex; align-items: center; gap: 12px; background: var(--kc-key); color: var(--kc-ink); border-radius: var(--kc-r-key); padding: 10px 10px 10px 16px; box-shadow: 0 6px 20px #000a; }
+.kc-toast { display: flex; align-items: center; gap: 12px; background: var(--kc-key); color: var(--kc-ink); border-radius: var(--kc-r-key); padding: 10px 10px 10px 16px; box-shadow: var(--kc-lift-shadow); }
 .kc-toast__undo { background: none; border: 0; color: var(--kc-glass); font: 600 var(--kc-t-body) var(--kc-font); cursor: pointer; }
 .kc-toast__close { background: none; border: 0; color: var(--kc-dim); cursor: pointer; display: inline-flex; }
 .kc-confirm { background: var(--kc-raised); color: var(--kc-ink); border: 0; border-radius: var(--kc-r-sheet); padding: 20px; max-width: 26rem; }
-.kc-confirm::backdrop { background: #000a; }
+.kc-confirm::backdrop { background: var(--kc-backdrop); }
 .kc-confirm h2 { margin: 0 0 8px; font-size: var(--kc-t-lead); }
 .kc-confirm p { margin: 0 0 18px; color: var(--kc-dim); }
 .kc-confirm__actions { display: flex; justify-content: flex-end; gap: 8px; }
@@ -137,7 +141,12 @@ html[data-page="admin-next"] :focus-visible { outline: 2px solid var(--kc-glass)
 .kc-radio__main > #kcLcd { margin-top: 8px; }
 .kc-keys { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
 .kc-keys .kc-key--wide { grid-column: 1 / -1; }
-@media (max-width: 420px) { .kc-keys { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+/* Four keys a row only when the column fits "Pause 30 min" on one line (the
+   labels don't wrap); otherwise two. Sized by the column, not the viewport:
+   the two-column desktop layout makes the keys narrowest at 900–1200 px. */
+.kc-radio__main { container-type: inline-size; }
+.kc-keys .kc-key { padding-inline: 12px; }
+@container (max-width: 620px) { .kc-keys { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .kc-volume { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px; margin-top: 16px; color: var(--kc-dim); font-size: var(--kc-t-small); }
 .kc-volume b { display: inline-block; min-width: 3.2em; color: var(--kc-ink); font-weight: 600; font-variant-numeric: tabular-nums; }
 .kc-volume input[type="range"] { width: 100%; accent-color: var(--kc-glass); }
