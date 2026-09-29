@@ -88,13 +88,13 @@ describe("segmented", () => {
     const html = segmented({
       label: "Library view", current: "new",
       items: [
-        { id: "channels", label: "Channels", href: "#/next/library", count: 102 },
-        { id: "new", label: "New", href: "#/next/library/new", count: 3, attention: true },
+        { id: "channels", label: "Channels", href: "#/library", count: 102 },
+        { id: "new", label: "New", href: "#/library/new", count: 3, attention: true },
       ],
     });
     expect(html).toContain('aria-label="Library view"');
-    expect(html).toMatch(/href="#\/next\/library\/new"[^>]*aria-current="page"/);
-    expect(html).not.toMatch(/href="#\/next\/library"[^>]*aria-current/);
+    expect(html).toMatch(/href="#\/library\/new"[^>]*aria-current="page"/);
+    expect(html).not.toMatch(/href="#\/library"[^>]*aria-current/);
     expect(html).toContain('<b class="kc-seg__count">102</b>');
     expect(html).toContain('<b class="kc-seg__count kc-badge">3</b>');
   });
