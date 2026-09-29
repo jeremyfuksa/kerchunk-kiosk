@@ -14,11 +14,17 @@
 // has an unsaved or in-flight change, or differs from what was last loaded.
 import type { Channel, Config } from "../../backend/config/schema.js";
 import { NOAA_CHANNELS } from "../../backend/config/noaa.js";
-import { KNOB_BY_ID, curveSvg, knobUi, loudnessCurve, type KnobValues } from "../admin/engineKnobs.js";
+import { DEFAULT_GROUP_DWELL_MS } from "../../backend/config/engineDefaults.js";
+import {
+  ADVANCED_BANDS, BAND_COST, COST_LABEL, KNOB_BY_ID, curveSvg, knobUi, loudnessCurve,
+  previewGroups, previewText, revisitHint, type Band, type KnobValues,
+} from "../admin/engineKnobs.js";
 import { api } from "../lib/api.js";
 import { esc } from "../lib/format.js";
 import { group, key, slider, switchRow } from "./ui/kit.js";
 import { POLL_MS } from "./poller.js";
+import { hrefFor } from "./route.js";
+import { ico } from "./ui/icons.js";
 import { ApplyBatcher, type BatchState } from "./batcher.js";
 import {
   FIELD_BY_ID, GROUP_TITLES, TUNE_FIELDS, applyTune, disabledIds, isDefault, readTune, snapValue,
@@ -112,6 +118,35 @@ function weatherHtml(): string {
     { id: "kcTune-weather" });
 }
 
+/** One Advanced band: heading with its cost, purpose, rows, Apply bar and
+ *  status line. Pure, so its markup is unit-tested. */
+export function bandHtml(band: Exclude<Band, "sound">, values: TuneValues): string {
+  const meta = ADVANCED_BANDS.find((b) => b.band === band);
+  if (!meta) return "";
+  const cost = band === "shape" ? "Restarts scanning · Apply to confirm" : COST_LABEL[BAND_COST[band]];
+  const fields = fieldsOf(band);
+  const rows = fields.map((f) => {
+    const sub = KNOB_BY_ID[f.id]?.sub;
+    return `${sub ? `<h4 class="kc-band__sub">${esc(sub)}</h4>` : ""}${rowHtml(f, values[f.id] ?? f.def)}`;
+  }).join("");
+  const heavy = fields.some((f) => f.cost === "heavy") ? heavyHtml(band) : "";
+  const status = statusHtml(band, band === "watchdog" ? { restartLink: hrefFor({ tab: "system" }) } : {});
+  return `<section class="kc-band" aria-labelledby="kcBand-${band}">`
+    + `<h3 id="kcBand-${band}">${esc(meta.title)} <small class="kc-cost">${esc(cost)}</small></h3>`
+    + `<p class="kc-band__purpose">${esc(meta.purpose)}</p>`
+    + (band === "shape" ? `<p class="kc-preview" id="kcPreview" role="status" aria-live="polite"></p>` : "")
+    + `${rows}${heavy}${status}</section>`;
+}
+
+/** The Advanced disclosure (closed by default), below the main grid. */
+export function advancedHtml(values: TuneValues): string {
+  return `<details class="kc-group kc-disclosure" id="kcAdvanced">`
+    + `<summary class="kc-group__title"><span>Advanced engine settings</span>${ico("chevron", "kc-ico kc-disclosure__chev")}</summary>`
+    + `<p class="kc-empty">Tuned for this appliance. Leave a field blank for its default.</p>`
+    + ADVANCED_BANDS.map((b) => bandHtml(b.band, values)).join("")
+    + `</details>`;
+}
+
 /** The whole Tune page for a loaded set of values. */
 export function pageHtml(values: TuneValues, advancedHtml = ""): string {
   const groups = MAIN_GROUPS.map((g) => groupHtml(g, values, g === "sound" ? CURVE_HTML : "")).join("");
@@ -130,6 +165,8 @@ export function mountTune(ctx: Ctx): void {
   let loaded: TuneValues = {};
   let cfgCache: Config | null = null;
   let ready = false;
+  /** Set when opening Advanced asks for a fresh load ahead of the schedule. */
+  let refreshNow = false;
   const heavy = new Map<TuneGroup, Set<string>>();
   const batchers = new Map<TuneGroup, ApplyBatcher>();
   /** Ids in a direct (live/backend/heavy) save that hasn't resolved yet. */
@@ -213,8 +250,26 @@ export function mountTune(ctx: Ctx): void {
     if (s !== curveShown) { curveShown = s; svg.innerHTML = s; }
     setText(say, loudnessCurve(p).caption);
   }
-  /** Group-shape preview (Advanced); a no-op until that markup exists. */
-  function paintPreview(): void { /* Task 7 */ }
+  /** Group-shape preview (Advanced): the engine's own grouping over the
+   *  loaded channel list, with the shape fields as currently entered. */
+  function paintPreview(): void {
+    const out = $("#kcPreview");
+    if (!cfgCache || !out) return;
+    const v = values as KnobValues;
+    const pv = previewGroups({
+      channels: cfgCache.channels, banks: cfgCache.banks ?? [],
+      lanes: knobUi(v, "kLanes"), rateHz: knobUi(v, "kRate") * 1e6,
+      windowHz: knobUi(v, "kWindow") * 1e6, flatHz: knobUi(v, "kFlat") * 1e6,
+      groupDwellMs: Number(values.tGroupDwell || DEFAULT_GROUP_DWELL_MS),
+      sweeping: (cfgCache.scan.sweepRanges?.length ?? 0) > 0,
+    });
+    setText(out, previewText(pv));
+    setKind(out, !pv.ok);
+    const apply = byId<HTMLButtonElement>("kcApply-shape");
+    if (apply) setDisabled(apply, !pv.ok);
+    const hint = $('[data-row="kRevisit"] small');
+    if (hint) setText(hint, revisitHint(pv));
+  }
 
   // ── status lines: a batch part (countdown / Undo) and a direct part
   //    (live saves), painted independently so neither hides the other.
@@ -466,7 +521,12 @@ export function mountTune(ctx: Ctx): void {
 
   // ── load + refresh
   function render(): void {
-    el.innerHTML = pageHtml(values);
+    el.innerHTML = pageHtml(values, advancedHtml(values));
+    // Opening Advanced refreshes the channel list behind the shape preview —
+    // through the poller, via a flag (makeDue("tune") would also refire every
+    // tab-less poll: verdict, status, audio).
+    const adv = byId<HTMLDetailsElement>("kcAdvanced");
+    adv?.addEventListener("toggle", () => { if (adv.open) { refreshNow = true; void poller.tick("tune"); } });
     for (const f of TUNE_FIELDS) { paintControl(f.id); paintRow(f.id); }
     paintDependents();
     paintCurve();
@@ -500,5 +560,6 @@ export function mountTune(ctx: Ctx): void {
     const { weatherChannel } = await api.getWeatherChannel(); // sequential, same poll
     paintWeather(weatherChannel);
   }
-  poller.add({ name: "tune", tabs: ["tune"], everyMs: POLL_MS.tune, run: load });
+  poller.add({ name: "tune", tabs: ["tune"], everyMs: POLL_MS.tune, run: () => { refreshNow = false; return load(); } });
+  poller.add({ name: "tune-now", tabs: ["tune"], everyMs: 0, when: () => refreshNow, run: () => { refreshNow = false; return load(); } });
 }
