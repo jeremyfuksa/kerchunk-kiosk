@@ -111,6 +111,13 @@ export function suppressedDiscoveries(cfg: Pick<Config, "discoveries">): Discove
   return (cfg.discoveries ?? []).filter((d) => d.suppressedAt).sort((a, b) => b.ts - a.ts);
 }
 
+/** Bring a suppressed discovery back to triage. Clears ALL suppression
+ *  bookkeeping (schema.ts: "Restoring clears these fields") — leaving a stale
+ *  hitCount would let the server re-suppress it on the very next hit. */
+export function restoreDiscovery<T extends Partial<Discovery>>(d: T): T {
+  return { ...d, hitCount: undefined, lastSeenAt: undefined, suppressedAt: undefined, suppressionReason: undefined };
+}
+
 export function hitsText(d: Discovery, now: number = Date.now()): string {
   return `${d.hitCount ?? 1}× · heard ${ago(d.lastSeenAt ?? d.ts, now)}`;
 }

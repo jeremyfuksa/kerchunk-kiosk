@@ -123,5 +123,12 @@
 .kc-bulkBar { position: sticky; bottom: calc(76px + env(safe-area-inset-bottom, 0px)); display: flex; gap: 8px; align-items: center; justify-content: space-between; background: var(--kc-key); border-radius: var(--kc-r-group); padding: 8px 8px 8px 16px; margin-top: 12px; box-shadow: var(--kc-lift-shadow); }
 @media (min-width: 900px) { .kc-bulkBar { bottom: 16px; } }
 .kc-lib__foot { margin-top: 14px; }
+.kc-lib__foot .kc-link, .kc-newHead .kc-link { min-height: 40px; padding: 0 4px; }
+.kc-newHead { display: flex; justify-content: space-between; align-items: center; gap: 12px; min-height: 40px; }
+.kc-newHead .kc-count { margin: 0; }
+.kc-bulkBar__keys { display: flex; gap: 6px; }
+.kc-bulkBar[hidden], .kc-newHead[hidden] { display: none; }
+.kc-supp__text { display: flex; flex-direction: column; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
+.kc-supp__text small { color: var(--kc-mute); font-size: var(--kc-t-small); }
 @media (max-width: 899px) { .kc-card__acts .kc-key span { white-space: nowrap; } }
 .kc-visuallyHidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
