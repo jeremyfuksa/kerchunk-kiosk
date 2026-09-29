@@ -6,6 +6,7 @@ import { renderAdmin } from "./admin/admin.js";
 import { renderMap } from "./map/map.js";
 import { renderWall } from "./wall/wall.js";
 import { renderArt } from "./art/art.js";
+import { renderAdminNext } from "./admin-next/index.js";
 
 const root = document.getElementById("app")!;
 
@@ -21,6 +22,7 @@ const FONT_QUERY: Record<string, string> = {
   admin: "family=Inter:wght@400;500;600;700",
   dashboard: "family=Inter:wght@400;500;600;700",
   map: "family=Inter:wght@400;500;600;700",
+  "admin-next": "family=Schibsted+Grotesk:wght@400;500;600;700;800",
 };
 
 function loadFonts(page: string): void {
@@ -43,10 +45,21 @@ const RENDERERS: Array<[string, string, (root: HTMLElement) => void]> = [
   ["/wall", "wall", renderWall],
   ["/art", "art", renderArt],
 ];
-const [, page, render] =
-  RENDERERS.find(([prefix]) => location.pathname.startsWith(prefix))
-  ?? ["", "dashboard", renderDashboard] as const;
+// admin-next is built alongside the classic admin (spec 2026-09-28): same
+// /admin path, selected by a #/next hash until the flip PR makes it default.
+const isAdminNext = location.pathname.startsWith("/admin") && location.hash.startsWith("#/next");
+const [, page, render]: [string, string, (root: HTMLElement) => void] = isAdminNext
+  ? ["/admin", "admin-next", renderAdminNext]
+  : RENDERERS.find(([prefix]) => location.pathname.startsWith(prefix))
+    ?? ["", "dashboard", renderDashboard];
 
 document.documentElement.dataset.page = page;
 loadFonts(page);
 render(root);
+
+// Crossing between the classic admin and admin-next swaps the whole page.
+if (location.pathname.startsWith("/admin")) {
+  window.addEventListener("hashchange", () => {
+    if (location.hash.startsWith("#/next") !== isAdminNext) location.reload();
+  });
+}
