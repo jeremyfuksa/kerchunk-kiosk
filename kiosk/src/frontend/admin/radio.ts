@@ -41,6 +41,31 @@ export function durationLabel(s: number): string {
   return h === 0 ? `${r} min` : r === 0 ? `${h} h` : `${h} h ${r} min`;
 }
 
+/** Channel-activity period key (PR 6 flip renamed the admin-next scope). */
+export const INSIGHT_HOURS_KEY = "kerchunk.admin.insightHours";
+const INSIGHT_HOURS_OLD_KEY = "kerchunk.adminNext.insightHours";
+
+/** Resolves the saved insight period, migrating the old admin-next key to the
+ *  new one once (write new, drop old) when the new key is absent. Falls back
+ *  to 24 h when neither key holds a valid value. Pure: storage access is
+ *  injected so callers keep their own try/catch around real localStorage. */
+export function migrateInsightHours(
+  get: (key: string) => string | null,
+  set: (key: string, value: string) => void,
+  remove: (key: string) => void,
+): number {
+  let raw = get(INSIGHT_HOURS_KEY);
+  if (raw == null) {
+    const old = get(INSIGHT_HOURS_OLD_KEY);
+    if (old != null) {
+      set(INSIGHT_HOURS_KEY, old);
+      remove(INSIGHT_HOURS_OLD_KEY);
+      raw = old;
+    }
+  }
+  return Number(raw) || 24;
+}
+
 type Stats = {
   totalHits: number; totalAirtimeMs: number; discoveries: number;
   topChannels: Array<{ alphaTag: string; freq: number; hits: number; airtimeMs: number }>;
@@ -300,9 +325,14 @@ export function mountRadio(ctx: Ctx): void {
   });
 
   // ── Channel activity (only fetched while expanded)
-  const IN_KEY = "kerchunk.admin.insightHours";
   let inHours = 24;
-  try { inHours = Number(localStorage.getItem(IN_KEY)) || 24; } catch { /* private mode */ }
+  try {
+    inHours = migrateInsightHours(
+      (k) => localStorage.getItem(k),
+      (k, v) => localStorage.setItem(k, v),
+      (k) => localStorage.removeItem(k),
+    );
+  } catch { /* private mode */ }
   const insights = $<HTMLDetailsElement>("#kcInsights");
   const inBody = $("#kcInBody");
   const periodBtns = Array.from(insights.querySelectorAll<HTMLButtonElement>(".kc-periods button"));
@@ -334,7 +364,7 @@ export function mountRadio(ctx: Ctx): void {
   insights.addEventListener("toggle", () => { if (insights.open) queueInsights(); });
   periodBtns.forEach((b) => b.addEventListener("click", () => {
     inHours = Number(b.dataset.h);
-    try { localStorage.setItem(IN_KEY, String(inHours)); } catch { /* private mode */ }
+    try { localStorage.setItem(INSIGHT_HOURS_KEY, String(inHours)); } catch { /* private mode */ }
     paintPeriods();
     queueInsights();
   }));

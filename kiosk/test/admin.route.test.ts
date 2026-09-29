@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseRoute, hrefFor, legacyRedirect } from "../src/frontend/admin/route.js";
+import { parseRoute, hrefFor, legacyRedirect, resolveLegacy } from "../src/frontend/admin/route.js";
 
 describe("admin routes", () => {
   it("defaults to radio", () => {
@@ -45,6 +45,24 @@ describe("admin routes", () => {
     for (const h of ["", "#", "#/", "#/tune", "#/library", "#/library/new", "#/system", "#/library/ch/a"]) {
       expect(legacyRedirect(h)).toBeNull();
     }
+  });
+  it("resolves a single-hop legacy hash the same as legacyRedirect", () => {
+    for (const h of ["#/home", "#/triage", "#/channels", "#/banks", "#/scan", "#/next/tune"]) {
+      expect(resolveLegacy(h)).toBe(legacyRedirect(h));
+    }
+  });
+  it("resolves nothing for a current route", () => {
+    for (const h of ["", "#", "#/", "#/tune", "#/library", "#/library/new", "#/system"]) {
+      expect(resolveLegacy(h)).toBeNull();
+    }
+  });
+  it("chases a chained legacy hash (#/next/triage) through both eras to its final destination", () => {
+    // #/next/triage -> #/triage (strip the pre-flip #/next prefix) -> #/library/new (classic triage page)
+    expect(resolveLegacy("#/next/triage")).toBe("#/library/new");
+    expect(parseRoute(resolveLegacy("#/next/triage")!)).toEqual({ tab: "library", sub: "new" });
+  });
+  it("bounds the redirect chase so a cycle can't loop forever", () => {
+    expect(resolveLegacy("#/next/triage", 1)).toBe("#/triage");
   });
   it("redirected routes parse to the intended tab", () => {
     expect(parseRoute(legacyRedirect("#/triage")!)).toEqual({ tab: "library", sub: "new" });

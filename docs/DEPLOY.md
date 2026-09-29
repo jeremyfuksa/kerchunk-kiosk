@@ -118,11 +118,11 @@ Notes:
   scan time on peeks (0.7 / 4.7 s), and each return re-warms the interrupted
   group (~0.6 s deaf) — roughly a quarter of non-priority listening time.
 - **Admin:** every knob above (group shape, scheduling, quieting, AM gain, FM
-  filters, speaker AGC/limiter, watchdogs) is editable under Settings → **Sound**
-  and **Advanced (engine)**. Each band says what a save costs; blank = default.
+  filters, speaker AGC/limiter, watchdogs) is editable under Tune → **Sound**,
+  **Scanning** and **Advanced**. Each band says what a save costs; blank = default.
 - The quieting knob is `scan.nativeQuietDb` (the helper's own dB scale,
-  default −7; lower = stricter), exposed in the admin as "Quieting
-  threshold". Legacy configs may still hold the retired GNU-Radio-scale
+  default −7; lower = stricter), exposed in the admin as "Quieting" under
+  Tune → Scanning. Legacy configs may still hold the retired GNU-Radio-scale
   `noiseQuietDb` / `detectVia`; the schema strips them on load.
 - `scan.nativeAmGainDb` (dB, −30…+20, default 0) balances airband/AM loudness
   against FM by ear; passed to the helper as `--am-gain-db`. Changing either
@@ -133,10 +133,10 @@ Notes:
 - `scan.fmAudioHpfHz` (Hz, 0 = off or 50…1000, default 300) is the FM speaker
   high-pass: a 6th-order Butterworth that strips the sub-audible CTCSS tone
   (67–254 Hz hum) from the speaker. Passed as `--audio-hpf-hz`.
-- **Sub-audible squelch** is per channel, set in the admin channel drawer's
-  Tone select: a CTCSS tone (`ctcssHz`) or a DCS code (`dcsCode`, e.g.
-  `023N`/`023I`), never both. The helper decodes both on every open FM lane
-  and reports what it hears (the drawer's "Heard:" hint); a squelched channel
+- **Sub-audible squelch** is per channel, set in Library → channel detail →
+  More details → Tone select: a CTCSS tone (`ctcssHz`) or a DCS code
+  (`dcsCode`, e.g. `023N`/`023I`), never both. The helper decodes both on
+  every open FM lane and reports what it hears (the "Heard:" suggestions); a squelched channel
   opens only on its tone/code and mutes once it has been gone
   `CTCSS_LOSS_MS` / `DCS_LOSS_MS` (300 / 400 ms). Detector knobs (`CTCSS_*`,
   `DCS_*`, `SUBAUDIO_*`) live in `kiosk/native/src/constants.hpp`. An

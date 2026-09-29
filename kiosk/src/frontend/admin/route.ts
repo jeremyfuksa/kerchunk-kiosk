@@ -89,3 +89,20 @@ export function legacyRedirect(hash: string): string | null {
   const to = LEGACY[path.split("/")[0] ?? ""];
   return to ? hrefFor(to) : null;
 }
+
+/** Chained bookmarks (e.g. a pre-flip `#/next/triage` link) redirect through
+ *  more than one era: `#/next/triage` → `#/triage` → `#/library/new`.
+ *  Resolves the whole chain to its final destination in one hop, bounded so
+ *  a cycle can't loop forever. Returns null when the hash needs no redirect
+ *  at all. */
+export function resolveLegacy(hash: string, maxSteps = 3): string | null {
+  let current = hash;
+  let resolved: string | null = null;
+  for (let i = 0; i < maxSteps; i++) {
+    const next = legacyRedirect(current);
+    if (!next) break;
+    resolved = next;
+    current = next;
+  }
+  return resolved;
+}
