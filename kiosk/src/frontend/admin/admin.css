@@ -13,11 +13,11 @@
 :root {
   color-scheme: dark;
 
-  /* Campfire tokens (@jeremyfuksa/campfire/tokens.css, .dark theme on <html>)
-     behind local names, so layout CSS below reads in this page's own terms.
-     Values are ALL Campfire — never repeat a token's hex as a var() fallback:
-     main.ts imports tokens.css first, so the tokens always exist, and a
-     duplicated hex silently drifts when Campfire retunes its ramp.
+  /* Kerchunk tokens (tokens.css, layer 1, .dark theme on <html>) behind local
+     names, so layout CSS below reads in this page's own terms. Values are ALL
+     from tokens.css — never repeat a token's hex as a var() fallback: main.ts
+     imports tokens.css first, so the tokens always exist, and a duplicated
+     hex silently drifts when tokens.css retunes its ramp.
 
      Text tiers are chosen for contrast on --panel, the common card ground
      (ratios for Campfire's night-ramp retune, campfire#59):

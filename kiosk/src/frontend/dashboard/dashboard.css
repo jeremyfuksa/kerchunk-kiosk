@@ -4,9 +4,9 @@
 
 :root {
   color-scheme: dark;
-  /* Campfire design-system tokens (@jeremyfuksa/campfire/tokens.css, .dark
-     theme on <html>). Local names kept as a mapping layer so the layout CSS
-     reads the same; values are ALL Campfire. */
+  /* Kerchunk design tokens (tokens.css, layer 1, .dark theme on <html>).
+     Local names kept as a mapping layer so the layout CSS reads the same;
+     values are ALL from tokens.css. */
   --bg: var(--bg-base);
   --panel: var(--bg-subtle);
   --panel-edge: var(--border-default);
