@@ -18,6 +18,8 @@ export class ApplyBatcher {
   private readonly ids = new Set<string>();
   private timer: ReturnType<typeof setTimeout> | null = null;
   private saving: Promise<void> | null = null;
+  /** The ids of the save in flight (for the state after a drop empties the set). */
+  private savingIds: string[] = [];
 
   constructor(
     private readonly save: (ids: string[]) => Promise<void>,
@@ -41,6 +43,19 @@ export class ApplyBatcher {
     return ids;
   }
 
+  /** Take one id out of the batch — it's back at what the radio has. The
+   *  rest keep their countdown; an emptied batch cancels it and goes idle
+   *  (or back to showing the save still in flight). */
+  drop(id: string): void {
+    if (!this.ids.delete(id)) return;
+    const s = this.state;
+    if (this.ids.size === 0) {
+      this.clearTimer();
+      this.set(this.saving ? { kind: "saving", ids: this.savingIds } : { kind: "idle" });
+    } else if (s.kind === "pending") this.set({ ...s, ids: [...this.ids] });
+    else if (s.kind === "error") this.set({ ...s, ids: [...this.ids] });
+  }
+
   /** Save what's collected now (waits for an in-flight save first). */
   async flush(): Promise<void> {
     this.clearTimer();
@@ -48,6 +63,7 @@ export class ApplyBatcher {
     const ids = [...this.ids];
     if (!ids.length) return;
     this.ids.clear();
+    this.savingIds = ids;
     this.set({ kind: "saving", ids });
     this.saving = this.save(ids).then(
       () => { if (this.ids.size === 0) this.set({ kind: "saved" }); },

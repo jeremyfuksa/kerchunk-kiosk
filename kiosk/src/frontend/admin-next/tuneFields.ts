@@ -270,3 +270,18 @@ export function isDefault(f: TuneField, v: TuneValue): boolean {
   if (f.control.kind === "text") return v.trim() === str(f.def);
   return v.trim() === "" || Number(v) === Number(f.def);
 }
+
+/** True when `v` would save nothing new over what the radio has (`loaded`):
+ *  the same value (numbers compared numerically, text trimmed), or an unset
+ *  field ("" = default) landing on its displayed default. Writing that
+ *  default explicitly would read as unset → value on the server and restart
+ *  the scanner for nothing. Resetting a set field to "" IS a change. */
+export function isNoChange(f: TuneField, v: TuneValue, loaded: TuneValue): boolean {
+  if (v === loaded) return true;
+  if (typeof v === "boolean" || typeof loaded === "boolean") return false;
+  const a = v.trim(), b = loaded.trim();
+  if (a === b) return true;
+  if (b === "") return isDefault(f, v);
+  if (a === "" || f.control.kind === "text") return false;
+  return Number.isFinite(Number(a)) && Number(a) === Number(b);
+}

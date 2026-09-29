@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import type { Config } from "../src/backend/config/schema.js";
 import { KNOB_FIELDS } from "../src/frontend/admin/engineKnobs.js";
 import {
-  TUNE_FIELDS, FIELD_BY_ID, readTune, applyTune, disabledIds, snapValue, isDefault, parseSweep,
+  TUNE_FIELDS, FIELD_BY_ID, readTune, applyTune, disabledIds, snapValue, isDefault, isNoChange, parseSweep,
 } from "../src/frontend/admin-next/tuneFields.js";
 
 const base = (): Config => ({
@@ -118,4 +118,30 @@ describe("helpers", () => {
     applyTune(cfg, ["tCloseCall"], {});
     expect(cfg.scan.closeCall).toBe(true); // tCloseCall's engine default is ON
   });
+  describe("isNoChange", () => {
+    const open = FIELD_BY_ID.tOpenDb!; // default 9
+    it("the loaded value is no change", () => {
+      expect(isNoChange(open, "12", "12")).toBe(true);
+      expect(isNoChange(open, "", "")).toBe(true);
+    });
+    it("an unset field landing on its displayed default is no change", () => {
+      expect(isNoChange(open, "9", "")).toBe(true);
+      expect(isNoChange(open, "9.0", "")).toBe(true);
+      expect(isNoChange(open, "10", "")).toBe(false);
+    });
+    it("resetting a set field to the default IS a change (it unsets it)", () => {
+      expect(isNoChange(open, "", "12")).toBe(false);
+      expect(isNoChange(open, "9", "12")).toBe(false);
+    });
+    it("numbers compare numerically, text as text", () => {
+      expect(isNoChange(open, "12.0", "12")).toBe(true);
+      expect(isNoChange(FIELD_BY_ID.tSameFips!, "0", "")).toBe(false);
+      expect(isNoChange(FIELD_BY_ID.tSweep!, " 450-470 ", "450-470")).toBe(true);
+    });
+    it("switches compare as booleans", () => {
+      expect(isNoChange(FIELD_BY_ID.tCloseCall!, true, true)).toBe(true);
+      expect(isNoChange(FIELD_BY_ID.tCloseCall!, false, true)).toBe(false);
+    });
+  });
 });
+

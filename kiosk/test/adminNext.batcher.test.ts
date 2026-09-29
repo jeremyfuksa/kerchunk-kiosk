@@ -109,4 +109,52 @@ describe("ApplyBatcher", () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(max).toBe(1);
   });
+  describe("drop", () => {
+    it("removes one id and keeps the countdown for the rest", async () => {
+      const { b, saves } = make();
+      b.change("a"); b.change("b");
+      b.drop("a");
+      expect(b.state).toMatchObject({ kind: "pending", ids: ["b"] });
+      await vi.advanceTimersByTimeAsync(TUNE_APPLY_DELAY_MS);
+      expect(saves).toEqual([["b"]]);
+    });
+    it("dropping the last id cancels the timer and goes idle", async () => {
+      const { b, saves } = make();
+      b.change("a");
+      b.drop("a");
+      expect(b.state.kind).toBe("idle");
+      await vi.advanceTimersByTimeAsync(TUNE_APPLY_DELAY_MS * 2);
+      expect(saves).toEqual([]);
+    });
+    it("an id it doesn't hold is ignored", () => {
+      const { b, states } = make();
+      b.change("a");
+      const n = states.length;
+      b.drop("zz");
+      expect(states.length).toBe(n);
+      expect(b.state).toMatchObject({ kind: "pending", ids: ["a"] });
+    });
+    it("dropping from a failed batch shrinks the error; the last one clears it", async () => {
+      const { b } = make(async () => { throw new Error("409"); });
+      b.change("a"); b.change("b");
+      await vi.advanceTimersByTimeAsync(TUNE_APPLY_DELAY_MS);
+      b.drop("a");
+      expect(b.state).toEqual({ kind: "error", message: "409", ids: ["b"] });
+      b.drop("b");
+      expect(b.state.kind).toBe("idle");
+    });
+    it("dropping the only change queued behind an in-flight save shows that save again", async () => {
+      let resolve!: () => void;
+      const { b, saves } = make(() => new Promise<void>((r) => { resolve = r; }));
+      b.change("a");
+      await vi.advanceTimersByTimeAsync(TUNE_APPLY_DELAY_MS);
+      b.change("b");
+      b.drop("b");
+      expect(b.state).toEqual({ kind: "saving", ids: ["a"] });
+      resolve();
+      await vi.advanceTimersByTimeAsync(TUNE_APPLY_DELAY_MS * 2);
+      expect(saves).toEqual([["a"]]);
+      expect(b.state.kind).toBe("saved");
+    });
+  });
 });
