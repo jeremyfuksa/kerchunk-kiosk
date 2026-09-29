@@ -13,8 +13,10 @@
 :root {
   color-scheme: dark;
 
-  /* Kerchunk tokens (tokens.css, layer 1, .dark theme on <html>) behind local
-     names, so layout CSS below reads in this page's own terms. Values are ALL
+  /* Kerchunk tokens (tokens.css, layer 1) behind local names — the values
+     Campfire resolved to under `.dark`, frozen as plain `:root` declarations
+     (index.html's class="dark" is now vestigial) — so layout CSS below reads
+     in this page's own terms. Values are ALL
      from tokens.css — never repeat a token's hex as a var() fallback: main.ts
      imports tokens.css first, so the tokens always exist, and a duplicated
      hex silently drifts when tokens.css retunes its ramp.
@@ -41,9 +43,10 @@
 
   /* Consequence colours. These deliberately do NOT alias Campfire's named
      expressive tokens (--flamingo, --sage, --pine, --golden-amber): those
-     carry a *second*, much darker value under `.dark`, which is the theme
-     this app always runs in. As rendered they measured 2.8–3.6:1 on --panel,
-     below AA. The numbered ramps are theme-independent, so the steps below
+     resolved to a *second*, much darker value under `.dark`, the theme this
+     app always runs in. As rendered they measured 2.8–3.6:1 on --panel,
+     below AA — the numbered steps are still preferred for consequence
+     colours. The numbered ramps are theme-independent, so the steps below
      are picked for this ground and stay honest (post night-ramp retune):
        --red 6.7:1   --green 8.7:1   --caution 11.2:1   --blue 6.9:1
      Pine has no numbered ramp, so it is lifted toward --ink to keep its teal

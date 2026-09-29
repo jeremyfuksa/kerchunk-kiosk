@@ -78,8 +78,8 @@ never uses Layer 1.
 | `--kc-line` | `#232a31` | row separators (the only hairline) |
 | `--kc-well` | `#0c1113` | LCD glass |
 | `--kc-ink` | `#e6e9ee` | primary text |
-| `--kc-dim` | `#98a1ad` | secondary text, group headings |
-| `--kc-mute` | `#7c8592` → tuned | tertiary text (see contrast rule) |
+| `--kc-dim` | `#a4acb7` | secondary text, group headings |
+| `--kc-mute` | `#8d96a3` | tertiary text (see contrast rule) |
 | `--kc-glass` | `#5fd4c3` | LIVE: LCD characters, primary key, active tab, slider fill |
 | `--kc-glass-ink` | `#08231f` | text on `--kc-glass` |
 | `--kc-glass-text` | `#d9f5f0` | LCD channel name |
@@ -87,10 +87,11 @@ never uses Layer 1.
 | `--kc-hay` | `#e8c37a` | needs-attention (triage badge, suggestions strip) |
 | `--kc-ok` | `#7fc79a` | healthy verdict |
 
-- **Contrast rule:** every text token must clear 4.5:1 on both `--kc-ground`
-  and `--kc-raised` (non-text glyphs 3:1). `--kc-mute` as drafted is ~4.1:1 on
-  `--kc-raised`; lift it until it passes. Record the measured ratios in a
-  comment beside the tokens (the existing admin.css convention).
+- **Contrast rule:** every text token must clear 4.5:1 on `--kc-ground`,
+  `--kc-raised` AND `--kc-key` (non-text glyphs 3:1). `--kc-mute` as drafted
+  was ~4.1:1 on `--kc-raised`; it was lifted to `#8d96a3` and is now final.
+  Record the measured ratios in a comment beside the tokens (the existing
+  admin.css convention).
 - **The emphasis budget carries over:** sea-glass marks only what is live or
   the one primary action on a screen. Service colors (`lib/serviceColor.ts`
   `PIN_COLORS`) appear only as the small row dot.
@@ -119,7 +120,10 @@ never uses Layer 1.
 Rewritten to document both layers: the admin language (Layer 2) as the
 primary system, and the wall/dashboard surface values (Layer 1) as the
 ambient-display palette. The `.impeccable/design.json` sidecar is refreshed
-from it (`/impeccable document`).
+from it (`/impeccable document`). The full rewrite — making the admin
+language primary and retiring the classic-admin narrative — lands with the
+flip PR (step 6). Until then, DESIGN.md appends the Faceplate section
+alongside the existing classic-admin description rather than replacing it.
 
 ### 1.3 Removal
 

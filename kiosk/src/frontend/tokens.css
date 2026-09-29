@@ -3,9 +3,11 @@
    docs/superpowers/specs/2026-09-28-admin-redesign-design.md). Two layers:
 
    LAYER 1 — ambient surfaces (dashboard, wall, map, art). Every property
-   those pages referenced from Campfire, at the value it resolved to on the
-   appliance under `.dark` (night-ramp retune, campfire#59). Frozen: the
-   wall's look is proven identical by test/tokens.test.ts against
+   those pages referenced from Campfire, at the value Campfire resolved to on
+   the appliance under `.dark` (night-ramp retune, campfire#59) — now frozen
+   as plain `:root` declarations below, not gated on a `.dark` class
+   (index.html's class="dark" is vestigial). Frozen: the wall's look is
+   proven identical by test/tokens.test.ts against
    test/fixtures/campfire-dark-resolved.json. Change these only on purpose.
 
    LAYER 2 — the admin language (`--kc-*`): Faceplate structure, Night desk

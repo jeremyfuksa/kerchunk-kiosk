@@ -204,7 +204,7 @@ typography:
     fontWeight: 600
     lineHeight: 1.08
   admin-body:
-    fontFamily: "'Schibsted Grotesk', system-ui, sans-serif"
+    fontFamily: "'Schibsted Grotesk', system-ui, -apple-system, 'Segoe UI', sans-serif"
     fontSize: "0.94rem"
     fontWeight: 400
     lineHeight: 1.5
@@ -472,8 +472,8 @@ The admin is the scanner's front panel, not a dashboard. Spec:
 - **Type:** Schibsted Grotesk (`--kc-font`), sentence case, no all-caps
   labels; scale `--kc-t-meta` 0.78rem → `--kc-t-lcd-freq` 2.6rem.
 - **Shape:** keys 10px, groups 14px, sheets 18px, chips pill.
-- **Contrast:** every `--kc-*` text token ≥ 4.5:1 on ground, raised and key
-  (test/tokens.test.ts).
+- **Contrast:** every `--kc-*` text token ≥ 4.5:1 on ground, raised and key,
+  with `--kc-glass-ink` measured on `--kc-glass` (9.2:1) (test/tokens.test.ts).
 
 ## Do's and Don'ts
 
