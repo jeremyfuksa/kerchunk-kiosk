@@ -18,7 +18,7 @@ import { DEFAULT_GROUP_DWELL_MS } from "../../backend/config/engineDefaults.js";
 import {
   ADVANCED_BANDS, BAND_COST, COST_LABEL, KNOB_BY_ID, curveSvg, knobUi, loudnessCurve,
   parseKnob, previewGroups, previewText, revisitHint, type Band, type KnobValues,
-} from "../admin/engineKnobs.js";
+} from "./engineKnobs.js";
 import { api } from "../lib/api.js";
 import { esc } from "../lib/format.js";
 import { group, key, slider, switchRow } from "./ui/kit.js";

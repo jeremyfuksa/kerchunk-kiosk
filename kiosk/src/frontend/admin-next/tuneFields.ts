@@ -6,7 +6,7 @@
 // booleans for switches — the same shape as engineKnobs' KnobValues.
 import type { Config } from "../../backend/config/schema.js";
 import { DEFAULT_GROUP_DWELL_MS } from "../../backend/config/engineDefaults.js";
-import { BAND_COST, KNOB_BY_ID, KNOB_FIELDS, applyKnobs, readKnob, type Band, type KnobField } from "../admin/engineKnobs.js";
+import { BAND_COST, KNOB_BY_ID, KNOB_FIELDS, applyKnobs, readKnob, type Band, type KnobField } from "./engineKnobs.js";
 
 export type TuneGroup = "sound" | "scanning" | "discovery" | "alerts" | Exclude<Band, "sound">;
 /** live = saved on change; scan = batched countdown (engine restart);

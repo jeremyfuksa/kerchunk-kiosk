@@ -4,7 +4,7 @@ import type { Config } from "../src/backend/config/schema.js";
 import {
   KNOB_FIELDS, KNOB_BY_ID, readKnob, parseKnob, knobUi, windowError, applyKnobs,
   dirtyBands, saveCost, BAND_COST, loudnessOut, loudnessCurve, curveSvg, previewGroups, previewText, revisitHint,
-} from "../src/frontend/admin/engineKnobs.js";
+} from "../src/frontend/admin-next/engineKnobs.js";
 
 const baseCfg = (): Config => ({
   channels: [], banks: [],
@@ -168,6 +168,28 @@ describe("loudness curve", () => {
     const svg = curveSvg(P);
     for (const cls of ["lc-hold", "lc-unity", "lc-target", "lc-ceil", "lc-curve", "lc-axis"]) expect(svg).toContain(`class="${cls}"`);
     expect(svg).toContain("target −18");
+  });
+  it("never overlaps its labels (default and extreme settings)", () => {
+    const boxes = (svg: string) => [...svg.matchAll(/<text x="([\d.]+)" y="([\d.]+)"(?: text-anchor="(\w+)")?>([^<]*)<\/text>/g)]
+      .map(([, x, y, anchor, t]) => {
+        const w = t!.length * 6.2; // ~0.62em at the chart's 10px label size
+        const left = anchor === "end" ? Number(x) - w : anchor === "middle" ? Number(x) - w / 2 : Number(x);
+        return { t: t!, left, right: left + w, top: Number(y) - 10, bottom: Number(y) };
+      });
+    const cases = [
+      P,
+      { ...P, limiterCeiling: 0.3 }, { ...P, limiterCeiling: 1 },
+      { ...P, holdBelowDb: -70 }, { ...P, holdBelowDb: -30 },
+      { ...P, targetDb: -3 }, { ...P, targetDb: -30 },
+    ];
+    for (const p of cases) {
+      const b = boxes(curveSvg(p));
+      for (let i = 0; i < b.length; i++) for (let j = i + 1; j < b.length; j++) {
+        const [u, v] = [b[i]!, b[j]!];
+        const overlap = u.left < v.right && v.left < u.right && u.top < v.bottom && v.top < u.bottom;
+        expect(overlap, `${u.t} vs ${v.t} at ${JSON.stringify(p)}`).toBe(false);
+      }
+    }
   });
 });
 

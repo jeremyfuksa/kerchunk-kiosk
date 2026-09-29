@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { advancedHtml, bandHtml, batchSay, resetHtml, rowHtml, statusHtml } from "../src/frontend/admin-next/tune.js";
 import { TUNE_FIELDS, FIELD_BY_ID } from "../src/frontend/admin-next/tuneFields.js";
-import { ADVANCED_BANDS, BAND_COST, COST_LABEL } from "../src/frontend/admin/engineKnobs.js";
+import { ADVANCED_BANDS, BAND_COST, COST_LABEL } from "../src/frontend/admin-next/engineKnobs.js";
 
 describe("Tune advanced bands", () => {
   for (const { band, title } of ADVANCED_BANDS) {

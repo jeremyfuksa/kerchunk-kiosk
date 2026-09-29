@@ -50,7 +50,7 @@ import {
   KNOB_FIELDS, ADVANCED_BANDS, BAND_COST, COST_LABEL, type KnobField, type KnobValues,
   readKnob, knobUi, applyKnobs, dirtyBands, saveCost, curveSvg, loudnessCurve,
   previewGroups, previewText, revisitHint,
-} from "./engineKnobs.js";
+} from "../admin-next/engineKnobs.js";
 import { DEFAULT_GROUP_DWELL_MS } from "../../backend/config/engineDefaults.js";
 import "./admin.css";
 
