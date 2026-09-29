@@ -52,8 +52,12 @@ export class ApplyBatcher {
     this.saving = this.save(ids).then(
       () => { if (this.ids.size === 0) this.set({ kind: "saved" }); },
       (e: unknown) => {
+        // A change that arrived while this save was in flight armed its own
+        // timer for a countdown-free restart; fold it into this failure
+        // instead — never let a scanner restart fire with no visible undo.
+        this.clearTimer();
         for (const id of ids) this.ids.add(id);
-        this.set({ kind: "error", message: e instanceof Error ? e.message : String(e), ids });
+        this.set({ kind: "error", message: e instanceof Error ? e.message : String(e), ids: [...this.ids] });
       },
     ).finally(() => { this.saving = null; });
     await this.saving;

@@ -51,6 +51,48 @@ describe("ApplyBatcher", () => {
     expect(saves).toEqual([["a"], ["a", "b"]]);
     expect(b.state.kind).toBe("saved");
   });
+  it("a change during a failing save cancels its timer and folds into one error", async () => {
+    let fail = true;
+    let reject!: (e: Error) => void;
+    const { b, saves } = make(() => fail
+      ? new Promise<void>((_resolve, rj) => { reject = rj; })
+      : Promise.resolve());
+    b.change("a");
+    await vi.advanceTimersByTimeAsync(TUNE_APPLY_DELAY_MS);
+    expect(saves).toEqual([["a"]]);
+    b.change("b"); // arms a timer while "a"'s save is still in flight
+    reject(new Error("409"));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(b.state.kind).toBe("error");
+    expect(b.state as { ids: string[] }).toMatchObject({ message: "409" });
+    expect(([...(b.state as { ids: string[] }).ids]).sort()).toEqual(["a", "b"]);
+    // No restart fires on its own — b's countdown must have been cancelled.
+    await vi.advanceTimersByTimeAsync(TUNE_APPLY_DELAY_MS * 2);
+    expect(saves).toEqual([["a"]]);
+    fail = false;
+    b.change("c");
+    await vi.advanceTimersByTimeAsync(TUNE_APPLY_DELAY_MS);
+    expect(saves).toHaveLength(2);
+    expect([...saves[1]!].sort()).toEqual(["a", "b", "c"]);
+    expect(b.state.kind).toBe("saved");
+  });
+  it("undo during an in-flight save returns only the not-yet-saved ids", async () => {
+    let resolve!: () => void;
+    const { b, saves } = make(() => new Promise<void>((r) => { resolve = r; }));
+    b.change("a");
+    await vi.advanceTimersByTimeAsync(TUNE_APPLY_DELAY_MS);
+    expect(saves).toEqual([["a"]]);
+    b.change("b"); // collected after "a" went into flight; not part of that save
+    expect(b.undo()).toEqual(["b"]);
+    expect(b.state.kind).toBe("idle");
+    resolve();
+    await vi.advanceTimersByTimeAsync(0);
+    // "a"'s save succeeded after undo cleared the pending set; nothing else
+    // is pending, so the batcher settles on "saved" (idle-then-saved).
+    expect(b.state.kind).toBe("saved");
+    await vi.advanceTimersByTimeAsync(TUNE_APPLY_DELAY_MS * 2);
+    expect(saves).toEqual([["a"]]);
+  });
   it("never saves concurrently: a change during a save waits for it", async () => {
     let release!: () => void;
     let inFlight = 0; let max = 0;
