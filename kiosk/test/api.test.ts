@@ -1330,6 +1330,29 @@ describe("kiosk render diag", () => {
   });
 });
 
+describe("kiosk heartbeat", () => {
+  it("POST /api/kiosk/heartbeat feeds the wall watchdog from loopback", async () => {
+    dir = mkdtempSync(join(tmpdir(), "ksrv-"));
+    let beats = 0;
+    const { server } = createServer({
+      configStore: new ConfigStore(join(dir, "config.json")),
+      engine: new FakeEngine(),
+      activityLog: new ActivityLog(10),
+      wsHub: new WsHub(),
+      staticDir: dir,
+      wallHeartbeat: () => { beats++; },
+    });
+    await request(server).post("/api/kiosk/heartbeat").expect(204);
+    await request(server).post("/api/kiosk/heartbeat").expect(204);
+    expect(beats).toBe(2);
+  });
+
+  it("answers 204 with no watchdog wired", async () => {
+    const { server } = makeApp();
+    await request(server).post("/api/kiosk/heartbeat").expect(204);
+  });
+});
+
 describe("backend restart", () => {
   it("POST /api/backend/restart requests a supervised process restart", async () => {
     dir = mkdtempSync(join(tmpdir(), "ksrv-"));

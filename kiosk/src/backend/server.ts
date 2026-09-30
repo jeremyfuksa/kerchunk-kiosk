@@ -21,6 +21,7 @@ import os from "node:os";
 import { SystemStats, classifyHealth } from "./systemStats.js";
 import { CcSampleStore } from "./ccSampleStore.js";
 import { CcRecorder } from "./ccRecorder.js";
+import { isLoopback } from "./wallWatchdog.js";
 
 export interface ServerDeps {
   /** Optional identification chain — enriches Close Call channel names. */
@@ -46,6 +47,9 @@ export interface ServerDeps {
    *  (tests, non-appliance hosts) makes the power route 503 rather than
    *  spawning anything. */
   powerAction?: (action: "reboot" | "poweroff") => void;
+  /** Wall-page heartbeat sink (the display watchdog). Called only for beats
+   *  from this machine — the wall is the local chromium, never a remote tab. */
+  wallHeartbeat?: () => void;
   /** Enable temporary thermal load-shedding on the appliance process. */
   selfProtect?: boolean;
   /** Injectable file reader for SystemStats (tests fake /sys thermal reads). */
@@ -1214,6 +1218,15 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
       // fresh bundle + re-fetched Maps script/style, no systemd involved.
       deps.wsHub.broadcast({ type: "reload", ts: Date.now() });
       return json(res, 200, { ok: true });
+    }
+
+    if (method === "POST" && path === "/api/kiosk/heartbeat") {
+      // Ambient pages beat every 15 s from inside a rAF; the watchdog restarts
+      // kerchunk-display when the local wall's beats stop. Remote viewers get
+      // the same 204 but don't count.
+      if (isLoopback(req.socket.remoteAddress)) deps.wallHeartbeat?.();
+      res.writeHead(204).end();
+      return;
     }
 
     if (method === "POST" && path === "/api/kiosk/diag") {

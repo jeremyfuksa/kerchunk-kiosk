@@ -2,6 +2,7 @@
 import { z } from "zod";
 import { isCtcssTone } from "./ctcss.js";
 import { isDcsCode } from "./dcs.js";
+import { wallWatchdogSchema } from "../wallWatchdog.js";
 
 // airplanes.live REST base, over HTTPS. The endpoint 301s http -> https, so a
 // cleartext base spent two requests and two TCP connections per poll — double
@@ -372,6 +373,9 @@ export const configSchema = z.object({
     // animation). Off by default — keeps the wall uncluttered.
     trails: z.boolean().default(false),
   }).optional(),
+  // Wall watchdog (src/backend/wallWatchdog.ts): restarts kerchunk-display
+  // when the wall page stops heartbeating. Absent = every default (on).
+  wallWatchdog: wallWatchdogSchema.optional(),
   // Multi-SDR (ROADMAP Idea 10): role assignments by device identity.
   // Prefer SERIAL (e.g. "KIOSK01") — the helper resolves it to the exact dongle
   // regardless of librtlsdr enumeration order, which the USB PORT->index map
