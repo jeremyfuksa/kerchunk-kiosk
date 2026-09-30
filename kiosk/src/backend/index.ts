@@ -1,5 +1,5 @@
 import { WebSocketServer } from "ws";
-import { spawn } from "node:child_process";
+import { spawn, execFile } from "node:child_process";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createServer, toScanConfig } from "./server.js";
@@ -22,6 +22,7 @@ import { NwsWeather } from "./weather.js";
 import { HistoryStore } from "./history.js";
 import { dirname } from "node:path";
 import type { EngineEvent } from "./engine/ScannerEngine.js";
+import { WallWatchdog, wallWatchdogSchema } from "./wallWatchdog.js";
 
 const PORT = Number(process.env.PORT ?? 8080);
 const CONFIG_PATH = process.env.KERCHUNK_CONFIG ?? "/var/lib/kerchunk-kiosk/config.json";
@@ -259,11 +260,15 @@ const aircraftFeed = config.aircraft?.enabled && config.display
     })
   : undefined;
 
+// Bound after createServer (it needs getConfig); beats before then are dropped.
+let wallWatchdog: WallWatchdog | undefined;
+
 const { server, getConfig } = createServer({
   configStore, engine, weatherEngine, activityLog, wsHub, staticDir: STATIC_DIR,
   lookup, weather, history, aircraftFeed,
   ccSampleDir: join(dirname(CONFIG_PATH), "cc-samples"),
   selfProtect: true,
+  wallHeartbeat: () => wallWatchdog?.beat(),
   // systemd uses Restart=on-failure, so an intentional non-zero exit performs
   // a full backend/helper restart without requiring passwordless systemctl.
   restartBackend: () => {
@@ -284,6 +289,28 @@ const { server, getConfig } = createServer({
       });
   },
 });
+
+// Wall watchdog: restart kerchunk-display when the wall page stops beating
+// (renderer crash / hang). Not under the fake engine — a dev backend on the
+// appliance must not bounce the real wall. Knobs: config.wallWatchdog.
+if (engineKind !== "fake") {
+  const DISPLAY_UNIT = "kerchunk-display";
+  const systemctl = (args: string[], sudo: boolean) => new Promise<number>((resolve) => {
+    const [cmd, argv] = sudo ? ["sudo", ["-n", "systemctl", ...args]] : ["systemctl", args];
+    execFile(cmd, argv, { timeout: 30_000 }, (err) => {
+      resolve(err ? (typeof err.code === "number" ? err.code : 1) : 0);
+    });
+  });
+  wallWatchdog = new WallWatchdog({
+    getSettings: () => getConfig().wallWatchdog ?? wallWatchdogSchema.parse({}),
+    isDisplayActive: async () => (await systemctl(["is-active", "--quiet", DISPLAY_UNIT], false)) === 0,
+    restartDisplay: async () => {
+      const code = await systemctl(["restart", DISPLAY_UNIT], true);
+      if (code !== 0) throw new Error(`systemctl restart ${DISPLAY_UNIT} exited ${code}`);
+    },
+  });
+  setInterval(() => { void wallWatchdog?.check(); }, 15_000).unref();
+}
 
 const wss = new WebSocketServer({ server, path: "/ws" });
 wss.on("connection", (ws) => wsHub.attach(ws));

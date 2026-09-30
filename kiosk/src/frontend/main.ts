@@ -50,4 +50,18 @@ const [, page, render] = RENDERERS.find(([prefix]) => location.pathname.startsWi
 document.documentElement.dataset.page = page;
 loadFonts(page);
 
+// Wall watchdog heartbeat (src/backend/wallWatchdog.ts). Sent from inside a
+// rAF so a beat proves the page is painting, not just that a timer fired; the
+// backend restarts kerchunk-display when the local wall's beats stop. Keep it
+// well under config.wallWatchdog.staleMs (60 s). Not from the admin: it isn't
+// a wall surface and shouldn't vouch for one.
+const HEARTBEAT_MS = 15_000;
+if (page !== "admin") {
+  const beat = () => requestAnimationFrame(() => {
+    fetch("/api/kiosk/heartbeat", { method: "POST" }).catch(() => { /* backend down: nothing to tell */ });
+  });
+  beat();
+  setInterval(beat, HEARTBEAT_MS);
+}
+
 render(root);
