@@ -99,4 +99,13 @@
   /* The map pin carve-out, mirrored so no stylesheet carries the literal. */
   --kc-pin-cream: #f5ebe8;     /* pin body; ring on a low-contrast service head (≥3:1 on well) */
   --kc-pin-glyph: #ffffff;     /* the pin/head icon stroke */
+  /* The map's cartography (spec 2026-10-01). map-style.json (the Google
+     console master) and map.ts DARK_STYLE carry these as hex — test/mapStyle
+     pins them. Labels are deliberately quiet: the activity is the subject. */
+  --kc-map-land: var(--kc-ground);
+  --kc-map-water: var(--kc-well);
+  --kc-map-road: var(--kc-line);
+  --kc-map-road-edge: #2c343e;   /* highway casing, a half-step above the road */
+  --kc-map-label: #5d6672;       /* towns, water names (≈2.9:1 on land, on purpose) */
+  --kc-map-poi: #747e8b;         /* hospitals, police, fire, airports — a step brighter */
 }

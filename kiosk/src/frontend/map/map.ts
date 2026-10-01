@@ -684,19 +684,20 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
 }
 
 // Instrument-dark cartography to match the kiosk.
-const DARK_STYLE = [
-  { elementType: "geometry", stylers: [{ color: "#1c1f26" }] },
-  { elementType: "labels.text.fill", stylers: [{ color: "#747b8a" }] },
-  { elementType: "labels.text.stroke", stylers: [{ color: "#1c1f26" }] },
-  { featureType: "road", elementType: "geometry", stylers: [{ color: "#2b303b" }] },
-  { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#42454e" }] },
+export const DARK_STYLE = [
+  // The --kc-map-* tokens as hex (test/mapStyle pins them to tokens.css).
+  { elementType: "geometry", stylers: [{ color: "#15191f" }] },
+  { elementType: "labels.text.fill", stylers: [{ color: "#5d6672" }] },
+  { elementType: "labels.text.stroke", stylers: [{ color: "#15191f" }] },
+  { featureType: "road", elementType: "geometry", stylers: [{ color: "#232a31" }] },
+  { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#2c343e" }] },
   // Roads stay as geometry for orientation, but their labels and highway
   // shields compete with the blips — the activity is the map's subject.
   { featureType: "road", elementType: "labels", stylers: [{ visibility: "off" }] },
   { featureType: "road.highway", elementType: "labels.icon", stylers: [{ visibility: "off" }] },
-  { featureType: "water", elementType: "geometry", stylers: [{ color: "#13161c" }] },
+  { featureType: "water", elementType: "geometry", stylers: [{ color: "#0c1113" }] },
   { featureType: "poi", stylers: [{ visibility: "off" }] },
-  { featureType: "transit", elementType: "geometry", stylers: [{ color: "#262b34" }] },
+  { featureType: "transit", elementType: "geometry", stylers: [{ color: "#232a31" }] },
 ];
 
 // Measure DIAG_MS of rAF pacing once the map has settled, then POST it. The
