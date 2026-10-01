@@ -124,23 +124,30 @@ group beside them (the existing log, sentence case, in rows separated by
 
 ## Architecture
 
-### Shared LCD (`src/frontend/lib/lcd.ts`)
-`lcd()` and its helpers (`meterLit`, `dbText`, the meter) move out of
-`admin/ui/kit.ts` into `lib/lcd.ts`. The admin re-imports them with
+### Shared LCD (`src/frontend/faceplate/lcd.ts`)
+A new frontend-only folder, `src/frontend/faceplate/`, holds what the admin and
+the kiosk share. It is not `lib/`: `lib/` is also typechecked by the backend
+tsconfig, which has no `vite/client` types, so it can't import `?raw` SVGs or
+CSS. `lcd()` and its helpers (`meterLit`, `dbText`, the meter) move out of
+`admin/ui/kit.ts` into `faceplate/lcd.ts`. The admin re-imports them with
 **no visual change** (its tests and screenshots are the guard). The builder
 gains:
-- `head?: { color: string; glyph: string }` — the service-head slot;
-- `meter?: { segments: number; fill: number /* 0..1 */ }` — the segmented
+- `head?: ServiceHead` (`{ color, glyph, ringed }`) — the service-head slot;
+- `segments?: { count: number; fill: number /* 0..1 */ }` — the segmented
   meter (the admin keeps its four-bar meter; each caller owns its own
   dB→fill mapping because the scales differ);
 - a `size: "panel" | "wall"` class hook (`.kc-lcd--wall`).
 
-The LCD CSS moves from `admin/admin.css` to a shared stylesheet scoped to both
-`html[data-page="admin"]` and `html[data-page="dashboard"]`.
+The LCD CSS moves from `admin/admin.css` to `faceplate/lcd.css`, scoped with
+`:where(html[data-page="admin"], html[data-page="dashboard"])` so its
+specificity is unchanged.
 
-`lib/serviceHead.ts` maps a `PinCategory` to `{ color: PIN_COLORS[cat],
-glyph }`, importing the same lucide-static icons the pins use. The pin SVGs
-stay the map's source; the head is built from the same parts.
+`faceplate/serviceHead.ts` maps a `PinCategory` to `{ color: PIN_COLORS[cat],
+glyph, ringed }`. The glyph is extracted from the pin SVG itself
+(`map/pins/pin-*.svg?raw`), so the pins stay the single source and the head
+is built from the same parts. `ringed` is true when the colour is under 3:1 on
+`--kc-well` (today: rail and business); a ringed head wears a 2px
+`--kc-pin-cream` ring, which echoes the pin's own body.
 
 ### The corner state machine (`dashboard/corner.ts`)
 A pure reducer, unit-tested headless:
@@ -157,12 +164,16 @@ timing lives in CSS custom properties fed from the TS constants.
   `--kc-k-alert-title`. Values are taken from the approved mockups at
   1920×1080 and expressed in rem/clamp.
 - Motion: `--kc-grow-ms`, `--kc-release-ms`, `--kc-sweep-ms`.
+- The pin carve-out mirrored as tokens so CSS never carries the literal:
+  `--kc-pin-cream` (`#f5ebe8`, the pin body / head ring) and `--kc-pin-glyph`
+  (`#ffffff`, the head's icon stroke).
 - Any new grey needed by the map legend/labels becomes a `--kc-*` token
   with its contrast recorded. No literal colour goes in a stylesheet.
 
 ### Fonts
-`FONT_QUERY.dashboard` and `FONT_QUERY.map` switch to Schibsted Grotesk
-(400–800). The `media="print"` swap stays.
+`FONT_QUERY.dashboard` (PR 2) and `FONT_QUERY.map` (PR 3) switch to
+Schibsted Grotesk (400–800), each in the PR that restyles that page. The
+`media="print"` swap stays.
 
 ### What is removed
 - `.bankRail` / `#bankRail` and its paint code (the window label moves into
@@ -190,19 +201,23 @@ contrast checks for the new tokens on `--kc-well` and the map ground.
 ## Delivery — three PRs (not stacked)
 
 1. **Tokens + shared LCD** (`feat/kiosk-faceplate-tokens`).
-   - `lib/lcd.ts`, `lib/serviceHead.ts`, the shared LCD CSS, the new tokens,
-     Schibsted on dashboard/map, and the DESIGN.md rule rewrite.
+   - `faceplate/lcd.ts` + `lcd.css`, `faceplate/serviceHead.ts`, the new
+     tokens, and DESIGN.md for the shared LCD and the new tokens. The Layer
+     Rule rewrite waits for PR 2, when it becomes true.
    - The admin is visually unchanged; the kiosk is not yet using any of it.
    - Proof: tests, typecheck, build, admin screenshot unchanged.
 2. **The dashboard** (`feat/kiosk-faceplate-dashboard`).
    - The corner reducer and paint, the pill, the glass, all twelve states,
-     the alert stack restyle, the clock, the no-key fallback, and the removals.
+     the alert stack restyle, the clock, the no-key fallback, the removals,
+     Schibsted on the dashboard, and the DESIGN.md Layer Rule rewrite and
+     dashboard subsection.
    - Proof: tests (reducer), typecheck, build, `kiosk/reload`, `grim`
      screenshots, and a state-cycling script the operator watches:
      `/api/test/alert` × three tiers, mute on/off, live hits.
 3. **The map** (`feat/kiosk-faceplate-map`).
-   - `map-style.json` + README, `DARK_STYLE`, the sea-glass accents, and the
-     legend/message type.
+   - `map-style.json` + README, `DARK_STYLE`, the sea-glass accents, the
+     legend/message type, Schibsted on the map, and the DESIGN.md map
+     carve-outs.
    - Proof: build, reload, `grim`; then the operator pastes and publishes
      the console style, followed by a `kerchunk-display` restart and a recapture.
 
