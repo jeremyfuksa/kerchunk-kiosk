@@ -14,8 +14,8 @@ describe("colorFor", () => {
   it("uses the nofix color when geography is synthetic", () => {
     expect(colorFor(146_520_000, "nofix")).toBe("#4a7c7e");
   });
-  it("falls back to a warm orange when frequency is unknown", () => {
-    expect(colorFor(undefined, "active")).toBe("#ff6b35");
+  it("falls back to sea-glass (live) or flamingo (close call) when frequency is unknown", () => {
+    expect(colorFor(undefined, "active")).toBe("#5fd4c3");
     expect(colorFor(undefined, "closecall")).toBe("#dc3a38");
   });
 
@@ -62,7 +62,7 @@ describe("operator service tag overrides the frequency guess", () => {
 
   it("a tag classifies even a location-only blip with no usable frequency", () => {
     expect(colorFor(undefined, "active", ["public-safety"])).toBe(PIN_COLORS.publicsafety);
-    expect(colorFor(undefined, "active")).toBe("#ff6b35"); // still the warm orange with no tag
+    expect(colorFor(undefined, "active")).toBe("#5fd4c3"); // sea-glass: live, no tag
   });
 
   it("the nofix gray still wins over any tag (geography is the uncertain bit)", () => {

@@ -16,7 +16,7 @@ round-trip is manual:
 3. Wait a couple of minutes for propagation, then reload the map page /
    `sudo systemctl restart kerchunk-display` for the kiosk.
 
-Color map (campfire dark tokens):
+Color map (Night desk, the `--kc-map-*` tokens):
 
 | Layer | Token | Hex |
 |---|---|---|

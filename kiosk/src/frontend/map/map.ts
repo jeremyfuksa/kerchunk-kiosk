@@ -9,7 +9,7 @@ import icoTower from "lucide-static/icons/radio-tower.svg?raw";
 import { PIN_COLORS, colorFor, categoryFor, type PinCategory } from "../lib/serviceColor.js";
 // Operator-designed service pins (claude.ai/design handoff, 2026-06-07):
 // cream teardrops with vivid service heads; Home is deliberately inverted
-// (spark ring, cream head) so the QTH reads as YOURS on the dark map.
+// (sea-glass ring, cream head) so the QTH reads as YOURS on the dark map.
 import pinAir from "./pins/pin-air.svg?raw";
 import pinRail from "./pins/pin-rail.svg?raw";
 import pinHam from "./pins/pin-ham.svg?raw";

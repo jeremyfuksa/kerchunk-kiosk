@@ -34,3 +34,15 @@ describe("map cartography is the --kc-map-* tokens", () => {
     expect(contrast(v("--kc-map-poi"), v("--kc-map-land"))).toBeGreaterThan(contrast(v("--kc-map-label"), v("--kc-map-land")));
   });
 });
+
+describe("home pin on Night desk", () => {
+  const svg = readFileSync("src/frontend/map/pins/pin-home.svg", "utf8").toLowerCase();
+  it("body is sea-glass, glyph is glass-ink (visible on the cream head)", () => {
+    expect(svg).toContain(`fill="${v("--kc-glass")}"`);
+    expect(svg).toContain(`stroke="${v("--kc-glass-ink")}"`);
+    expect(svg).not.toContain("#ff5a1f");
+  });
+  it("the glyph clears 3:1 on the cream head", () => {
+    expect(contrast(v("--kc-glass-ink"), v("--kc-pin-cream"))).toBeGreaterThanOrEqual(3);
+  });
+});
