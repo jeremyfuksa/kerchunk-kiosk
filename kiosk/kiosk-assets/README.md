@@ -40,11 +40,15 @@ town names:
 hospitals, police, fire stations (public-safety banks), airports (airband),
 theme parks (the WoF business channels).
 
-Of those child ids only `pointOfInterest.emergency.hospital` is documented;
-the rest are educated camelCase guesses. If the console checker flags one,
-click the actual feature on the editor's preview map (the **map inspector**
-names the styleable feature under the cursor), fix the id, and mirror it back
-here. The same pattern extends to any future category (rail yards, marinas…).
+Every feature id here is checked against Google's JSON reference
+(developers.google.com/maps/documentation/maps-static/cloud-customization/json-reference),
+2026-10-01: `pointOfInterest.emergency.{hospital,police,fire}`,
+`pointOfInterest.transit.airport`, `pointOfInterest.entertainment.themePark`,
+and `political.{city,sublocality,neighborhood}` for the quiet place names.
+(Earlier guesses `…fireStation`, `…transportation.airport` and `settlement`
+were rejected by the console as "Feature not found" and silently dropped —
+town names were never actually dimmed until this fix.) The console's
+validation panel is the check: zero warnings after pasting.
 
 If the console's checker rejects a feature `id`, the authoritative names are
 in the style editor's visual-mode **Map features** panel (camelCase the
