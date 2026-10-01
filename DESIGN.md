@@ -1,6 +1,6 @@
 ---
 name: Kerchunk
-description: Dark-only interfaces for an always-on SDR scanner appliance. The admin is the scanner's front panel (the Faceplate); the ambient displays are quiet rooms with exactly one thing lit.
+description: Dark-only interfaces for an always-on SDR scanner appliance. The admin and the kiosk dashboard are the scanner's front panel (the Faceplate); the wall, art and map are quiet rooms with exactly one thing lit.
 colors:
   # ── Layer 2: the admin (Faceplate × Night desk) — tokens.css --kc-* ──
   kc-ground: "#15191f"
@@ -287,19 +287,21 @@ components:
 
 # Design System: Kerchunk
 
-Kerchunk has two design languages, one per kind of surface, both defined in
+Kerchunk has two design languages, both defined in
 `kiosk/src/frontend/tokens.css`:
 
-1. **The admin — the Faceplate** (tokens.css layer 2, `--kc-*`). The primary
-   system, and the one this document is mostly about. Everything the operator
-   touches.
-2. **The ambient displays** (tokens.css layer 1) — the wall, dashboard, map and
-   art. Output-only surfaces seen from across a room. Their palette is frozen;
-   they are documented in their own section at the end.
+1. **The Faceplate** (tokens.css layer 2, `--kc-*`). The primary system, and
+   the one this document is mostly about. It is everything the operator
+   touches (the admin), and since 2026-10-01 the kiosk dashboard too, at room
+   distance (see "The kiosk dashboard").
+2. **The ambient displays** (tokens.css layer 1) — the wall, map and art.
+   Output-only surfaces seen from across a room. Their palette is frozen; they
+   are documented in their own section at the end.
 
-The two layers never mix: the admin uses only `--kc-*`, and the ambient pages
-never use `--kc-*`. Spec for the admin:
-`docs/superpowers/specs/2026-09-28-admin-redesign-design.md`.
+The two layers never mix: the admin and the dashboard use only `--kc-*`, and
+the wall, map and art never use `--kc-*`. Specs:
+`docs/superpowers/specs/2026-09-28-admin-redesign-design.md` (admin),
+`docs/superpowers/specs/2026-10-01-kiosk-faceplate-design.md` (dashboard).
 
 ## Overview
 
@@ -395,14 +397,16 @@ hour bar, the sparkline stroke, and a text link that resolves a status line
 them is wrong. Hay means attention and coral means destruction, and neither
 is used as decoration.
 
-**The Layer Rule.** The admin reads only `--kc-*`. The ambient pages read
-only layer 1. A colour that isn't a token doesn't go in, not even as a
-`var(--token, #hex)` fallback. The one carve-out is the NWS storm palette
-(`dashboard.css`) and the wall/art canvas grounds (`wall.css` / `art.css`).
-These are the only literal colours outside `tokens.css`, and they are
-recorded under Ambient displays. `--kc-pin-cream` and `--kc-pin-glyph` mirror
-the map pin's literal body and glyph colours so the shared LCD never carries
-them as hex.
+**The Layer Rule.** The admin and the kiosk dashboard read only `--kc-*`.
+The wall, map and art read only layer 1. A colour that isn't a token doesn't go
+in, not even as a `var(--token, #hex)` fallback. The carve-outs are the NWS
+storm palette (`dashboard.css`, the `.alertBar[data-kind]` rules), the service
+palette (`PIN_COLORS`, pins and hits), the hit-kind marks (`--flamingo` close
+call, `--pine` no fix), and the wall/art canvas grounds (`wall.css` /
+`art.css`). These are recorded under Ambient displays and The kiosk
+dashboard. `--kc-pin-cream` and `--kc-pin-glyph` mirror the map pin's literal
+body and glyph colours so the shared LCD never carries them as hex.
+`kiosk/test/dashboardLayer.test.ts` enforces the dashboard's side.
 
 ## Typography
 
@@ -704,28 +708,29 @@ offset on `:focus-visible`. There is a skip link, the tab set uses
 
 ## Ambient displays (tokens.css layer 1)
 
-The wall, dashboard (the HDMI kiosk view, where the fullscreen map *is* the
-dashboard), map and art are **output-only**: no mouse or keyboard, read from
+The wall, map and art are **output-only**: no mouse or keyboard, read from
 across a room. They keep the language they had before the admin redesign,
 **"The Night Watch"**: quiet gray on near-black, and exactly one thing lit.
+(The kiosk dashboard left this layer on 2026-10-01; see "The kiosk
+dashboard". The map's own restyle follows.)
 
 ### The Frozen-Ambient Rule
 Layer 1 of `tokens.css` holds the values Campfire resolved to on the appliance
 when Campfire was removed (2026-09-28). `kiosk/test/tokens.test.ts` pins them
 against `test/fixtures/campfire-dark-resolved.json`. Change them only on
-purpose, never as a side effect of admin work. The pages alias them locally
-(`dashboard.css`: `--bg`, `--panel`, `--ink`, `--caution`, `--green`,
-`--red`, …). Consequence colours come from the numbered steps
+purpose, never as a side effect of admin or dashboard work. The shared
+ambient base at the top of `dashboard.css` aliases a few of them (`--bg`,
+`--ink`, `--k-meta`) for the wall, art and map pages' `body` and the map's
+callsign chips. Consequence colours come from the numbered steps
 (`--danger-400`, `--success-400`, `--warning-500`).
 
 ### Palette
 - **Signal Amber** (`--spark`, `#ff6b35`): the one loud colour, spent on live
-  state. It marks the tuned channel's name and nothing else.
+  state on the map (the legend's active mark and a no-frequency live blip).
+  The dashboard's live state is sea-glass on the glass instead.
 - **Consequence:** `--success-400` `#9ac35d`, `--warning-500` `#f9c574`,
   `--danger-400` `#f17d7b`. Also `--flamingo` `#dc3a38` (a close-call blip
-  with no frequency), `--golden-amber` `#ef991f` (the antenna mark in the map legend), and
-  `--danger-800` `#9c2524` with its on-colour `--danger-50` `#fef5f4` (the
-  kiosk's solid system-risk strip, 13.6:1).
+  with no frequency), `--golden-amber` `#ef991f` (the antenna mark in the map legend),.
 - **Neutrals:** `--bg-base` `#0e0f12` (the field), `--bg-subtle` `#16181d`
   (panels), `--border-default` `#23262d` and `--border-strong` / `--neutral-700`
   `#343842` (edges), `--neutral-600` `#4d525e`, `--neutral-500` /
@@ -743,7 +748,8 @@ purpose, never as a side effect of admin work. The pages alias them locally
 - **Canvas grounds** (in `wall.css` / `art.css`): the wall `#05070a`, and art
   as a radial from `#0b0f16` through `#070a10` to `#04060a`. These are unlit
   rooms, darker than `--bg-base`, and luminance is painted on top of them.
-- **NWS storm palette** (in `dashboard.css`, `--alert-color` / `--alert-on`):
+- **NWS storm palette** (in `dashboard.css`, `--alert-color` / `--alert-on`,
+  carried into the layer-2 dashboard as a recorded carve-out):
   tornado `#e01a2b`, severe `#f5a623`, flood `#15924f`, winter `#d23a9d`,
   wind `#c59a2c`, tropical `#a8327f`, fire `#e8501e`, civil `#c8102e`, test
   `#5b6b7a`. The on-colours are `#ffffff`, `#1a1205` and `#e8eef3`. These
@@ -752,22 +758,14 @@ purpose, never as a side effect of admin work. The pages alias them locally
   across a room relies on a colour they already know.
 
 ### Type
-Inter, one face for display, body and data (`FONT_QUERY` for dashboard and
-map; the wall canvas uses system-ui, and the art canvas draws no text). The kiosk has its own larger ramp, `--k-*`,
-from `--k-meta` 0.95rem to `--k-clock-lg` 3.7rem, with `--k-alert-xl` 3.3rem
-as the loudest text in the system. Two clamps track viewport width for the
-live channel name and its frequency. It follows the same tabular and
-four-decimal rules as the admin. On the ambient pages only, small uppercase
-status words (ACTIVE, SCANNING) are allowed, because they are instrument
-legends read at distance.
+Inter for the map (`FONT_QUERY`); the wall canvas uses system-ui, and the art
+canvas draws no text. The old kiosk ramp `--k-*` left with the dashboard; only
+`--k-meta` (0.95rem) remains, for the map's aircraft callsign chips. The same
+tabular and four-decimal rules as the admin apply.
 
 ### Night-Watch rules (ambient only)
 - **One lit thing.** Signal Amber marks live state. If two things are amber,
   one of them is wrong.
-- **One glow.** The amber text-shadow on the kiosk's live channel name makes
-  it read as *on* from across the room. Don't add a second. The weather
-  alert card's severity pulse is the documented exception, owned by the storm
-  palette.
 - **Flat plates.** Cards are `--bg-subtle` plates at 8px radius with 1px
   edges. Controls and chips are 4px, and hairline marks (insight bars,
   callsign chips) are 2px. Shadow appears only where a card floats over the
@@ -775,16 +773,38 @@ legends read at distance.
   keeps the card's edge findable over arbitrary imagery.
 - **Over the map.** Raise the card's background opacity to 90–96% instead of
   blurring it.
-- **The weather alert card (signature).** It encodes NWS severity: a
-  **statement** is quiet with a 4px storm-colour spine, a **watch** has a 2px
-  storm-colour ring and a slow pulse, and a **warning** is a solid slab of the
-  storm colour. This is the one place border weight does semantic work.
-  Nothing else may borrow it.
-- **The signal meter (signature).** An LED-segment bar, a green→amber→red fill
-  masked by hard stops. The boot bar shares it, so warm-up and signal read as
-  one instrument. A `#000` inside a `mask-image` is a stencil, not a colour.
-- **Scoped warning banners.** Warning-banner styling is scoped under
-  `.dash.mapStage`, so it applies only when a Google Maps key is configured.
+
+## The kiosk dashboard (layer 2)
+
+The HDMI wall view, where the fullscreen map *is* the dashboard. Spec:
+`docs/superpowers/specs/2026-10-01-kiosk-faceplate-design.md`. It speaks the
+admin's language at room distance (`--kc-k-*`), with one piece of glass.
+
+- **The corner** (bottom-left, `dashboard/cornerView.ts` decides,
+  `dashboard/corner.ts` draws): the idle **pill** or the wall-size **glass**
+  (`lcd()` with `size: "wall"`, the service head and the 12-segment meter).
+  Alerts stack above it.
+- **The pill**: one line on `--kc-well` ("Scanning · VHF high 160.9"), with a
+  sea-glass **sweep tick** crossing its foot every `--kc-sweep-ms` while the
+  radio searches. Hay for Standby and Muted. Warm-up fills the meter's 12
+  segments inside the pill; there is no full-screen overlay.
+- **Grow / release**: a hit grows the glass out of the pill's corner
+  (`--kc-grow-ms`, decelerating); release shrinks it back (`--kc-release-ms`,
+  ease-in). Transform and opacity transitions only, so a quick re-hit
+  reverses mid-flight. Reduced motion swaps instantly.
+- **The error glass**: coral meta, the error in ink, the recovery hint.
+- **The clock**: bare text top-right (`--kc-k-clock`), with the date, a lucide
+  weather icon, the temperature and a wind arrow underneath, and a dark halo
+  for legibility over any map.
+- **Machine warning**: a coral-tinted pill, top centre.
+- **The weather alert card (signature)**: NWS severity encoded on the storm
+  palette. A **statement** is quiet with a 4px storm spine, a **watch** has a
+  2px storm ring and a slow pulse, and a **warning** is a solid slab of the
+  storm colour. Sentence case. This is the one place border weight does
+  semantic work. Nothing else may borrow it. Don't restyle the storm colours
+  toward the house palette.
+- **No Maps key**: the same corner, centred on the ground, with "Recently
+  heard" as a raised group beside it.
 
 ## Do's and Don'ts
 

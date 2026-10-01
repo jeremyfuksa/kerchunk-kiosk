@@ -45,7 +45,6 @@ html[data-page="dashboard"] .kc-clock__time {
 html[data-page="dashboard"] .kc-clock__sub {
   display: flex; justify-content: flex-end; align-items: center; gap: 0.35em;
   margin-top: 0.5rem; font-size: var(--kc-k-date); font-weight: 500; color: var(--kc-dim);
-  font-variant-numeric: tabular-nums;
 }
 html[data-page="dashboard"] .kc-wx { display: inline-flex; align-items: center; gap: 0.35em; }
 html[data-page="dashboard"] .kc-wx__icon svg, html[data-page="dashboard"] .kc-wx__arrow svg { width: 1.15em; height: 1.15em; display: block; }
@@ -66,7 +65,7 @@ html[data-page="dashboard"] .kc-risk[hidden] { display: none; }
 /* The corner: alert card stacked over the pill/glass slot, bottom-left. */
 html[data-page="dashboard"] .kc-corner {
   position: absolute; left: 1.8rem; bottom: 1.8rem; z-index: 3;
-  width: min(40vw, 48rem);
+  width: min(48vw, 58rem);
   display: flex; flex-direction: column; align-items: flex-start; gap: 1.1rem;
 }
 html[data-page="dashboard"] .kc-corner__slot { position: relative; width: 100%; }

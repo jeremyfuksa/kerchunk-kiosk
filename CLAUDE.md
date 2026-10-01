@@ -200,8 +200,9 @@ do not "simplify" them away:
 - **Previewing wall states:** the wall is a passive display — no mouse or
   keyboard. Drive states server-side (e.g. `POST /api/test/alert
   {alphaTag}`; `{clear:true}` dismisses) and cycle variants from a script so
-  the operator just watches. Warning-banner styling is scoped under
-  `.dash.mapStage` — it only applies when a Google Maps key is configured.
+  the operator just watches. The storm card and the corner render the same
+  with or without a Google Maps key (no key = a centred layout with Recently
+  heard).
 
 ## Definition of done
 
