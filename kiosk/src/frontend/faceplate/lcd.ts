@@ -72,7 +72,7 @@ export function lcd(v: LcdInput, o: LcdOpts = {}): string {
   // caller can update it in place at signal rate; aria-hidden because it
   // changes ~4×/s inside the host's polite live region.
   const db = v.state === "live" ? `<span class="kc-lcd__db" aria-hidden="true">${dbText(o.dbfs)}</span>` : "";
-  const silent = v.silent ? ` <span class="kc-lcd__silent">${v.silent}</span>` : "";
+  const silent = v.silent ? ` <span class="kc-lcd__silent">${esc(v.silent)}</span>` : "";
   const bars = v.state === "detail" || o.segments ? "" : meter(v.state === "live" ? o.dbfs : null);
   const cls = o.size === "wall" ? "kc-lcd kc-lcd--wall" : "kc-lcd";
   const text = `<div class="kc-lcd__name">${esc(v.name)}</div>
@@ -80,7 +80,7 @@ export function lcd(v: LcdInput, o: LcdOpts = {}): string {
   const body = o.head
     ? `<div class="kc-lcd__row">${headSvg(o.head)}<div class="kc-lcd__text">${text}</div></div>`
     : text;
-  return `<div class="${cls}" data-state="${v.state}">
+  return `<div class="${cls}" data-state="${esc(v.state)}">
     <div class="kc-lcd__meta"><span>${bars}${esc(v.meta)}${silent}</span>${db}</div>
     ${body}
   ${o.segments ? segs(o.segments) : ""}</div>`;

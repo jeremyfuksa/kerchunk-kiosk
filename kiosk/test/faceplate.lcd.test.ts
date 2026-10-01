@@ -82,3 +82,12 @@ describe("faceplate lcd — kiosk extras", () => {
     expect(h).toContain("SDR KIOSK01 not found");
   });
 });
+
+describe("faceplate lcd — escaping (shared builder takes any string)", () => {
+  it("escapes the silent tag and the state attribute", () => {
+    const h = lcd({ state: 'x"><b>', meta: "m", name: "n", freq: "", silent: "<i>Muted</i>" });
+    expect(h).toContain('data-state="x&quot;&gt;&lt;b&gt;"');
+    expect(h).toContain("&lt;i&gt;Muted&lt;/i&gt;");
+    expect(h).not.toContain("<i>Muted</i>");
+  });
+});
