@@ -4,13 +4,13 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { readProps, resolve, contrast } from "./cssTokens.js";
-import { DARK_STYLE } from "../src/frontend/map/map.js";
+import { DARK_STYLE, MAP_GROUND } from "../src/frontend/map/map.js";
 
 const props = readProps("src/frontend/tokens.css");
 const v = (n: string): string => resolve(props, props[n] ?? "").toLowerCase();
 const MAP_TOKENS = ["--kc-map-land", "--kc-map-water", "--kc-map-road", "--kc-map-road-edge", "--kc-map-label", "--kc-map-poi"];
 const allowed = new Set(MAP_TOKENS.map(v));
-const hexes = (s: string): string[] => (s.match(/#[0-9a-f]{6}\b/gi) ?? []).map((h) => h.toLowerCase());
+const hexes = (s: string): string[] => (s.match(/#[0-9a-f]{3,8}\b/gi) ?? []).map((h) => h.toLowerCase());
 
 describe("map cartography is the --kc-map-* tokens", () => {
   it("every token resolves to a hex", () => {
@@ -24,6 +24,9 @@ describe("map cartography is the --kc-map-* tokens", () => {
   it("DARK_STYLE (the no-Map-ID fallback) uses only map tokens", () => {
     const used = hexes(JSON.stringify(DARK_STYLE));
     expect(used.filter((h) => !allowed.has(h))).toEqual([]);
+  });
+  it("the colour Google paints under the tiles is the map land", () => {
+    expect(MAP_GROUND.toLowerCase()).toBe(v("--kc-map-land"));
   });
   it("land is the Night desk ground and water the LCD well", () => {
     expect(v("--kc-map-land")).toBe(v("--kc-ground"));

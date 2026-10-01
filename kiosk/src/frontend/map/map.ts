@@ -149,7 +149,7 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
       zoomControl: interactive,
       gestureHandling: interactive ? "greedy" : "none",
       keyboardShortcuts: interactive,
-      backgroundColor: "#1c1f26",
+      backgroundColor: MAP_GROUND,
       ...(mapId
         // colorScheme keeps the base map dark even while the console style
         // is unassociated or still propagating — never a white flash.
@@ -682,6 +682,10 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
 }
 
 // Instrument-dark cartography to match the kiosk.
+/** What Google paints under the tiles (before they load, while panning):
+ *  --kc-map-land, pinned by test/mapStyle. */
+export const MAP_GROUND = "#15191f";
+
 /** Kiosk fitBounds padding (px): top clears the clock + weather (~190 px),
  *  bottom clears the idle pill (~70 px + margin). A knob. */
 export const KIOSK_FIT_PAD = { top: 200, left: 80, right: 80, bottom: 120 };

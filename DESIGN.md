@@ -693,12 +693,8 @@ kiosk ramp `--k-*` left with the dashboard; the map draws in Schibsted.)
 - **One lit thing.** Signal Amber marks live state. If two things are amber,
   one of them is wrong.
 - **Flat plates.** Cards are `--bg-subtle` plates at 8px radius with 1px
-  edges. Controls and chips are 4px, and hairline marks (insight bars,
-  callsign chips) are 2px. Shadow appears only where a card floats over the
-  live map (`0 8px 28px` / `0 10px 34px` black at 45–55%), and it is what
-  keeps the card's edge findable over arbitrary imagery.
-- **Over the map.** Raise the card's background opacity to 90–96% instead of
-  blurring it.
+  edges. Controls and chips are 4px, and hairline marks (insight bars) are
+  2px.
 
 ## The kiosk dashboard and map (layer 2)
 
@@ -736,10 +732,12 @@ admin's language at room distance (`--kc-k-*`), with one piece of glass.
   quiet (`--kc-map-label` ≈2.9:1, `--kc-map-poi` a step brighter). The master
   is `kiosk/kiosk-assets/map-style.json`, pasted into the Google console and
   **Published** by hand; `DARK_STYLE` in `map.ts` is the no-Map-ID fallback.
-- **Pins and hits** keep the service palette (`PIN_COLORS`). A no-frequency
-  live hit glows sea-glass, a no-frequency close call stays `--flamingo`, and
-  a hit with no honest position is `--pine`. The **home pin** is sea-glass
-  with a `--kc-glass-ink` glyph on its cream head.
+- **Pins and hits** keep the service palette (`PIN_COLORS`): a hit pulses in
+  its service colour (grey when unclassified), and a hit with no honest map
+  position pulses the screen edges in that same colour. `colorFor` keeps two
+  fallbacks for a hit with no frequency at all — sea-glass live, `--flamingo`
+  close call — though today every hit carries one. The **home pin** is
+  sea-glass with a `--kc-glass-ink` glyph on its cream head.
 - **The legend** (/map only) and the **aircraft callsign chips** are
   Schibsted, sentence case (callsigns keep their own capitals), on tone, not
   borders. `KIOSK_FIT_PAD` frames the pins clear of the clock and the pill.
@@ -748,11 +746,12 @@ admin's language at room distance (`--kc-k-*`), with one piece of glass.
 
 ### Do (both layers)
 - **Do** take every colour from a token in `tokens.css` (or `PIN_COLORS` for
-  service colours), and keep the admin and the kiosk dashboard on layer 2 and
-  the wall, map and art on layer 1. The only literal colours outside
+  service colours), and keep the admin, the kiosk dashboard and the map on
+  layer 2 and the wall and art on layer 1. The only literal colours outside
   `tokens.css` are the carve-outs named in the Layer Rule: the NWS storm
-  palette (`dashboard.css`), the service palette and hit-kind marks, and the
-  wall/art canvas grounds.
+  palette (`dashboard.css`), the service palette and hit-kind marks, the
+  wall/art canvas grounds, and the `--kc-map-*` tokens mirrored as hex in
+  `map-style.json` / `map.ts` (pinned by `test/mapStyle.test.ts`).
 - **Do** keep text at 4.5:1 or better on ground, raised and key (and on the
   ambient panel), and non-text marks at 3:1 or better.
 - **Do** use `font-variant-numeric: tabular-nums` on any number that can
