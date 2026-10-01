@@ -9,7 +9,7 @@ import icoTower from "lucide-static/icons/radio-tower.svg?raw";
 import { PIN_COLORS, colorFor, categoryFor, type PinCategory } from "../lib/serviceColor.js";
 // Operator-designed service pins (claude.ai/design handoff, 2026-06-07):
 // cream teardrops with vivid service heads; Home is deliberately inverted
-// (spark ring, cream head) so the QTH reads as YOURS on the dark map.
+// (sea-glass ring, cream head) so the QTH reads as YOURS on the dark map.
 import pinAir from "./pins/pin-air.svg?raw";
 import pinRail from "./pins/pin-rail.svg?raw";
 import pinHam from "./pins/pin-ham.svg?raw";
@@ -78,8 +78,8 @@ export function renderMap(root: HTMLElement): void {
   root.innerHTML = `<div class="mapWrap">
     <div id="gmap"></div>
     <div class="mapLegend">
-      <span class="lgAnt"></span> pins = sites by service · gray ? = unclassified
-      <span class="lgNote">edge glow = activity, location unknown · weather = live NEXRAD</span>
+      <span class="lgAnt"></span> Pins are sites by service · a grey ? is unclassified
+      <span class="lgNote">Edge glow: activity with no known location · Weather: live NEXRAD</span>
     </div>
     <div id="mapMsg" class="mapMsg"></div>
   </div>`;
@@ -149,7 +149,7 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
       zoomControl: interactive,
       gestureHandling: interactive ? "greedy" : "none",
       keyboardShortcuts: interactive,
-      backgroundColor: "#1c1f26",
+      backgroundColor: MAP_GROUND,
       ...(mapId
         // colorScheme keeps the base map dark even while the console style
         // is unassociated or still propagating — never a white flash.
@@ -452,12 +452,10 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
 
     // Wait for the map's first idle as well as the data: fitBounds against
     // a not-yet-laid-out viewport computes minimum zoom (the whole world).
-    // Kiosk padding is asymmetric: the map runs UNDER the floating topbar
-    // and the now-playing card, so the fit must keep pins clear of both —
-    // Cameron (northernmost) hid behind the bar with uniform 56px.
-    const fitPad = interactive
-      ? 56
-      : { top: 150, left: 120, right: 70, bottom: 70 };
+    // Kiosk padding is asymmetric: the map runs under the clock + weather
+    // (top-right) and the corner (bottom-left), so the fit keeps pins clear
+    // of both — Cameron (northernmost) once hid behind a bar at uniform 56px.
+    const fitPad = interactive ? 56 : KIOSK_FIT_PAD;
     const mapReady = new Promise<void>((resolve) =>
       google.maps.event.addListenerOnce(map, "idle", resolve));
     void Promise.allSettled([sitesReady, channelsReady, mapReady])
@@ -684,19 +682,28 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
 }
 
 // Instrument-dark cartography to match the kiosk.
-const DARK_STYLE = [
-  { elementType: "geometry", stylers: [{ color: "#1c1f26" }] },
-  { elementType: "labels.text.fill", stylers: [{ color: "#747b8a" }] },
-  { elementType: "labels.text.stroke", stylers: [{ color: "#1c1f26" }] },
-  { featureType: "road", elementType: "geometry", stylers: [{ color: "#2b303b" }] },
-  { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#42454e" }] },
+/** What Google paints under the tiles (before they load, while panning):
+ *  --kc-map-land, pinned by test/mapStyle. */
+export const MAP_GROUND = "#15191f";
+
+/** Kiosk fitBounds padding (px): top clears the clock + weather (~190 px),
+ *  bottom clears the idle pill (~70 px + margin). A knob. */
+export const KIOSK_FIT_PAD = { top: 200, left: 80, right: 80, bottom: 120 };
+
+export const DARK_STYLE = [
+  // The --kc-map-* tokens as hex (test/mapStyle pins them to tokens.css).
+  { elementType: "geometry", stylers: [{ color: "#15191f" }] },
+  { elementType: "labels.text.fill", stylers: [{ color: "#5d6672" }] },
+  { elementType: "labels.text.stroke", stylers: [{ color: "#15191f" }] },
+  { featureType: "road", elementType: "geometry", stylers: [{ color: "#232a31" }] },
+  { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#2c343e" }] },
   // Roads stay as geometry for orientation, but their labels and highway
   // shields compete with the blips — the activity is the map's subject.
   { featureType: "road", elementType: "labels", stylers: [{ visibility: "off" }] },
   { featureType: "road.highway", elementType: "labels.icon", stylers: [{ visibility: "off" }] },
-  { featureType: "water", elementType: "geometry", stylers: [{ color: "#13161c" }] },
+  { featureType: "water", elementType: "geometry", stylers: [{ color: "#0c1113" }] },
   { featureType: "poi", stylers: [{ visibility: "off" }] },
-  { featureType: "transit", elementType: "geometry", stylers: [{ color: "#262b34" }] },
+  { featureType: "transit", elementType: "geometry", stylers: [{ color: "#232a31" }] },
 ];
 
 // Measure DIAG_MS of rAF pacing once the map has settled, then POST it. The

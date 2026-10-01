@@ -19,9 +19,15 @@ colors:
   kc-hay: "#e8c37a"
   kc-hay-ink: "#2a1d05"
   kc-ok: "#7fc79a"
+  kc-map-land: "#15191f"
+  kc-map-water: "#0c1113"
+  kc-map-road: "#232a31"
+  kc-map-road-edge: "#2c343e"
+  kc-map-label: "#5d6672"
+  kc-map-poi: "#747e8b"
   kc-pin-cream: "#f5ebe8"
   kc-pin-glyph: "#ffffff"
-  # ── Layer 1: ambient displays (wall, map, art) — frozen ──
+  # ── Layer 1: ambient displays (wall, art) — frozen ──
   signal-amber: "#ff6b35"
   caution-hay: "#f9c574"
   adopt-moss: "#9ac35d"
@@ -109,12 +115,6 @@ typography:
     lineHeight: 1
     letterSpacing: "-0.02em"
     fontFeature: "tabular-nums"
-  # ── Layer 1: ambient displays — Inter (map); the old kiosk ramp left with the dashboard ──
-  map-chip:
-    fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
-    fontSize: "0.95rem"
-    fontWeight: 600
-    lineHeight: 1.2
 rounded:
   # Layer 2 (admin)
   kc-key: "10px"
@@ -219,16 +219,16 @@ Kerchunk has two design languages, both defined in
 
 1. **The Faceplate** (tokens.css layer 2, `--kc-*`). The primary system, and
    the one this document is mostly about. It is everything the operator
-   touches (the admin), and since 2026-10-01 the kiosk dashboard too, at room
-   distance (see "The kiosk dashboard").
-2. **The ambient displays** (tokens.css layer 1) — the wall, map and art.
+   touches (the admin), and since 2026-10-01 the kiosk dashboard and the map
+   too, at room distance (see "The kiosk dashboard and map").
+2. **The ambient displays** (tokens.css layer 1) — the wall and art.
    Output-only surfaces seen from across a room. Their palette is frozen; they
    are documented in their own section at the end.
 
-The two layers never mix: the admin and the dashboard use only `--kc-*`, and
-the wall, map and art never use `--kc-*`. Specs:
+The two layers never mix: the admin, the dashboard and the map use only
+`--kc-*`, and the wall and art never use `--kc-*`. Specs:
 `docs/superpowers/specs/2026-09-28-admin-redesign-design.md` (admin),
-`docs/superpowers/specs/2026-10-01-kiosk-faceplate-design.md` (dashboard).
+`docs/superpowers/specs/2026-10-01-kiosk-faceplate-design.md` (dashboard and map).
 
 ## Overview
 
@@ -324,16 +324,18 @@ hour bar, the sparkline stroke, and a text link that resolves a status line
 them is wrong. Hay means attention and coral means destruction, and neither
 is used as decoration.
 
-**The Layer Rule.** The admin and the kiosk dashboard read only `--kc-*`.
-The wall, map and art read only layer 1. A colour that isn't a token doesn't go
+**The Layer Rule.** The admin, the kiosk dashboard and the map read only
+`--kc-*`. The wall and art read only layer 1. A colour that isn't a token doesn't go
 in, not even as a `var(--token, #hex)` fallback. The carve-outs are the NWS
 storm palette (`dashboard.css`, the `.alertBar[data-kind]` rules), the service
 palette (`PIN_COLORS`, pins and hits), the hit-kind marks (`--flamingo` close
 call, `--pine` no fix), and the wall/art canvas grounds (`wall.css` /
 `art.css`). These are recorded under Ambient displays and The kiosk
-dashboard. `--kc-pin-cream` and `--kc-pin-glyph` mirror the map pin's literal
+dashboard and map. The map's cartography can't read CSS, so `map-style.json`
+and `DARK_STYLE` carry the `--kc-map-*` tokens as hex, pinned by
+`test/mapStyle.test.ts`. `--kc-pin-cream` and `--kc-pin-glyph` mirror the map pin's literal
 body and glyph colours so the shared LCD never carries them as hex.
-`kiosk/test/dashboardLayer.test.ts` enforces the dashboard's side.
+`kiosk/test/dashboardLayer.test.ts` enforces the dashboard's and the map's side.
 
 ## Typography
 
@@ -635,29 +637,28 @@ offset on `:focus-visible`. There is a skip link, the tab set uses
 
 ## Ambient displays (tokens.css layer 1)
 
-The wall, map and art are **output-only**: no mouse or keyboard, read from
-across a room. They keep the language they had before the admin redesign,
-**"The Night Watch"**: quiet gray on near-black, and exactly one thing lit.
-(The kiosk dashboard left this layer on 2026-10-01; see "The kiosk
-dashboard". The map's own restyle follows.)
+The wall and art are **output-only** canvases: no mouse or keyboard, read
+from across a room. They keep the language they had before the admin
+redesign, **"The Night Watch"**: quiet gray on near-black, and exactly one
+thing lit. (The kiosk dashboard and the map left this layer on 2026-10-01;
+see "The kiosk dashboard and map".)
 
 ### The Frozen-Ambient Rule
 Layer 1 of `tokens.css` holds the values Campfire resolved to on the appliance
 when Campfire was removed (2026-09-28). `kiosk/test/tokens.test.ts` pins them
 against `test/fixtures/campfire-dark-resolved.json`. Change them only on
-purpose, never as a side effect of admin or dashboard work. The shared
-ambient base at the top of `dashboard.css` aliases a few of them (`--bg`,
-`--ink`, `--k-meta`) for the wall, art and map pages' `body` and the map's
-callsign chips. Consequence colours come from the numbered steps
+purpose, never as a side effect of admin, dashboard or map work. The shared
+ambient base at the top of `dashboard.css` aliases two of them (`--bg`,
+`--ink`) for the wall and art pages' `body`. Consequence colours come from the numbered steps
 (`--danger-400`, `--success-400`, `--warning-500`).
 
 ### Palette
-- **Signal Amber** (`--spark`, `#ff6b35`): the one loud colour, spent on live
-  state on the map (the legend's active mark and a no-frequency live blip).
-  The dashboard's live state is sea-glass on the glass instead.
+- **Signal Amber** (`--spark`, `#ff6b35`): layer 1's one loud colour. The
+  dashboard and the map spend sea-glass on live state instead.
 - **Consequence:** `--success-400` `#9ac35d`, `--warning-500` `#f9c574`,
   `--danger-400` `#f17d7b`. Also `--flamingo` `#dc3a38` (a close-call blip
-  with no frequency), `--golden-amber` `#ef991f` (the antenna mark in the map legend).
+  with no frequency; still used by the map as a recorded hit-kind carve-out),
+  `--golden-amber` `#ef991f`.
 - **Neutrals:** `--bg-base` `#0e0f12` (the field), `--bg-subtle` `#16181d`
   (panels), `--border-default` `#23262d` and `--border-strong` / `--neutral-700`
   `#343842` (edges), `--neutral-600` `#4d525e`, `--neutral-500` /
@@ -685,23 +686,17 @@ callsign chips. Consequence colours come from the numbered steps
   across a room relies on a colour they already know.
 
 ### Type
-Inter for the map (`FONT_QUERY`); the wall canvas uses system-ui, and the art
-canvas draws no text. The old kiosk ramp `--k-*` left with the dashboard; only
-`--k-meta` (0.95rem) remains, for the map's aircraft callsign chips. The same
-tabular and four-decimal rules as the admin apply.
+The wall canvas uses system-ui, and the art canvas draws no text. (The old
+kiosk ramp `--k-*` left with the dashboard; the map draws in Schibsted.)
 
 ### Night-Watch rules (ambient only)
 - **One lit thing.** Signal Amber marks live state. If two things are amber,
   one of them is wrong.
 - **Flat plates.** Cards are `--bg-subtle` plates at 8px radius with 1px
-  edges. Controls and chips are 4px, and hairline marks (insight bars,
-  callsign chips) are 2px. Shadow appears only where a card floats over the
-  live map (`0 8px 28px` / `0 10px 34px` black at 45–55%), and it is what
-  keeps the card's edge findable over arbitrary imagery.
-- **Over the map.** Raise the card's background opacity to 90–96% instead of
-  blurring it.
+  edges. Controls and chips are 4px, and hairline marks (insight bars) are
+  2px.
 
-## The kiosk dashboard (layer 2)
+## The kiosk dashboard and map (layer 2)
 
 The HDMI wall view, where the fullscreen map *is* the dashboard. Spec:
 `docs/superpowers/specs/2026-10-01-kiosk-faceplate-design.md`. It speaks the
@@ -732,16 +727,31 @@ admin's language at room distance (`--kc-k-*`), with one piece of glass.
   toward the house palette.
 - **No Maps key**: the same corner, centred on the ground, with "Recently
   heard" as a raised group beside it.
+- **The map's cartography** is the `--kc-map-*` tokens: land is the ground,
+  water is the LCD well, roads are the hairline, and labels are deliberately
+  quiet (`--kc-map-label` ≈2.9:1, `--kc-map-poi` a step brighter). The master
+  is `kiosk/kiosk-assets/map-style.json`, pasted into the Google console and
+  **Published** by hand; `DARK_STYLE` in `map.ts` is the no-Map-ID fallback.
+- **Pins and hits** keep the service palette (`PIN_COLORS`): a hit pulses in
+  its service colour (grey when unclassified), and a hit with no honest map
+  position pulses the screen edges in that same colour. `colorFor` keeps two
+  fallbacks for a hit with no frequency at all — sea-glass live, `--flamingo`
+  close call — though today every hit carries one. The **home pin** is
+  sea-glass with a `--kc-glass-ink` glyph on its cream head.
+- **The legend** (/map only) and the **aircraft callsign chips** are
+  Schibsted, sentence case (callsigns keep their own capitals), on tone, not
+  borders. `KIOSK_FIT_PAD` frames the pins clear of the clock and the pill.
 
 ## Do's and Don'ts
 
 ### Do (both layers)
 - **Do** take every colour from a token in `tokens.css` (or `PIN_COLORS` for
-  service colours), and keep the admin and the kiosk dashboard on layer 2 and
-  the wall, map and art on layer 1. The only literal colours outside
+  service colours), and keep the admin, the kiosk dashboard and the map on
+  layer 2 and the wall and art on layer 1. The only literal colours outside
   `tokens.css` are the carve-outs named in the Layer Rule: the NWS storm
-  palette (`dashboard.css`), the service palette and hit-kind marks, and the
-  wall/art canvas grounds.
+  palette (`dashboard.css`), the service palette and hit-kind marks, the
+  wall/art canvas grounds, and the `--kc-map-*` tokens mirrored as hex in
+  `map-style.json` / `map.ts` (pinned by `test/mapStyle.test.ts`).
 - **Do** keep text at 4.5:1 or better on ground, raised and key (and on the
   ambient panel), and non-text marks at 3:1 or better.
 - **Do** use `font-variant-numeric: tabular-nums` on any number that can

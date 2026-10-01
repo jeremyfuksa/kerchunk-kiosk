@@ -1,13 +1,12 @@
-/* ── Shared ambient base (wall, art, map — tokens.css layer 1) ─────────────
+/* ── Shared ambient base (wall, art — tokens.css layer 1) ──────────────────
    This stylesheet is bundled on every page. These :root aliases and the body
-   rule are what the wall, art and map pages still render with; the map's
-   callsign chips read --k-meta (map.css). They are NOT the dashboard's
-   language any more — that is the layer-2 section below. */
+   rule are what the wall and art pages still render with. They are NOT the
+   dashboard's language any more — that is the layer-2 section below. (The
+   map moved to layer 2 too: map.css.) */
 :root {
   color-scheme: dark;
   --bg: var(--bg-base);
   --ink: var(--text-primary);
-  --k-meta: 0.95rem;      /* map.css: aircraft callsign chips (until the map PR) */
 }
 body {
   margin: 0;
@@ -15,7 +14,6 @@ body {
   background: var(--bg);
   color: var(--ink);
 }
-html[data-page="map"] body,
 html[data-page="wall"] body,
 html[data-page="art"] body { font-size: 0.92rem; }
 

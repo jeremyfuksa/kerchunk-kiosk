@@ -62,7 +62,8 @@ export function colorFor(
   // the frequency falls inside a recognizable service allocation.
   if (kind === "nofix") return UNKNOWN_POSITION_COLOR;
   const cat = categoryFor(freqHz, tags);
-  // No frequency AND no classifying tag → the generic transient colors.
-  if (freqHz === undefined && cat === "unknown") return kind === "closecall" ? "#dc3a38" : "#ff6b35";
+  // No frequency AND no classifying tag → close calls stay flamingo; a live hit
+  // glows sea-glass, the Faceplate's live colour (spec 2026-10-01).
+  if (freqHz === undefined && cat === "unknown") return kind === "closecall" ? "#dc3a38" : "#5fd4c3";
   return PIN_COLORS[cat] ?? PIN_COLORS.unknown!;
 }

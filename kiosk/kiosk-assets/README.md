@@ -3,7 +3,7 @@
 ## map-style.json
 
 The cloud-based map style for the `/map` view and the kiosk's map stage —
-campfire dark cartography, minimal so the blips take precedence.
+Night desk cartography, minimal so the blips take precedence.
 
 **This file is NOT loaded by code.** The live copy lives in the Google Cloud
 console (Maps Platform → Map styles), associated with the Map ID stored in
@@ -16,22 +16,27 @@ round-trip is manual:
 3. Wait a couple of minutes for propagation, then reload the map page /
    `sudo systemctl restart kerchunk-display` for the kiosk.
 
-Color map (campfire dark tokens):
+Color map (Night desk, the `--kc-map-*` tokens):
 
 | Layer | Token | Hex |
 |---|---|---|
-| Land / base | `neutral-950` / `--bg-base` | `#1c1f26` |
-| Water | half-step below 950 (no token exists) | `#13161c` |
-| Roads (geometry only, no labels/shields) | `neutral-900` | `#2b303b` |
-| Highway stroke | `neutral-800` | `#42454e` |
-| Water labels | `neutral-700` | `#4d515c` |
-| Town names | `neutral-600` | `#5e6371` |
+| Land / base | `--kc-map-land` (= `--kc-ground`) | `#15191f` |
+| Water | `--kc-map-water` (= `--kc-well`, the LCD glass) | `#0c1113` |
+| Roads (geometry only, no labels/shields) | `--kc-map-road` (= `--kc-line`) | `#232a31` |
+| Highway stroke | `--kc-map-road-edge` | `#2c343e` |
+| Water labels, town names | `--kc-map-label` | `#5d6672` |
+| Emergency / airport / theme-park labels, their pins | `--kc-map-poi` / `--kc-map-label` | `#747e8b` / `#5d6672` |
 
-Town names are deliberately dimmed for across-the-room kiosk reading; if they
-still pop, the ramp continues `#4d515c` → `"visible": false`. POIs are hidden
-as a class — the activity blips are the map's subject — EXCEPT the categories
-that anchor the RF picture, re-enabled labels-only (no geometry, dim pin) at
-`neutral-500` text / `neutral-600` pin, one step brighter than town names:
+The tokens live in `kiosk/src/frontend/tokens.css` (Night desk, spec
+`docs/superpowers/specs/2026-10-01-kiosk-faceplate-design.md`), and
+`test/mapStyle.test.ts` fails if this file or `map.ts` `DARK_STYLE` uses a
+colour that isn't one of them — edit the token and the hex together.
+
+Town names are deliberately dimmed for across-the-room kiosk reading (≈2.9:1
+on land). POIs are hidden as a class — the activity blips are the map's
+subject — EXCEPT the categories that anchor the RF picture, re-enabled
+labels-only (no geometry, dim pin) at `--kc-map-poi`, one step brighter than
+town names:
 hospitals, police, fire stations (public-safety banks), airports (airband),
 theme parks (the WoF business channels).
 

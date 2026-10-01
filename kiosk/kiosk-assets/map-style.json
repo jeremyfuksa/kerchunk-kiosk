@@ -5,8 +5,8 @@
       "id": "infrastructure.roadNetwork",
       "geometry": {
         "visible": true,
-        "fillColor": "#2b303b",
-        "strokeColor": "#42454e"
+        "fillColor": "#232a31",
+        "strokeColor": "#2c343e"
       },
       "label": {
         "visible": false
@@ -21,17 +21,17 @@
     {
       "id": "natural.land",
       "geometry": {
-        "fillColor": "#1c1f26"
+        "fillColor": "#15191f"
       }
     },
     {
       "id": "natural.water",
       "geometry": {
-        "fillColor": "#13161c"
+        "fillColor": "#0c1113"
       },
       "label": {
-        "textFillColor": "#4d515c",
-        "textStrokeColor": "#13161c"
+        "textFillColor": "#5d6672",
+        "textStrokeColor": "#0c1113"
       }
     },
     {
@@ -47,52 +47,52 @@
       "id": "pointOfInterest.emergency.hospital",
       "label": {
         "visible": true,
-        "textFillColor": "#747b8a",
-        "textStrokeColor": "#1c1f26",
-        "pinFillColor": "#5e6371"
+        "textFillColor": "#747e8b",
+        "textStrokeColor": "#15191f",
+        "pinFillColor": "#5d6672"
       }
     },
     {
       "id": "pointOfInterest.emergency.police",
       "label": {
         "visible": true,
-        "textFillColor": "#747b8a",
-        "textStrokeColor": "#1c1f26",
-        "pinFillColor": "#5e6371"
+        "textFillColor": "#747e8b",
+        "textStrokeColor": "#15191f",
+        "pinFillColor": "#5d6672"
       }
     },
     {
       "id": "pointOfInterest.emergency.fireStation",
       "label": {
         "visible": true,
-        "textFillColor": "#747b8a",
-        "textStrokeColor": "#1c1f26",
-        "pinFillColor": "#5e6371"
+        "textFillColor": "#747e8b",
+        "textStrokeColor": "#15191f",
+        "pinFillColor": "#5d6672"
       }
     },
     {
       "id": "pointOfInterest.transportation.airport",
       "label": {
         "visible": true,
-        "textFillColor": "#747b8a",
-        "textStrokeColor": "#1c1f26",
-        "pinFillColor": "#5e6371"
+        "textFillColor": "#747e8b",
+        "textStrokeColor": "#15191f",
+        "pinFillColor": "#5d6672"
       }
     },
     {
       "id": "pointOfInterest.entertainment.themePark",
       "label": {
         "visible": true,
-        "textFillColor": "#747b8a",
-        "textStrokeColor": "#1c1f26",
-        "pinFillColor": "#5e6371"
+        "textFillColor": "#747e8b",
+        "textStrokeColor": "#15191f",
+        "pinFillColor": "#5d6672"
       }
     },
     {
       "id": "settlement",
       "label": {
-        "textFillColor": "#5e6371",
-        "textStrokeColor": "#1c1f26"
+        "textFillColor": "#5d6672",
+        "textStrokeColor": "#15191f"
       }
     }
   ]

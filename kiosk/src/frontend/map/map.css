@@ -1,101 +1,86 @@
-/* Inter here too, closing DESIGN.md's last recorded type deviation: the /map
-   page was the one surface still drawing Campfire's Space Grotesk (legend,
-   aircraft chips) and Fira Code (legend, map messages), and DESIGN.md recorded
-   that as "drift to be corrected, not a sanctioned exception". Monospace as a
-   costume for "technical" is a named don't; nothing on this page is code.
-   Embedded in the dashboard the chips already rendered Inter, so the map only
-   looked like a different product when opened on its own. */
-html[data-page="map"] {
-  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --font-body: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --font-mono: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+/* The activity map — on the /map page and inside the kiosk dashboard.
+   Faceplate × Night desk (tokens.css layer 2, spec 2026-10-01): the
+   cartography itself is the --kc-map-* tokens (map-style.json / DARK_STYLE),
+   pins and hits keep the service palette. Every rule here scopes to the map
+   or dashboard page: this stylesheet is bundled on every page. */
+
+/* ── Map (layer 2) ── */
+html[data-page="map"] { color-scheme: dark; background: var(--kc-ground); }
+html[data-page="map"] body {
+  margin: 0;
+  font: 400 var(--kc-t-body)/1.4 var(--kc-font);
+  background: var(--kc-ground);
+  color: var(--kc-ink);
+  -webkit-font-smoothing: antialiased;
 }
 
-.mapWrap { position: fixed; inset: 0; }
-#gmap { width: 100%; height: 100%; background: var(--bg-base); }
-
-.mapLegend {
-  position: fixed; left: 1rem; bottom: 1.2rem; z-index: 5;
-  display: flex; align-items: center; gap: 0.6rem;
-  padding: 0.45rem 0.9rem;
-  font-family: var(--font-sans);
-  font-size: 0.8rem;
-  color: var(--text-secondary);
-  background: color-mix(in srgb, var(--bg-base) 85%, transparent);
-  border: 1px solid var(--border-default);
-  border-radius: 8px;
-}
-.mapLegend .lgBlip {
-  width: 0.7em; height: 0.7em; border-radius: 50%;
-  display: inline-block;
-}
-.mapLegend .lgBlip.active { background: var(--spark); box-shadow: 0 0 8px color-mix(in srgb, var(--spark) 60%, transparent); }
-.mapLegend .lgBlip.cc { background: var(--flamingo); box-shadow: 0 0 8px color-mix(in srgb, var(--flamingo) 60%, transparent); }
-.mapLegend .lgNote { color: var(--text-tertiary); margin-left: 0.4rem; }
-
-.mapMsg {
-  position: fixed; inset: 0; z-index: 4;
-  display: flex; align-items: center; justify-content: center;
-  text-align: center;
-  font-family: var(--font-sans);
-  color: var(--text-secondary);
-  line-height: 1.8;
-  pointer-events: none;
-}
-.mapMsg:empty { display: none; }
-.blipInfo { color: var(--bg-base); font-weight: 600; }
-
-.mapLegend .lgAnt { color: var(--golden-amber); font-size: 1rem; line-height: 0; }
-.blipMeta { color: var(--neutral-600); font-size: 0.8em; font-weight: 400; margin-top: 0.2rem; }
-
-.mapLegend .lgAnt svg { width: 14px; height: 14px; color: var(--golden-amber); display: inline-block; vertical-align: -2px; }
-
-.mapLegend .lgBlip.nofix { background: var(--pine); box-shadow: 0 0 8px color-mix(in srgb, var(--pine) 60%, transparent); }
+:is(html[data-page="map"], html[data-page="dashboard"]) .mapWrap { position: fixed; inset: 0; }
+:is(html[data-page="map"], html[data-page="dashboard"]) #gmap { width: 100%; height: 100%; background: var(--kc-map-land); }
 
 /* Edge glow: a hit with no honest map position pulses the screen edges in the
-   band's color instead of planting a synthetic dot. Faint, quick rise, slow
-   fade; re-triggered per hit by toggling .pulse. */
-.edgeGlow {
-  /* Viewport-fixed, NOT absolute: the glow pulses the SCREEN edges, and fixing
-     it to the viewport means it never depends on (or mutates) the map
-     container's positioning. The kiosk map gets its fullscreen size from
-     `.mapStage .mapBase { position: absolute; inset: 0 }`; an absolute glow had
-     tempted the JS to force an inline `position: relative` on that container,
-     which overrode the class rule and collapsed the map to zero height. */
+   band's colour instead of planting a synthetic dot. Faint, quick rise, slow
+   fade; re-triggered per hit by toggling .pulse. --glow-color is set at
+   runtime (map.ts glowEdges) before .pulse is added.
+   Viewport-fixed, NOT absolute: the glow pulses the SCREEN edges, and fixing
+   it to the viewport means it never depends on (or mutates) the map
+   container's positioning. The kiosk map gets its fullscreen size from
+   `.mapStage .mapBase { position: absolute; inset: 0 }`; an absolute glow had
+   tempted the JS to force an inline `position: relative` on that container,
+   which overrode the class rule and collapsed the map to zero height. */
+:is(html[data-page="map"], html[data-page="dashboard"]) .edgeGlow {
   position: fixed; inset: 0; pointer-events: none; z-index: 2;
   opacity: 0;
-  box-shadow: inset 0 0 90px 24px var(--glow-color, transparent);
+  box-shadow: inset 0 0 90px 24px var(--glow-color);
 }
-.edgeGlow.pulse { animation: edgeGlowPulse 7s ease-out; }
+:is(html[data-page="map"], html[data-page="dashboard"]) .edgeGlow.pulse { animation: edgeGlowPulse 7s ease-out; }
 @keyframes edgeGlowPulse {
   0%   { opacity: 0; }
   6%   { opacity: 0.4; }
   100% { opacity: 0; }
 }
 
-/* Aircraft callsign chips — Campfire instrument language: condensed, uppercase,
-   wide-tracked on a dark plate, sitting just below the heading glyph so they
-   never overprint it. Text color is set per-marker to the type color (see
-   AircraftLayer.label), tying the chip to its silhouette. !important beats the
-   Google Maps inline label styles. */
-/* Sized off the KIOSK ramp, not the admin's. This chip's main home is the
-   wall, read from across a room, and it was taking `--t-dense` — a token
-   from the admin's type scale, for tables read at arm's length. The dashboard
-   carries its own larger `--k-*` scale for exactly this reason; a callsign
-   floating over the map is the same kind of dense instrument readout as the
-   dB line, so it takes that step. */
-.acLabel {
-  font-family: var(--font-sans, ui-sans-serif, system-ui), sans-serif !important;
-  font-size: var(--k-meta) !important;
+/* The /map legend: a quiet slip, tone not border. */
+:is(html[data-page="map"], html[data-page="dashboard"]) .mapLegend {
+  position: fixed; left: 1rem; bottom: 1.2rem; z-index: 5;
+  display: flex; align-items: center; gap: 0.6rem;
+  padding: 0.5rem 0.9rem;
+  font: 500 var(--kc-t-small)/1.4 var(--kc-font);
+  color: var(--kc-dim);
+  background: color-mix(in srgb, var(--kc-ground) 88%, transparent);
+  border-radius: var(--kc-r-key);
+}
+:is(html[data-page="map"], html[data-page="dashboard"]) .mapLegend .lgAnt { color: var(--kc-dim); line-height: 0; }
+:is(html[data-page="map"], html[data-page="dashboard"]) .mapLegend .lgAnt svg { width: 14px; height: 14px; color: var(--kc-dim); display: inline-block; vertical-align: -2px; }
+:is(html[data-page="map"], html[data-page="dashboard"]) .mapLegend .lgNote { color: var(--kc-mute); margin-left: 0.4rem; }
+
+:is(html[data-page="map"], html[data-page="dashboard"]) .mapMsg {
+  position: fixed; inset: 0; z-index: 4;
+  display: flex; align-items: center; justify-content: center;
+  text-align: center;
+  font-family: var(--kc-font);
+  color: var(--kc-dim);
+  line-height: 1.8;
+  pointer-events: none;
+}
+:is(html[data-page="map"], html[data-page="dashboard"]) .mapMsg:empty { display: none; }
+
+/* Google's info window is a light bubble: dark text on it. */
+:is(html[data-page="map"], html[data-page="dashboard"]) .blipInfo { color: var(--kc-ground); font-family: var(--kc-font); font-weight: 600; }
+:is(html[data-page="map"], html[data-page="dashboard"]) .blipMeta { color: var(--kc-key); font-size: 0.8em; font-weight: 400; margin-top: 0.2rem; }
+
+/* Aircraft callsign chips: a small piece of glass under the heading glyph.
+   Callsigns are uppercase by nature; no tracking, no text-transform. Text
+   colour is set per marker to the type colour (aircraft.ts). !important beats
+   the Google Maps inline label styles. */
+:is(html[data-page="map"], html[data-page="dashboard"]) .acLabel {
+  font-family: var(--kc-font) !important;
+  font-size: var(--kc-t-row) !important;
   font-weight: 600 !important;
-  letter-spacing: 0.14em !important;
-  text-transform: uppercase;
-  padding: 2px 6px 2px 7px;
-  border-radius: 2px;
-  background: rgba(10, 13, 18, 0.7);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.55);
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
+  letter-spacing: 0 !important;
+  padding: 2px 7px;
+  border-radius: var(--kc-r-key);
+  background: color-mix(in srgb, var(--kc-well) 78%, transparent);
+  box-shadow: inset 0 0 0 1px var(--kc-well-edge);
   transform: translateY(24px);
   white-space: nowrap;
 }

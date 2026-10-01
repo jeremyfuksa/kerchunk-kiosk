@@ -29,3 +29,36 @@ describe("dashboard.css Layer Rule", () => {
     expect(selectors.filter((s) => !s.split(",").every((p) => p.trim().startsWith('html[data-page="dashboard"]')))).toEqual([]);
   });
 });
+
+// The map joins layer 2 (spec 2026-10-01, PR 3). It renders inside the
+// dashboard and on its own /map page, so its rules scope to either. The
+// recorded carve-outs: --glow-color (set at runtime to a service colour),
+// --flamingo (close call) and --pine (no fix) — hit-kind marks like PIN_COLORS.
+import { KIOSK_FIT_PAD } from "../src/frontend/map/map.js";
+const MAP_MARK = "/* ── Map (layer 2) ── */";
+const mapCss = readFileSync("src/frontend/map/map.css", "utf8")
+  .replace(/\/\*[\s\S]*?\*\//g, (c) => (c === MAP_MARK ? c : ""));
+
+describe("map.css Layer Rule", () => {
+  it("has the layer-2 marker", () => {
+    expect(mapCss.includes(MAP_MARK)).toBe(true);
+  });
+  const body = mapCss.slice(mapCss.indexOf(MAP_MARK) + MAP_MARK.length);
+  it("reads only --kc-* plus the recorded carve-outs", () => {
+    const vars = [...body.matchAll(/var\((--[\w-]+)\)/g)].map((m) => m[1]!);
+    expect(vars.length).toBeGreaterThan(10);
+    expect(vars.filter((v) => !/^--(kc-|glow-color$|flamingo$|pine$)/.test(v))).toEqual([]);
+  });
+  it("has no literal colours", () => {
+    expect(body.match(/#[0-9a-f]{3,8}\b|rgba?\(/gi) ?? []).toEqual([]);
+  });
+  it("scopes every rule to the map or dashboard page", () => {
+    const selectors = [...body.matchAll(/(^|})\s*([^{}@]+)\{/g)].map((m) => m[2]!.trim()).filter((s) => !/^(from|to|\d+%)/.test(s));
+    const ok = (p: string): boolean => /^(:is\(html\[data-page="map"\], html\[data-page="dashboard"\]\)|html\[data-page="map"\])/.test(p.trim());
+    expect(selectors.filter((s) => !s.split(/,(?![^(]*\))/).every(ok))).toEqual([]);
+  });
+  it("kiosk framing clears the clock + weather and the idle pill", () => {
+    expect(KIOSK_FIT_PAD.top).toBeGreaterThanOrEqual(180);
+    expect(KIOSK_FIT_PAD.bottom).toBeGreaterThanOrEqual(100);
+  });
+});
