@@ -21,6 +21,11 @@ describe("mergeLogs", () => {
 });
 
 describe("dashboard reduce", () => {
+  it("audible carries the channel's service tags onto nowPlaying", () => {
+    const ch = { id: "c1", freq: 154_430_000, alphaTag: "KC Fire", mode: "nfm" as const, enabled: true, tags: ["publicsafety"] };
+    const s = reduce(initialState(), { type: "audible", channel: ch, ts: 1 } as never);
+    expect(s.nowPlaying).toEqual({ freq: 154_430_000, alphaTag: "KC Fire", tags: ["publicsafety"] });
+  });
   it("active sets nowPlaying and prepends to log", () => {
     const ch = { id: "c1", freq: 145130000, alphaTag: "KC0KW", mode: "nfm" as const, enabled: true };
     const s = reduce(initialState(), { type: "active", channel: ch, freq: ch.freq, ts: 10 });

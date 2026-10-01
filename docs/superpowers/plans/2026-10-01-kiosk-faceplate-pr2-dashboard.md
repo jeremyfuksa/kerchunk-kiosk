@@ -91,7 +91,7 @@ const base: CornerInput = {
   warmed: true, warmupPhase: null, warmupStep: 0, warmupOf: 4, error: null, engineState: "running",
   nowPlaying: null, tunedHz: 160_900_000, scanCount: 41, muted: false, mode: "scan", breakIn: false,
 };
-const live = { freq: 154_430_000, alphaTag: "KC Fire Dispatch", tags: ["publicsafety"] };
+const live = { freq: 154_430_000, alphaTag: "KC Fire Dispatch", tags: ["public-safety"] };
 
 describe("cornerView — pill states", () => {
   it("scanning: pill with the window label and the sweep", () => {
@@ -198,9 +198,9 @@ Append to `test/dashboardState.test.ts` (inside the `describe("dashboard reduce"
 
 ```ts
   it("audible carries the channel's service tags onto nowPlaying", () => {
-    const ch = { id: "c1", freq: 154_430_000, alphaTag: "KC Fire", mode: "nfm" as const, enabled: true, tags: ["publicsafety"] };
+    const ch = { id: "c1", freq: 154_430_000, alphaTag: "KC Fire", mode: "nfm" as const, enabled: true, tags: ["public-safety"] };
     const s = reduce(initialState(), { type: "audible", channel: ch, ts: 1 } as never);
-    expect(s.nowPlaying).toEqual({ freq: 154_430_000, alphaTag: "KC Fire", tags: ["publicsafety"] });
+    expect(s.nowPlaying).toEqual({ freq: 154_430_000, alphaTag: "KC Fire", tags: ["public-safety"] });
   });
 ```
 
@@ -470,8 +470,8 @@ const base: CornerInput = {
   nowPlaying: null, tunedHz: 160_900_000, scanCount: 41, muted: false, mode: "scan", breakIn: false,
 };
 const scanning = cornerView(base);
-const live = cornerView({ ...base, nowPlaying: { freq: 154_430_000, alphaTag: "KC Fire Dispatch", tags: ["publicsafety"] } });
-const live2 = cornerView({ ...base, nowPlaying: { freq: 155_010_000, alphaTag: "KC Police", tags: ["publicsafety"] } });
+const live = cornerView({ ...base, nowPlaying: { freq: 154_430_000, alphaTag: "KC Fire Dispatch", tags: ["public-safety"] } });
+const live2 = cornerView({ ...base, nowPlaying: { freq: 155_010_000, alphaTag: "KC Police", tags: ["public-safety"] } });
 
 describe("pillHtml", () => {
   it("word, detail and the sweep tick", () => {

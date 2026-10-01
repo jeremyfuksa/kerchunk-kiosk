@@ -9,7 +9,7 @@ import { matchesBank, spectrumLabelFor } from "../../backend/config/banks.js";
 import type { Bank, Channel } from "../../backend/config/schema.js";
 import "./dashboard.css";
 
-export interface NowPlaying { freq: number; alphaTag: string; }
+export interface NowPlaying { freq: number; alphaTag: string; tags?: readonly string[]; }
 export interface LogRow { freq: number; alphaTag: string; ts: number; }
 export interface AlertBanner { freq: number; alphaTag: string; until: number; counties?: string; }
 export interface DashState {
@@ -67,7 +67,7 @@ export function reduce(s: DashState, ev: EngineEvent): DashState {
         error: null,
         // The Recent log records every opening; nowPlaying only follows when
         // the engine doesn't report audibility explicitly.
-        nowPlaying: s.audibleDriven ? s.nowPlaying : { freq: ev.freq, alphaTag: ev.channel.alphaTag },
+        nowPlaying: s.audibleDriven ? s.nowPlaying : { freq: ev.freq, alphaTag: ev.channel.alphaTag, ...(ev.channel.tags ? { tags: ev.channel.tags } : {}) },
         log: [{ freq: ev.freq, alphaTag: ev.channel.alphaTag, ts: ev.ts }, ...s.log].slice(0, 100),
       };
     case "audible":
@@ -75,7 +75,7 @@ export function reduce(s: DashState, ev: EngineEvent): DashState {
         ...s,
         error: null,
         audibleDriven: true,
-        nowPlaying: ev.channel ? { freq: ev.channel.freq, alphaTag: ev.channel.alphaTag } : null,
+        nowPlaying: ev.channel ? { freq: ev.channel.freq, alphaTag: ev.channel.alphaTag, ...(ev.channel.tags ? { tags: ev.channel.tags } : {}) } : null,
         signalDb: ev.channel ? s.signalDb : null,
       };
     case "signal":
