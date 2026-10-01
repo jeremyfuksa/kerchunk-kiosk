@@ -30,3 +30,11 @@ describe("serviceHead", () => {
     expect(() => glyphOf("<svg><circle r='1'/></svg>")).toThrow(/glyph group/);
   });
 });
+
+describe("serviceHead fallback", () => {
+  it("a category outside the map falls back to the unknown head, colour AND glyph — never throws", () => {
+    const h = serviceHead("not-a-service" as never);
+    expect(h.color).toBe(serviceHead("unknown").color);
+    expect(h.glyph).toBe(serviceHead("unknown").glyph);
+  });
+});

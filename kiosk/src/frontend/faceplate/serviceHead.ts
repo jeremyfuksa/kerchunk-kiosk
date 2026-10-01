@@ -43,6 +43,8 @@ export function glyphOf(pinSvg: string): string {
   return inner;
 }
 
+// WCAG relative luminance. A deliberate copy of test/cssTokens.ts (src can't
+// import from test/); the ringed test cross-checks the two agree.
 function luminance(hex: string): number {
   const h = hex.replace("#", "");
   const [r, g, b] = [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16) / 255)
@@ -60,8 +62,11 @@ const HEADS = new Map<PinCategory, ServiceHead>();
 export function serviceHead(cat: PinCategory): ServiceHead {
   let h = HEADS.get(cat);
   if (!h) {
-    const color = PIN_COLORS[cat] ?? PIN_COLORS.unknown!;
-    h = { color, glyph: glyphOf(PIN_SVG[cat]), ringed: contrastOnWell(color) < HEAD_MIN_CONTRAST };
+    // A category outside the map (only reachable through a cast) falls back to
+    // the unknown head as a whole — colour and glyph — rather than throwing.
+    const known = cat in PIN_SVG ? cat : "unknown";
+    const color = PIN_COLORS[known] ?? PIN_COLORS.unknown!;
+    h = { color, glyph: glyphOf(PIN_SVG[known]), ringed: contrastOnWell(color) < HEAD_MIN_CONTRAST };
     HEADS.set(cat, h);
   }
   return h;

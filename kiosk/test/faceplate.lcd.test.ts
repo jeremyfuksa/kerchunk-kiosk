@@ -111,3 +111,12 @@ describe("faceplate lcd — wall fit (PR 2)", () => {
     expect(segmentsHtml({ count: 4, fill: 0.5 })).toBe('<div class="kc-lcd__seg" aria-hidden="true"><i class="on"></i><i class="on"></i><i></i><i></i></div>');
   });
 });
+
+describe("faceplate lcd — segment count guard", () => {
+  it("a non-finite or absurd count never hangs or explodes", () => {
+    expect(segmentsHtml({ count: Number.POSITIVE_INFINITY, fill: 1 }).match(/<i/g)?.length).toBe(64);
+    expect(segmentsHtml({ count: Number.NaN, fill: 1 })).toBe('<div class="kc-lcd__seg" aria-hidden="true"></div>');
+    expect(segmentsHtml({ count: -3, fill: 1 })).toBe('<div class="kc-lcd__seg" aria-hidden="true"></div>');
+    expect(segmentsHtml({ count: 12.7, fill: 1 }).match(/<i/g)?.length).toBe(12);
+  });
+});

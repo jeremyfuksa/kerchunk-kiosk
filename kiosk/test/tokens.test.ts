@@ -57,6 +57,9 @@ describe("tokens.css layer 2 — the kiosk at room distance (spec 2026-10-01)", 
   it("--kc-pin-cream (head ring) ≥ 3:1 on --kc-well", () => {
     expect(contrast(v("--kc-pin-cream"), v("--kc-well"))).toBeGreaterThanOrEqual(3);
   });
+  it("--kc-ink-on-light (text on Google's white info window) ≥ 4.5:1 on white", () => {
+    expect(contrast(v("--kc-ink-on-light"), "#ffffff")).toBeGreaterThanOrEqual(4.5);
+  });
   it("the pin tokens mirror the pin SVGs", () => {
     expect(v("--kc-pin-cream").toLowerCase()).toBe("#f5ebe8");
     expect(v("--kc-pin-glyph").toLowerCase()).toBe("#ffffff");

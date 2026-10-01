@@ -686,9 +686,10 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
  *  --kc-map-land, pinned by test/mapStyle. */
 export const MAP_GROUND = "#15191f";
 
-/** Kiosk fitBounds padding (px): top clears the clock + weather (~190 px),
- *  bottom clears the idle pill (~70 px + margin). A knob. */
-export const KIOSK_FIT_PAD = { top: 200, left: 80, right: 80, bottom: 120 };
+/** Kiosk fitBounds padding (px). Google pads the pin's TIP, and a pin's head
+ *  stands ~50 px above it: top 250 keeps a head clear of the clock + weather
+ *  + date (~190 px); bottom clears the idle pill (~70 px + margin). A knob. */
+export const KIOSK_FIT_PAD = { top: 250, left: 80, right: 80, bottom: 120 };
 
 export const DARK_STYLE = [
   // The --kc-map-* tokens as hex (test/mapStyle pins them to tokens.css).

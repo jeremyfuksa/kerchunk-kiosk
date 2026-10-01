@@ -33,7 +33,8 @@ describe("dashboard.css Layer Rule", () => {
 // The map joins layer 2 (spec 2026-10-01, PR 3). It renders inside the
 // dashboard and on its own /map page, so its rules scope to either. The
 // recorded carve-outs: --glow-color (set at runtime to a service colour),
-// --flamingo (close call) and --pine (no fix) — hit-kind marks like PIN_COLORS.
+// (--flamingo / --pine stay recorded carve-outs in DESIGN.md, but map.css
+// draws no hit-kind marks, so the lint doesn't allow them here.)
 import { KIOSK_FIT_PAD } from "../src/frontend/map/map.js";
 const MAP_MARK = "/* ── Map (layer 2) ── */";
 const mapCss = readFileSync("src/frontend/map/map.css", "utf8")
@@ -47,7 +48,7 @@ describe("map.css Layer Rule", () => {
   it("reads only --kc-* plus the recorded carve-outs", () => {
     const vars = [...body.matchAll(/var\((--[\w-]+)\)/g)].map((m) => m[1]!);
     expect(vars.length).toBeGreaterThan(10);
-    expect(vars.filter((v) => !/^--(kc-|glow-color$|flamingo$|pine$)/.test(v))).toEqual([]);
+    expect(vars.filter((v) => !/^--(kc-|glow-color$)/.test(v))).toEqual([]);
   });
   it("has no literal colours", () => {
     expect(body.match(/#[0-9a-f]{3,8}\b|rgba?\(/gi) ?? []).toEqual([]);
@@ -58,7 +59,8 @@ describe("map.css Layer Rule", () => {
     expect(selectors.filter((s) => !s.split(/,(?![^(]*\))/).every(ok))).toEqual([]);
   });
   it("kiosk framing clears the clock + weather and the idle pill", () => {
-    expect(KIOSK_FIT_PAD.top).toBeGreaterThanOrEqual(180);
+    // The pad is measured to the pin's TIP; its ~50 px head sits above that.
+    expect(KIOSK_FIT_PAD.top).toBeGreaterThanOrEqual(240);
     expect(KIOSK_FIT_PAD.bottom).toBeGreaterThanOrEqual(100);
   });
 });

@@ -143,8 +143,8 @@ export class AircraftLayer {
   }
 
   // Callsign tinted to the type color so label and glyph read as one unit; the
-  // chip plate + typography come from CSS (.acLabel — Campfire instrument
-  // language: condensed, uppercase, tracked).
+  // chip plate + typography come from CSS (.acLabel — a small piece of glass
+  // in Schibsted; callsigns keep their own capitals, no tracking).
   private label(t: AircraftTarget): any {
     return {
       text: t.callsign,
