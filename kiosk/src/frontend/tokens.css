@@ -2,8 +2,8 @@
    Replaces @jeremyfuksa/campfire (removed 2026-09-28, spec
    docs/superpowers/specs/2026-09-28-admin-redesign-design.md). Two layers:
 
-   LAYER 1 — ambient surfaces (wall, map, art; the dashboard moved to layer 2
-   on 2026-10-01, spec docs/superpowers/specs/2026-10-01-kiosk-faceplate-design.md). Every property
+   LAYER 1 — ambient surfaces (wall, art; the dashboard and map moved to layer
+   2 on 2026-10-01, spec docs/superpowers/specs/2026-10-01-kiosk-faceplate-design.md). Every property
    those pages referenced from Campfire, at the value Campfire resolved to on
    the appliance under `.dark` (night-ramp retune, campfire#59) — now frozen
    as plain `:root` declarations below, not gated on a `.dark` class
@@ -11,7 +11,7 @@
    proven identical by test/tokens.test.ts against
    test/fixtures/campfire-dark-resolved.json. Change these only on purpose.
 
-   LAYER 2 — the admin and kiosk dashboard language (`--kc-*`): Faceplate structure, Night desk
+   LAYER 2 — the admin, kiosk dashboard and map language (`--kc-*`): Faceplate structure, Night desk
    palette. Measured contrast (WCAG 2.x) on ground / raised / key:
      ink 14.5 / 12.5 / 11.4   dim 7.7 / 6.7 / 6.1   mute 5.9 / 5.1 / 4.7
      glass 9.8 / 8.5 / 7.8    coral 8.3 / 7.2 / 6.5  hay 10.5 / 9.1 / 8.3
