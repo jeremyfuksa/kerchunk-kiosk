@@ -87,9 +87,9 @@
   --kc-k-clock: 4rem;          /* bare clock, top-right */
   --kc-k-date: 1.25rem;        /* date · temp · wind under it */
   --kc-k-glass-meta: 1.25rem;  /* LCD meta line at wall size */
-  --kc-k-glass-name: 3.25rem;  /* LCD channel name at wall size */
-  --kc-k-glass-freq: 4.5rem;   /* LCD frequency — the largest thing on the wall (operator: 6.25 read too big) */
-  --kc-k-head: 8rem;           /* service head: the height of name + frequency */
+  --kc-k-glass-name: 2.75rem;  /* LCD channel name at wall size */
+  --kc-k-glass-freq: 4rem;     /* LCD frequency — as large as the clock (operator tuned on the wall: 6.25 → 4.5 → 4) */
+  --kc-k-head: 7rem;           /* service head: the height of name + frequency */
   --kc-k-alert-title: 3.1rem;  /* weather alert card title */
   --kc-k-weather: 2.25rem;     /* current conditions under the clock: icon + temperature */
   --kc-k-glass-error: 2.6rem;  /* the error text on the wall glass (smaller than a channel name) */

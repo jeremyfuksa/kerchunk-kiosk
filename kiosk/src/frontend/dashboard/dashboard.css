@@ -70,20 +70,23 @@ html[data-page="dashboard"] .kc-risk[hidden] { display: none; }
 /* The corner: alert card stacked over the pill/glass slot, bottom-left. */
 html[data-page="dashboard"] .kc-corner {
   position: absolute; left: 1.8rem; bottom: 1.8rem; z-index: 3;
-  width: min(44vw, 54rem);
+  /* Shrink to fit (operator): each piece is as wide as its content, up to
+     the cap, so the glass covers no more map than a channel needs. */
+  --kc-corner-max: min(44vw, 54rem);
   display: flex; flex-direction: column; align-items: flex-start; gap: 1.1rem;
 }
-html[data-page="dashboard"] .kc-corner__slot { position: relative; z-index: 1; width: 100%; }
+html[data-page="dashboard"] .kc-corner__slot { position: relative; z-index: 1; }
 /* Both stay mounted. Whichever is NOT showing leaves the flow (absolute at the
    same bottom-left anchor), so the slot — and the alert above it — sits on
    the visible one. Transitions on transform + opacity only: compositor work,
    and a transition reverses from mid-flight on its own (a quick re-hit). */
 html[data-page="dashboard"] .kc-corner__glass {
+  width: max-content; max-width: var(--kc-corner-max);
   transform-origin: 0 100%;
   transform: scale(0.26); opacity: 0;
   transition: transform var(--kc-release-ms) ease-in, opacity var(--kc-release-ms) ease-in;
 }
-html[data-page="dashboard"] .kc-corner:not(.is-glass) .kc-corner__glass { position: absolute; left: 0; bottom: 0; width: 100%; }
+html[data-page="dashboard"] .kc-corner:not(.is-glass) .kc-corner__glass { position: absolute; left: 0; bottom: 0; }
 html[data-page="dashboard"] .kc-corner.is-glass .kc-corner__glass {
   transform: none; opacity: 1;
   transition-duration: var(--kc-grow-ms); transition-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1);
@@ -135,7 +138,7 @@ html[data-page="dashboard"] .alertBar[data-kind="civil"]    { --alert-color: #c8
 html[data-page="dashboard"] .alertBar[data-kind="test"]     { --alert-color: #5b6b7a; --alert-on: #e8eef3; }
 html[data-page="dashboard"] .alertBar.on {
   display: flex; flex-direction: column; align-items: flex-start; gap: 0.4rem;
-  width: 100%; box-sizing: border-box; padding: 1.3rem 1.8rem 1.5rem;
+  width: max-content; max-width: var(--kc-corner-max); box-sizing: border-box; padding: 1.3rem 1.8rem 1.5rem;
   border-radius: var(--kc-r-group); background: var(--kc-well); color: var(--kc-ink);
   box-shadow: var(--kc-lift-shadow);
 }
