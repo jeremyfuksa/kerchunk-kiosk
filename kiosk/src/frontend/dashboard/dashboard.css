@@ -58,6 +58,8 @@ html[data-page="dashboard"] .kc-wx__temp { color: var(--kc-ink); font-weight: 70
 /* Machine warning: a coral pill, top centre. */
 html[data-page="dashboard"] .kc-risk {
   position: absolute; top: 2rem; left: 50%; transform: translateX(-50%); z-index: 4;
+  /* Never under the clock: the clock block is ≤ ~22rem wide at top-right. */
+  max-width: calc(100vw - 2 * 24rem); overflow: hidden; text-overflow: ellipsis;
   padding: 0.7rem 1.4rem; border-radius: var(--kc-r-key); white-space: nowrap;
   background: color-mix(in srgb, var(--kc-coral) 16%, var(--kc-ground));
   color: var(--kc-coral); font-weight: 600; font-size: var(--kc-k-pill);
@@ -184,4 +186,6 @@ html[data-page="dashboard"] .kc-recent .t { color: var(--kc-mute); margin-right:
   html[data-page="dashboard"] .dash *, html[data-page="dashboard"] .dash *::before, html[data-page="dashboard"] .dash *::after {
     animation: none !important; transition: none !important;
   }
+  /* The sweep holds still where it can be seen, not parked off-track. */
+  html[data-page="dashboard"] .kc-pill__tick::after { transform: translateX(230%); }
 }

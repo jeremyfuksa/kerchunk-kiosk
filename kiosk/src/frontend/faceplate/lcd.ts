@@ -29,6 +29,9 @@ export interface LcdOpts {
   hint?: string;
 }
 
+/** The most segments a meter row will draw. */
+export const MAX_SEGMENTS = 64;
+
 /** Lit segments for a 0..1 fill; NaN and out-of-range clamp. */
 export function segmentsLit(fill: number, count: number): number {
   if (!Number.isFinite(fill)) return 0;
@@ -43,8 +46,10 @@ function headSvg(h: ServiceHead): string {
 
 /** The segmented meter row (also the kiosk's warm-up pill). */
 export function segmentsHtml(s: { count: number; fill: number }): string {
-  const lit = segmentsLit(s.fill, s.count);
-  return `<div class="kc-lcd__seg" aria-hidden="true">${Array.from({ length: s.count }, (_, i) => (i < lit ? '<i class="on"></i>' : "<i></i>")).join("")}</div>`;
+  // Guard the length: a non-finite count would hang Array.from (cap = MAX_SEGMENTS).
+  const count = Number.isNaN(s.count) ? 0 : Math.max(0, Math.min(MAX_SEGMENTS, Math.floor(s.count)));
+  const lit = segmentsLit(s.fill, count);
+  return `<div class="kc-lcd__seg" aria-hidden="true">${Array.from({ length: count }, (_, i) => (i < lit ? '<i class="on"></i>' : "<i></i>")).join("")}</div>`;
 }
 
 /** The level meter's floor: dBFS at or below this lights no bars; 0 dBFS

@@ -206,12 +206,13 @@ describe("alert banner (ROADMAP Idea 6)", () => {
   });
 });
 
-describe("bank rail (tuned window)", () => {
-  it("tuned event replaces the tuned id set", () => {
+describe("tuned window", () => {
+  it("tuned event moves the window centre (the pill's detail); no bank-rail state survives", () => {
     let s = reduce(initialState(), { type: "tuned", freqHz: 155_000_000, channelIds: ["a", "b"], ts: 1 });
-    expect(s.tunedIds).toEqual(["a", "b"]);
+    expect(s.tunedHz).toBe(155_000_000);
     s = reduce(s, { type: "tuned", freqHz: 460_000_000, channelIds: ["c"], ts: 2 });
-    expect(s.tunedIds).toEqual(["c"]);
+    expect(s.tunedHz).toBe(460_000_000);
+    expect("tunedIds" in s).toBe(false);
   });
 });
 

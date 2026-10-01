@@ -25,9 +25,7 @@ export interface LogRow { freq: number; alphaTag: string; ts: number; }
 export interface AlertBanner { freq: number; alphaTag: string; until: number; counties?: string; }
 export interface DashState {
   nowPlaying: NowPlaying | null;
-  /** Channel ids in the currently-tuned window (drives the bank rail). */
-  tunedIds: string[];
-  /** Center frequency of the tuned window (drives the spectrum chip). */
+  /** Center frequency of the tuned window (names the idle pill: "VHF high 160.9"). */
   tunedHz: number | null;
   /** Active alert banner; cleared by paint once `until` passes. */
   alert: AlertBanner | null;
@@ -53,7 +51,7 @@ export interface DashState {
 }
 
 export function initialState(): DashState {
-  return { nowPlaying: null, tunedIds: [], tunedHz: null, alert: null, log: [], error: null, signalDb: null, engineState: "running", audibleDriven: false, warmed: true, warmupPhase: null, warmupStep: 0, warmupOf: 4 };
+  return { nowPlaying: null, tunedHz: null, alert: null, log: [], error: null, signalDb: null, engineState: "running", audibleDriven: false, warmed: true, warmupPhase: null, warmupStep: 0, warmupOf: 4 };
 }
 
 /** Merge live WS log rows (already in state) with a historical backfill fetch:
@@ -92,7 +90,7 @@ export function reduce(s: DashState, ev: EngineEvent): DashState {
     case "signal":
       return { ...s, signalDb: ev.dbfs };
     case "tuned":
-      return { ...s, tunedIds: ev.channelIds, tunedHz: ev.freqHz };
+      return { ...s, tunedHz: ev.freqHz };
     case "alert":
       // The banner outlives the transmission: holdSeconds is the operator's
       // attention window, not the squelch's.
@@ -332,6 +330,10 @@ export function renderDashboard(root: HTMLElement): void {
     } else {
       cornerEl.classList.toggle("is-glass", v.show === "glass");
     }
+    // Only the showing host is in the status region; the other is still
+    // mounted (it animates out) but must not be read.
+    pillHost.setAttribute("aria-hidden", String(v.show === "glass"));
+    glassHost.setAttribute("aria-hidden", String(v.show === "pill"));
     paintLog();
   }
 

@@ -66,7 +66,7 @@ html[data-page="map"] body {
 
 /* Google's info window is a light bubble: dark text on it. */
 :is(html[data-page="map"], html[data-page="dashboard"]) .blipInfo { color: var(--kc-ground); font-family: var(--kc-font); font-weight: 600; }
-:is(html[data-page="map"], html[data-page="dashboard"]) .blipMeta { color: var(--kc-key); font-size: 0.8em; font-weight: 400; margin-top: 0.2rem; }
+:is(html[data-page="map"], html[data-page="dashboard"]) .blipMeta { color: var(--kc-ink-on-light); font-size: 0.8em; font-weight: 400; margin-top: 0.2rem; }
 
 /* Aircraft callsign chips: a small piece of glass under the heading glyph.
    Callsigns are uppercase by nature; no tracking, no text-transform. Text
