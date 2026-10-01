@@ -2,6 +2,7 @@
 // and the kiosk (wall size, spec 2026-10-01). An HTML-string builder like the
 // rest of the app: callers render with innerHTML.
 import { esc } from "../lib/format.js";
+import type { ServiceHead } from "./serviceHead.js";
 import "./lcd.css";
 
 /** What the glass shows. The admin's LcdView (admin/live.ts) satisfies this. */
@@ -14,7 +15,34 @@ export interface LcdInput {
   silent: string | null;
 }
 
-export interface LcdOpts { dbfs?: number | null }
+export interface LcdOpts {
+  dbfs?: number | null;
+  /** The kiosk's service disc, left of the name and frequency. */
+  head?: ServiceHead;
+  /** The kiosk's segmented meter under the frequency; fill is 0..1 (clamped).
+   *  When present it replaces the four-bar meter on the meta line. Each caller
+   *  owns its dB→fill mapping (the admin and kiosk scales differ). */
+  segments?: { count: number; fill: number };
+  /** "wall" is the kiosk's room-distance glass. */
+  size?: "panel" | "wall";
+}
+
+/** Lit segments for a 0..1 fill; NaN and out-of-range clamp. */
+export function segmentsLit(fill: number, count: number): number {
+  if (!Number.isFinite(fill)) return 0;
+  return Math.round(Math.max(0, Math.min(1, fill)) * count);
+}
+
+function headSvg(h: ServiceHead): string {
+  return `<svg class="kc-lcd__head${h.ringed ? " kc-lcd__head--ringed" : ""}" viewBox="0 0 42 42" aria-hidden="true">`
+    + `<circle cx="21" cy="21" r="21" fill="${h.color}"/>`
+    + `<g transform="translate(9 9)" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">${h.glyph}</g></svg>`;
+}
+
+function segs(s: { count: number; fill: number }): string {
+  const lit = segmentsLit(s.fill, s.count);
+  return `<div class="kc-lcd__seg" aria-hidden="true">${Array.from({ length: s.count }, (_, i) => (i < lit ? '<i class="on"></i>' : "<i></i>")).join("")}</div>`;
+}
 
 /** The level meter's floor: dBFS at or below this lights no bars; 0 dBFS
  *  lights all four. */
@@ -45,9 +73,15 @@ export function lcd(v: LcdInput, o: LcdOpts = {}): string {
   // changes ~4×/s inside the host's polite live region.
   const db = v.state === "live" ? `<span class="kc-lcd__db" aria-hidden="true">${dbText(o.dbfs)}</span>` : "";
   const silent = v.silent ? ` <span class="kc-lcd__silent">${v.silent}</span>` : "";
-  return `<div class="kc-lcd" data-state="${v.state}">
-    <div class="kc-lcd__meta"><span>${v.state === "detail" ? "" : meter(v.state === "live" ? o.dbfs : null)}${esc(v.meta)}${silent}</span>${db}</div>
-    <div class="kc-lcd__name">${esc(v.name)}</div>
-    ${v.freq ? `<div class="kc-lcd__freq">${esc(v.freq)}<small>MHz</small></div>` : ""}
-  </div>`;
+  const bars = v.state === "detail" || o.segments ? "" : meter(v.state === "live" ? o.dbfs : null);
+  const cls = o.size === "wall" ? "kc-lcd kc-lcd--wall" : "kc-lcd";
+  const text = `<div class="kc-lcd__name">${esc(v.name)}</div>
+    ${v.freq ? `<div class="kc-lcd__freq">${esc(v.freq)}<small>MHz</small></div>` : ""}`;
+  const body = o.head
+    ? `<div class="kc-lcd__row">${headSvg(o.head)}<div class="kc-lcd__text">${text}</div></div>`
+    : text;
+  return `<div class="${cls}" data-state="${v.state}">
+    <div class="kc-lcd__meta"><span>${bars}${esc(v.meta)}${silent}</span>${db}</div>
+    ${body}
+  ${o.segments ? segs(o.segments) : ""}</div>`;
 }
