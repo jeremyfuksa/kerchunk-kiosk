@@ -12,6 +12,7 @@
 
 ## Global Constraints
 
+- Branch: before Task 1, `git checkout -b feat/kiosk-faceplate-tokens` from `docs/kiosk-faceplate-spec` (so the spec and this plan ride in PR 1), then delete the docs branch locally (`git branch -D docs/kiosk-faceplate-spec`; it was never pushed).
 - All commands run from `kiosk/` (`cd /home/kiosk/kerchunk-kiosk/kiosk`).
 - Relative imports carry `.js` even from `.ts` (`import { lcd } from "../../faceplate/lcd.js"`).
 - No literal colour in any stylesheet except `tokens.css`. No `var(--x, #hex)` fallbacks. Every `var(--x)` must be declared (enforced by `test/cssVarsDeclared.test.ts`).
