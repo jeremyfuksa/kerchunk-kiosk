@@ -11,11 +11,28 @@ import { METER_SEGMENTS, meterFill, type CornerView, type GlassView, type PillVi
 export function pillHtml(p: PillView): string {
   const cls = p.tone === "hay" ? "kc-pill kc-pill--hay" : "kc-pill";
   const muted = p.muted ? `<span class="kc-pill__muted"> · ${icoVolumeX}Muted</span>` : "";
-  const detail = p.detail ? `<span class="kc-pill__detail"> · ${esc(p.detail)}</span>` : "";
+  // Always present: a window hop patches this span's text (pillDetailText)
+  // instead of rebuilding the pill, which would restart the sweep tick.
+  const detail = `<span class="kc-pill__detail">${esc(pillDetailText(p.detail))}</span>`;
   const warm = p.warmLit !== null ? segmentsHtml({ count: METER_SEGMENTS, fill: p.warmLit / METER_SEGMENTS }) : "";
   return `<div class="${cls}" data-sweep="${p.sweep ? "on" : "off"}">`
     + `<div class="kc-pill__line"><span class="kc-pill__word">${esc(p.word)}</span>${muted}${detail}</div>`
     + `${warm}<span class="kc-pill__tick" aria-hidden="true"></span></div>`;
+}
+
+/** The pill's detail text as it is shown (" · VHF high 160.9"), for in-place patches. */
+export function pillDetailText(detail: string): string {
+  return detail ? ` · ${detail}` : "";
+}
+
+/** The alert card sits above the slot, so it would jump when the slot changes
+ *  height (pill ≈ 70px, glass ≈ 300px). FLIP it: start it offset by the
+ *  height change and transition it to rest with the glass's own timing. */
+export function alertFlip(beforePx: number, afterPx: number, show: "pill" | "glass"):
+  { offsetPx: number; durationVar: "--kc-grow-ms" | "--kc-release-ms" } | null {
+  const offsetPx = afterPx - beforePx;
+  if (offsetPx === 0) return null;
+  return { offsetPx, durationVar: show === "glass" ? "--kc-grow-ms" : "--kc-release-ms" };
 }
 
 export function glassHtml(g: GlassView, db: number | null): string {

@@ -77,3 +77,23 @@ describe("cornerPaint", () => {
     expect(cornerPaint(p2.memo, live)).toMatchObject({ show: "glass", rebuildGlass: false });
   });
 });
+
+import { pillDetailText, alertFlip } from "../src/frontend/dashboard/corner.js";
+
+describe("corner — review fixes", () => {
+  it("the pill always carries a detail span, so a window hop patches text in place", () => {
+    const h = pillHtml(cornerView({ ...base, tunedHz: null }) as never);
+    expect(h).toContain('<span class="kc-pill__detail"></span>');
+    expect(pillDetailText("UHF-T 462.8")).toBe(" · UHF-T 462.8");
+    expect(pillDetailText("")).toBe("");
+  });
+  it("alertFlip: on a grow the card starts where it was (below) and slides up with the glass", () => {
+    expect(alertFlip(70, 300, "glass")).toEqual({ offsetPx: 230, durationVar: "--kc-grow-ms" });
+  });
+  it("alertFlip: on a release the card starts above and slides down with the shrinking glass", () => {
+    expect(alertFlip(300, 70, "pill")).toEqual({ offsetPx: -230, durationVar: "--kc-release-ms" });
+  });
+  it("alertFlip: no height change → no slide", () => {
+    expect(alertFlip(120, 120, "glass")).toBeNull();
+  });
+});

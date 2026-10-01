@@ -42,14 +42,19 @@ html[data-page="dashboard"] .kc-clock__time {
   font-size: var(--kc-k-clock); font-weight: 700; line-height: 1;
   font-variant-numeric: tabular-nums; color: var(--kc-ink);
 }
-html[data-page="dashboard"] .kc-clock__sub {
-  display: flex; justify-content: flex-end; align-items: center; gap: 0.35em;
-  margin-top: 0.5rem; font-size: var(--kc-k-date); font-weight: 500; color: var(--kc-dim);
+/* Current conditions get their own line, as big as a glance needs: icon and
+   temperature in full ink, wind dim beside them. The date sits under it. */
+html[data-page="dashboard"] .kc-wx {
+  display: flex; justify-content: flex-end; align-items: center; gap: 0.3em;
+  margin-top: 0.6rem; font-size: var(--kc-k-weather); font-weight: 600; color: var(--kc-dim);
+  font-variant-numeric: tabular-nums;
 }
-html[data-page="dashboard"] .kc-wx { display: inline-flex; align-items: center; gap: 0.35em; }
+html[data-page="dashboard"] .kc-wx:empty { display: none; }
+html[data-page="dashboard"] .kc-wx__icon { color: var(--kc-ink); }
+html[data-page="dashboard"] .kc-clock__date { margin-top: 0.4rem; font-size: var(--kc-k-date); font-weight: 500; color: var(--kc-dim); }
 html[data-page="dashboard"] .kc-wx__icon svg, html[data-page="dashboard"] .kc-wx__arrow svg { width: 1.15em; height: 1.15em; display: block; }
 html[data-page="dashboard"] .kc-wx__arrow { display: inline-block; }
-html[data-page="dashboard"] .kc-wx__wind { display: inline-flex; align-items: center; gap: 0.2em; }
+html[data-page="dashboard"] .kc-wx__wind { display: inline-flex; align-items: center; gap: 0.15em; margin-left: 0.25em; font-size: 0.7em; }
 html[data-page="dashboard"] .kc-wx__temp { color: var(--kc-ink); font-weight: 700; }
 
 /* Machine warning: a coral pill, top centre. */
@@ -65,10 +70,10 @@ html[data-page="dashboard"] .kc-risk[hidden] { display: none; }
 /* The corner: alert card stacked over the pill/glass slot, bottom-left. */
 html[data-page="dashboard"] .kc-corner {
   position: absolute; left: 1.8rem; bottom: 1.8rem; z-index: 3;
-  width: min(48vw, 58rem);
+  width: min(44vw, 54rem);
   display: flex; flex-direction: column; align-items: flex-start; gap: 1.1rem;
 }
-html[data-page="dashboard"] .kc-corner__slot { position: relative; width: 100%; }
+html[data-page="dashboard"] .kc-corner__slot { position: relative; z-index: 1; width: 100%; }
 /* Both stay mounted. Whichever is NOT showing leaves the flow (absolute at the
    same bottom-left anchor), so the slot — and the alert above it — sits on
    the visible one. Transitions on transform + opacity only: compositor work,
@@ -117,7 +122,8 @@ html[data-page="dashboard"] .kc-corner.is-glass .kc-pill__tick::after { animatio
 @keyframes kc-sweep { to { transform: translateX(556%); } }
 
 /* The weather alert card — NWS storm colours, the three tiers. */
-html[data-page="dashboard"] .alertBar { display: none; position: relative; --alert-color: var(--kc-coral); --alert-on: var(--kc-well); }
+/* z-index 2: the card stays above a still-shrinking glass on release. */
+html[data-page="dashboard"] .alertBar { display: none; position: relative; z-index: 2; --alert-color: var(--kc-coral); --alert-on: var(--kc-well); }
 html[data-page="dashboard"] .alertBar[data-kind="tornado"]  { --alert-color: #e01a2b; --alert-on: #ffffff; }
 html[data-page="dashboard"] .alertBar[data-kind="severe"]   { --alert-color: #f5a623; --alert-on: #1a1205; }
 html[data-page="dashboard"] .alertBar[data-kind="flood"]    { --alert-color: #15924f; --alert-on: #ffffff; }

@@ -5,7 +5,8 @@ import { fmtFreq, esc } from "../lib/format.js";
 import { alertTheme } from "./alertTheme.js";
 import { mountActivityMap } from "../map/map.js";
 import { cornerView, sentenceCase, meterFill, METER_SEGMENTS } from "./cornerView.js";
-import { pillHtml, glassHtml, cornerPaint, type CornerMemo } from "./corner.js";
+import { pillHtml, glassHtml, cornerPaint, pillDetailText, alertFlip, type CornerMemo } from "./corner.js";
+import { createPoller } from "./poller.js";
 import { segmentsLit, dbText } from "../faceplate/lcd.js";
 import icoSun from "lucide-static/icons/sun.svg?raw";
 import icoMoon from "lucide-static/icons/moon.svg?raw";
@@ -146,7 +147,8 @@ export function renderDashboard(root: HTMLElement): void {
       <div id="riskPill" class="kc-risk" role="status" hidden></div>
       <header class="kc-clock">
         <div id="clock" class="kc-clock__time"></div>
-        <div class="kc-clock__sub"><span id="clockDate"></span><span id="wx" class="kc-wx"></span></div>
+        <div id="wx" class="kc-wx"></div>
+        <div id="clockDate" class="kc-clock__date"></div>
       </header>
       <div class="kc-stage">
         <div id="corner" class="kc-corner">
@@ -166,23 +168,7 @@ export function renderDashboard(root: HTMLElement): void {
   // at a time. Cadences are the knobs.
   const POLL_MS = { status: 5_000, risk: 10_000, weather: 600_000 };
   const POLL_TICK_MS = 1_000;
-  type Poll = { run: () => Promise<void>; everyMs: number; lastAt: number };
-  const polls: Poll[] = [];
-  function poll(run: () => Promise<void>, everyMs: number): void {
-    polls.push({ run, everyMs, lastAt: 0 });
-  }
-  let ticking = false;
-  async function tick(): Promise<void> {
-    if (ticking) return;
-    ticking = true;
-    try {
-      for (const p of polls) {
-        if (Date.now() - p.lastAt < p.everyMs) continue;
-        p.lastAt = Date.now();
-        await p.run().catch(() => {});
-      }
-    } finally { ticking = false; }
-  }
+  const poller = createPoller();
 
   const dashEl = root.querySelector<HTMLElement>(".dash")!;
   const riskEl = root.querySelector<HTMLElement>("#riskPill")!;
@@ -205,7 +191,7 @@ export function renderDashboard(root: HTMLElement): void {
       riskEl.hidden = severe.length === 0;
     }).catch(() => {});
   }
-  poll(paintRisk, POLL_MS.risk);
+  poller.poll("risk", paintRisk, POLL_MS.risk);
 
   const logEl = root.querySelector<HTMLElement>("#logList")!;
   // Coalesce repaints to one per animation frame: a burst of WS events in a
@@ -242,7 +228,7 @@ export function renderDashboard(root: HTMLElement): void {
   }
   // Mute flips in the admin without an engine restart — polled so the kiosk
   // tracks it within a few seconds.
-  poll(paintStatus, POLL_MS.status);
+  poller.poll("status", paintStatus, POLL_MS.status);
 
   let scanCount = -1; // unknown until the first status fetch
   // Once the live WS warmup stream is seen, it owns `warmed` (the /api/status
@@ -295,6 +281,7 @@ export function renderDashboard(root: HTMLElement): void {
   const cornerEl = root.querySelector<HTMLElement>("#corner")!;
   const pillHost = root.querySelector<HTMLElement>("#pillHost")!;
   const glassHost = root.querySelector<HTMLElement>("#glassHost")!;
+  const slotEl = root.querySelector<HTMLElement>(".kc-corner__slot")!;
   let memo: CornerMemo | null = null;
   let segEls: HTMLElement[] = [];
   let dbEl: HTMLElement | null = null;
@@ -308,7 +295,15 @@ export function renderDashboard(root: HTMLElement): void {
     });
     const p = cornerPaint(memo, v);
     memo = p.memo;
-    if (v.show === "pill" && p.rebuildPill) pillHost.innerHTML = pillHtml(v);
+    if (v.show === "pill") {
+      if (p.rebuildPill) pillHost.innerHTML = pillHtml(v);
+      else {
+        // A window hop: patch the text, keep the node (and its running sweep).
+        const d = pillHost.querySelector<HTMLElement>(".kc-pill__detail");
+        const text = pillDetailText(v.detail);
+        if (d && d.textContent !== text) d.textContent = text;
+      }
+    }
     if (v.show === "glass") {
       if (p.rebuildGlass) {
         glassHost.innerHTML = glassHtml(v, state.signalDb);
@@ -320,7 +315,23 @@ export function renderDashboard(root: HTMLElement): void {
         if (dbEl) dbEl.textContent = dbText(state.signalDb);
       }
     }
-    cornerEl.classList.toggle("is-glass", v.show === "glass");
+    const wasGlass = cornerEl.classList.contains("is-glass");
+    if (wasGlass !== (v.show === "glass") && alertEl.classList.contains("on")) {
+      // FLIP the alert card so it rides with the growing/shrinking glass
+      // instead of jumping by the slot's height change.
+      const before = slotEl.offsetHeight;
+      cornerEl.classList.toggle("is-glass", v.show === "glass");
+      const flip = alertFlip(before, slotEl.offsetHeight, v.show);
+      if (flip) {
+        alertEl.style.transition = "none";
+        alertEl.style.transform = `translateY(${flip.offsetPx}px)`;
+        void alertEl.offsetHeight; // commit the start position
+        alertEl.style.transition = `transform var(${flip.durationVar}) cubic-bezier(0.2, 0.8, 0.2, 1)`;
+        alertEl.style.transform = "";
+      }
+    } else {
+      cornerEl.classList.toggle("is-glass", v.show === "glass");
+    }
     paintLog();
   }
 
@@ -390,12 +401,12 @@ export function renderDashboard(root: HTMLElement): void {
         // Glanceable: condition ICON + temp NUMBER + wind arrow + speed. The
         // condition WORDS are dropped — the icon already says it from across the room.
         wxEl.innerHTML = wx
-          ? ` · ${wxIcon(wx.condition, wx.isDaytime)}<span class="kc-wx__temp">${Math.round(wx.tempF)}°</span>${wx.wind ? windBlock(wx.wind) : ""}`
+          ? `${wxIcon(wx.condition, wx.isDaytime)}<span class="kc-wx__temp">${Math.round(wx.tempF)}°</span>${wx.wind ? windBlock(wx.wind) : ""}`
           : "";
       })
       .catch(() => {});
   }
-  poll(paintWeather, POLL_MS.weather);
+  poller.poll("weather", paintWeather, POLL_MS.weather);
 
   api.getLogs().then((rows) => { state = { ...state, log: mergeLogs(state.log, rows) }; paint(); }).catch(() => {});
   const proto = location.protocol === "https:" ? "wss" : "ws";
@@ -403,12 +414,14 @@ export function renderDashboard(root: HTMLElement): void {
     if (ev.type === "reload") { location.reload(); return; }
     if (ev.type === "warmup") sawWarmupEvent = true; // WS now owns `warmed`
     state = reduce(state, ev);
-    if (ev.type === "status") void paintStatus();
+    // Mode, mute and break-in can change on these: re-poll status through the
+    // lane (a break-in is a retune, so only the alert announces it).
+    if (ev.type === "status" || ev.type === "alert") poller.request("status");
     schedule(); // coalesce: a burst of events in one frame => one paint()
   }).connect();
   paint();
 
   // One timer drives every poll registered above, sequentially.
-  setInterval(() => { void tick(); }, POLL_TICK_MS);
-  void tick();
+  setInterval(() => { void poller.tick(); }, POLL_TICK_MS);
+  void poller.tick();
 }

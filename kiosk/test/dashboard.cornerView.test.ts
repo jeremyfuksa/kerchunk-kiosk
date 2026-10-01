@@ -106,3 +106,18 @@ describe("cornerView helpers", () => {
     expect(METER_SEGMENTS).toBe(12);
   });
 });
+
+describe("cornerView — review fixes", () => {
+  it("a window hop does not change the pill's key (the sweep must not restart every hop)", () => {
+    const a = cornerView({ ...base, tunedHz: 160_900_000 });
+    const b = cornerView({ ...base, tunedHz: 462_800_000 });
+    expect(a.show === "pill" && b.show === "pill" && a.detail !== b.detail).toBe(true);
+    expect(b.key).toBe(a.key);
+  });
+  it("a stale breakIn flag never labels a non-weather hit as a break-in", () => {
+    const v = cornerView({ ...base, breakIn: true, nowPlaying: live });
+    if (v.show !== "glass") throw new Error("expected glass");
+    expect(v.lcd.state).toBe("live");
+    expect(v.lcd.meta).toBe("Live · Public safety");
+  });
+});

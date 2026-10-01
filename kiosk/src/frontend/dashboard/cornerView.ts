@@ -65,8 +65,11 @@ function safeHead(cat: PinCategory): ServiceHead | null {
   try { return serviceHead(cat); } catch { return null; }
 }
 
+// The detail (the tuned window) is NOT in the key: the scanner hops windows
+// every ~1.5 s, and rebuilding the pill on each hop restarted the sweep tick
+// before it could cross. dashboard.ts patches the detail text in place.
 function pill(p: Omit<PillView, "show" | "key">): PillView {
-  return { show: "pill", key: `pill|${p.word}|${p.detail}|${p.tone}|${p.muted}|${p.sweep}|${p.warmLit}`, ...p };
+  return { show: "pill", key: `pill|${p.word}|${p.tone}|${p.muted}|${p.sweep}|${p.warmLit}`, ...p };
 }
 
 function glass(g: Omit<GlassView, "show" | "key">): GlassView {
@@ -92,14 +95,17 @@ export function cornerView(i: CornerInput): CornerView {
   if (i.nowPlaying) {
     const { freq, alphaTag, tags } = i.nowPlaying;
     const cat = categoryFor(freq, tags);
-    const prefix = i.breakIn ? "Weather break-in"
+    // breakIn comes from the 5 s status poll, so it can lag a revert: only a
+    // weather channel can be a break-in, whatever the flag still says.
+    const breakIn = i.breakIn && cat === "weather";
+    const prefix = breakIn ? "Weather break-in"
       : i.mode === "weather" ? "Weather only"
       : i.mode === "monitor" ? "Listening to one channel" : "Live";
     // A break-in is always NOAA weather radio — say so, not "· Weather".
-    const svc = i.breakIn ? "NOAA" : serviceLabel(cat);
+    const svc = breakIn ? "NOAA" : serviceLabel(cat);
     return glass({
       lcd: {
-        state: i.breakIn ? "breakin" : "live",
+        state: breakIn ? "breakin" : "live",
         meta: svc ? `${prefix} · ${svc}` : prefix,
         name: alphaTag || fmtFreq(freq),
         freq: alphaTag ? fmtFreq(freq) : "",
