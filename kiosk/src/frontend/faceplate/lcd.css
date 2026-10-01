@@ -1,0 +1,41 @@
+/* The LCD — shared by the admin and the kiosk (spec 2026-10-01). Moved from
+   admin/admin.css. :where() keeps every selector at the specificity it had as
+   a bare class, so nothing in admin.css changes how it cascades. */
+:where(html[data-page="admin"], html[data-page="dashboard"]) .kc-lcd {
+  background: var(--kc-well); border-radius: var(--kc-r-group); padding: 16px 18px 14px;
+  box-shadow: var(--kc-well-shadow);
+}
+:where(html[data-page="admin"], html[data-page="dashboard"]) .kc-lcd__meta { display: flex; justify-content: space-between; align-items: center; color: var(--kc-glass); opacity: 0.75; font-size: var(--kc-t-small); font-weight: 600; }
+:where(html[data-page="admin"], html[data-page="dashboard"]) .kc-lcd__meta > span { display: inline-flex; align-items: center; gap: 8px; }
+:where(html[data-page="admin"], html[data-page="dashboard"]) .kc-lcd__silent { color: var(--kc-hay); opacity: 1; }
+:where(html[data-page="admin"], html[data-page="dashboard"]) .kc-lcd__name { color: var(--kc-glass-text); font-size: var(--kc-t-lcd-name); font-weight: 700; line-height: 1.15; margin: 8px 0 4px; overflow-wrap: anywhere; }
+:where(html[data-page="admin"], html[data-page="dashboard"]) .kc-lcd__freq { color: var(--kc-glass); font-size: var(--kc-t-lcd-freq); font-weight: 800; line-height: 1; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; text-shadow: 0 0 12px color-mix(in srgb, var(--kc-glass) 35%, transparent); }
+:where(html[data-page="admin"], html[data-page="dashboard"]) .kc-lcd__freq small { font-size: 0.38em; font-weight: 600; letter-spacing: 0; margin-left: 6px; }
+:where(html[data-page="admin"], html[data-page="dashboard"]) .kc-lcd[data-state="scanning"] .kc-lcd__name { color: var(--kc-dim); font-weight: 500; }
+:where(html[data-page="admin"], html[data-page="dashboard"]) .kc-lcd[data-state="breakin"] .kc-lcd__meta { color: var(--kc-hay); opacity: 1; }
+:where(html[data-page="admin"], html[data-page="dashboard"]) .kc-meter { display: inline-flex; gap: 2px; align-items: flex-end; height: 12px; }
+:where(html[data-page="admin"], html[data-page="dashboard"]) .kc-meter i { width: 3px; background: currentColor; opacity: 0.25; border-radius: 1px; }
+:where(html[data-page="admin"], html[data-page="dashboard"]) .kc-meter i:nth-child(1) { height: 4px; }
+:where(html[data-page="admin"], html[data-page="dashboard"]) .kc-meter i:nth-child(2) { height: 7px; }
+:where(html[data-page="admin"], html[data-page="dashboard"]) .kc-meter i:nth-child(3) { height: 10px; }
+:where(html[data-page="admin"], html[data-page="dashboard"]) .kc-meter i:nth-child(4) { height: 12px; }
+:where(html[data-page="admin"], html[data-page="dashboard"]) .kc-meter i.on { opacity: 1; }
+
+/* ── kiosk extras (spec 2026-10-01) ── */
+:where(html[data-page="admin"], html[data-page="dashboard"]) .kc-lcd__row { display: flex; align-items: center; gap: 0.6em; margin-top: 8px; }
+:where(html[data-page="admin"], html[data-page="dashboard"]) .kc-lcd__row .kc-lcd__name { margin-top: 0; }
+:where(html[data-page="admin"], html[data-page="dashboard"]) .kc-lcd__text { min-width: 0; }
+:where(html[data-page="admin"], html[data-page="dashboard"]) .kc-lcd__head { flex: none; width: 4.5rem; height: 4.5rem; border-radius: 50%; color: var(--kc-pin-glyph); }
+:where(html[data-page="admin"], html[data-page="dashboard"]) .kc-lcd__head--ringed { box-shadow: 0 0 0 2px var(--kc-pin-cream); }
+:where(html[data-page="admin"], html[data-page="dashboard"]) .kc-lcd__seg { display: flex; gap: 3px; height: 8px; margin-top: 12px; }
+:where(html[data-page="admin"], html[data-page="dashboard"]) .kc-lcd__seg i { flex: 1; border-radius: 2px; background: var(--kc-glass); opacity: 0.14; }
+:where(html[data-page="admin"], html[data-page="dashboard"]) .kc-lcd__seg i.on { opacity: 1; box-shadow: 0 0 8px color-mix(in srgb, var(--kc-glass) 40%, transparent); }
+
+/* wall size — the kiosk's glass, read from across the room */
+:where(html[data-page="admin"], html[data-page="dashboard"]) .kc-lcd--wall { padding: 1.9rem 2.4rem 2rem; border-radius: var(--kc-r-sheet); }
+:where(html[data-page="admin"], html[data-page="dashboard"]) .kc-lcd--wall .kc-lcd__meta { font-size: var(--kc-k-glass-meta); }
+:where(html[data-page="admin"], html[data-page="dashboard"]) .kc-lcd--wall .kc-lcd__name { font-size: var(--kc-k-glass-name); }
+:where(html[data-page="admin"], html[data-page="dashboard"]) .kc-lcd--wall .kc-lcd__freq { font-size: var(--kc-k-glass-freq); text-shadow: 0 0 24px color-mix(in srgb, var(--kc-glass) 35%, transparent); }
+:where(html[data-page="admin"], html[data-page="dashboard"]) .kc-lcd--wall .kc-lcd__head { width: var(--kc-k-head); height: var(--kc-k-head); }
+:where(html[data-page="admin"], html[data-page="dashboard"]) .kc-lcd--wall .kc-lcd__row { gap: 1.8rem; margin-top: 1rem; }
+:where(html[data-page="admin"], html[data-page="dashboard"]) .kc-lcd--wall .kc-lcd__seg { height: 12px; gap: 5px; margin-top: 1.4rem; }

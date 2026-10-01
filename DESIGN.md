@@ -19,6 +19,8 @@ colors:
   kc-hay: "#e8c37a"
   kc-hay-ink: "#2a1d05"
   kc-ok: "#7fc79a"
+  kc-pin-cream: "#f5ebe8"
+  kc-pin-glyph: "#ffffff"
   # ── Layer 1: ambient displays (wall, dashboard, map, art) — frozen ──
   signal-amber: "#ff6b35"
   caution-hay: "#f9c574"
@@ -398,7 +400,9 @@ only layer 1. A colour that isn't a token doesn't go in, not even as a
 `var(--token, #hex)` fallback. The one carve-out is the NWS storm palette
 (`dashboard.css`) and the wall/art canvas grounds (`wall.css` / `art.css`).
 These are the only literal colours outside `tokens.css`, and they are
-recorded under Ambient displays.
+recorded under Ambient displays. `--kc-pin-cream` and `--kc-pin-glyph` mirror
+the map pin's literal body and glyph colours so the shared LCD never carries
+them as hex.
 
 ## Typography
 
@@ -424,6 +428,11 @@ costume.
 
 The LCD's "MHz" unit is `0.38em` of its frequency, so it scales with the
 number it labels. It is the only size off the scale.
+
+**The kiosk at room distance** (`--kc-k-*`, layer 2; used by the dashboard
+from the kiosk Faceplate work, spec 2026-10-01): pill 1.25rem · date 1.25rem ·
+glass meta 1.25rem · glass name 3.25rem · alert title 3.1rem · clock 4rem ·
+glass frequency 6.25rem (the largest thing on the wall) · service head 10rem.
 
 ### Named rules
 
@@ -493,6 +502,10 @@ other line is the dashed outline of an "add" chip.
 **The One Glow.** The LCD frequency carries a soft sea-glass text-shadow
 (glow on glass). Nothing else in the admin glows.
 
+**Motion tokens** (`--kc-grow-ms` 420ms, `--kc-release-ms` 360ms,
+`--kc-sweep-ms` 4500ms) time the kiosk's pill ↔ glass growth and its idle
+sweep. Transform and opacity only.
+
 ## Shapes
 
 | Token | Value | Used by |
@@ -508,9 +521,12 @@ Dots (the verdict and service dot) are circles.
 ## Components
 
 All markup comes from the ui kit (`kiosk/src/frontend/admin/ui/kit.ts`,
-`ui/sheet.ts`) and `admin/dialogs.ts`. Styles are in `admin/admin.css`,
-`library.css` and `system.css`. Every class has the `kc-` prefix, and every
-page rule is scoped to `html[data-page="admin"]`.
+`ui/sheet.ts`), `admin/dialogs.ts`, and the LCD in
+`kiosk/src/frontend/faceplate/lcd.ts`. Styles are in `admin/admin.css`,
+`library.css`, `system.css` and `faceplate/lcd.css`. Every class has the
+`kc-` prefix. Every page rule is scoped to `html[data-page="admin"]`, except
+the LCD's, which are scoped to the admin and the dashboard through a
+zero-specificity `:where()`.
 
 ### The LCD (signature)
 `lcd()` → `.kc-lcd[data-state]`. A `--kc-well` panel with the recessed bezel
@@ -527,6 +543,20 @@ Glow on glass, never a lit slab. `data-state` changes it only by colour:
 meta line hay. A "silent" tag shows in hay. The host element carries
 `role="status"`, and the dB slot is `aria-hidden` because it changes about
 four times a second. The same LCD heads channel detail.
+
+`lcd()` lives in `src/frontend/faceplate/lcd.ts` (styles in
+`faceplate/lcd.css`), shared by the admin and the kiosk. Three options are
+used by the kiosk only:
+- **Service head** (`head`, from `faceplate/serviceHead.ts`): the
+  service-coloured disc with its pin's lucide glyph in `--kc-pin-glyph`, left
+  of the name and frequency. The glyph is extracted from the map's pin SVG, so
+  the pin stays the one source. A disc under 3:1 on the well (business, rail)
+  wears a 2px `--kc-pin-cream` ring.
+- **Segmented meter** (`segments`): a row of sea-glass segments under the
+  frequency (unlit at 14%), replacing the four-bar meter on the meta line.
+  Each caller owns its dB→fill mapping.
+- **Wall size** (`size: "wall"`, `.kc-lcd--wall`): the room-distance glass,
+  sized by the `--kc-k-glass-*` tokens.
 
 ### Keys
 `key()` → `button.kc-key`: at least 44px tall, `--kc-key` face, the key

@@ -79,4 +79,21 @@
   --kc-well-shadow: inset 0 0 0 1px var(--kc-well-edge), inset 0 8px 18px #0008;
   --kc-lift-shadow: 0 6px 20px #000a;  /* toast, floating above the page */
   --kc-backdrop: #000a;                /* behind a modal dialog */
+
+  /* ── Layer 2: the kiosk at room distance (spec 2026-10-01) ──
+     Sized from the approved mockups on the 1920×1080 wall. */
+  --kc-k-pill: 1.25rem;        /* the idle pill's one line */
+  --kc-k-clock: 4rem;          /* bare clock, top-right */
+  --kc-k-date: 1.25rem;        /* date · temp · wind under it */
+  --kc-k-glass-meta: 1.25rem;  /* LCD meta line at wall size */
+  --kc-k-glass-name: 3.25rem;  /* LCD channel name at wall size */
+  --kc-k-glass-freq: 6.25rem;  /* LCD frequency — the largest thing on the wall */
+  --kc-k-head: 10rem;          /* service head: the height of name + frequency */
+  --kc-k-alert-title: 3.1rem;  /* weather alert card title */
+  --kc-grow-ms: 420ms;         /* pill → glass on a hit */
+  --kc-release-ms: 360ms;      /* glass → pill on release */
+  --kc-sweep-ms: 4500ms;       /* one pass of the idle sweep tick */
+  /* The map pin carve-out, mirrored so no stylesheet carries the literal. */
+  --kc-pin-cream: #f5ebe8;     /* pin body; ring on a low-contrast service head (≥3:1 on well) */
+  --kc-pin-glyph: #ffffff;     /* the pin/head icon stroke */
 }

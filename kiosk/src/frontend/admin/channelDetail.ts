@@ -20,7 +20,8 @@ import {
 } from "./libraryModel.js";
 import { lockout } from "./libraryActions.js";
 import type { LibCtx } from "./libraryStore.js";
-import { chip, emptyState, field, key, lcd, switchRow } from "./ui/kit.js";
+import { chip, emptyState, field, key, switchRow } from "./ui/kit.js";
+import { lcd } from "../faceplate/lcd.js";
 import { ico } from "./ui/icons.js";
 import { mountSheet } from "./ui/sheet.js";
 import { hrefFor, type Detail } from "./route.js";
@@ -37,7 +38,7 @@ const SPARK_H = 90;
 // ── Pure markup builders ─────────────────────────────────────────────────────
 
 const lcdHtml = (c: { freq: number | null; alphaTag: string; mode: Channel["mode"]; location?: Channel["location"] }, name: string): string =>
-  lcd({ state: "detail", meta: c.freq ? lcdMeta({ ...c, freq: c.freq }) : "", name, freq: c.freq ? fmtFreq(c.freq) : "", silent: null, canLock: false });
+  lcd({ state: "detail", meta: c.freq ? lcdMeta({ ...c, freq: c.freq }) : "", name, freq: c.freq ? fmtFreq(c.freq) : "", silent: null });
 
 const input = (id: string, f: string, value: string, extra = ""): string =>
   `<input id="${id}" data-field="${f}" type="text" value="${esc(value)}" aria-describedby="${id}-err"${extra} />`;
