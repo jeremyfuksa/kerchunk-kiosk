@@ -62,7 +62,7 @@
       }
     },
     {
-      "id": "pointOfInterest.emergency.fireStation",
+      "id": "pointOfInterest.emergency.fire",
       "label": {
         "visible": true,
         "textFillColor": "#747e8b",
@@ -71,7 +71,7 @@
       }
     },
     {
-      "id": "pointOfInterest.transportation.airport",
+      "id": "pointOfInterest.transit.airport",
       "label": {
         "visible": true,
         "textFillColor": "#747e8b",
@@ -89,7 +89,21 @@
       }
     },
     {
-      "id": "settlement",
+      "id": "political.city",
+      "label": {
+        "textFillColor": "#5d6672",
+        "textStrokeColor": "#15191f"
+      }
+    },
+    {
+      "id": "political.sublocality",
+      "label": {
+        "textFillColor": "#5d6672",
+        "textStrokeColor": "#15191f"
+      }
+    },
+    {
+      "id": "political.neighborhood",
       "label": {
         "textFillColor": "#5d6672",
         "textStrokeColor": "#15191f"
