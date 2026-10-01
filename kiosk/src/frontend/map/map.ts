@@ -78,8 +78,8 @@ export function renderMap(root: HTMLElement): void {
   root.innerHTML = `<div class="mapWrap">
     <div id="gmap"></div>
     <div class="mapLegend">
-      <span class="lgAnt"></span> pins = sites by service · gray ? = unclassified
-      <span class="lgNote">edge glow = activity, location unknown · weather = live NEXRAD</span>
+      <span class="lgAnt"></span> Pins are sites by service · a grey ? is unclassified
+      <span class="lgNote">Edge glow: activity with no known location · Weather: live NEXRAD</span>
     </div>
     <div id="mapMsg" class="mapMsg"></div>
   </div>`;
@@ -452,12 +452,10 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
 
     // Wait for the map's first idle as well as the data: fitBounds against
     // a not-yet-laid-out viewport computes minimum zoom (the whole world).
-    // Kiosk padding is asymmetric: the map runs UNDER the floating topbar
-    // and the now-playing card, so the fit must keep pins clear of both —
-    // Cameron (northernmost) hid behind the bar with uniform 56px.
-    const fitPad = interactive
-      ? 56
-      : { top: 150, left: 120, right: 70, bottom: 70 };
+    // Kiosk padding is asymmetric: the map runs under the clock + weather
+    // (top-right) and the corner (bottom-left), so the fit keeps pins clear
+    // of both — Cameron (northernmost) once hid behind a bar at uniform 56px.
+    const fitPad = interactive ? 56 : KIOSK_FIT_PAD;
     const mapReady = new Promise<void>((resolve) =>
       google.maps.event.addListenerOnce(map, "idle", resolve));
     void Promise.allSettled([sitesReady, channelsReady, mapReady])
@@ -684,6 +682,10 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
 }
 
 // Instrument-dark cartography to match the kiosk.
+/** Kiosk fitBounds padding (px): top clears the clock + weather (~190 px),
+ *  bottom clears the idle pill (~70 px + margin). A knob. */
+export const KIOSK_FIT_PAD = { top: 200, left: 80, right: 80, bottom: 120 };
+
 export const DARK_STYLE = [
   // The --kc-map-* tokens as hex (test/mapStyle pins them to tokens.css).
   { elementType: "geometry", stylers: [{ color: "#15191f" }] },
