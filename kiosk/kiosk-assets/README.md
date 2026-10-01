@@ -21,6 +21,8 @@ Color map (Night desk, the `--kc-map-*` tokens):
 | Layer | Token | Hex |
 |---|---|---|
 | Land / base | `--kc-map-land` (= `--kc-ground`) | `#15191f` |
+| Built-up areas (`infrastructure.urbanArea`) | `--kc-map-land` — the city reads as the same slate, not Google's navy | `#15191f` |
+| Rail lines (`infrastructure.railwayTrack`) | `--kc-map-road-edge` — quiet, not Google's lavender | `#2c343e` |
 | Water | `--kc-map-water` (= `--kc-well`, the LCD glass) | `#0c1113` |
 | Roads (geometry only, no labels/shields) | `--kc-map-road` (= `--kc-line`) | `#232a31` |
 | Highway stroke | `--kc-map-road-edge` | `#2c343e` |
@@ -44,7 +46,9 @@ Every feature id here is checked against Google's JSON reference
 (developers.google.com/maps/documentation/maps-static/cloud-customization/json-reference),
 2026-10-01: `pointOfInterest.emergency.{hospital,police,fire}`,
 `pointOfInterest.transit.airport`, `pointOfInterest.entertainment.themePark`,
-and `political.{city,sublocality,neighborhood}` for the quiet place names.
+`political.{city,sublocality,neighborhood}` for the quiet place names, plus
+`infrastructure.urbanArea` and `infrastructure.railwayTrack` (both verified by
+rendering the Map ID: unstyled, they were navy `#1c2a40` and lavender `#455071`).
 (Earlier guesses `…fireStation`, `…transportation.airport` and `settlement`
 were rejected by the console as "Feature not found" and silently dropped —
 town names were never actually dimmed until this fix.) The console's
