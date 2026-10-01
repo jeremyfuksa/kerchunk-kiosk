@@ -21,15 +21,13 @@ colors:
   kc-ok: "#7fc79a"
   kc-pin-cream: "#f5ebe8"
   kc-pin-glyph: "#ffffff"
-  # ── Layer 1: ambient displays (wall, dashboard, map, art) — frozen ──
+  # ── Layer 1: ambient displays (wall, map, art) — frozen ──
   signal-amber: "#ff6b35"
   caution-hay: "#f9c574"
   adopt-moss: "#9ac35d"
   destroy-coral: "#f17d7b"
   flamingo: "#dc3a38"
   golden-amber: "#ef991f"
-  danger-50: "#fef5f4"
-  danger-800: "#9c2524"
   night-ground: "#0e0f12"
   slate-panel: "#16181d"
   panel-edge: "#23262d"
@@ -111,82 +109,11 @@ typography:
     lineHeight: 1
     letterSpacing: "-0.02em"
     fontFeature: "tabular-nums"
-  # ── Layer 1: ambient displays — Inter, the kiosk's --k-* ramp ──
-  kiosk-meta:
+  # ── Layer 1: ambient displays — Inter (map); the old kiosk ramp left with the dashboard ──
+  map-chip:
     fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
     fontSize: "0.95rem"
-    fontWeight: 400
-    lineHeight: 1.4
-  kiosk-body:
-    fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
-    fontSize: "1.05rem"
-    fontWeight: 400
-    lineHeight: 1.45
-  kiosk-label:
-    fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
-    fontSize: "1.2rem"
     fontWeight: 600
-    lineHeight: 1.3
-  kiosk-alert:
-    fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
-    fontSize: "1.3rem"
-    fontWeight: 600
-    lineHeight: 1.3
-  kiosk-status:
-    fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
-    fontSize: "1.5rem"
-    fontWeight: 700
-    lineHeight: 1.25
-  kiosk-scan:
-    fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
-    fontSize: "1.6rem"
-    fontWeight: 600
-    lineHeight: 1.2
-  kiosk-value:
-    fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
-    fontSize: "1.9rem"
-    fontWeight: 600
-    lineHeight: 1.15
-  kiosk-headline:
-    fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
-    fontSize: "2.2rem"
-    fontWeight: 600
-    lineHeight: 1.15
-  kiosk-alert-lg:
-    fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
-    fontSize: "2.5rem"
-    fontWeight: 700
-    lineHeight: 1.04
-  kiosk-clock:
-    fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
-    fontSize: "2.7rem"
-    fontWeight: 600
-    lineHeight: 1
-  kiosk-alert-xl:
-    fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
-    fontSize: "3.3rem"
-    fontWeight: 700
-    lineHeight: 1.02
-  kiosk-clock-lg:
-    fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
-    fontSize: "3.7rem"
-    fontWeight: 600
-    lineHeight: 1
-  kiosk-display:
-    fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
-    fontSize: "clamp(3rem, 7.5vw, 6.2rem)"
-    fontWeight: 600
-    lineHeight: 1.08
-    letterSpacing: "0.01em"
-  kiosk-display-map:
-    fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
-    fontSize: "clamp(2.3rem, 3.9vw, 3.85rem)"
-    fontWeight: 600
-    lineHeight: 1.08
-  kiosk-freq:
-    fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
-    fontSize: "clamp(1.7rem, 3.6vw, 2.8rem)"
-    fontWeight: 500
     lineHeight: 1.2
 rounded:
   # Layer 2 (admin)
@@ -730,7 +657,7 @@ callsign chips. Consequence colours come from the numbered steps
   The dashboard's live state is sea-glass on the glass instead.
 - **Consequence:** `--success-400` `#9ac35d`, `--warning-500` `#f9c574`,
   `--danger-400` `#f17d7b`. Also `--flamingo` `#dc3a38` (a close-call blip
-  with no frequency), `--golden-amber` `#ef991f` (the antenna mark in the map legend),.
+  with no frequency), `--golden-amber` `#ef991f` (the antenna mark in the map legend).
 - **Neutrals:** `--bg-base` `#0e0f12` (the field), `--bg-subtle` `#16181d`
   (panels), `--border-default` `#23262d` and `--border-strong` / `--neutral-700`
   `#343842` (edges), `--neutral-600` `#4d525e`, `--neutral-500` /
@@ -810,10 +737,11 @@ admin's language at room distance (`--kc-k-*`), with one piece of glass.
 
 ### Do (both layers)
 - **Do** take every colour from a token in `tokens.css` (or `PIN_COLORS` for
-  service colours), and keep the admin on layer 2 and the ambient pages on
-  layer 1. The only literal colours outside `tokens.css` are the NWS storm
-  palette (`dashboard.css`) and the wall/art canvas grounds (`wall.css` /
-  `art.css`), recorded under Ambient displays.
+  service colours), and keep the admin and the kiosk dashboard on layer 2 and
+  the wall, map and art on layer 1. The only literal colours outside
+  `tokens.css` are the carve-outs named in the Layer Rule: the NWS storm
+  palette (`dashboard.css`), the service palette and hit-kind marks, and the
+  wall/art canvas grounds.
 - **Do** keep text at 4.5:1 or better on ground, raised and key (and on the
   ambient panel), and non-text marks at 3:1 or better.
 - **Do** use `font-variant-numeric: tabular-nums` on any number that can
