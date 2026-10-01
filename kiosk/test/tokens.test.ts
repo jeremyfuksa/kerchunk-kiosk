@@ -41,7 +41,7 @@ describe("tokens.css layer 2 — the kiosk at room distance (spec 2026-10-01)", 
   const props = readProps(TOKENS);
   const v = (n: string): string => resolve(props, props[n] ?? "");
   const ramp = ["--kc-k-pill", "--kc-k-clock", "--kc-k-date", "--kc-k-glass-meta", "--kc-k-glass-name",
-    "--kc-k-glass-freq", "--kc-k-head", "--kc-k-alert-title"];
+    "--kc-k-glass-freq", "--kc-k-head", "--kc-k-alert-title", "--kc-k-glass-error"];
   for (const n of ramp) it(`${n} is a rem size`, () => {
     expect(props[n], `${n} missing`).toMatch(/^\d+(\.\d+)?rem$/);
   });

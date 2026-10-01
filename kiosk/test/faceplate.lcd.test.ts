@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { dbText, lcd, meterLit, METER_FLOOR_DB, segmentsLit } from "../src/frontend/faceplate/lcd.js";
 import { serviceHead } from "../src/frontend/faceplate/serviceHead.js";
+import { segmentsHtml } from "../src/frontend/faceplate/lcd.js";
 import { initialLive, lcdView, reduceEvent } from "../src/frontend/admin/live.js";
 
 const liveState = () => reduceEvent(initialLive, { type: "audible", channel: { id: "a", freq: 118_400_000, alphaTag: "A&B", mode: "am", enabled: true } as never, ts: 1 }).state;
@@ -89,5 +90,24 @@ describe("faceplate lcd — escaping (shared builder takes any string)", () => {
     expect(h).toContain('data-state="x&quot;&gt;&lt;b&gt;"');
     expect(h).toContain("&lt;i&gt;Muted&lt;/i&gt;");
     expect(h).not.toContain("<i>Muted</i>");
+  });
+});
+
+
+describe("faceplate lcd — wall fit (PR 2)", () => {
+  it("wall size never draws the four-bar meta meter (the error glass has no dead bars)", () => {
+    const h = lcd({ state: "error", meta: "Radio error", name: "x", freq: "", silent: null }, { size: "wall" });
+    expect(h).not.toContain("kc-meter");
+  });
+  it("panel size keeps the four-bar meter (the admin)", () => {
+    expect(lcd({ state: "live", meta: "m", name: "n", freq: "1", silent: null })).toContain("kc-meter");
+  });
+  it("hint renders escaped under the name", () => {
+    const h = lcd({ state: "error", meta: "Radio error", name: "x", freq: "", silent: null }, { size: "wall", hint: "Restart <it>" });
+    expect(h).toContain('<div class="kc-lcd__hint">Restart &lt;it&gt;</div>');
+    expect(h.indexOf("kc-lcd__name")).toBeLessThan(h.indexOf("kc-lcd__hint"));
+  });
+  it("segmentsHtml is the exported segment row", () => {
+    expect(segmentsHtml({ count: 4, fill: 0.5 })).toBe('<div class="kc-lcd__seg" aria-hidden="true"><i class="on"></i><i class="on"></i><i></i><i></i></div>');
   });
 });

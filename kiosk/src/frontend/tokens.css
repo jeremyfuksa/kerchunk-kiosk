@@ -90,6 +90,7 @@
   --kc-k-glass-freq: 6.25rem;  /* LCD frequency — the largest thing on the wall */
   --kc-k-head: 10rem;          /* service head: the height of name + frequency */
   --kc-k-alert-title: 3.1rem;  /* weather alert card title */
+  --kc-k-glass-error: 2.6rem;  /* the error text on the wall glass (smaller than a channel name) */
   --kc-grow-ms: 420ms;         /* pill → glass on a hit */
   --kc-release-ms: 360ms;      /* glass → pill on release */
   --kc-sweep-ms: 4500ms;       /* one pass of the idle sweep tick */
