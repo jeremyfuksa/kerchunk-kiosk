@@ -2,14 +2,25 @@ import type { EngineEvent } from "../../backend/engine/ScannerEngine.js";
 import { ReconnectingWs } from "../lib/wsClient.js";
 import { api } from "../lib/api.js";
 import { fmtFreq, esc } from "../lib/format.js";
-import icoVolumeX from "lucide-static/icons/volume-x.svg?raw";
 import { alertTheme } from "./alertTheme.js";
 import { mountActivityMap } from "../map/map.js";
-import { matchesBank, spectrumLabelFor } from "../../backend/config/banks.js";
-import type { Bank, Channel } from "../../backend/config/schema.js";
+import { cornerView, sentenceCase, meterFill, METER_SEGMENTS } from "./cornerView.js";
+import { pillHtml, glassHtml, cornerPaint, pillDetailText, alertFlip, type CornerMemo } from "./corner.js";
+import { createPoller } from "./poller.js";
+import { segmentsLit, dbText } from "../faceplate/lcd.js";
+import icoSun from "lucide-static/icons/sun.svg?raw";
+import icoMoon from "lucide-static/icons/moon.svg?raw";
+import icoCloud from "lucide-static/icons/cloud.svg?raw";
+import icoCloudSun from "lucide-static/icons/cloud-sun.svg?raw";
+import icoRain from "lucide-static/icons/cloud-rain.svg?raw";
+import icoStorm from "lucide-static/icons/cloud-lightning.svg?raw";
+import icoSnow from "lucide-static/icons/cloud-snow.svg?raw";
+import icoFog from "lucide-static/icons/cloud-fog.svg?raw";
+import icoWind from "lucide-static/icons/wind.svg?raw";
+import icoArrow from "lucide-static/icons/navigation-2.svg?raw";
 import "./dashboard.css";
 
-export interface NowPlaying { freq: number; alphaTag: string; }
+export interface NowPlaying { freq: number; alphaTag: string; tags?: readonly string[]; }
 export interface LogRow { freq: number; alphaTag: string; ts: number; }
 export interface AlertBanner { freq: number; alphaTag: string; until: number; counties?: string; }
 export interface DashState {
@@ -67,7 +78,7 @@ export function reduce(s: DashState, ev: EngineEvent): DashState {
         error: null,
         // The Recent log records every opening; nowPlaying only follows when
         // the engine doesn't report audibility explicitly.
-        nowPlaying: s.audibleDriven ? s.nowPlaying : { freq: ev.freq, alphaTag: ev.channel.alphaTag },
+        nowPlaying: s.audibleDriven ? s.nowPlaying : { freq: ev.freq, alphaTag: ev.channel.alphaTag, ...(ev.channel.tags ? { tags: ev.channel.tags } : {}) },
         log: [{ freq: ev.freq, alphaTag: ev.channel.alphaTag, ts: ev.ts }, ...s.log].slice(0, 100),
       };
     case "audible":
@@ -75,7 +86,7 @@ export function reduce(s: DashState, ev: EngineEvent): DashState {
         ...s,
         error: null,
         audibleDriven: true,
-        nowPlaying: ev.channel ? { freq: ev.channel.freq, alphaTag: ev.channel.alphaTag } : null,
+        nowPlaying: ev.channel ? { freq: ev.channel.freq, alphaTag: ev.channel.alphaTag, ...(ev.channel.tags ? { tags: ev.channel.tags } : {}) } : null,
         signalDb: ev.channel ? s.signalDb : null,
       };
     case "signal":
@@ -133,27 +144,21 @@ export function renderDashboard(root: HTMLElement): void {
   root.innerHTML = `
     <div class="dash">
       <div id="mapBase" class="mapBase"></div>
-      <header class="topbar">
-        <div id="modeBadge" class="modeBadge"></div>
-        <div class="topbarSpacer"></div>
-        <div id="wx" class="wx"></div>
-        <div class="topbarDivider"></div>
-        <div class="clockBlock">
-          <div id="clock" class="clock"></div>
-          <div id="clockDate" class="clockDate"></div>
-        </div>
+      <div id="riskPill" class="kc-risk" role="status" hidden></div>
+      <header class="kc-clock">
+        <div id="clock" class="kc-clock__time"></div>
+        <div id="wx" class="kc-wx"></div>
+        <div id="clockDate" class="kc-clock__date"></div>
       </header>
-      <div id="systemRisk" class="systemRisk"></div>
-      <div id="alertBar" class="alertBar"></div>
-      <div class="dashBody">
-        <section class="now" id="now"></section>
-        <aside class="log"><h2>Recent</h2><ul id="logList"></ul></aside>
-      </div>
-      <div id="bankRail" class="bankRail"></div>
-      <div id="bootMsg" class="bootMsg hidden">
-        <div class="bootText">WARMING UP</div>
-        <div class="bootBar"><div class="bootBarFill"></div></div>
-        <div class="bootPhase"></div>
+      <div class="kc-stage">
+        <div id="corner" class="kc-corner">
+          <div id="alertBar" class="alertBar"></div>
+          <div class="kc-corner__slot" role="status">
+            <div id="pillHost" class="kc-corner__pill"></div>
+            <div id="glassHost" class="kc-corner__glass"></div>
+          </div>
+        </div>
+        <aside class="kc-recent"><h2>Recently heard</h2><ul id="logList"></ul></aside>
       </div>
     </div>`;
   // ── Poll budget ─────────────────────────────────────────────────────────
@@ -161,28 +166,12 @@ export function renderDashboard(root: HTMLElement): void {
   // collide every 10 s, and the appliance has been observed to deadlock on 2+
   // concurrent requests (see CLAUDE.md). One ticker now runs them strictly one
   // at a time. Cadences are the knobs.
-  const POLL_MS = { status: 5_000, systemRisk: 10_000, weather: 600_000 };
+  const POLL_MS = { status: 5_000, risk: 10_000, weather: 600_000 };
   const POLL_TICK_MS = 1_000;
-  type Poll = { run: () => Promise<void>; everyMs: number; lastAt: number };
-  const polls: Poll[] = [];
-  function poll(run: () => Promise<void>, everyMs: number): void {
-    polls.push({ run, everyMs, lastAt: 0 });
-  }
-  let ticking = false;
-  async function tick(): Promise<void> {
-    if (ticking) return;
-    ticking = true;
-    try {
-      for (const p of polls) {
-        if (Date.now() - p.lastAt < p.everyMs) continue;
-        p.lastAt = Date.now();
-        await p.run().catch(() => {});
-      }
-    } finally { ticking = false; }
-  }
+  const poller = createPoller();
 
   const dashEl = root.querySelector<HTMLElement>(".dash")!;
-  const systemRisk = root.querySelector<HTMLElement>("#systemRisk")!;
+  const riskEl = root.querySelector<HTMLElement>("#riskPill")!;
   // True once the WebGL map mounts (the .mapStage layout). Under it, the Recent
   // log is display:none, so paint() skips rebuilding it.
   let mapMounted = false;
@@ -190,26 +179,21 @@ export function renderDashboard(root: HTMLElement): void {
     .then((mounted) => { if (mounted) { mapMounted = true; dashEl.classList.add("mapStage"); } })
     .catch(() => { /* no map = classic dashboard, nothing lost */ });
   let lastRiskSig = "";
-  function paintSystemRisk(): Promise<void> {
+  function paintRisk(): Promise<void> {
     return fetch("/api/system").then((r) => r.ok ? r.json() : null).then((s) => {
       const severe = s?.alerts?.filter((a: { severity: string }) => a.severity === "severe") ?? [];
       const sig = severe.map((a: { title: string }) => a.title).join("|");
       if (sig === lastRiskSig) return; // unchanged — skip the innerHTML write (usually "")
       lastRiskSig = sig;
-      systemRisk.innerHTML = severe.length
-        ? `<strong>MACHINE WARNING</strong> ${severe.map((a: { title: string }) => esc(a.title)).join(" · ")}`
+      riskEl.textContent = severe.length
+        ? `Machine warning · ${severe.map((a: { title: string }) => a.title).join(" · ")}`
         : "";
-      systemRisk.classList.toggle("on", severe.length > 0);
+      riskEl.hidden = severe.length === 0;
     }).catch(() => {});
   }
-  poll(paintSystemRisk, POLL_MS.systemRisk);
+  poller.poll("risk", paintRisk, POLL_MS.risk);
 
-  const nowEl = root.querySelector<HTMLElement>("#now")!;
   const logEl = root.querySelector<HTMLElement>("#logList")!;
-  const modeBadge = root.querySelector<HTMLElement>("#modeBadge")!;
-  // Badge follows the runtime mode — refreshed on engine status transitions
-  // (mode flips always restart the engine), so MONITORING/WEATHER are never
-  // stale on the kiosk screen (review finding: monitor mode was invisible).
   // Coalesce repaints to one per animation frame: a burst of WS events in a
   // single frame collapses to ONE paint() instead of N full renders.
   let rafPending = false;
@@ -218,33 +202,33 @@ export function renderDashboard(root: HTMLElement): void {
     rafPending = true;
     requestAnimationFrame(() => { rafPending = false; paint(); });
   }
-  let lastMode: string | undefined;
-  function paintBadge(): Promise<void> {
+  // Mode and break-in come from /api/status (mode flips restart the engine, so
+  // the status event re-polls); they name the pill and the glass's meta line.
+  let mode: "scan" | "weather" | "monitor" = "scan";
+  let breakIn = false;
+  function paintStatus(): Promise<void> {
     return api.getStatus()
       .then((s) => {
-        modeBadge.textContent =
-          s.mode === "weather" ? "WEATHER"
-          : s.mode === "monitor" ? "MONITORING" : "";
         const sc = s.scanCount ?? -1;
         const mu = s.muted ?? false;
+        const bi = s.breakIn ?? false;
         // Late-load correction ONLY: a page that opened after warm-up never sees
         // the WS warmup events, so trust the server flag. But once we've observed
         // the live WS warmup stream, IT is authoritative — otherwise an in-flight
         // poll (snapshotted warmed=true) could land after a fresh "booting" and
-        // wrongly hide the overlay mid-restart.
+        // wrongly end the warm-up pill mid-restart.
         const wm = (!sawWarmupEvent && typeof s.warmed === "boolean") ? s.warmed : state.warmed;
-        // The 5s poll usually reads identical values — only repaint on a change
-        // (was 12 full now-card renders/min of byte-identical content).
-        const changed = s.mode !== lastMode || sc !== scanCount || mu !== muted || wm !== state.warmed;
-        lastMode = s.mode; scanCount = sc; muted = mu;
+        // The 5s poll usually reads identical values — only repaint on a change.
+        const changed = s.mode !== mode || sc !== scanCount || mu !== muted || bi !== breakIn || wm !== state.warmed;
+        mode = s.mode; scanCount = sc; muted = mu; breakIn = bi;
         if (wm !== state.warmed) state = { ...state, warmed: wm };
         if (changed) schedule();
       })
       .catch(() => {});
   }
-  // Mute flips in the admin without an engine restart — polled so the kiosk's
-  // MUTED badge tracks it within a few seconds.
-  poll(paintBadge, POLL_MS.status);
+  // Mute flips in the admin without an engine restart — polled so the kiosk
+  // tracks it within a few seconds.
+  poller.poll("status", paintStatus, POLL_MS.status);
 
   let scanCount = -1; // unknown until the first status fetch
   // Once the live WS warmup stream is seen, it owns `warmed` (the /api/status
@@ -253,56 +237,7 @@ export function renderDashboard(root: HTMLElement): void {
   let sawWarmupEvent = false;
   let muted = false;
 
-  // ── Bank rail: hardware-scanner bank LEDs. Every bank collection is a chip;
-  // the chips covering the currently-tuned window light up as the radio
-  // hops (~groupDwellMs cadence). Needs the config snapshot for bank
-  // predicates; status transitions refetch it (config edits restart the
-  // engine, so the snapshot can never go stale silently).
-  const railEl = root.querySelector<HTMLElement>("#bankRail")!;
-  let cfgBanks: Bank[] = [];
-  let cfgChannels: Channel[] = [];
-  function loadBanks(): void {
-    void api.getConfig().then((cfg) => {
-      cfgBanks = cfg.banks ?? [];
-      cfgChannels = cfg.channels ?? [];
-      paintRail();
-    }).catch(() => {});
-  }
-  loadBanks();
 
-  function paintRail(): void {
-    // Spectrum chip: computed from the tuned window's center — information
-    // about WHERE in the spectrum the radio is, not a toggle.
-    const spectrum = state.tunedHz !== null
-      ? `<span class="bankChipK spectrum">${esc(spectrumLabelFor(state.tunedHz))} · ${(state.tunedHz / 1e6).toFixed(1)}</span>`
-      : "";
-    const tuned = cfgChannels.filter((c) => state.tunedIds.includes(c.id));
-    const chips = cfgBanks.map((b) => {
-      const lit = tuned.some((c) => matchesBank(c, b));
-      return `<span class="bankChipK${lit ? " lit" : ""}">${esc(b.name)}</span>`;
-    }).join("");
-    railEl.innerHTML = spectrum + chips;
-  }
-
-  // ── Warm-up overlay: full-screen "WARMING UP" + stepped bar shown until the
-  // engine reports a warm first sweep. Holds over the animating map (opaque, no
-  // blur) so the kiosk doesn't present a live-looking but uncalibrated screen.
-  const bootEl = root.querySelector<HTMLElement>("#bootMsg")!;
-  const bootFill = bootEl.querySelector<HTMLElement>(".bootBarFill")!;
-  const bootPhaseEl = bootEl.querySelector<HTMLElement>(".bootPhase")!;
-  const BOOT_LABELS: Record<string, string> = {
-    booting: "starting radio",
-    spawning: "building signal processing",
-    tuned: "acquiring channels",
-    ready: "ready",
-  };
-  function paintBoot(): void {
-    bootEl.classList.toggle("hidden", state.warmed);
-    if (state.warmed) return;
-    const pct = state.warmupOf > 0 ? Math.round((state.warmupStep / state.warmupOf) * 100) : 0;
-    bootFill.style.transform = `scaleX(${pct / 100})`;
-    bootPhaseEl.textContent = state.warmupPhase ? (BOOT_LABELS[state.warmupPhase] ?? state.warmupPhase) : BOOT_LABELS.booting!;
-  }
 
   const alertEl = root.querySelector<HTMLElement>("#alertBar")!;
   let alertTimer: ReturnType<typeof setTimeout> | null = null;
@@ -312,21 +247,21 @@ export function renderDashboard(root: HTMLElement): void {
       state = { ...state, alert: null };
     }
     if (state.alert) {
-      // Lower-right overlay card: a header strip, then the alert TYPE big, then
+      // Stacked above the corner: a header strip, then the alert TYPE big, then
       // the affected counties as a prominent second line (no frequency — the
       // NWR channel number means nothing to someone glancing across the room).
       // The theme (severity tier + storm kind) sets size, color, and icon; CSS
       // keys the palette off the `tier` class + `data-kind` attribute.
       const theme = alertTheme(state.alert.alphaTag);
-      const tierLabel = theme.tier === "watch" ? "WATCH"
-        : theme.tier === "statement" ? "STATEMENT" : "WARNING";
+      const tierLabel = theme.tier === "watch" ? "Watch"
+        : theme.tier === "statement" ? "Statement" : "Warning";
       alertEl.dataset.kind = theme.kind;
       alertEl.classList.remove("warning", "watch", "statement");
       alertEl.classList.add(theme.tier);
       alertEl.innerHTML = `<div class="alertHead">`
         + `<span class="alertGlyph">${theme.icon}</span>`
         + `<span class="alertLabel">${tierLabel}</span></div>`
-        + `<div class="alertTag">${esc(state.alert.alphaTag)}</div>`
+        + `<div class="alertTag">${esc(sentenceCase(state.alert.alphaTag))}</div>`
         + (state.alert.counties ? `<div class="alertCounties">${esc(state.alert.counties)}</div>` : "");
       alertEl.classList.add("on");
       // One repaint exactly at expiry — no polling.
@@ -339,82 +274,65 @@ export function renderDashboard(root: HTMLElement): void {
     }
   }
 
-  // Now-card render. The chrome (ACTIVE/SCANNING/etc.) is rebuilt only when the
-  // VIEW changes (channel hop, scanning<->active<->error). On repeat signal
-  // ticks for the SAME channel we only nudge the meter width + dB on the
-  // persistent nodes — far less DOM churn AND it lets the meter's CSS width
-  // transition finally glide instead of snap (the node used to be recreated
-  // every tick, killing the transition).
-  let lastView: string | null = null;
-  let meterFillEl: HTMLElement | null = null;
-  let meterDbEl: HTMLElement | null = null;
-  // Signal meter: -35 dB = floor-ish, +5 dB = hot; clamp outside.
-  const meterPct = (db: number | null): string =>
-    (db === null ? 0 : Math.max(0, Math.min(100, ((db + 35) / 40) * 100))).toFixed(0);
+  // ── The corner (spec 2026-10-01): the idle pill or the wall-size glass.
+  // cornerView decides what shows; cornerPaint decides what to rebuild; the
+  // .is-glass class drives the CSS grow/release transitions. Signal ticks on
+  // the same channel only move the segments and the dB text.
+  const cornerEl = root.querySelector<HTMLElement>("#corner")!;
+  const pillHost = root.querySelector<HTMLElement>("#pillHost")!;
+  const glassHost = root.querySelector<HTMLElement>("#glassHost")!;
+  const slotEl = root.querySelector<HTMLElement>(".kc-corner__slot")!;
+  let memo: CornerMemo | null = null;
+  let segEls: HTMLElement[] = [];
+  let dbEl: HTMLElement | null = null;
 
   function paint(): void {
-    paintBoot();
     paintAlert();
-    nowEl.classList.toggle("isMuted", muted);
-
-    const view =
-      (state.engineState === "starting" && !state.nowPlaying && !state.error) ? "retuning"
-      : state.error ? `error:${state.error}`
-      : state.nowPlaying ? `active:${state.nowPlaying.freq}:${state.nowPlaying.alphaTag}`
-      : scanCount === 0 ? "standby" : "scanning";
-
-    if (view === lastView && state.nowPlaying && meterFillEl && meterDbEl) {
-      // Same active channel — surgical update, let the meter glide.
-      const db = state.signalDb;
-      meterFillEl.style.transform = `scaleX(${Number(meterPct(db)) / 100})`;
-      meterDbEl.textContent = db === null ? "" : db.toFixed(1) + " dB";
-    } else {
-      lastView = view;
-      meterFillEl = null; meterDbEl = null;
-      if (view === "retuning") {
-        nowEl.innerHTML = `<div class="scanning"><div class="scanText">RETUNING</div>
-          <div class="sweep"><div class="sweepBar"></div></div></div>`;
-      } else if (state.error) {
-        nowEl.innerHTML = `<div class="err"><div>Radio error: ${esc(state.error)}</div>
-          <div class="errHint">Scanning resumes automatically. If this stays up, restart the radio backend from the admin page.</div></div>`;
-      } else if (state.nowPlaying) {
-        const db = state.signalDb;
-        // Tag-first hierarchy: the NAME reads across the room; freq supports it.
-        const hero = state.nowPlaying.alphaTag || fmtFreq(state.nowPlaying.freq);
-        const freqLine = state.nowPlaying.alphaTag
-          ? `<div class="freq">${fmtFreq(state.nowPlaying.freq)}<span class="unit">MHz</span></div>`
-          : "";
-        nowEl.innerHTML = `<div class="active"><span class="dot"></span>ACTIVE</div>
-          <div class="tag">${esc(hero)}</div>
-          ${freqLine}
-          <div class="meter"><div class="meterFill" style="transform:scaleX(${Number(meterPct(db)) / 100})"></div></div>
-          <div class="meterDb">${db === null ? "" : db.toFixed(1) + " dB"}</div>`;
-        meterFillEl = nowEl.querySelector<HTMLElement>(".meterFill");
-        meterDbEl = nowEl.querySelector<HTMLElement>(".meterDb");
-      } else {
-        nowEl.innerHTML = scanCount === 0
-          ? `<div class="scanning"><div class="scanText standby">STANDBY</div>
-             <div class="standbyHint">No channels are enabled — turn a bank on in the admin.</div></div>`
-          : `<div class="scanning"><div class="scanText">SCANNING</div>
-             <div class="sweep"><div class="sweepBar"></div></div></div>`;
+    const v = cornerView({
+      warmed: state.warmed, warmupPhase: state.warmupPhase, warmupStep: state.warmupStep, warmupOf: state.warmupOf,
+      error: state.error, engineState: state.engineState, nowPlaying: state.nowPlaying, tunedHz: state.tunedHz,
+      scanCount, muted, mode, breakIn,
+    });
+    const p = cornerPaint(memo, v);
+    memo = p.memo;
+    if (v.show === "pill") {
+      if (p.rebuildPill) pillHost.innerHTML = pillHtml(v);
+      else {
+        // A window hop: patch the text, keep the node (and its running sweep).
+        const d = pillHost.querySelector<HTMLElement>(".kc-pill__detail");
+        const text = pillDetailText(v.detail);
+        if (d && d.textContent !== text) d.textContent = text;
       }
     }
-    syncMutedBadge();
-    paintLog();
-  }
-
-  // MUTED badge: reconcile on every paint (works on both the rebuild and the
-  // surgical path) instead of re-appending on each render.
-  function syncMutedBadge(): void {
-    const existing = nowEl.querySelector(".mutedBadge");
-    if (muted && !existing) {
-      const b = document.createElement("div");
-      b.className = "mutedBadge";
-      b.innerHTML = `${icoVolumeX} MUTED`;
-      nowEl.appendChild(b);
-    } else if (!muted && existing) {
-      existing.remove();
+    if (v.show === "glass") {
+      if (p.rebuildGlass) {
+        glassHost.innerHTML = glassHtml(v, state.signalDb);
+        segEls = Array.from(glassHost.querySelectorAll<HTMLElement>(".kc-lcd__seg i"));
+        dbEl = glassHost.querySelector<HTMLElement>(".kc-lcd__db");
+      } else {
+        const lit = segmentsLit(meterFill(state.signalDb), METER_SEGMENTS);
+        segEls.forEach((el, i) => el.classList.toggle("on", i < lit));
+        if (dbEl) dbEl.textContent = dbText(state.signalDb);
+      }
     }
+    const wasGlass = cornerEl.classList.contains("is-glass");
+    if (wasGlass !== (v.show === "glass") && alertEl.classList.contains("on")) {
+      // FLIP the alert card so it rides with the growing/shrinking glass
+      // instead of jumping by the slot's height change.
+      const before = slotEl.offsetHeight;
+      cornerEl.classList.toggle("is-glass", v.show === "glass");
+      const flip = alertFlip(before, slotEl.offsetHeight, v.show);
+      if (flip) {
+        alertEl.style.transition = "none";
+        alertEl.style.transform = `translateY(${flip.offsetPx}px)`;
+        void alertEl.offsetHeight; // commit the start position
+        alertEl.style.transition = `transform var(${flip.durationVar}) cubic-bezier(0.2, 0.8, 0.2, 1)`;
+        alertEl.style.transform = "";
+      }
+    } else {
+      cornerEl.classList.toggle("is-glass", v.show === "glass");
+    }
+    paintLog();
   }
 
   // Under the full-screen map layout the Recent log is display:none — skip the
@@ -443,15 +361,8 @@ export function renderDashboard(root: HTMLElement): void {
   const wxEl = root.querySelector<HTMLElement>("#wx")!;
 
   const WX_ICONS: Record<string, string> = {
-    sun: '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="23"/><line x1="4.2" y1="4.2" x2="6.3" y2="6.3"/><line x1="17.7" y1="17.7" x2="19.8" y2="19.8"/><line x1="1" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="23" y2="12"/><line x1="4.2" y1="19.8" x2="6.3" y2="17.7"/><line x1="17.7" y1="6.3" x2="19.8" y2="4.2"/>',
-    moon: '<path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z"/>',
-    cloud: '<path d="M18 10h-1.3A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>',
-    cloudsun: '<path d="M12 2v2"/><path d="m4.9 4.9 1.4 1.4"/><path d="M20 12h2"/><path d="m19.1 4.9-1.4 1.4"/><path d="M15.5 8.5a4 4 0 0 0-7.4 1.8"/><path d="M16 16h.5a4.5 4.5 0 1 0-.4-9"/><path d="M7 16a4 4 0 0 0 0 8h8a4 4 0 0 0 .6-7.95"/>',
-    rain: '<path d="M18 9h-1.3A8 8 0 1 0 9 19"/><line x1="11" y1="15" x2="10" y2="21"/><line x1="15" y1="15" x2="14" y2="21"/><line x1="19" y1="15" x2="18" y2="21"/>',
-    storm: '<path d="M18 9h-1.3A8 8 0 1 0 9 19"/><polyline points="13 12 10 17 14 17 11 22"/>',
-    snow: '<path d="M18 9h-1.3A8 8 0 1 0 9 19"/><line x1="11" y1="16" x2="11" y2="16.01"/><line x1="15" y1="16" x2="15" y2="16.01"/><line x1="13" y1="19" x2="13" y2="19.01"/><line x1="11" y1="22" x2="11" y2="22.01"/><line x1="15" y1="22" x2="15" y2="22.01"/>',
-    fog: '<path d="M18 9h-1.3A8 8 0 1 0 9 17"/><line x1="6" y1="20" x2="20" y2="20"/><line x1="8" y1="23" x2="18" y2="23"/>',
-    wind: '<path d="M9.6 4.6A2 2 0 1 1 11 8H2"/><path d="M12.6 19.4A2 2 0 1 0 14 16H2"/><path d="M17.7 7.7A2.5 2.5 0 1 1 19.5 12H2"/>',
+    sun: icoSun, moon: icoMoon, cloud: icoCloud, cloudsun: icoCloudSun, rain: icoRain,
+    storm: icoStorm, snow: icoSnow, fog: icoFog, wind: icoWind,
   };
 
   function wxIcon(condition: string, day: boolean): string {
@@ -465,7 +376,7 @@ export function renderDashboard(root: HTMLElement): void {
       : /partly|mostly sunny|mostly clear/.test(c) ? (day ? "cloudsun" : "moon")
       : /cloud|overcast/.test(c) ? "cloud"
       : day ? "sun" : "moon";
-    return `<svg class="wxIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${WX_ICONS[name]}</svg>`;
+    return `<span class="kc-wx__icon" aria-hidden="true">${WX_ICONS[name]}</span>`;
   }
 
   // Wind → a direction ARROW (icon) + speed NUMBER, no words. NWS gives the
@@ -479,8 +390,8 @@ export function renderDashboard(root: HTMLElement): void {
     if (!speed) return "";
     const fromDeg = COMPASS[(/\b([NSEW]{1,3})\b/.exec(wind) ?? [])[1] ?? ""];
     const arrow = fromDeg === undefined ? ""
-      : `<svg class="wxWindArrow" viewBox="0 0 24 24" fill="currentColor" style="transform:rotate(${(fromDeg + 180) % 360}deg)"><path d="M12 3l6 17-6-4-6 4z"/></svg>`;
-    return `<span class="wxWind">${arrow}<span class="wxWindSpd">${speed}</span></span>`;
+      : `<span class="kc-wx__arrow" aria-hidden="true" style="transform:rotate(${(fromDeg + 180) % 360}deg)">${icoArrow}</span>`;
+    return `<span class="kc-wx__wind">${arrow}<span>${speed}</span></span>`;
   }
 
   function paintWeather(): Promise<void> {
@@ -490,12 +401,12 @@ export function renderDashboard(root: HTMLElement): void {
         // Glanceable: condition ICON + temp NUMBER + wind arrow + speed. The
         // condition WORDS are dropped — the icon already says it from across the room.
         wxEl.innerHTML = wx
-          ? `${wxIcon(wx.condition, wx.isDaytime)}<span class="wxTemp">${Math.round(wx.tempF)}°</span>${wx.wind ? windBlock(wx.wind) : ""}`
+          ? `${wxIcon(wx.condition, wx.isDaytime)}<span class="kc-wx__temp">${Math.round(wx.tempF)}°</span>${wx.wind ? windBlock(wx.wind) : ""}`
           : "";
       })
       .catch(() => {});
   }
-  poll(paintWeather, POLL_MS.weather);
+  poller.poll("weather", paintWeather, POLL_MS.weather);
 
   api.getLogs().then((rows) => { state = { ...state, log: mergeLogs(state.log, rows) }; paint(); }).catch(() => {});
   const proto = location.protocol === "https:" ? "wss" : "ws";
@@ -503,13 +414,14 @@ export function renderDashboard(root: HTMLElement): void {
     if (ev.type === "reload") { location.reload(); return; }
     if (ev.type === "warmup") sawWarmupEvent = true; // WS now owns `warmed`
     state = reduce(state, ev);
-    if (ev.type === "status") { paintBadge(); loadBanks(); }
-    if (ev.type === "tuned") paintRail();
+    // Mode, mute and break-in can change on these: re-poll status through the
+    // lane (a break-in is a retune, so only the alert announces it).
+    if (ev.type === "status" || ev.type === "alert") poller.request("status");
     schedule(); // coalesce: a burst of events in one frame => one paint()
   }).connect();
   paint();
 
   // One timer drives every poll registered above, sequentially.
-  setInterval(() => { void tick(); }, POLL_TICK_MS);
-  void tick();
+  setInterval(() => { void poller.tick(); }, POLL_TICK_MS);
+  void poller.tick();
 }

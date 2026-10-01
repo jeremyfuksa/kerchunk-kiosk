@@ -39,3 +39,10 @@
 :where(html[data-page="admin"], html[data-page="dashboard"]) .kc-lcd--wall .kc-lcd__head { width: var(--kc-k-head); height: var(--kc-k-head); }
 :where(html[data-page="admin"], html[data-page="dashboard"]) .kc-lcd--wall .kc-lcd__row { gap: 1.8rem; margin-top: 1rem; }
 :where(html[data-page="admin"], html[data-page="dashboard"]) .kc-lcd--wall .kc-lcd__seg { height: 12px; gap: 5px; margin-top: 1.4rem; }
+
+/* ── error glass + hint (PR 2) ── */
+:where(html[data-page="admin"], html[data-page="dashboard"]) .kc-lcd[data-state="error"] .kc-lcd__meta { color: var(--kc-coral); opacity: 1; }
+:where(html[data-page="admin"], html[data-page="dashboard"]) .kc-lcd[data-state="error"] .kc-lcd__name { color: var(--kc-ink); }
+:where(html[data-page="admin"], html[data-page="dashboard"]) .kc-lcd--wall[data-state="error"] .kc-lcd__name { font-size: var(--kc-k-glass-error); }
+:where(html[data-page="admin"], html[data-page="dashboard"]) .kc-lcd__hint { color: var(--kc-mute); font-size: var(--kc-t-small); line-height: 1.4; margin-top: 6px; }
+:where(html[data-page="admin"], html[data-page="dashboard"]) .kc-lcd--wall .kc-lcd__hint { font-size: var(--kc-k-glass-meta); margin-top: 0.8rem; }

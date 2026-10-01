@@ -41,16 +41,17 @@ describe("tokens.css layer 2 — the kiosk at room distance (spec 2026-10-01)", 
   const props = readProps(TOKENS);
   const v = (n: string): string => resolve(props, props[n] ?? "");
   const ramp = ["--kc-k-pill", "--kc-k-clock", "--kc-k-date", "--kc-k-glass-meta", "--kc-k-glass-name",
-    "--kc-k-glass-freq", "--kc-k-head", "--kc-k-alert-title"];
+    "--kc-k-glass-freq", "--kc-k-head", "--kc-k-alert-title", "--kc-k-glass-error", "--kc-k-weather"];
   for (const n of ramp) it(`${n} is a rem size`, () => {
     expect(props[n], `${n} missing`).toMatch(/^\d+(\.\d+)?rem$/);
   });
   it("motion tokens are milliseconds", () => {
     for (const n of ["--kc-grow-ms", "--kc-release-ms", "--kc-sweep-ms"]) expect(props[n], n).toMatch(/^\d+ms$/);
   });
-  it("the glass outranks the clock, which outranks the pill", () => {
+  it("the glass frequency is at least the clock's size, which outranks the pill", () => {
     const rem = (n: string): number => parseFloat(props[n] ?? "0");
-    expect(rem("--kc-k-glass-freq")).toBeGreaterThan(rem("--kc-k-clock"));
+    expect(rem("--kc-k-glass-freq")).toBeGreaterThanOrEqual(rem("--kc-k-clock"));
+    expect(rem("--kc-k-glass-freq")).toBeGreaterThan(rem("--kc-k-glass-name"));
     expect(rem("--kc-k-clock")).toBeGreaterThan(rem("--kc-k-pill"));
   });
   it("--kc-pin-cream (head ring) ≥ 3:1 on --kc-well", () => {

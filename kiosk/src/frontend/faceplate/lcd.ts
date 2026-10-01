@@ -25,6 +25,8 @@ export interface LcdOpts {
   segments?: { count: number; fill: number };
   /** "wall" is the kiosk's room-distance glass. */
   size?: "panel" | "wall";
+  /** A muted line under the name — the kiosk's error glass says how it recovers. */
+  hint?: string;
 }
 
 /** Lit segments for a 0..1 fill; NaN and out-of-range clamp. */
@@ -39,7 +41,8 @@ function headSvg(h: ServiceHead): string {
     + `<g transform="translate(9 9)" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">${h.glyph}</g></svg>`;
 }
 
-function segs(s: { count: number; fill: number }): string {
+/** The segmented meter row (also the kiosk's warm-up pill). */
+export function segmentsHtml(s: { count: number; fill: number }): string {
   const lit = segmentsLit(s.fill, s.count);
   return `<div class="kc-lcd__seg" aria-hidden="true">${Array.from({ length: s.count }, (_, i) => (i < lit ? '<i class="on"></i>' : "<i></i>")).join("")}</div>`;
 }
@@ -73,7 +76,7 @@ export function lcd(v: LcdInput, o: LcdOpts = {}): string {
   // changes ~4×/s inside the host's polite live region.
   const db = v.state === "live" ? `<span class="kc-lcd__db" aria-hidden="true">${dbText(o.dbfs)}</span>` : "";
   const silent = v.silent ? ` <span class="kc-lcd__silent">${esc(v.silent)}</span>` : "";
-  const bars = v.state === "detail" || o.segments ? "" : meter(v.state === "live" ? o.dbfs : null);
+  const bars = v.state === "detail" || o.segments || o.size === "wall" ? "" : meter(v.state === "live" ? o.dbfs : null);
   const cls = o.size === "wall" ? "kc-lcd kc-lcd--wall" : "kc-lcd";
   const text = `<div class="kc-lcd__name">${esc(v.name)}</div>
     ${v.freq ? `<div class="kc-lcd__freq">${esc(v.freq)}<small>MHz</small></div>` : ""}`;
@@ -83,5 +86,6 @@ export function lcd(v: LcdInput, o: LcdOpts = {}): string {
   return `<div class="${cls}" data-state="${esc(v.state)}">
     <div class="kc-lcd__meta"><span>${bars}${esc(v.meta)}${silent}</span>${db}</div>
     ${body}
-  ${o.segments ? segs(o.segments) : ""}</div>`;
+    ${o.hint ? `<div class="kc-lcd__hint">${esc(o.hint)}</div>` : ""}
+  ${o.segments ? segmentsHtml(o.segments) : ""}</div>`;
 }

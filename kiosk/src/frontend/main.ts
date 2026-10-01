@@ -11,15 +11,15 @@ const root = document.getElementById("app")!;
 
 // Web fonts, per route and off the critical path. index.html used to request
 // four families on every surface: the wall and art canvases draw with
-// system-ui and need none. The ambient surfaces that draw text (dashboard,
-// map) draw it in Inter — the map was the last holdout on Fira Code + Space
-// Grotesk, which DESIGN.md recorded as drift rather than an exception, so it
-// no longer pulls ten faces to render a legend and a row of callsign chips.
-// The admin draws in Schibsted Grotesk.
+// system-ui and need none. The map draws in Inter — it was the last holdout on
+// Fira Code + Space Grotesk, which DESIGN.md recorded as drift rather than an
+// exception, so it no longer pulls ten faces to render a legend and a row of
+// callsign chips. The admin and the kiosk dashboard (spec 2026-10-01) draw in
+// Schibsted Grotesk.
 // The `media="print"` swap keeps a slow or unreachable fonts.googleapis.com
 // from holding up first paint on an appliance that boots unattended.
 const FONT_QUERY: Record<string, string> = {
-  dashboard: "family=Inter:wght@400;500;600;700",
+  dashboard: "family=Schibsted+Grotesk:wght@400;500;600;700;800",
   map: "family=Inter:wght@400;500;600;700",
   admin: "family=Schibsted+Grotesk:wght@400;500;600;700;800",
 };
