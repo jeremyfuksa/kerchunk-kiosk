@@ -1241,7 +1241,8 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
         return json(res, 400, { error: "expected { renderingType, fps, p95Ms, maxMs }" });
       }
       const rt = b.renderingType.replace(/[^A-Z_]/gi, "").slice(0, 16);
-      console.error(`[kiosk] map rendering=${rt} display=${b.fps} fps p95=${b.p95Ms} ms max=${b.maxMs} ms`);
+      const glass = typeof b.glass === "string" ? ` glass=${b.glass.replace(/[^a-z0-9:-]/gi, "").slice(0, 32)}` : "";
+      console.error(`[kiosk] map rendering=${rt} display=${b.fps} fps p95=${b.p95Ms} ms max=${b.maxMs} ms${glass}`);
       return json(res, 200, { ok: true });
     }
 
