@@ -19,9 +19,18 @@ export interface Front {
 /** A released site's fading footprint. */
 export interface Glow { key: string; lat: number; lng: number; radiusM: number; color: Rgb; strength: number }
 
-export interface GlassFrame { fronts: Front[]; glows: Glow[]; growing: boolean }
+export interface GlassFrame {
+  fronts: Front[]; glows: Glow[];
+  /** A front is in its grow phase: pace at txFps. */
+  growing: boolean;
+  /** Something moves every frame (a grow or a release dissolve). */
+  continuous: boolean;
+  /** Date.now() ms of the next VISIBLE change if no event arrives (a fade
+   *  step, a rate-limited signal step, a ttl expiry); null = never. */
+  nextChangeAt: number | null;
+}
 
-export const EMPTY_FRAME: GlassFrame = Object.freeze({ fronts: [], glows: [], growing: false }) as GlassFrame;
+export const EMPTY_FRAME: GlassFrame = Object.freeze({ fronts: [], glows: [], growing: false, continuous: false, nextChangeAt: null }) as GlassFrame;
 
 // Uniform-array sizes compiled into glassShaders.ts — keep in sync.
 export const MAX_FRONTS = 8;
