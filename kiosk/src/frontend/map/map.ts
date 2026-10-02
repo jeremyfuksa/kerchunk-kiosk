@@ -201,10 +201,13 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
           staleMs: display.radar.staleMs,
         })
       : null;
+    // Polls stop feeding a layer that gave up (no WebGL2 / shader failure):
+    // it is unmounted, so a 4.6 MB-scan download would be for nothing.
+    const pollRadar = (): void => { if (radarSync && glass && !glass.off) void radarSync.poll(); };
     if (radarSync) {
-      void radarSync.poll();
-      setInterval(() => void radarSync.poll(), display.radar.refreshMs);
-      setInterval(() => radarSync.checkStale(), 30_000);
+      pollRadar();
+      setInterval(pollRadar, display.radar.refreshMs);
+      setInterval(() => { if (!glass?.off) radarSync.checkStale(); }, 30_000);
     }
 
     // Kiosk render diagnostic (one journal line per page load): which renderer
@@ -501,7 +504,7 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
           punch(ch.location.lat, ch.location.lon);
         }
       } else if (ev.type === "radar") {
-        void radarSync?.poll(); // a new scan landed — fetch it once
+        pollRadar(); // a new scan landed — fetch it once
       } else if (ev.type === "aircraft") {
         // Full snapshot each poll — reconcile the marker set. No wake(): the
         // aircraft layer manages its own Google Maps markers and is independent

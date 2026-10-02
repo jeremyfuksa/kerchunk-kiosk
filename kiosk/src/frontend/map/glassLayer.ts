@@ -8,10 +8,11 @@
 // (never from a fetch callback), so we never fight the map renderer.
 import { RADAR_VS, RADAR_FS, FX_VS, FX_FS } from "./glassShaders.js";
 import {
-  MAX_FRONTS, MAX_GLOWS, fadeProgress, mercatorOffsetM, clipToPx,
+  MAX_FRONTS, MAX_GLOWS, mercatorOffsetM, clipToPx,
   type GlassFrame,
 } from "./glassMath.js";
 import type { RadarFrame } from "./radarSync.js";
+import { RadarFade } from "./radarFade.js";
 
 declare const google: any;
 
@@ -45,13 +46,9 @@ export class GlassLayer {
   private tex: [WebGLTexture | null, WebGLTexture | null] = [null, null];
   private nextIdx = 0;                     // tex[nextIdx] = newest scan
   private texSize: [number, number] = [1, 1];
-  private hasRadar = false;
   private pending: RadarFrame | null = null;
   private last: RadarFrame | null = null;  // re-upload after context loss
-  private mixStart = 0;
-  private alphaFrom = 0;
-  private alphaTo = 0;
-  private alphaStart = 0;
+  private readonly fade: RadarFade;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private readonly t0 = performance.now();
   private readonly fronts = new Float32Array(MAX_FRONTS * 4);
@@ -61,11 +58,16 @@ export class GlassLayer {
   private readonly glowsC = new Float32Array(MAX_GLOWS * 3);
   private lastFrame: GlassFrame | null = null;
 
+  /** True once the layer has given up (no WebGL2, shader failure): it is
+   *  unmounted and draws nothing, so callers stop feeding it. */
+  get off(): boolean { return this.status.startsWith("off"); }
+
   constructor(private readonly o: GlassLayerOptions) {
+    this.fade = new RadarFade(o.knobs.radarFadeMs);
     this.ov = new google.maps.WebGLOverlayView();
     this.ov.onAdd = () => {};
     this.ov.onContextRestored = ({ gl }: { gl: WebGLRenderingContext | Gl }) => this.init(gl);
-    this.ov.onContextLost = () => { this.gl = null; this.radarProg = this.fxProg = null; this.meshVao = this.fxVao = null; this.tex = [null, null]; this.meshBounds = null; this.hasRadar = false; this.pending = this.last; };
+    this.ov.onContextLost = () => { this.gl = null; this.radarProg = this.fxProg = null; this.meshVao = this.fxVao = null; this.tex = [null, null]; this.meshBounds = null; this.fade.contextLost(); this.pending = this.last; };
     this.ov.onDraw = ({ gl, transformer }: { gl: Gl; transformer: any }) => this.draw(gl, transformer);
     this.ov.onRemove = () => {};
     this.ov.setMap(o.map);
@@ -75,8 +77,13 @@ export class GlassLayer {
   setRadar(f: RadarFrame): void { this.pending = f; this.ov.requestRedraw(); }
 
   setRadarStale(stale: boolean): void {
-    this.retargetAlpha(stale ? 0 : 1, performance.now());
+    this.fade.setStale(stale, performance.now());
     this.ov.requestRedraw();
+  }
+
+  private giveUp(status: string): void {
+    this.status = status;
+    this.stop();
   }
 
   stop(): void {
@@ -88,10 +95,10 @@ export class GlassLayer {
   // ── pacing: redraw at maxFps, txFps while a front grows; idle only when
   // nothing can change (haze off, no fronts/glows, no fades running).
   private schedule(): void {
+    if (this.off) return;
     const now = performance.now();
     const f = this.lastFrame;
-    const fading = fadeProgress(this.mixStart, now, this.o.knobs.radarFadeMs) < 1
-      || fadeProgress(this.alphaStart, now, this.o.knobs.radarFadeMs) < 1;
+    const fading = this.fade.fading(now);
     const animating = this.o.knobs.hazeIntensity > 0 || fading
       || !f || f.fronts.length > 0 || f.glows.length > 0;
     if (animating) this.ov.requestRedraw();
@@ -99,26 +106,15 @@ export class GlassLayer {
     this.timer = setTimeout(() => this.schedule(), animating ? 1000 / Math.max(1, fps) : 1000);
   }
 
-  private retargetAlpha(to: number, now: number): void {
-    this.alphaFrom = this.currentAlpha(now);
-    this.alphaTo = to;
-    this.alphaStart = now;
-  }
-
-  private currentAlpha(now: number): number {
-    const k = fadeProgress(this.alphaStart, now, this.o.knobs.radarFadeMs);
-    return this.alphaFrom + (this.alphaTo - this.alphaFrom) * k;
-  }
-
   private init(raw: WebGLRenderingContext | Gl): void {
     if (typeof WebGL2RenderingContext === "undefined" || !(raw instanceof WebGL2RenderingContext)) {
-      this.status = "off:no-webgl2";
+      this.giveUp("off:no-webgl2");
       return;
     }
     const gl = raw;
     this.radarProg = link(gl, RADAR_VS, RADAR_FS, ["uMvp", "uPrev", "uNext", "uTexSize", "uMix", "uAlpha", "uMinDbz", "uOpacity"]);
     this.fxProg = link(gl, FX_VS, FX_FS, ["uRes", "uTime", "uHaze", "uFrontA", "uFrontB", "uFrontC", "uNFronts", "uGlowA", "uGlowC", "uNGlows"]);
-    if (!this.radarProg || !this.fxProg) { this.status = "off:shader"; return; }
+    if (!this.radarProg || !this.fxProg) { this.giveUp("off:shader"); return; }
     const saved = saveGl(gl);
     this.fxVao = gl.createVertexArray();
     gl.bindVertexArray(this.fxVao);
@@ -128,6 +124,7 @@ export class GlassLayer {
     const loc = gl.getAttribLocation(this.fxProg.p, "aPos");
     gl.enableVertexAttribArray(loc);
     gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+    gl.activeTexture(gl.TEXTURE0);
     for (let i = 0; i < 2; i++) {
       const t = gl.createTexture();
       gl.bindTexture(gl.TEXTURE_2D, t);
@@ -193,24 +190,22 @@ export class GlassLayer {
     this.pending = null;
     this.last = f;
     const b = f.meta.bounds, mb = this.meshBounds;
-    const sameGrid = this.hasRadar && mb && mb.n === b.n && mb.s === b.s && mb.e === b.e && mb.w === b.w
-      && this.texSize[0] === f.meta.width && this.texSize[1] === f.meta.height;
-    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
-    if (sameGrid) {
-      // Crossfade: the old "next" becomes "prev"; the new scan goes in the other slot.
+    const sameBounds = !!mb && mb.n === b.n && mb.s === b.s && mb.e === b.e && mb.w === b.w;
+    const sameGrid = sameBounds && this.texSize[0] === f.meta.width && this.texSize[1] === f.meta.height;
+    // Uploads bind on unit 0 (saved/restored), with every unpack knob pinned.
+    gl.activeTexture(gl.TEXTURE0);
+    pinUnpack(gl);
+    if (this.fade.frame(sameGrid, now) === "crossfade") {
+      // The old "next" becomes "prev"; the new scan goes in the other slot.
       this.nextIdx = 1 - this.nextIdx;
       this.upload(gl, this.tex[this.nextIdx]!, f);
-      this.mixStart = now;
     } else {
-      // First scan (or a new crop box): no honest "previous", so fill both
-      // slots and fade the layer in from empty.
-      if (!mb || mb.n !== b.n || mb.s !== b.s || mb.e !== b.e || mb.w !== b.w) this.buildMesh(gl, b);
+      // No honest "previous" on screen (first scan, new crop box, context
+      // restore, or back from stale): fill both slots with this scan.
+      if (!sameBounds || !this.meshVao) this.buildMesh(gl, b);
       this.upload(gl, this.tex[0]!, f);
       this.upload(gl, this.tex[1]!, f);
       this.texSize = [f.meta.width, f.meta.height];
-      this.mixStart = now - this.o.knobs.radarFadeMs; // mix already complete
-      if (!this.hasRadar) this.retargetAlpha(f.meta.stale ? 0 : 1, now);
-      this.hasRadar = true;
     }
   }
 
@@ -220,6 +215,8 @@ export class GlassLayer {
     const saved = saveGl(gl);
     gl.disable(gl.DEPTH_TEST);
     gl.disable(gl.CULL_FACE);
+    gl.disable(gl.STENCIL_TEST);
+    gl.disable(gl.SCISSOR_TEST);
     gl.enable(gl.BLEND);
     gl.blendEquation(gl.FUNC_ADD);
     this.takePending(gl, now);
@@ -228,8 +225,8 @@ export class GlassLayer {
     const k = this.o.knobs;
 
     // (1) radar
-    const alpha = this.currentAlpha(now);
-    if (this.hasRadar && this.meshVao && alpha > 0.001) {
+    const alpha = this.fade.alpha(now);
+    if (this.last && this.meshVao && alpha > 0.001) {
       const u = this.radarProg.u;
       gl.useProgram(this.radarProg.p);
       gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
@@ -242,7 +239,7 @@ export class GlassLayer {
       gl.uniform1i(u.uPrev!, 0);
       gl.uniform1i(u.uNext!, 1);
       gl.uniform2f(u.uTexSize!, this.texSize[0], this.texSize[1]);
-      gl.uniform1f(u.uMix!, fadeProgress(this.mixStart, now, k.radarFadeMs));
+      gl.uniform1f(u.uMix!, this.fade.mix(now));
       gl.uniform1f(u.uAlpha!, alpha);
       gl.uniform1f(u.uMinDbz!, k.radarMinDbz);
       gl.uniform1f(u.uOpacity!, k.radarOpacity);
@@ -321,16 +318,31 @@ function link(gl: Gl, vs: string, fs: string, uniforms: string[]): Prog | null {
   return { p, u };
 }
 
-interface SavedGl {
+export interface SavedGl {
   program: WebGLProgram | null; vao: WebGLVertexArrayObject | null; arrayBuffer: WebGLBuffer | null;
-  activeTexture: number; tex0: WebGLTexture | null; tex1: WebGLTexture | null;
-  blend: boolean; depth: boolean; cull: boolean;
+  activeTexture: number; texActive: WebGLTexture | null; tex0: WebGLTexture | null; tex1: WebGLTexture | null;
+  blend: boolean; depth: boolean; cull: boolean; stencil: boolean; scissor: boolean;
   srcRgb: number; dstRgb: number; srcA: number; dstA: number; eqRgb: number; eqA: number;
-  unpack: number;
+  unpack: number; flipY: boolean; premult: boolean; rowLength: number; skipRows: number; skipPixels: number;
+  unpackBuffer: WebGLBuffer | null;
 }
 
-function saveGl(gl: Gl): SavedGl {
+/** Pin every pixel-unpack parameter for a raw R8 upload: Google may leave
+ *  FLIP_Y on (radar would render mirrored N/S), a row length/skip (shifted
+ *  rows), or a PIXEL_UNPACK_BUFFER bound (texImage2D from an array fails). */
+export function pinUnpack(gl: Gl): void {
+  gl.bindBuffer(gl.PIXEL_UNPACK_BUFFER, null);
+  gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+  gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+  gl.pixelStorei(gl.UNPACK_ROW_LENGTH, 0);
+  gl.pixelStorei(gl.UNPACK_SKIP_ROWS, 0);
+  gl.pixelStorei(gl.UNPACK_SKIP_PIXELS, 0);
+}
+
+export function saveGl(gl: Gl): SavedGl {
   const activeTexture = gl.getParameter(gl.ACTIVE_TEXTURE) as number;
+  const texActive = gl.getParameter(gl.TEXTURE_BINDING_2D) as WebGLTexture | null;
   gl.activeTexture(gl.TEXTURE0);
   const tex0 = gl.getParameter(gl.TEXTURE_BINDING_2D) as WebGLTexture | null;
   gl.activeTexture(gl.TEXTURE1);
@@ -338,16 +350,20 @@ function saveGl(gl: Gl): SavedGl {
   gl.activeTexture(activeTexture);
   return {
     program: gl.getParameter(gl.CURRENT_PROGRAM), vao: gl.getParameter(gl.VERTEX_ARRAY_BINDING),
-    arrayBuffer: gl.getParameter(gl.ARRAY_BUFFER_BINDING), activeTexture, tex0, tex1,
+    arrayBuffer: gl.getParameter(gl.ARRAY_BUFFER_BINDING), activeTexture, texActive, tex0, tex1,
     blend: gl.isEnabled(gl.BLEND), depth: gl.isEnabled(gl.DEPTH_TEST), cull: gl.isEnabled(gl.CULL_FACE),
+    stencil: gl.isEnabled(gl.STENCIL_TEST), scissor: gl.isEnabled(gl.SCISSOR_TEST),
     srcRgb: gl.getParameter(gl.BLEND_SRC_RGB), dstRgb: gl.getParameter(gl.BLEND_DST_RGB),
     srcA: gl.getParameter(gl.BLEND_SRC_ALPHA), dstA: gl.getParameter(gl.BLEND_DST_ALPHA),
     eqRgb: gl.getParameter(gl.BLEND_EQUATION_RGB), eqA: gl.getParameter(gl.BLEND_EQUATION_ALPHA),
     unpack: gl.getParameter(gl.UNPACK_ALIGNMENT),
+    flipY: gl.getParameter(gl.UNPACK_FLIP_Y_WEBGL), premult: gl.getParameter(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL),
+    rowLength: gl.getParameter(gl.UNPACK_ROW_LENGTH), skipRows: gl.getParameter(gl.UNPACK_SKIP_ROWS),
+    skipPixels: gl.getParameter(gl.UNPACK_SKIP_PIXELS), unpackBuffer: gl.getParameter(gl.PIXEL_UNPACK_BUFFER_BINDING),
   };
 }
 
-function restoreGl(gl: Gl, s: SavedGl): void {
+export function restoreGl(gl: Gl, s: SavedGl): void {
   gl.bindVertexArray(s.vao);
   gl.bindBuffer(gl.ARRAY_BUFFER, s.arrayBuffer);
   gl.useProgram(s.program);
@@ -356,10 +372,21 @@ function restoreGl(gl: Gl, s: SavedGl): void {
   gl.activeTexture(gl.TEXTURE1);
   gl.bindTexture(gl.TEXTURE_2D, s.tex1);
   gl.activeTexture(s.activeTexture);
+  // Restore the binding on Google's active unit too (uploads may use it
+  // before we switch units), after units 0/1 so it wins if it is one of them.
+  gl.bindTexture(gl.TEXTURE_2D, s.texActive);
   if (s.blend) gl.enable(gl.BLEND); else gl.disable(gl.BLEND);
   if (s.depth) gl.enable(gl.DEPTH_TEST); else gl.disable(gl.DEPTH_TEST);
   if (s.cull) gl.enable(gl.CULL_FACE); else gl.disable(gl.CULL_FACE);
   gl.blendFuncSeparate(s.srcRgb, s.dstRgb, s.srcA, s.dstA);
   gl.blendEquationSeparate(s.eqRgb, s.eqA);
+  if (s.stencil) gl.enable(gl.STENCIL_TEST); else gl.disable(gl.STENCIL_TEST);
+  if (s.scissor) gl.enable(gl.SCISSOR_TEST); else gl.disable(gl.SCISSOR_TEST);
   gl.pixelStorei(gl.UNPACK_ALIGNMENT, s.unpack);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, s.flipY);
+  gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, s.premult);
+  gl.pixelStorei(gl.UNPACK_ROW_LENGTH, s.rowLength);
+  gl.pixelStorei(gl.UNPACK_SKIP_ROWS, s.skipRows);
+  gl.pixelStorei(gl.UNPACK_SKIP_PIXELS, s.skipPixels);
+  gl.bindBuffer(gl.PIXEL_UNPACK_BUFFER, s.unpackBuffer);
 }
