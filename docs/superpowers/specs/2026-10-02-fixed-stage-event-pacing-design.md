@@ -45,15 +45,12 @@ Two things cost CPU on this wall, and the Weather Glass plan made both worse:
 
 - Unchanged at first load: one `fitBounds(framedBounds(), KIOSK_FIT_PAD)` after
   the sites, the channels and the map's first `idle`.
-- A re-fit happens only when:
-  - `framedBounds()` has changed by more than a tolerance (a newly located
-    site moved the frame; the tolerance is 0.01° on any edge); or
-  - the viewport resizes.
+- A re-fit happens only when the viewport resizes (debounced 500 ms). Sites
+  and channels load once per page, so a newly located site joins the frame on
+  the next `kiosk/reload`. No runtime "bounds moved" check is needed.
 - A re-fit is an instant `fitBounds`, with no tween. It is **deferred while
   any transmission is live** and applied on the next `idle` event, so the
   frame never jumps under an active speaker.
-- The check runs after each sites or channels refresh, plus once on `resize`.
-  There is no polling interval.
 - Apart from these re-fits, nothing in the kiosk moves the camera. `/map`
   (interactive) is unchanged; it never moved on its own.
 
@@ -81,9 +78,14 @@ interval. The `audible` handler still sets `audibleId`.
 
 **Pure helpers** (new `src/frontend/map/stage.ts`):
 
-- `edgeExit(center, target, rect)`: the anchor point on `rect`'s border along
-  the ray from `center` to `target`, or `null` when `target` is inside.
-- `boundsMoved(a, b, tolDeg)`: whether a re-fit is due.
+- `padRect(w, h, pad)`: the padded frame rect.
+- `outside(p, rect)`: whether a point lies outside it (a pin under the clock
+  or the LCD counts).
+- `edgeExit(center, target, rect)`: where the ray from `center` through
+  `target` crosses `rect`'s border (the bloom anchor).
+- `lngLatToViewPx(lat, lng, bounds, w, h)`: projects a site from
+  `map.getBounds()` with Mercator math (valid for the north-up, untilted
+  kiosk camera; works off-screen).
 
 **Knob:** `display.camera.follow` (boolean, default `false`). Applies on
 `kiosk/reload`. When it is `true`, today's punch and pull-back code runs as
@@ -162,11 +164,13 @@ existing diag reason. No `Circle` fallback.
 **Unit (vitest, headless).**
 
 - `stage.test.ts`:
-  - `edgeExit`: a target inside returns `null`; targets out the top, bottom,
-    left and right land on the correct edge; a target exactly at a corner
-    angle lands on the corner; an off-centre `center` (the padded rect isn't
-    viewport-centred) is honoured.
-  - `boundsMoved`: within tolerance, outside tolerance.
+  - `edgeExit`: targets out the top, bottom, left and right land on the
+    correct edge; a target on the diagonal lands on the corner; an on-screen
+    target (under the clock) still extends to the border; an off-centre
+    `center` (the padded rect isn't viewport-centred) is honoured.
+  - `outside`: a point under the padding counts as outside.
+  - `lngLatToViewPx`: the bounds' corners map to the viewport corners, with a
+    Mercator y.
 - `glassState.test.ts`: the plan's lifecycle tests, plus pacing:
   - `continuous` is true during the grow and the dissolve, false during the
     hold and the afterglow;
