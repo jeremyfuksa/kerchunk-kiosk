@@ -121,3 +121,29 @@ describe("cornerView — review fixes", () => {
     expect(v.lcd.meta).toBe("Live · Public safety");
   });
 });
+
+import { friendlyError } from "../src/frontend/dashboard/cornerView.js";
+
+describe("friendlyError — the error glass is read from across the room", () => {
+  it("a missing radio says which one, in words", () => {
+    expect(friendlyError("wideband helper exited (code 1): kerchunk-dsp: failed to open RTL-SDR (serial KIOSK99): not found; restarting"))
+      .toBe("Scanner radio KIOSK99 not found");
+  });
+  it("other helper exits lose the plumbing prefix and the retry tail", () => {
+    expect(friendlyError("wideband helper exited (code 2): kerchunk-dsp: ALSA device busy; restarting")).toBe("ALSA device busy");
+  });
+  it("a plain message passes through, first letter up", () => {
+    expect(friendlyError("spawn failed")).toBe("Spawn failed");
+  });
+  it("the error glass uses it", () => {
+    const v = cornerView({ ...base, error: "wideband helper exited (code 1): kerchunk-dsp: failed to open RTL-SDR (serial KIOSK99): not found; restarting" });
+    expect(v.show === "glass" && v.lcd.name).toBe("Scanner radio KIOSK99 not found");
+  });
+});
+
+describe("warm-up with an unknown step", () => {
+  it("a page that only knows 'not warmed' (status poll, no warmup event yet) doesn't say step 0", () => {
+    const v = cornerView({ ...base, warmed: false, warmupPhase: null, warmupStep: 0, warmupOf: 4 });
+    expect(v).toMatchObject({ show: "pill", word: "Warming up", detail: "starting the radio", warmLit: 0 });
+  });
+});

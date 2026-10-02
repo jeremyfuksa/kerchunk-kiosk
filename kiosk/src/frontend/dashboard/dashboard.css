@@ -171,8 +171,10 @@ html[data-page="dashboard"] .alertBar.warning .alertGlyph svg { animation: kc-al
 /* No Maps key: the same corner, centred on the ground, with Recently heard. */
 html[data-page="dashboard"] .dash.mapStage .kc-recent { display: none; }
 html[data-page="dashboard"] .dash:not(.mapStage) .kc-stage {
-  height: 100vh; display: grid; grid-template-columns: minmax(0, 48rem) minmax(0, 28rem);
-  gap: 2rem; justify-content: center; align-content: center;
+  /* The corner sizes to its content and sits centred beside the list (on the
+     wall the pill floated top-left of an over-wide column, names wrapped). */
+  height: 100vh; display: grid; grid-template-columns: auto minmax(0, 36rem);
+  gap: 3rem; justify-content: center; align-content: center; align-items: center;
 }
 html[data-page="dashboard"] .dash:not(.mapStage) .kc-corner { position: static; width: auto; }
 html[data-page="dashboard"] .kc-recent { background: var(--kc-raised); border-radius: var(--kc-r-group); padding: 0.6rem 0 0.8rem; max-height: 70vh; overflow: hidden; }

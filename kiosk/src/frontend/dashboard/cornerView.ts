@@ -19,6 +19,20 @@ export const WARM_LABELS: Record<string, string> = {
   ready: "ready",
 };
 
+/** The engine's error text is plumbing ("wideband helper exited (code 1):
+ *  kerchunk-dsp: … ; restarting"). Say what's wrong in words a glance can
+ *  take in from across the room; anything unrecognised loses only the noise. */
+export function friendlyError(msg: string): string {
+  const dev = /failed to open RTL-SDR \(serial ([^)]+)\): not found/i.exec(msg);
+  if (dev) return `Scanner radio ${dev[1]} not found`;
+  const core = msg
+    .replace(/^wideband helper exited \(code \d+\):\s*/i, "")
+    .replace(/^kerchunk-dsp:\s*/i, "")
+    .replace(/;\s*restarting\s*$/i, "")
+    .trim();
+  return core.charAt(0).toUpperCase() + core.slice(1);
+}
+
 export const ERROR_HINT = "Scanning resumes on its own. If this stays up, restart the radio from System in the admin.";
 
 /** dB → 0..1 across METER_RANGE_DB (unclamped; the LCD clamps). */
@@ -85,12 +99,14 @@ export function cornerView(i: CornerInput): CornerView {
   if (!i.warmed) {
     const label = i.warmupPhase ? (WARM_LABELS[i.warmupPhase] ?? i.warmupPhase) : WARM_LABELS.booting!;
     return pill({
-      word: "Warming up", detail: `step ${i.warmupStep} of ${i.warmupOf} · ${label}`, tone: "plain",
+      // Step 0 = the page knows "not warmed" (status poll) but no warmup event
+      // has arrived yet: say what's happening, not "step 0 of 4".
+      word: "Warming up", detail: i.warmupStep >= 1 ? `step ${i.warmupStep} of ${i.warmupOf} · ${label}` : label, tone: "plain",
       muted: i.muted, sweep: false, warmLit: segmentsLit(i.warmupStep / i.warmupOf, METER_SEGMENTS),
     });
   }
   if (i.error) {
-    return glass({ lcd: { state: "error", meta: "Radio error", name: i.error, freq: "", silent: null }, head: null, hint: ERROR_HINT, meter: false });
+    return glass({ lcd: { state: "error", meta: "Radio error", name: friendlyError(i.error), freq: "", silent: null }, head: null, hint: ERROR_HINT, meter: false });
   }
   if (i.nowPlaying) {
     const { freq, alphaTag, tags } = i.nowPlaying;
