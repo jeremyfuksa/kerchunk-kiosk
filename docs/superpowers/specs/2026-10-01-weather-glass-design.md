@@ -64,7 +64,12 @@ carry the same information.
   lifecycle produces the uniform arrays for a given `now`, plus the radar
   crossfade progress. Modelled on `blips.ts`.
 - `map.ts` — loses the `ImageMapType`, the `RADAR` table and the `Circle`
-  code. Its existing WS handlers feed `glassState`.
+  code. Its existing WS handlers feed `glassState`. `BlipField`
+  (`blips.ts`) and `txRing.ts` become dead code and are deleted with their
+  tests; `glassState` latches each front's radius itself.
+- Smooth filtering means a cubic B-spline reconstruction of the dBZ grid
+  (four bilinear taps). It smooths between measured samples; it never moves
+  or invents echoes.
 
 **Frame pacing.** Ambient motion means continuous rendering; the
 `createIdleLoop` suspend is replaced by a capped redraw (`requestRedraw()` on
@@ -105,11 +110,14 @@ contradicts the formula, the legend wins and the formula is corrected.
 - `crop.ts` — pure. World-file parameters plus QTH plus
   `display.radar.spanDeg` give the pixel window and the `{n,s,e,w}` bounds.
 - `RadarFeed.ts` — runs every `display.radar.refreshMs`:
-  - a conditional GET (`If-Modified-Since`), decode, crop;
+  - first fetches the sidecar `n0q_0.json` (tiny), whose `meta.valid` is the
+    scan time;
+  - downloads the 4.6 MB PNG only when that `scanTime` advances, then
+    decodes and crops it;
   - holds the latest good scan `{scanTime, fetchedAt, bounds, width, height,
     bytes}`;
-  - takes `scanTime` from `Last-Modified`;
-  - on error, keeps the last good scan and retries on the next tick;
+  - on any error (including an image whose dimensions no longer match the
+    grid), keeps the last good scan and retries on the next tick;
   - emits `{type:"radar", scanTime}` on the WS only when `scanTime` advances.
   - The fetch and clock are injected for tests.
 - The crop centre is the QTH (`display.weatherLat/Lon`). The default span is
@@ -130,7 +138,8 @@ untouched.
   `application/octet-stream`, gzip'd, `ETag: <scanTime>`.
 - `docs/API.md` documents both routes and the `radar` WS event.
 
-**Frontend.** On page load and on each `radar` event, the page fetches the
+**Frontend.** On page load, on each `radar` event, and every
+`radar.refreshMs` as a backstop for a missed WS event, the page fetches the
 meta and the frame and uploads it as an `R8` texture into the "next" slot.
 Index → dBZ happens in the shader. On first load the scan fades in from
 empty. If the bounds changed, the mesh is
@@ -225,8 +234,10 @@ optional with defaults and stated in the PRs.
 | `camera.holdMs` | 12000 | quiet time before returning |
 | `camera.returnMs` | 4000 | return duration |
 
-Display knobs reach the page on its next load, so a config change is
-followed by `POST /api/kiosk/reload`. That matches existing display fields.
+`glass.*` and `camera.*` reach the page on its next load, so a config change
+is followed by `POST /api/kiosk/reload`. That matches existing display
+fields. `radar.*` is read by the backend at boot (like `aircraft.*`), so a
+change there needs a `kerchunk-kiosk` restart.
 
 ## 5. Testing and proof
 
@@ -237,7 +248,7 @@ followed by `POST /api/kiosk/reload`. That matches existing display fields.
 - n0q mapping: against IEM's legend; index 0 is no echo.
 - `crop`: world file + QTH + span → window and bounds.
 - `RadarFeed` (fake fetch and clock):
-  - 304 handling;
+  - an unchanged `meta.valid` skips the PNG download;
   - keeping the last good scan on error;
   - the stale flip;
   - the `radar` event only on a new `scanTime`.
