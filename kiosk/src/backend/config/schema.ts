@@ -355,6 +355,10 @@ export const configSchema = z.object({
       enabled: z.boolean().default(true),
       refreshMs: z.number().int().min(60_000).default(300_000),
       staleMs: z.number().int().min(60_000).default(1_200_000),
+      // Per-request timeout for IEM. The image streams and stops once the
+      // crop is decoded (~45% of the 4.6 MB file for KC), but on the kiosk's
+      // weak Wi-Fi that can still take minutes. Boot-time knob (restart).
+      fetchTimeoutMs: z.number().int().min(10_000).max(600_000).default(240_000),
       spanDeg: z.object({
         w: z.number().positive().max(20).default(4),
         h: z.number().positive().max(15).default(3),

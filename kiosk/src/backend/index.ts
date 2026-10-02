@@ -24,6 +24,15 @@ import { HistoryStore } from "./history.js";
 import { dirname } from "node:path";
 import type { EngineEvent } from "./engine/ScannerEngine.js";
 import { WallWatchdog, wallWatchdogSchema } from "./wallWatchdog.js";
+import { setDefaultAutoSelectFamilyAttemptTimeout } from "node:net";
+
+// Happy-eyeballs per-address connect window for every outbound fetch (IEM,
+// NWS, lookups). Node's 250 ms default intermittently fails ETIMEDOUT here:
+// the box has no IPv6 route, so the IPv4 attempt is the only one, and on the
+// kiosk's Wi-Fi its handshake sometimes needs longer. Seen as "[radar] feed
+// error: fetch failed"; with 2 s, repeated probes all connected.
+const CONNECT_ATTEMPT_TIMEOUT_MS = 2_000;
+setDefaultAutoSelectFamilyAttemptTimeout(CONNECT_ATTEMPT_TIMEOUT_MS);
 
 const PORT = Number(process.env.PORT ?? 8080);
 const CONFIG_PATH = process.env.KERCHUNK_CONFIG ?? "/var/lib/kerchunk-kiosk/config.json";
@@ -270,6 +279,7 @@ const radar = config.display && radarCfg?.enabled
       span: radarCfg.spanDeg,
       refreshMs: radarCfg.refreshMs,
       staleMs: radarCfg.staleMs,
+      fetchTimeoutMs: radarCfg.fetchTimeoutMs,
     })
   : undefined;
 

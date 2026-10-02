@@ -10,11 +10,14 @@ import { cropWindow, IEM_USCOMP, type Bounds, type CropWindow, type WorldGrid } 
 import { decodeIndexedCrop } from "./pngIndexed.js";
 
 const gzipAsync = promisify(gzip);
-const FETCH_TIMEOUT_MS = 60_000;
 // A scan time this far past our clock is bogus (or our clock is wrong at
 // boot): accepting it would pin that frame as "current" — never stale, and
 // every later real scan would look older and be skipped.
 const FUTURE_SLACK_MS = 10 * 60_000;
+// IEM resets slow transfers part-way (seen on the kiosk's Wi-Fi at ~8-20 KB/s,
+// every 80-120 s). Each reset resumes with a Range request from the byte
+// reached; this caps resumes per poll, and only resets that made progress count.
+const MAX_RESUMES = 8;
 
 export const IEM_N0Q_BASE = "https://mesonet.agron.iastate.edu/data/gis/images/4326/USCOMP/n0q_0";
 
@@ -43,6 +46,10 @@ export interface RadarFetchResponse {
   status: number;
   json(): Promise<unknown>;
   arrayBuffer(): Promise<ArrayBuffer>;
+  /** Streamed body; when present the image is decoded as it downloads and
+   *  the download is abandoned once the crop is complete. */
+  body?: AsyncIterable<Uint8Array> | null;
+  headers?: { get(name: string): string | null };
 }
 
 export interface RadarFeedOpts {
@@ -50,8 +57,11 @@ export interface RadarFeedOpts {
   span: { w: number; h: number };
   refreshMs: number;
   staleMs: number;
+  /** Per-request timeout. The whole image download must fit inside it, so on
+   *  a slow link it needs headroom (config.display.radar.fetchTimeoutMs). */
+  fetchTimeoutMs: number;
   baseUrl?: string;
-  fetcher?: (url: string) => Promise<RadarFetchResponse>;
+  fetcher?: (url: string, headers?: Record<string, string>) => Promise<RadarFetchResponse>;
   now?: () => number;
   /** Test hook: the source grid (defaults to IEM USCOMP). */
   grid?: WorldGrid;
@@ -63,7 +73,7 @@ export class RadarFeed implements RadarSource {
   private readonly base: string;
   private readonly refreshMs: number;
   private readonly staleMs: number;
-  private readonly fetcher: (url: string) => Promise<RadarFetchResponse>;
+  private readonly fetcher: (url: string, headers?: Record<string, string>) => Promise<RadarFetchResponse>;
   private readonly now: () => number;
   private scan: RadarScan | null = null;
   private cb: ((scan: RadarScan) => void) | null = null;
@@ -78,7 +88,7 @@ export class RadarFeed implements RadarSource {
     this.base = opts.baseUrl ?? IEM_N0Q_BASE;
     this.refreshMs = opts.refreshMs;
     this.staleMs = opts.staleMs;
-    this.fetcher = opts.fetcher ?? ((u) => fetch(u, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) }));
+    this.fetcher = opts.fetcher ?? ((u, headers) => fetch(u, { headers, signal: AbortSignal.timeout(opts.fetchTimeoutMs) }));
     this.now = opts.now ?? Date.now;
   }
 
@@ -116,9 +126,7 @@ export class RadarFeed implements RadarSource {
       // backwards timestamp can't freeze the feed either.
       if (this.scan && scanTime === this.scan.scanTime) { this.failStreak = 0; return; }
 
-      const imgRes = await this.fetcher(`${this.base}.png`);
-      if (!imgRes.ok) throw new Error(`image HTTP ${imgRes.status}`);
-      const crop = await decodeIndexedCrop(new Uint8Array(await imgRes.arrayBuffer()), win);
+      const crop = await decodeIndexedCrop(this.imageBytes(`${this.base}.png`), win);
       if (crop.imageWidth !== this.grid.width || crop.imageHeight !== this.grid.height) {
         throw new Error(`image is ${crop.imageWidth}x${crop.imageHeight}, grid expects ${this.grid.width}x${this.grid.height}`);
       }
@@ -133,6 +141,27 @@ export class RadarFeed implements RadarSource {
       this.failStreak++;
       if (this.failStreak === 1) {
         console.error(`[radar] feed error: ${err instanceof Error ? err.message : String(err)}`.slice(0, 200));
+      }
+    }
+  }
+
+  /** The image's bytes as they arrive, resuming after mid-stream resets. The
+   *  decoder stops pulling once the crop is done, which ends the download. */
+  private async *imageBytes(url: string): AsyncGenerator<Uint8Array> {
+    let offset = 0, etag: string | null = null, resumes = 0;
+    for (;;) {
+      const resume = offset > 0 && etag !== null;
+      const res = await this.fetcher(url, resume ? { Range: `bytes=${offset}-`, "If-Range": etag! } : undefined);
+      if (!res.ok) throw new Error(`image HTTP ${res.status}`);
+      if (resume && res.status !== 206) throw new Error("image changed mid-download");
+      if (!resume) etag = res.headers?.get("etag") ?? null;
+      if (!res.body) { yield new Uint8Array(await res.arrayBuffer()); return; }
+      const before = offset;
+      try {
+        for await (const c of res.body) { offset += c.length; yield c; }
+        return;
+      } catch (err) {
+        if (etag === null || offset === before || ++resumes > MAX_RESUMES) throw err;
       }
     }
   }
