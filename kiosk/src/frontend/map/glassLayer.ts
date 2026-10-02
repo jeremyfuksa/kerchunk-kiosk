@@ -61,6 +61,7 @@ export class GlassLayer {
   private readonly glowsC = new Float32Array(MAX_GLOWS * 3);
   private lastFrame: GlassFrame | null = null;
   private redraws = 0;
+  private timerAt = 0; // Date.now() ms the armed timer fires
 
   /** True once the layer has given up (no WebGL2, shader failure): it is
    *  unmounted and draws nothing, so callers stop feeding it. */
@@ -103,6 +104,7 @@ export class GlassLayer {
   // can't freeze a half-grown front.
   private arm(delayMs: number): void {
     if (this.timer) clearTimeout(this.timer);
+    this.timerAt = Date.now() + delayMs;
     this.timer = setTimeout(() => {
       this.timer = null;
       if (this.off) return;
@@ -131,6 +133,16 @@ export class GlassLayer {
     if (this.off) return;
     this.ov.requestRedraw();
     this.arm(KICK_MS);
+  }
+
+  /** A change is due at `at` (Date.now() ms) with no draw before it — e.g. a
+   *  parked signal step (review I2). Never delays an earlier armed timer. */
+  redrawAt(at: number): void {
+    if (this.off) return;
+    const now = Date.now();
+    if (at <= now) { this.poke(); return; }
+    if (this.timer && this.timerAt <= at) return;
+    this.arm(at - now);
   }
 
   /** Redraws since the last call (diag: glass redraws per minute). */

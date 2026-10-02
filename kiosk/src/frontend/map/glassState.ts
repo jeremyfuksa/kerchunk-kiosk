@@ -39,19 +39,26 @@ export function signalLevel(dbfs: number, steps: number): number {
   return Math.max(MIN_BRIGHT, Math.round(k * n) / n);
 }
 
-/** Remaining afterglow, quantised: 1 until the first boundary, then one step
- *  down at each ageMs = life*j/steps, 0 at the end. */
-export function fadeLevel(ageMs: number, lifeMs: number, steps: number): number {
-  if (ageMs >= lifeMs) return 0;
-  return Math.ceil((1 - Math.max(0, ageMs) / lifeMs) * steps - 1e-9) / steps;
+/** Afterglows step on ONE absolute grid (review I1): every glow changes on
+ *  the same tick, so N glows cost fadeSteps redraws per lifetime, not
+ *  N × fadeSteps. The latest tick at or before `now`. */
+export function gridTick(now: number, lifeMs: number, steps: number): number {
+  const step = lifeMs / steps;
+  return Math.floor(now / step) * step;
 }
 
-/** The first fade boundary strictly after `now` for a glow started at `start`. */
-function nextFadeBoundary(start: number, now: number, lifeMs: number, steps: number): number {
-  const stepMs = lifeMs / steps;
-  let j = Math.floor((now - start) / stepMs) + 1;
-  let t = start + j * stepMs;
-  while (t <= now) t = start + ++j * stepMs;   // float guard: never at/before now
+/** A glow's remaining strength (1 → 0), its age sampled at the latest grid
+ *  tick; 0 once that age reaches the lifetime. */
+export function fadeAt(start: number, now: number, lifeMs: number, steps: number): number {
+  const age = Math.max(0, gridTick(now, lifeMs, steps) - start);
+  return age >= lifeMs ? 0 : 1 - age / lifeMs;
+}
+
+/** The first grid tick strictly after `now` (float guard included). */
+function nextTick(now: number, lifeMs: number, steps: number): number {
+  const step = lifeMs / steps;
+  let t = gridTick(now, lifeMs, steps) + step;
+  while (t <= now) t += step;
   return t;
 }
 
@@ -91,20 +98,20 @@ export class GlassState {
     if (f && f.releasedAt === null) f.until = now + this.t.ttlMs;
   }
 
-  /** Returns true when the visible brightness changed NOW (caller redraws).
-   *  A change inside the holdFps window is parked; frame() applies it at the
-   *  window's end and reports that moment as nextChangeAt. */
-  signal(id: string, dbfs: number, now: number): boolean {
+  /** When the scene needs a redraw for this signal (review I2): `now` when
+   *  the visible brightness changed now; the holdFps window's end when the
+   *  change is parked (frame() applies it then); null when nothing changes. */
+  signal(id: string, dbfs: number, now: number): number | null {
     const f = this.fronts.get(id);
-    if (!f || f.releasedAt !== null) return false;
+    if (!f || f.releasedAt !== null) return null;
     const lvl = signalLevel(dbfs, this.t.signalSteps);
-    if (lvl === f.bright) { f.pending = null; return false; }
+    if (lvl === f.bright) { f.pending = null; return null; }
     if (now - f.brightAt >= this.gapMs) {
       f.bright = lvl; f.brightAt = now; f.pending = null;
-      return true;
+      return now;
     }
     f.pending = lvl;
-    return false;
+    return f.brightAt + this.gapMs;
   }
 
   release(id: string, now: number): void {
@@ -165,17 +172,18 @@ export class GlassState {
     const glows: Glow[] = [];
     const life = this.t.glowLifetimeMs;
     for (const [key, s] of this.sites) {
-      if (s.glowStart !== null && now - s.glowStart >= life) s.glowStart = null;
-      if (s.glowStart === null) {
+      const fade = s.glowStart === null ? 0 : fadeAt(s.glowStart, now, life, this.t.fadeSteps);
+      if (fade <= 0) {
+        s.glowStart = null;
         if (!liveKeys.has(key)) this.sites.delete(key);   // window over: hits reset
         continue;
       }
       glows.push({
         key, lat: s.site.lat, lng: s.site.lng, radiusM: s.radiusM, color: s.site.color,
-        strength: rampStrength(s.hits) * fadeLevel(now - s.glowStart, life, this.t.fadeSteps),
+        strength: rampStrength(s.hits) * fade,
       });
-      next = Math.min(next, nextFadeBoundary(s.glowStart, now, life, this.t.fadeSteps));
     }
+    if (glows.length) next = Math.min(next, nextTick(now, life, this.t.fadeSteps));
     glows.sort((a, b) => b.strength - a.strength);
     return {
       fronts, glows: glows.slice(0, MAX_GLOWS), growing, continuous,

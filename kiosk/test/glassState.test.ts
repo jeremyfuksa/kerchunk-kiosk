@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  GlassState, rampStrength, signalLevel, fadeLevel,
+  GlassState, rampStrength, signalLevel, fadeAt,
   RELEASE_MS, DEFAULT_BRIGHT, MIN_BRIGHT,
 } from "../src/frontend/map/glassState.js";
 import { MAX_FRONTS, MAX_GLOWS } from "../src/frontend/map/glassMath.js";
@@ -16,12 +16,12 @@ describe("quantisers", () => {
     expect(signalLevel(-27.5, 8)).toBeCloseTo(4 / 7, 9);   // k=0.5 → round(3.5)=4 of 7
     expect(signalLevel(-90, 8)).toBe(MIN_BRIGHT);
   });
-  it("fadeLevel: starts at 1, drops one step at each boundary, 0 at the end", () => {
-    expect(fadeLevel(0, 60_000, 24)).toBe(1);
-    expect(fadeLevel(STEP - 1, 60_000, 24)).toBe(1);
-    expect(fadeLevel(STEP, 60_000, 24)).toBeCloseTo(23 / 24, 9);
-    expect(fadeLevel(30_000, 60_000, 24)).toBeCloseTo(0.5, 9);
-    expect(fadeLevel(60_000, 60_000, 24)).toBe(0);
+  it("fadeAt: samples age at the latest global tick; 0 at the end", () => {
+    expect(fadeAt(0, 0, 60_000, 24)).toBe(1);
+    expect(fadeAt(0, STEP - 1, 60_000, 24)).toBe(1);
+    expect(fadeAt(0, STEP, 60_000, 24)).toBeCloseTo(23 / 24, 9);
+    expect(fadeAt(1000, STEP + 10, 60_000, 24)).toBeCloseTo(1 - 1500 / 60_000, 9);  // off-grid start
+    expect(fadeAt(0, 60_000, 60_000, 24)).toBe(0);
   });
 });
 
@@ -68,13 +68,13 @@ describe("GlassState lifecycle", () => {
     expect(after.nextChangeAt).toBe(10_000 + STEP);                    // next fade boundary
   });
 
-  it("the afterglow fades in fadeSteps steps and ends; hits reset", () => {
+  it("the afterglow fades on the global grid and ends on a tick; hits reset", () => {
     const s = new GlassState(T);
     s.keyUp("ch1", site(), 5000, 0);
     s.release("ch1", 1000);
-    expect(s.frame(1000 + STEP).glows[0]!.strength).toBeCloseTo(rampStrength(1) * 23 / 24, 9);
-    expect(s.frame(60_999).glows).toHaveLength(1);
-    const end = s.frame(61_000);
+    expect(s.frame(1000 + STEP).glows[0]!.strength).toBeCloseTo(rampStrength(1) * (1 - 1500 / 60_000), 9);
+    expect(s.frame(62_499).glows).toHaveLength(1);           // last tick before age 60 s is 60 000
+    const end = s.frame(62_500);                             // tick 62 500: age 61 500 ≥ life
     expect(end.glows).toEqual([]);
     expect(end.nextChangeAt).toBeNull();
     expect(s.hits("a")).toBe(0);
@@ -150,11 +150,45 @@ describe("GlassState lifecycle", () => {
   });
 });
 
+describe("GlassState shared fade grid (review I1)", () => {
+  it("glows started at different times step on ONE redraw grid", () => {
+    const s = new GlassState(T);
+    s.seedGlow(site("a"), 4000, 100, 1000);
+    s.seedGlow(site("b"), 4000, 1300, 1300);
+    s.seedGlow(site("c"), 4000, 2200, 2400);
+    const f = s.frame(2400);
+    expect(f.glows).toHaveLength(3);
+    expect(f.nextChangeAt).toBe(STEP);                         // the next global tick, not three
+  });
+
+  it("a minute of many glows costs about fadeSteps redraws, not glows × fadeSteps", () => {
+    const s = new GlassState(T);
+    for (let i = 0; i < 30; i++) s.seedGlow(site(`s${i}`), 4000, i * 777, 30 * 777);
+    const changes = new Set<number>();
+    let now = 30 * 777;
+    for (let k = 0; k < 200; k++) {
+      const n = s.frame(now).nextChangeAt;
+      if (n === null) break;
+      changes.add(n); now = n;
+    }
+    expect(changes.size).toBeLessThanOrEqual(T.fadeSteps + 2);
+  });
+});
+
 describe("GlassState signal pacing", () => {
+  it("signal returns WHEN to redraw: now, the window's end when parked, null for no change (review I2)", () => {
+    const s = new GlassState(T);
+    s.keyUp("ch1", site(), 5000, 0);
+    expect(s.signal("ch1", -10, 1000)).toBe(1000);           // changed now
+    expect(s.signal("ch1", -27.5, 1100)).toBe(1250);         // parked to the holdFps window's end
+    expect(s.signal("ch1", -11, 1200)).toBeNull();           // back to the shown level: nothing to do
+    expect(s.signal("nope", -20, 1300)).toBeNull();
+  });
+
   it("a level change applies at once when outside the holdFps window", () => {
     const s = new GlassState(T);
     s.keyUp("ch1", site(), 5000, 0);
-    expect(s.signal("ch1", -10, 1000)).toBe(true);
+    expect(s.signal("ch1", -10, 1000)).toBe(1000);
     expect(s.frame(1000).fronts[0]!.bright).toBe(1);
   });
 
@@ -162,14 +196,14 @@ describe("GlassState signal pacing", () => {
     const s = new GlassState(T);
     s.keyUp("ch1", site(), 5000, 0);
     s.signal("ch1", -10, 1000);
-    expect(s.signal("ch1", -11, 2000)).toBe(false);          // still level 1
+    expect(s.signal("ch1", -11, 2000)).toBeNull();           // still level 1
   });
 
   it("a change inside the holdFps window waits for the window's end", () => {
     const s = new GlassState(T);
     s.keyUp("ch1", site(), 5000, 0);
     s.signal("ch1", -10, 1000);
-    expect(s.signal("ch1", -27.5, 1100)).toBe(false);        // 100 ms < 250 ms
+    expect(s.signal("ch1", -27.5, 1100)).toBe(1250);         // 100 ms < 250 ms: parked
     const held = s.frame(1100);
     expect(held.fronts[0]!.bright).toBe(1);
     expect(held.nextChangeAt).toBe(1250);
@@ -192,8 +226,8 @@ describe("GlassState signal pacing", () => {
     const s = new GlassState(T);
     s.keyUp("ch1", site(), 5000, 0);
     s.release("ch1", 10);
-    expect(s.signal("ch1", -10, 1000)).toBe(false);
-    expect(s.signal("nope", -20, 1000)).toBe(false);
+    expect(s.signal("ch1", -10, 1000)).toBeNull();
+    expect(s.signal("nope", -20, 1000)).toBeNull();
     expect(() => s.release("nope", 1)).not.toThrow();
     expect(() => s.rearm("nope", 1)).not.toThrow();
   });

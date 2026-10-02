@@ -536,11 +536,13 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
       } else if (ev.type === "signal") {
         // The audible channel's telemetry: re-arm its ttl (a continuous carrier
         // never expires mid-transmission) and step its rim brightness — at most
-        // holdFps times a second, only when the quantised level moves.
+        // holdFps times a second, only when the quantised level moves; a step
+        // parked inside the window gets its own redraw at the window's end.
         if (audibleId) {
           const now = Date.now();
           glassState.rearm(audibleId, now);
-          if (glassState.signal(audibleId, ev.dbfs, now)) poke();
+          const at = glassState.signal(audibleId, ev.dbfs, now);
+          if (at !== null && glass && !glass.off) glass.redrawAt(at);
         }
       } else if (ev.type === "closecall") {
         // discoveries are unlocated at the moment they fire (identification is

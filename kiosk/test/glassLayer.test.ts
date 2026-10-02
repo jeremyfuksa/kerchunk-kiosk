@@ -110,3 +110,26 @@ describe("GlassLayer pacing", () => {
     expect(layer.takeRedraws()).toBe(0);           // nothing drew (no GL in node)
   });
 });
+
+describe("GlassLayer.redrawAt (review I2)", () => {
+  afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
+
+  it("arms a redraw for a future moment, and never pushes an earlier timer later", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(10_000);
+    const requestRedraw = vi.fn();
+    vi.stubGlobal("google", { maps: { WebGLOverlayView: class { requestRedraw = requestRedraw; setMap = vi.fn(); } } });
+    const knobs = { maxFps: 30, txFps: 60, hazeIntensity: 0, radarOpacity: 0.6, radarMinDbz: 15, radarFadeMs: 20_000, txGrowMs: 900, holdFps: 4, signalSteps: 8, fadeSteps: 24 };
+    const layer = new GlassLayer({ map: {}, home: { lat: 39, lng: -94 }, knobs, getFrame: () => EMPTY_FRAME });
+    layer.redrawAt(10_200);                       // earlier than the 1 s kick → re-armed
+    requestRedraw.mockClear();
+    vi.advanceTimersByTime(199);
+    expect(requestRedraw).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(requestRedraw).toHaveBeenCalledTimes(1);
+    requestRedraw.mockClear();
+    layer.redrawAt(10_200 + 5_000);               // later than the armed kick: ignored
+    vi.advanceTimersByTime(1_000);
+    expect(requestRedraw).toHaveBeenCalledTimes(1); // the kick, not pushed back
+  });
+});
