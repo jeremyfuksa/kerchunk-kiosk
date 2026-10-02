@@ -7,6 +7,7 @@ import { AircraftLayer } from "./aircraft.js";
 import { GlassLayer } from "./glassLayer.js";
 import { RadarSync, httpRadarFetchers } from "./radarSync.js";
 import { EMPTY_FRAME } from "./glassMath.js";
+import { padRect, outside, edgeExit, lngLatToViewPx, BLOOM_PX } from "./stage.js";
 import type { EngineEvent } from "../../backend/engine/ScannerEngine.js";
 import icoTower from "lucide-static/icons/radio-tower.svg?raw";
 import { PIN_COLORS, colorFor, categoryFor, type PinCategory } from "../lib/serviceColor.js";
@@ -184,6 +185,29 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
       void glow.offsetWidth; // force reflow so the animation restarts every hit
       glow.classList.add("pulse");
     }
+    // Off-frame speaker (spec 2026-10-02): a soft bloom on the screen edge
+    // where the line from the frame's centre toward the site leaves the screen.
+    // Opacity-only animation (compositor), 480 px — not a full-screen overlay.
+    const bloom = document.createElement("div");
+    bloom.className = "edgeBloom";
+    root.appendChild(bloom);
+    function bloomToward(lat: number, lng: number, color: string): boolean {
+      const b = map.getBounds();
+      if (!b) return false;
+      const ne = b.getNorthEast(), sw = b.getSouthWest();
+      const W = root.clientWidth, H = root.clientHeight;
+      const p = lngLatToViewPx(lat, lng, { n: ne.lat(), s: sw.lat(), e: ne.lng(), w: sw.lng() }, W, H);
+      const inner = padRect(W, H, KIOSK_FIT_PAD);
+      if (!outside(p, inner)) return false;
+      const c = { x: (inner.left + inner.right) / 2, y: (inner.top + inner.bottom) / 2 };
+      const at = edgeExit(c, p, { left: 0, top: 0, right: W, bottom: H });
+      bloom.style.setProperty("--glow-color", color);
+      bloom.style.transform = `translate(${Math.round(at.x - BLOOM_PX / 2)}px, ${Math.round(at.y - BLOOM_PX / 2)}px)`;
+      bloom.classList.remove("pulse");
+      void bloom.offsetWidth; // restart the animation every hit
+      bloom.classList.add("pulse");
+      return true;
+    }
 
     // ── Weather Glass (spec 2026-10-01): one GPU layer inside Google's GL
     // context. Radar is IEM's real n0q composite, cropped by the backend
@@ -227,7 +251,7 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
     // fit the home, a minimum local field, and the nearest ~90% of known sites
     // — but every framed point is clamped to home's latitude or below, so the
     // lone northern outlier (the Cameron site) stays off the top edge. Cameron
-    // still pops a live blip + camera punch when it actually transmits; it just
+    // still pops a live blip + an edge bloom toward it when it transmits; it just
     // isn't part of the steady view. Computed fresh at each fit.
     const SYNTHETIC_FIELD_M = 18_000; // min view radius — never a parking lot
     const NEIGHBORHOOD_DEG = 3;       // ~300 km: a corrupt (0,0) row can't yank the view
@@ -280,6 +304,7 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
     // on every `signal`, so a continuous carrier doesn't expire mid-transmission.
     const TX_TTL_MS = 60_000;
     const liveTx = new Map<string, { lat: number; lng: number; key: string; color: string; born: number; until: number; radiusM?: number }>();
+    const liveCount = (): number => liveTx.size; // open transmissions (re-fit deferral)
     const txRings = new Map<string, any>();
     // freq -> operator bank tags, learned from /api/channels. Lets the transient
     // blip layer (keyed only by frequency) honor the same operator service tag
@@ -410,29 +435,43 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
         google.maps.event.addListenerOnce(map, "idle", () => { homeZoom = map.getZoom(); });
       });
 
-    // ── Activity camera (kiosk only): when a channel becomes AUDIBLE, ease in
-    // toward it (it follows the speaker, not bare detections — see the audible
-    // handler); when the band goes quiet, pull back out to the full
-    // pin field. Vector maps animate panTo/setZoom natively, so this reads
-    // as camera work, not jumps. The interactive /map page never moves on
-    // its own — a self-steering camera fights the user's mouse.
-    const PUNCH_HOLD_MS = 12_000;   // quiet time before pulling back out
-    const PUNCH_ZOOM_IN = 2;        // levels closer than the home framing
+    // ── Camera (spec 2026-10-02 "fixed stage"): the kiosk frames once and
+    // never moves on its own — each push made Google re-lay-out the vector map
+    // on the CPU. Who/where is carried by the pin, the transmission, the LCD
+    // and (off-frame) the edge bloom. display.camera.follow restores the old
+    // push toward the audible site + pull-back. /map never moves itself.
+    const follow = !interactive && display.camera.follow;
+    const PUNCH_HOLD_MS = 12_000;   // follow mode: quiet time before pulling back out
+    const PUNCH_ZOOM_IN = 2;        // follow mode: levels closer than the home framing
     let homeZoom: number | null = null;
     let punchedUntil = 0;
     function punch(lat: number, lng: number): void {
-      if (interactive) return;
+      if (!follow) return;
       punchedUntil = Date.now() + PUNCH_HOLD_MS;
       map.panTo({ lat, lng });
       map.setZoom(Math.min((homeZoom ?? map.getZoom()) + PUNCH_ZOOM_IN, 13));
     }
-    if (!interactive) {
+    if (follow) {
       setInterval(() => {
         if (punchedUntil && Date.now() >= punchedUntil) {
           punchedUntil = 0;
           map.fitBounds(framedBounds(), fitPad);
         }
       }, 1500);
+    }
+    // Fixed stage: re-fit only when the screen resizes (sites and channels load
+    // once per page; a newly located site joins the frame on the next
+    // kiosk/reload). Never mid-transmission: deferred to the next idle.
+    let refitDue = false;
+    function refit(): void {
+      if (liveCount() > 0) { refitDue = true; return; }
+      refitDue = false;
+      map.fitBounds(framedBounds(), fitPad);
+    }
+    function onQuiet(): void { if (refitDue) refit(); }
+    if (!interactive && !follow) {
+      let t: ReturnType<typeof setTimeout> | undefined;
+      window.addEventListener("resize", () => { clearTimeout(t); t = setTimeout(refit, 500); });
     }
 
     function nofix(freqHz: number): void {
@@ -483,6 +522,7 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
       } else if (ev.type === "idle") {
         audibleId = null;
         for (const id of [...liveTx.keys()]) endTx(id); // all closed
+        onQuiet();
       } else if (ev.type === "signal") {
         // The audible channel emits power telemetry while it's open. Re-arm its
         // ring's ttl so a continuously-keyed carrier (e.g. NOAA never keys down)
@@ -494,14 +534,13 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
         // history backfills place them on the map properly.
         nofix(ev.freqHz);
       } else if (ev.type === "audible") {
-        // Camera follows AUDIO: punch to the speaker's real location. A
-        // no-location speaker has no honest spot to move to — hold the view and
-        // let its edge glow carry it. null = silence — also hold; the pull-back
-        // timer recenters after PUNCH_HOLD_MS.
+        // Camera follows AUDIO only in follow mode. On the fixed stage an
+        // audible site outside the padded frame blooms the edge toward it.
         const ch = ev.channel;
         audibleId = ch?.id ?? null; // drives the signal-driven ring re-arm above
         if (ch?.location?.lat != null && ch.location.lon != null) {
-          punch(ch.location.lat, ch.location.lon);
+          if (follow) punch(ch.location.lat, ch.location.lon);
+          else if (!interactive) bloomToward(ch.location.lat, ch.location.lon, colorFor(ch.freq, "active", tagsFor(ch.freq)));
         }
       } else if (ev.type === "radar") {
         pollRadar(); // a new scan landed — fetch it once

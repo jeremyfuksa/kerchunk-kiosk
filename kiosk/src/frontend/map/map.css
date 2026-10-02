@@ -38,6 +38,15 @@ html[data-page="map"] body {
   6%   { opacity: 0.4; }
   100% { opacity: 0; }
 }
+/* Off-frame speaker bloom (spec 2026-10-02): 480 px (= BLOOM_PX in stage.ts),
+   positioned by transform at the edge exit point, half off-screen. Reuses the
+   edge-glow pulse: opacity only, so the compositor does all the work. */
+:is(html[data-page="map"], html[data-page="dashboard"]) .edgeBloom {
+  position: fixed; left: 0; top: 0; width: 480px; height: 480px;
+  pointer-events: none; z-index: 2; opacity: 0; border-radius: 50%;
+  background: radial-gradient(closest-side, var(--glow-color), transparent);
+}
+:is(html[data-page="map"], html[data-page="dashboard"]) .edgeBloom.pulse { animation: edgeGlowPulse 7s ease-out; }
 
 /* The /map legend: a quiet slip, tone not border. */
 :is(html[data-page="map"], html[data-page="dashboard"]) .mapLegend {
