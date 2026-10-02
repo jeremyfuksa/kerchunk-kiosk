@@ -166,6 +166,7 @@ additionally removes orphans (recorded on a hit that never filed) and enforces
 | POST | `/api/backend/restart` | `202`, then the backend exits for systemd to respawn (`503` when unavailable, e.g. tests). |
 | POST | `/api/system/power` | `{ "action": "reboot" \| "poweroff" }` → `202`, then the helpers stop and `sudo systemctl <action>` runs (`400` unknown action, `503` when unavailable, e.g. tests). |
 | POST | `/api/test/alert` | Fire a canned SAME alert banner for design/verification (`{ alphaTag }`; `{ "clear": true }` dismisses). |
+| POST | `/api/test/tx` | Wall preview: play a synthetic transmission (`active` → `audible` → `signal`… → `release` → `audible(null)`) on a located channel over the WS only — no engine/audio/history. `{ channelId?, holdMs?, lat?, lon? }` (random located channel; hold 6000 ms, clamped 1000–60000; `lat`/`lon` override the broadcast location) → `{ ok, channelId, holdMs }`; `404` if none. |
 
 ### WebSocket `/ws`
 

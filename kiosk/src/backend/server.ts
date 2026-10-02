@@ -1009,6 +1009,40 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
       return json(res, 200, { ok: true });
     }
 
+    // Wall preview driver: play a synthetic transmission on a located channel
+    // through the WS only — no engine, no audio, no history — so the operator
+    // can watch the passive wall (CLAUDE.md "Previewing wall states"). lat/lon
+    // override the broadcast location so a test can place a site off-frame.
+    if (method === "POST" && path === "/api/test/tx") {
+      const body = await readBody(req).catch(() => undefined);
+      const located = config.channels.filter((c) => c.enabled && c.location?.lat != null && c.location.lon != null);
+      const found = typeof body?.channelId === "string"
+        ? located.find((c) => c.id === body.channelId)
+        : located[Math.floor(Math.random() * located.length)];
+      if (!found) return json(res, 404, { error: "no such located channel" });
+      const lat = Number(body?.lat), lon = Number(body?.lon);
+      const ch = Number.isFinite(lat) && Number.isFinite(lon)
+        ? { ...found, location: { ...found.location!, lat, lon } }
+        : found;
+      const holdRaw = Number(body?.holdMs);
+      const holdMs = Math.min(60_000, Math.max(1_000, Number.isFinite(holdRaw) ? holdRaw : 6_000));
+      const t0 = Date.now();
+      deps.wsHub.broadcast({ type: "active", channel: ch, freq: ch.freq, ts: t0 });
+      deps.wsHub.broadcast({ type: "audible", channel: ch, ts: t0 });
+      let n = 0;
+      const sig = setInterval(() => {
+        deps.wsHub.broadcast({ type: "signal", dbfs: -30 + 15 * Math.sin(n++ / 2), ts: Date.now() });
+      }, 400);
+      sig.unref?.();
+      const end = setTimeout(() => {
+        clearInterval(sig);
+        deps.wsHub.broadcast({ type: "release", channelId: ch.id, ts: Date.now() });
+        deps.wsHub.broadcast({ type: "audible", channel: null, ts: Date.now() });
+      }, holdMs);
+      end.unref?.();
+      return json(res, 200, { ok: true, channelId: ch.id, holdMs });
+    }
+
     if (method === "POST" && path === "/api/scan/start") { await engine.start(scanConfigFor(mode, monitorChannel)); return json(res, 200, { state: engine.state }); }
     if (method === "POST" && path === "/api/scan/stop") { await engine.stop(); return json(res, 200, { state: engine.state }); }
 

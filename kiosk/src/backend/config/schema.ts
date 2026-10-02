@@ -340,7 +340,7 @@ export const configSchema = z.object({
     // Live NEXRAD for the Weather Glass layer (backend/radar/RadarFeed.ts).
     // Read at boot like aircraft.*: changing it needs a kerchunk-kiosk restart.
     // spanDeg is the crop box around the QTH (degrees lon x lat); it must
-    // cover the home framing plus the camera push.
+    // cover the home framing (plus the push, if display.camera.follow is on).
     radar: z.object({
       enabled: z.boolean().default(true),
       // "mrms" = NOAA-QC'd MRMS reflectivity (no clear-air insect/bird wash,
@@ -370,6 +370,13 @@ export const configSchema = z.object({
       radarMinDbz: z.number().min(-30).max(60).default(15),       // invisible below (drizzle, clutter)
       radarFadeMs: z.number().int().min(0).max(120_000).default(20_000), // crossfade between scans
       txGrowMs: z.number().int().min(100).max(5_000).default(900),       // front expand time
+    }).default({}),
+    // Kiosk camera (spec 2026-10-02 "fixed stage"): the wall frames once and
+    // never moves on its own — camera moves made Google re-lay-out the vector
+    // map on CPU at every hit. follow: true restores the old push toward the
+    // audible site + pull-back (escape hatch). Applies on kiosk/reload.
+    camera: z.object({
+      follow: z.boolean().default(false),
     }).default({}),
   }).optional(),
   // Aircraft overlay (network ADS-B): plots airborne targets near the QTH on
