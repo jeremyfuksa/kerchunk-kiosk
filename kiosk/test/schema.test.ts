@@ -517,7 +517,7 @@ describe("display.glass + radarProduct retirement", () => {
   const base = () => ({ ...defaultConfig(), display: { weatherLat: 39.1, weatherLon: -94.58 } });
   it("fills the glass defaults", () => {
     expect(configSchema.parse(base()).display!.glass).toEqual({
-      maxFps: 30, txFps: 60, hazeIntensity: 0.35, radarOpacity: 0.6,
+      maxFps: 30, txFps: 60, hazeIntensity: 0, radarOpacity: 0.6,
       radarMinDbz: 15, radarFadeMs: 20_000, txGrowMs: 900,
     });
   });

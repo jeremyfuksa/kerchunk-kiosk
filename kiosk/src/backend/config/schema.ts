@@ -362,7 +362,10 @@ export const configSchema = z.object({
     glass: z.object({
       maxFps: z.number().int().min(1).max(60).default(30),        // steady redraw rate
       txFps: z.number().int().min(1).max(60).default(60),         // while a front is growing
-      hazeIntensity: z.number().min(0).max(1).default(0.35),      // ambient haze, 0 = off
+      // Ambient haze, 0 = off. Default OFF: at 0.35 it redraws the whole map at
+      // maxFps forever (defeats the idle-suspend) and drove the box to its 90 °C
+      // safety trip on 2026-10-01 (chromium 117 % vs 20 %). Opt in knowingly.
+      hazeIntensity: z.number().min(0).max(1).default(0),
       radarOpacity: z.number().min(0).max(1).default(0.6),
       radarMinDbz: z.number().min(-30).max(60).default(15),       // invisible below (drizzle, clutter)
       radarFadeMs: z.number().int().min(0).max(120_000).default(20_000), // crossfade between scans
