@@ -38,6 +38,12 @@
       }
     },
     {
+      "id": "infrastructure.businessCorridor",
+      "geometry": {
+        "fillColor": "#15191f"
+      }
+    },
+    {
       "id": "natural.water",
       "geometry": {
         "fillColor": "#0c1113"
@@ -63,6 +69,9 @@
         "textFillColor": "#747e8b",
         "textStrokeColor": "#15191f",
         "pinFillColor": "#5d6672"
+      },
+      "geometry": {
+        "visible": false
       }
     },
     {
@@ -72,6 +81,9 @@
         "textFillColor": "#747e8b",
         "textStrokeColor": "#15191f",
         "pinFillColor": "#5d6672"
+      },
+      "geometry": {
+        "visible": false
       }
     },
     {
@@ -81,6 +93,9 @@
         "textFillColor": "#747e8b",
         "textStrokeColor": "#15191f",
         "pinFillColor": "#5d6672"
+      },
+      "geometry": {
+        "visible": false
       }
     },
     {
@@ -90,6 +105,9 @@
         "textFillColor": "#747e8b",
         "textStrokeColor": "#15191f",
         "pinFillColor": "#5d6672"
+      },
+      "geometry": {
+        "visible": false
       }
     },
     {
@@ -99,6 +117,9 @@
         "textFillColor": "#747e8b",
         "textStrokeColor": "#15191f",
         "pinFillColor": "#5d6672"
+      },
+      "geometry": {
+        "visible": false
       }
     },
     {
