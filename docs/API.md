@@ -153,6 +153,8 @@ additionally removes orphans (recorded on a hit that never filed) and enforces
 | GET | `/api/stats` | Aggregated stats since `?since` (default 24 h). |
 | GET | `/api/recommendations/archive` | Channels heard once upon a time but silent for 30 days — archive candidates. |
 | POST | `/api/power/estimate` | Run the CPU-budget estimator. |
+| GET | `/api/radar` | Latest NEXRAD crop for the Weather Glass layer: `{ scanTime, fetchedAt, bounds:{n,s,e,w}, width, height, stale }` (`404` when `display.radar.enabled` is false, `503` before the first scan). Source: IEM n0q national composite, cropped to `display.radar.spanDeg` around the QTH. |
+| GET | `/api/radar/frame` | The crop's raw n0q indices (`width·height` bytes, row-major, north row first; index 0 = no echo, else dBZ = −32 + 0.5·index), gzip'd, `ETag: "<scanTime>"` (`304` on `If-None-Match`). |
 
 ### Appliance plumbing
 
@@ -170,13 +172,15 @@ additionally removes orphans (recorded on a hit that never filed) and enforces
 One JSON message per event, `EngineEvent` union
 (`kiosk/src/backend/engine/ScannerEngine.ts`): `active`, `audible`,
 `release`, `idle`, `closecall`, `rf`, `tone`, `same`, `signal`, `tuned`,
-`alert`, `aircraft`, `status`, `warmup`, `reload`, `error`. `tone`
+`alert`, `aircraft`, `radar`, `status`, `warmup`, `reload`, `error`. `tone`
 (`{ channelId, ctcssHz?, dcs? }`) is the CTCSS tone and/or DCS code heard on
 an open FM channel, once per transmission; `dcs` is in its on-air normal form
 (`"047N"` for a `023I` transmitter — the two are identical on air). The server
 keeps the latest as `channel.heardCtcssHz` / `channel.heardDcs`. Late joiners get
 the last now-playing event and last non-empty aircraft snapshot replayed;
 stuck clients (>512 KB buffered) get events dropped, not queued.
+`radar` (`{ scanTime }`) fires once per new NEXRAD scan; pages then fetch
+`/api/radar/frame`.
 
 ### Static routes
 

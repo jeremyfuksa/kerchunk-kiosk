@@ -497,3 +497,18 @@ describe("close call sample knobs", () => {
     expect(withScan({ closeCallSampleMaxMb: 10_000 }).success).toBe(false);
   });
 });
+
+describe("display.radar", () => {
+  const base = () => ({ ...defaultConfig(), display: { weatherLat: 39.1, weatherLon: -94.58 } });
+  it("fills every default when absent", () => {
+    const cfg = configSchema.parse(base());
+    expect(cfg.display!.radar).toEqual({ enabled: true, refreshMs: 300_000, staleMs: 1_200_000, spanDeg: { w: 4, h: 3 } });
+  });
+  it("keeps operator overrides and fills the rest", () => {
+    const cfg = configSchema.parse({ ...base(), display: { ...base().display, radar: { enabled: false, spanDeg: { w: 6 } } } });
+    expect(cfg.display!.radar).toEqual({ enabled: false, refreshMs: 300_000, staleMs: 1_200_000, spanDeg: { w: 6, h: 3 } });
+  });
+  it("rejects a refresh faster than one minute (IEM updates every 5)", () => {
+    expect(() => configSchema.parse({ ...base(), display: { ...base().display, radar: { refreshMs: 1000 } } })).toThrow();
+  });
+});

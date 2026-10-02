@@ -347,6 +347,19 @@ export const configSchema = z.object({
     radarProduct: z
       .enum(["n0q", "mrms-reflectivity", "mrms-preciprate"])
       .optional(),
+    // Live NEXRAD for the Weather Glass layer (backend/radar/RadarFeed.ts).
+    // Read at boot like aircraft.*: changing it needs a kerchunk-kiosk restart.
+    // spanDeg is the crop box around the QTH (degrees lon x lat); it must
+    // cover the home framing plus the camera push.
+    radar: z.object({
+      enabled: z.boolean().default(true),
+      refreshMs: z.number().int().min(60_000).default(300_000),
+      staleMs: z.number().int().min(60_000).default(1_200_000),
+      spanDeg: z.object({
+        w: z.number().positive().max(20).default(4),
+        h: z.number().positive().max(15).default(3),
+      }).default({}),
+    }).default({}),
   }).optional(),
   // Aircraft overlay (network ADS-B): plots airborne targets near the QTH on
   // the kiosk map from the airplanes.live public feed (no SDR, no DSP). Off by

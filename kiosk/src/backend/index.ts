@@ -17,6 +17,7 @@ import { MyGmrs } from "./mygmrs.js";
 import { FccProx } from "./fccprox.js";
 import { BusinessGuess } from "./businessGuess.js";
 import { AircraftFeed } from "./aircraft.js";
+import { RadarFeed } from "./radar/RadarFeed.js";
 import { composeLookups, type LookupProvider } from "./lookup.js";
 import { NwsWeather } from "./weather.js";
 import { HistoryStore } from "./history.js";
@@ -260,12 +261,24 @@ const aircraftFeed = config.aircraft?.enabled && config.display
     })
   : undefined;
 
+// Live NEXRAD crop for the Weather Glass layer, centred on the QTH. On by
+// default whenever a QTH is configured; display.radar.enabled=false opts out.
+const radarCfg = config.display?.radar;
+const radar = config.display && radarCfg?.enabled
+  ? new RadarFeed({
+      center: { lat: config.display.weatherLat, lon: config.display.weatherLon },
+      span: radarCfg.spanDeg,
+      refreshMs: radarCfg.refreshMs,
+      staleMs: radarCfg.staleMs,
+    })
+  : undefined;
+
 // Bound after createServer (it needs getConfig); beats before then are dropped.
 let wallWatchdog: WallWatchdog | undefined;
 
 const { server, getConfig } = createServer({
   configStore, engine, weatherEngine, activityLog, wsHub, staticDir: STATIC_DIR,
-  lookup, weather, history, aircraftFeed,
+  lookup, weather, history, aircraftFeed, radar,
   ccSampleDir: join(dirname(CONFIG_PATH), "cc-samples"),
   selfProtect: true,
   wallHeartbeat: () => wallWatchdog?.beat(),
@@ -357,6 +370,7 @@ server.listen(PORT, () => {
 // service path).
 const shutdown = async (): Promise<void> => {
   aircraftFeed?.stop();
+  radar?.stop();
   await Promise.all([engine.stop(), weatherEngine?.stop() ?? Promise.resolve()]);
   server.close();
   process.exit(0);

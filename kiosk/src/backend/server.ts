@@ -12,6 +12,7 @@ import type { HistoryStore } from "./history.js";
 import { WsHub } from "./ws.js";
 import type { EngineEvent, ScannerEngine, ScanConfig } from "./engine/ScannerEngine.js";
 import type { AircraftSource } from "./aircraft.js";
+import type { RadarSource } from "./radar/RadarFeed.js";
 import { setVolume as amixerVolume, setMuted as amixerMuted, type AmixerOpts } from "./audio.js";
 import { isScannable, isAudible, profileFor } from "./config/banks.js";
 import { collides, findDuplicateSets } from "./config/channelDedup.js";
@@ -56,6 +57,8 @@ export interface ServerDeps {
   statsReadFile?: (path: string) => string;
   /** Optional network ADS-B aircraft overlay feed (off unless configured). */
   aircraftFeed?: AircraftSource;
+  /** Live NEXRAD crop for the Weather Glass layer (off when display.radar.enabled is false). */
+  radar?: RadarSource;
   /** Directory for Close Call audio clips (#222). Absent (tests that don't
    *  exercise it, non-appliance hosts) disables recording and 404s the sample
    *  routes rather than writing anywhere unexpected. */
@@ -1317,6 +1320,26 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
       return json(res, 200, stats);
     }
 
+    if (method === "GET" && (path === "/api/radar" || path === "/api/radar/frame")) {
+      if (!deps.radar) return json(res, 404, { error: "radar disabled" });
+      const scan = deps.radar.latest();
+      if (!scan) return json(res, 503, { error: "no radar scan yet" });
+      if (path === "/api/radar") {
+        return json(res, 200, {
+          scanTime: scan.scanTime, fetchedAt: scan.fetchedAt, bounds: scan.bounds,
+          width: scan.width, height: scan.height, stale: deps.radar.isStale(),
+        });
+      }
+      const etag = `"${scan.scanTime}"`;
+      if (req.headers["if-none-match"] === etag) { res.writeHead(304, { etag }); res.end(); return; }
+      res.writeHead(200, {
+        "content-type": "application/octet-stream", "content-encoding": "gzip",
+        etag, "cache-control": "no-cache",
+      });
+      res.end(scan.gz);
+      return;
+    }
+
     if (method === "GET" && path === "/api/weather") {
       if (!deps.weather) return json(res, 404, { error: "no weather configured" });
       return json(res, 200, await deps.weather.current());
@@ -1373,6 +1396,15 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
     });
     deps.aircraftFeed.start();
     server.on("close", () => deps.aircraftFeed?.stop());
+  }
+
+  // Radar: announce each new scan so pages fetch the frame once per scan.
+  if (deps.radar) {
+    deps.radar.onScan((scan) => {
+      deps.wsHub.broadcast({ type: "radar", scanTime: scan.scanTime, ts: Date.now() });
+    });
+    deps.radar.start();
+    server.on("close", () => deps.radar?.stop());
   }
 
   // Expose the server's (migrated) config so the boot path in index.ts starts
