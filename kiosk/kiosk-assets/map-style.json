@@ -19,7 +19,20 @@
       }
     },
     {
+      "id": "infrastructure.railwayTrack",
+      "geometry": {
+        "fillColor": "#2c343e",
+        "strokeColor": "#2c343e"
+      }
+    },
+    {
       "id": "natural.land",
+      "geometry": {
+        "fillColor": "#15191f"
+      }
+    },
+    {
+      "id": "infrastructure.urbanArea",
       "geometry": {
         "fillColor": "#15191f"
       }
