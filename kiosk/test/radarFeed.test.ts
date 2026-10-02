@@ -24,7 +24,7 @@ function makeFeed(responses: Record<string, () => RadarFetchResponse | Promise<R
     return r();
   });
   const feed = new RadarFeed({
-    center: { lat: 40.5, lon: -98 }, span: { w: 1, h: 1 }, refreshMs: 300_000, staleMs: 1_200_000,
+    center: { lat: 40.5, lon: -98 }, span: { w: 1, h: 1 }, refreshMs: 300_000, staleMs: 1_200_000, fetchTimeoutMs: 60_000,
     fetcher, now, grid: GRID,
   });
   return { feed, fetcher };
@@ -43,6 +43,69 @@ describe("RadarFeed", () => {
     expect(gunzipSync(s.gz).equals(Buffer.from(s.bytes))).toBe(true);
     expect(seen).toEqual([s.scanTime]);
     expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it("streams the image body when the response has one (no arrayBuffer)", async () => {
+    const buf = png(40, 30, 77);
+    const arrayBuffer = vi.fn(async () => new ArrayBuffer(0));
+    const streamed: RadarFetchResponse = {
+      ok: true, status: 200, json: async () => ({}), arrayBuffer,
+      body: (async function* () { for (let i = 0; i < buf.length; i += 7) yield buf.subarray(i, i + 7); })(),
+    };
+    const { feed } = makeFeed({ json: () => meta("2026-10-01T19:55:00Z"), png: () => streamed });
+    await feed.pollOnce();
+    expect(feed.latest()!.bytes.every((v) => v === 77)).toBe(true);
+    expect(arrayBuffer).not.toHaveBeenCalled();
+  });
+
+  // A body that delivers `from`.. in 7-byte pieces and dies after `cutAt` bytes.
+  function partial(buf: Buffer, from: number, status: number, cutAt = Infinity, etag = '"v1"'): RadarFetchResponse {
+    return {
+      ok: true, status, json: async () => ({}), arrayBuffer: async () => new ArrayBuffer(0),
+      headers: { get: (n: string) => (n.toLowerCase() === "etag" ? etag : null) },
+      body: (async function* () {
+        for (let i = from; i < buf.length; i += 7) {
+          if (i - from >= cutAt) throw new TypeError("terminated");
+          yield buf.subarray(i, i + 7);
+        }
+      })(),
+    };
+  }
+
+  it("a reset mid-download resumes with Range + If-Range from the byte reached", async () => {
+    const buf = png(40, 30, 55);
+    const calls: Array<Record<string, string> | undefined> = [];
+    const fetcher = vi.fn(async (url: string, headers?: Record<string, string>) => {
+      if (url.endsWith(".json")) return meta("2026-10-01T19:55:00Z");
+      calls.push(headers);
+      if (!headers?.Range) return partial(buf, 0, 200, 300);
+      const from = Number(/bytes=(\d+)-/.exec(headers.Range)![1]);
+      return partial(buf, from, 206);
+    });
+    const feed = new RadarFeed({
+      center: { lat: 40.5, lon: -98 }, span: { w: 1, h: 1 }, refreshMs: 300_000, staleMs: 1_200_000, fetchTimeoutMs: 60_000,
+      fetcher, now: () => Date.parse("2026-10-01T20:00:00Z"), grid: GRID,
+    });
+    await feed.pollOnce();
+    expect(feed.latest()!.bytes.every((v) => v === 55)).toBe(true);
+    expect(calls).toEqual([undefined, { Range: "bytes=301-", "If-Range": '"v1"' }]);
+  });
+
+  it("a file that changed before the resume (200, not 206) fails the poll and keeps the last scan", async () => {
+    const buf = png(40, 30, 55);
+    const fetcher = vi.fn(async (url: string, headers?: Record<string, string>) => {
+      if (url.endsWith(".json")) return meta("2026-10-01T19:55:00Z");
+      return headers?.Range ? partial(buf, 0, 200, Infinity, '"v2"') : partial(buf, 0, 200, 300);
+    });
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    const feed = new RadarFeed({
+      center: { lat: 40.5, lon: -98 }, span: { w: 1, h: 1 }, refreshMs: 300_000, staleMs: 1_200_000, fetchTimeoutMs: 60_000,
+      fetcher, now: () => Date.parse("2026-10-01T20:00:00Z"), grid: GRID,
+    });
+    await feed.pollOnce();
+    expect(feed.latest()).toBeNull();
+    expect(String(err.mock.calls[0]?.[0])).toContain("changed");
+    err.mockRestore();
   });
 
   it("an unchanged meta.valid skips the image download and emits nothing", async () => {
@@ -128,7 +191,7 @@ describe("RadarFeed", () => {
   it("a crop box that misses the grid never fetches", async () => {
     const fetcher = vi.fn();
     const err = vi.spyOn(console, "error").mockImplementation(() => {});
-    const feed = new RadarFeed({ center: { lat: 0, lon: 0 }, span: { w: 1, h: 1 }, refreshMs: 1, staleMs: 1, fetcher, grid: GRID });
+    const feed = new RadarFeed({ center: { lat: 0, lon: 0 }, span: { w: 1, h: 1 }, refreshMs: 1, staleMs: 1, fetchTimeoutMs: 1, fetcher, grid: GRID });
     await feed.pollOnce();
     expect(fetcher).not.toHaveBeenCalled();
     expect(feed.latest()).toBeNull();
