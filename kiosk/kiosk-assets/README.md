@@ -23,6 +23,7 @@ Color map (Night desk, the `--kc-map-*` tokens):
 | Land / base | `--kc-map-land` (= `--kc-ground`) | `#15191f` |
 | Built-up areas (`infrastructure.urbanArea`) | `--kc-map-land` — the city reads as the same slate, not Google's navy | `#15191f` |
 | Rail lines (`infrastructure.railwayTrack`) | `--kc-map-road-edge` — quiet, not Google's lavender | `#2c343e` |
+| Commercial districts (`infrastructure.businessCorridor`) | `--kc-map-land` — no blue shopping-area tint | `#15191f` |
 | Water | `--kc-map-water` (= `--kc-well`, the LCD glass) | `#0c1113` |
 | Roads (geometry only, no labels/shields) | `--kc-map-road` (= `--kc-line`) | `#232a31` |
 | Highway stroke | `--kc-map-road-edge` | `#2c343e` |
@@ -37,7 +38,7 @@ colour that isn't one of them — edit the token and the hex together.
 Town names are deliberately dimmed for across-the-room kiosk reading (≈2.9:1
 on land). POIs are hidden as a class — the activity blips are the map's
 subject — EXCEPT the categories that anchor the RF picture, re-enabled
-labels-only (no geometry, dim pin) at `--kc-map-poi`, one step brighter than
+labels-only (each child sets `geometry.visible: false` — re-enabling a label otherwise brings its blue area fill back — dim pin) at `--kc-map-poi`, one step brighter than
 town names:
 hospitals, police, fire stations (public-safety banks), airports (airband),
 theme parks (the WoF business channels).
