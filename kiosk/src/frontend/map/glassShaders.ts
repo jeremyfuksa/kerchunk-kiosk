@@ -1,7 +1,10 @@
+import { radarPaletteGlsl } from "./radarPalette.js";
+
 // GLSL ES 3.00 for the Weather Glass layer. Two programs:
 //  RADAR — georeferenced mesh; samples the real n0q grid (cubic B-spline from
 //          4 bilinear taps: smooths BETWEEN measured samples, never moves or
-//          invents echoes), crossfades prev→next scan in dBZ, palette by dBZ.
+//          invents echoes), crossfades prev→next scan in dBZ, palette by dBZ
+//          from radarPalette.ts (conventional radar meaning, theme-tuned shades).
 //          Index→dBZ is the n0q scale from backend/radar/n0q.ts.
 //  FX    — full-viewport additive pass in drawing-buffer pixels: ambient haze,
 //          afterglows, live transmission fronts. Array sizes = MAX_GLOWS /
@@ -48,17 +51,12 @@ float bspline(sampler2D t, vec2 uv) {
   return g0.y * (g0.x * dbzAt(t, vec2(h0.x, h0.y)) + g1.x * dbzAt(t, vec2(h1.x, h0.y)))
        + g1.y * (g0.x * dbzAt(t, vec2(h0.x, h1.y)) + g1.x * dbzAt(t, vec2(h1.x, h1.y)));
 }
+${radarPaletteGlsl()}
 void main() {
   float d = mix(bspline(uPrev, vUv), bspline(uNext, vUv), uMix);
   float vis = smoothstep(uMinDbz - 2.0, uMinDbz + 3.0, d);
   if (vis <= 0.0) discard;
-  vec3 deep = vec3(0.05, 0.32, 0.34);
-  vec3 seaglass = vec3(0.42, 0.86, 0.74);
-  vec3 amber = vec3(1.0, 0.72, 0.32);
-  vec3 rose = vec3(1.0, 0.32, 0.52);
-  vec3 c = mix(deep, seaglass, smoothstep(uMinDbz, 35.0, d));
-  c = mix(c, amber, smoothstep(35.0, 42.0, d));
-  c = mix(c, rose, smoothstep(50.0, 55.0, d));
+  vec3 c = radarColor(d);
   float a = vis * uOpacity * uAlpha * (0.55 + 0.45 * smoothstep(uMinDbz, 50.0, d));
   O = vec4(c * a, a); // premultiplied
 }`;
