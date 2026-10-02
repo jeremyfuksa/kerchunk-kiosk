@@ -1,6 +1,6 @@
 # Weather Glass — a GPU art layer for the kiosk map
 
-Date: 2026-10-01 · Status: design approved in brainstorm, awaiting spec review
+Date: 2026-10-01 · Status: approved; PR 1 (#282/#283/#284) and PR 2 (#285) shipped. **Amended 2026-10-02 by [`2026-10-02-fixed-stage-event-pacing-design.md`](2026-10-02-fixed-stage-event-pacing-design.md):** fixed camera (no push), event-paced redraws, still hold rim; planned PR 4 dropped; radar source is now QC'd MRMS (#284).
 
 ## Why
 
