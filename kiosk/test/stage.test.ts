@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { padRect, outside, edgeExit, lngLatToViewPx } from "../src/frontend/map/stage.js";
+import { padRect, outside, edgeExit, lngLatToViewPx, occluded, slideClear } from "../src/frontend/map/stage.js";
 
 const VIEW = { left: 0, top: 0, right: 1920, bottom: 1080 };
 
@@ -54,5 +54,28 @@ describe("stage geometry", () => {
     expect(lngLatToViewPx(39, -94.5, box, 1920, 1080).y).toBeGreaterThan(540);
     // A site north of the view projects above the top edge.
     expect(lngLatToViewPx(40.5, -94.5, box, 1920, 1080).y).toBeLessThan(0);
+  });
+
+  // Review I1: the corner LCD expands exactly when a speaker turns audible.
+  const LCD = { left: 29, top: 700, right: 874, bottom: 1051 };
+  const CLOCK = { left: 1500, top: 30, right: 1890, bottom: 200 };
+
+  it("occluded: a pin under the expanded LCD or the clock is hidden", () => {
+    expect(occluded({ x: 300, y: 870 }, [LCD, CLOCK])).toBe(true);
+    expect(occluded({ x: 1700, y: 100 }, [LCD, CLOCK])).toBe(true);
+    expect(occluded({ x: 960, y: 540 }, [LCD, CLOCK])).toBe(false);
+  });
+
+  it("slideClear moves an anchor along its edge out from under an overlay", () => {
+    // bottom edge under the LCD: left is off-screen, so it slides right
+    expect(slideClear({ x: 400, y: 1080 }, [LCD], VIEW, 240)).toEqual({ x: 874 + 240, y: 1080 });
+    // left edge beside the LCD: below is off-screen, so it slides up
+    expect(slideClear({ x: 0, y: 900 }, [LCD], VIEW, 240)).toEqual({ x: 0, y: 700 - 240 });
+    // top edge under the clock: right is off-screen, so it slides left
+    expect(slideClear({ x: 1700, y: 0 }, [CLOCK], VIEW, 240)).toEqual({ x: 1500 - 240, y: 0 });
+  });
+
+  it("slideClear leaves a clear anchor alone", () => {
+    expect(slideClear({ x: 960, y: 0 }, [LCD, CLOCK], VIEW, 240)).toEqual({ x: 960, y: 0 });
   });
 });

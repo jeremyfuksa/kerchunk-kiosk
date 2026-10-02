@@ -42,3 +42,28 @@ export function lngLatToViewPx(lat: number, lng: number, box: LatLngBox, width: 
   const y = ((mercY(box.n) - mercY(lat)) / (mercY(box.n) - mercY(box.s))) * height;
   return { x, y };
 }
+
+/** Inside any overlay rect (the clock, the expanded corner LCD)? A pin there
+ *  is on screen but unseen, so it blooms like an off-frame one. */
+export function occluded(p: Pt, rects: readonly Rect[]): boolean {
+  return rects.some((r) => !outside(p, r));
+}
+
+/** Slide a border anchor along its edge until the bloom (radius `margin`)
+ *  clears every overlay; the nearer in-view side wins. Unchanged when clear. */
+export function slideClear(at: Pt, rects: readonly Rect[], view: Rect, margin: number): Pt {
+  let p = { ...at };
+  for (const r of rects) {
+    const e = { left: r.left - margin, top: r.top - margin, right: r.right + margin, bottom: r.bottom + margin };
+    if (outside(p, e)) continue;
+    const horizontal = p.y <= view.top || p.y >= view.bottom; // anchor on the top/bottom edge
+    const [lo, hi, cur, min, max] = horizontal
+      ? [e.left, e.right, p.x, view.left, view.right]
+      : [e.top, e.bottom, p.y, view.top, view.bottom];
+    const options = [lo, hi].filter((v) => v >= min && v <= max);
+    if (!options.length) continue;
+    const best = options.reduce((a, b) => (Math.abs(b - cur) < Math.abs(a - cur) ? b : a));
+    p = horizontal ? { x: best, y: p.y } : { x: p.x, y: best };
+  }
+  return p;
+}

@@ -7,7 +7,7 @@ import { AircraftLayer } from "./aircraft.js";
 import { GlassLayer } from "./glassLayer.js";
 import { RadarSync, httpRadarFetchers } from "./radarSync.js";
 import { EMPTY_FRAME } from "./glassMath.js";
-import { padRect, outside, edgeExit, lngLatToViewPx, BLOOM_PX } from "./stage.js";
+import { padRect, outside, edgeExit, lngLatToViewPx, occluded, slideClear, BLOOM_PX, type Rect } from "./stage.js";
 import type { EngineEvent } from "../../backend/engine/ScannerEngine.js";
 import icoTower from "lucide-static/icons/radio-tower.svg?raw";
 import { PIN_COLORS, colorFor, categoryFor, type PinCategory } from "../lib/serviceColor.js";
@@ -198,9 +198,18 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
       const W = root.clientWidth, H = root.clientHeight;
       const p = lngLatToViewPx(lat, lng, { n: ne.lat(), s: sw.lat(), e: ne.lng(), w: sw.lng() }, W, H);
       const inner = padRect(W, H, KIOSK_FIT_PAD);
-      if (!outside(p, inner)) return false;
+      // The clock and the corner (which grows into the glass LCD at exactly
+      // this moment) hide pins the fit padding can't know about: measure them
+      // live, once per audible event. A pin under one blooms; a bloom never
+      // lands under one.
+      const overlays: Rect[] = [...document.querySelectorAll(".kc-clock, .kc-corner")]
+        .map((el) => el.getBoundingClientRect())
+        .filter((r) => r.width > 0 && r.height > 0)
+        .map((r) => ({ left: r.left, top: r.top, right: r.right, bottom: r.bottom }));
+      if (!outside(p, inner) && !occluded(p, overlays)) return false;
       const c = { x: (inner.left + inner.right) / 2, y: (inner.top + inner.bottom) / 2 };
-      const at = edgeExit(c, p, { left: 0, top: 0, right: W, bottom: H });
+      const view = { left: 0, top: 0, right: W, bottom: H };
+      const at = slideClear(edgeExit(c, p, view), overlays, view, BLOOM_PX / 2);
       bloom.style.setProperty("--glow-color", color);
       bloom.style.transform = `translate(${Math.round(at.x - BLOOM_PX / 2)}px, ${Math.round(at.y - BLOOM_PX / 2)}px)`;
       bloom.classList.remove("pulse");
@@ -540,7 +549,12 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
         audibleId = ch?.id ?? null; // drives the signal-driven ring re-arm above
         if (ch?.location?.lat != null && ch.location.lon != null) {
           if (follow) punch(ch.location.lat, ch.location.lon);
-          else if (!interactive) bloomToward(ch.location.lat, ch.location.lon, colorFor(ch.freq, "active", tagsFor(ch.freq)));
+          else if (!interactive) {
+            // Measure after the dashboard's next paint: it applies .is-glass
+            // (the corner's full LCD size) on its rAF-coalesced render.
+            const { lat, lon } = ch.location, color = colorFor(ch.freq, "active", tagsFor(ch.freq));
+            setTimeout(() => bloomToward(lat, lon, color), BLOOM_MEASURE_DELAY_MS);
+          }
         }
       } else if (ev.type === "radar") {
         pollRadar(); // a new scan landed — fetch it once
@@ -675,6 +689,10 @@ export const MAP_GROUND = "#15191f";
  *  stands ~50 px above it: top 250 keeps a head clear of the clock + weather
  *  + date (~190 px); bottom clears the idle pill (~70 px + margin). A knob. */
 export const KIOSK_FIT_PAD = { top: 250, left: 80, right: 80, bottom: 120 };
+
+/** Off-frame bloom: wait this long after `audible` before measuring the clock
+ *  and corner overlays, so the corner has grown into the glass LCD. */
+const BLOOM_MEASURE_DELAY_MS = 150;
 
 export const DARK_STYLE = [
   // The --kc-map-* tokens as hex (test/mapStyle pins them to tokens.css).
