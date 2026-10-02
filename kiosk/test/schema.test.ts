@@ -519,6 +519,7 @@ describe("display.glass + radarProduct retirement", () => {
     expect(configSchema.parse(base()).display!.glass).toEqual({
       maxFps: 30, txFps: 60, hazeIntensity: 0, radarOpacity: 0.6,
       radarMinDbz: 15, radarFadeMs: 20_000, txGrowMs: 900,
+      holdFps: 4, signalSteps: 8, fadeSteps: 24,
     });
   });
   it("an old config carrying radarProduct still loads, and the key is stripped", () => {

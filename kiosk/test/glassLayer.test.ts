@@ -80,7 +80,7 @@ describe("GlassLayer when it can't run", () => {
     const setMap = vi.fn();
     let ov: any;
     vi.stubGlobal("google", { maps: { WebGLOverlayView: class { constructor() { ov = this; } requestRedraw = requestRedraw; setMap = setMap; } } });
-    const knobs = { maxFps: 30, txFps: 60, hazeIntensity: 0.35, radarOpacity: 0.6, radarMinDbz: 15, radarFadeMs: 20_000, txGrowMs: 900 };
+    const knobs = { maxFps: 30, txFps: 60, hazeIntensity: 0.35, radarOpacity: 0.6, radarMinDbz: 15, radarFadeMs: 20_000, txGrowMs: 900, holdFps: 4, signalSteps: 8, fadeSteps: 24 };
     const layer = new GlassLayer({ map: {}, home: { lat: 39, lng: -94 }, knobs, getFrame: () => EMPTY_FRAME });
     ov.onContextRestored({ gl: {} });              // not a WebGL2 context (node has none)
     expect(layer.status).toBe("off:no-webgl2");
@@ -89,5 +89,24 @@ describe("GlassLayer when it can't run", () => {
     vi.advanceTimersByTime(5_000);
     expect(requestRedraw).not.toHaveBeenCalled();
     expect(setMap).toHaveBeenLastCalledWith(null);
+  });
+});
+
+describe("GlassLayer pacing", () => {
+  afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
+
+  it("a dropped redraw is retried by the 1 s fallback; poke() requests a redraw", () => {
+    vi.useFakeTimers();
+    const requestRedraw = vi.fn();
+    vi.stubGlobal("google", { maps: { WebGLOverlayView: class { requestRedraw = requestRedraw; setMap = vi.fn(); } } });
+    const knobs = { maxFps: 30, txFps: 60, hazeIntensity: 0, radarOpacity: 0.6, radarMinDbz: 15, radarFadeMs: 20_000, txGrowMs: 900, holdFps: 4, signalSteps: 8, fadeSteps: 24 };
+    const layer = new GlassLayer({ map: {}, home: { lat: 39, lng: -94 }, knobs, getFrame: () => EMPTY_FRAME });
+    requestRedraw.mockClear();
+    vi.advanceTimersByTime(1000);                 // no draw ever came back: the kick retries
+    expect(requestRedraw).toHaveBeenCalled();
+    requestRedraw.mockClear();
+    layer.poke();
+    expect(requestRedraw).toHaveBeenCalledTimes(1);
+    expect(layer.takeRedraws()).toBe(0);           // nothing drew (no GL in node)
   });
 });

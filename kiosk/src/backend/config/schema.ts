@@ -370,6 +370,12 @@ export const configSchema = z.object({
       radarMinDbz: z.number().min(-30).max(60).default(15),       // invisible below (drizzle, clutter)
       radarFadeMs: z.number().int().min(0).max(120_000).default(20_000), // crossfade between scans
       txGrowMs: z.number().int().min(100).max(5_000).default(900),       // front expand time
+      // Event pacing (spec 2026-10-02): the layer redraws only when its scene
+      // visibly changes. A held rim's brightness moves in signalSteps levels at
+      // most holdFps times a second; an afterglow fades in fadeSteps steps.
+      holdFps: z.number().int().min(1).max(30).default(4),
+      signalSteps: z.number().int().min(2).max(32).default(8),
+      fadeSteps: z.number().int().min(4).max(120).default(24),
     }).default({}),
     // Kiosk camera (spec 2026-10-02 "fixed stage"): the wall frames once and
     // never moves on its own — camera moves made Google re-lay-out the vector

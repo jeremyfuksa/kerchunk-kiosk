@@ -8,7 +8,7 @@
 // (never from a fetch callback), so we never fight the map renderer.
 import { RADAR_VS, RADAR_FS, FX_VS, FX_FS } from "./glassShaders.js";
 import {
-  MAX_FRONTS, MAX_GLOWS, mercatorOffsetM, clipToPx,
+  MAX_FRONTS, MAX_GLOWS, mercatorOffsetM, clipToPx, paceDelay,
   type GlassFrame,
 } from "./glassMath.js";
 import type { RadarFrame } from "./radarSync.js";
@@ -19,6 +19,7 @@ declare const google: any;
 export interface GlassKnobs {
   maxFps: number; txFps: number; hazeIntensity: number; radarOpacity: number;
   radarMinDbz: number; radarFadeMs: number; txGrowMs: number;
+  holdFps: number; signalSteps: number; fadeSteps: number;
 }
 
 export interface GlassLayerOptions {
@@ -28,6 +29,8 @@ export interface GlassLayerOptions {
   getFrame: (now: number) => GlassFrame;
 }
 
+// Fallback: if Google drops a requested redraw, retry after this long.
+const KICK_MS = 1000;
 const MESH_DIV = 32; // mesh subdivisions per axis (equirect → Mercator)
 
 type Gl = WebGL2RenderingContext;
@@ -57,6 +60,7 @@ export class GlassLayer {
   private readonly glows = new Float32Array(MAX_GLOWS * 4);
   private readonly glowsC = new Float32Array(MAX_GLOWS * 3);
   private lastFrame: GlassFrame | null = null;
+  private redraws = 0;
 
   /** True once the layer has given up (no WebGL2, shader failure): it is
    *  unmounted and draws nothing, so callers stop feeding it. */
@@ -71,14 +75,14 @@ export class GlassLayer {
     this.ov.onDraw = ({ gl, transformer }: { gl: Gl; transformer: any }) => this.draw(gl, transformer);
     this.ov.onRemove = () => {};
     this.ov.setMap(o.map);
-    this.schedule();
+    this.arm(KICK_MS);
   }
 
-  setRadar(f: RadarFrame): void { this.pending = f; this.ov.requestRedraw(); }
+  setRadar(f: RadarFrame): void { this.pending = f; this.poke(); }
 
   setRadarStale(stale: boolean): void {
     this.fade.setStale(stale, performance.now());
-    this.ov.requestRedraw();
+    this.poke();
   }
 
   private giveUp(status: string): void {
@@ -92,18 +96,48 @@ export class GlassLayer {
     this.ov.setMap(null);
   }
 
-  // ── pacing: redraw at maxFps, txFps while a front grows; idle only when
-  // nothing can change (haze off, no fronts/glows, no fades running).
-  private schedule(): void {
+  // ── pacing (spec 2026-10-02): after every draw, the frame says when it will
+  // next visibly change. Continuous (grow/dissolve/haze/radar fade) → fps
+  // timer; a scheduled change → one timer to that moment; nothing → no timer.
+  // Every armed timer re-arms a KICK_MS fallback, so a redraw Google drops
+  // can't freeze a half-grown front.
+  private arm(delayMs: number): void {
+    if (this.timer) clearTimeout(this.timer);
+    this.timer = setTimeout(() => {
+      this.timer = null;
+      if (this.off) return;
+      this.ov.requestRedraw();
+      this.arm(KICK_MS);
+    }, delayMs);
+  }
+
+  private reschedule(): void {
     if (this.off) return;
-    const now = performance.now();
     const f = this.lastFrame;
-    const fading = this.fade.fading(now);
-    const animating = this.o.knobs.hazeIntensity > 0 || fading
-      || !f || f.fronts.length > 0 || f.glows.length > 0;
-    if (animating) this.ov.requestRedraw();
-    const fps = f?.growing ? this.o.knobs.txFps : this.o.knobs.maxFps;
-    this.timer = setTimeout(() => this.schedule(), animating ? 1000 / Math.max(1, fps) : 1000);
+    if (!f) { this.arm(KICK_MS); return; }
+    const delay = paceDelay(f, Date.now(), {
+      haze: this.o.knobs.hazeIntensity > 0,
+      radarFading: this.fade.fading(performance.now()),
+      maxFps: this.o.knobs.maxFps, txFps: this.o.knobs.txFps,
+    });
+    if (delay === null) {
+      if (this.timer) clearTimeout(this.timer);
+      this.timer = null;
+    } else this.arm(delay);
+  }
+
+  /** An event changed the scene (key-up, release, signal step, seed): draw now. */
+  poke(): void {
+    if (this.off) return;
+    this.ov.requestRedraw();
+    this.arm(KICK_MS);
+  }
+
+  /** Redraws since the last call (diag: glass redraws per minute). */
+  takeRedraws(): number {
+    const n = this.redraws;
+    this.redraws = 0;
+    return n;
   }
 
   private init(raw: WebGLRenderingContext | Gl): void {
@@ -211,6 +245,7 @@ export class GlassLayer {
 
   private draw(gl: Gl, transformer: any): void {
     if (!this.gl || this.gl !== gl || !this.radarProg || !this.fxProg) return;
+    this.redraws++;
     const now = performance.now();
     const saved = saveGl(gl);
     gl.disable(gl.DEPTH_TEST);
@@ -289,6 +324,7 @@ export class GlassLayer {
       gl.drawArrays(gl.TRIANGLES, 0, 3);
     }
     restoreGl(gl, saved);
+    this.reschedule();
   }
 }
 

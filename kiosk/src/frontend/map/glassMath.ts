@@ -77,3 +77,20 @@ export function hexToGlowRgb(hex: string): Rgb {
   const lift = (v: number): number => Math.min(1, (v / 255) * 1.15);
   return [lift((n >> 16) & 255), lift((n >> 8) & 255), lift(n & 255)];
 }
+
+/** Floor for any scheduled redraw delay: a boundary at/before now (float
+ *  rounding) must never spin zero-delay timers. */
+export const MIN_STEP_MS = 16;
+
+/** How long until the glass layer must redraw, from the frame it just drew.
+ *  null = nothing will change on its own (no timer; events poke the layer). */
+export function paceDelay(
+  f: GlassFrame, now: number,
+  o: { haze: boolean; radarFading: boolean; maxFps: number; txFps: number },
+): number | null {
+  if (o.haze || o.radarFading || f.continuous) {
+    return 1000 / Math.max(1, f.growing ? o.txFps : o.maxFps);
+  }
+  if (f.nextChangeAt === null) return null;
+  return Math.max(MIN_STEP_MS, f.nextChangeAt - now);
+}
