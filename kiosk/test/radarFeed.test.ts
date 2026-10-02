@@ -24,7 +24,7 @@ function makeFeed(responses: Record<string, () => RadarFetchResponse | Promise<R
     return r();
   });
   const feed = new RadarFeed({
-    center: { lat: 40.5, lon: -98 }, span: { w: 1, h: 1 }, refreshMs: 300_000, staleMs: 1_200_000, fetchTimeoutMs: 60_000,
+    center: { lat: 40.5, lon: -98 }, span: { w: 1, h: 1 }, refreshMs: 300_000, staleMs: 1_200_000, fetchTimeoutMs: 60_000, product: "n0q",
     fetcher, now, grid: GRID,
   });
   return { feed, fetcher };
@@ -83,7 +83,7 @@ describe("RadarFeed", () => {
       return partial(buf, from, 206);
     });
     const feed = new RadarFeed({
-      center: { lat: 40.5, lon: -98 }, span: { w: 1, h: 1 }, refreshMs: 300_000, staleMs: 1_200_000, fetchTimeoutMs: 60_000,
+      center: { lat: 40.5, lon: -98 }, span: { w: 1, h: 1 }, refreshMs: 300_000, staleMs: 1_200_000, fetchTimeoutMs: 60_000, product: "n0q",
       fetcher, now: () => Date.parse("2026-10-01T20:00:00Z"), grid: GRID,
     });
     await feed.pollOnce();
@@ -91,7 +91,24 @@ describe("RadarFeed", () => {
     expect(calls).toEqual([undefined, { Range: "bytes=301-", "If-Range": '"v1"' }]);
   });
 
-  it("a file that changed before the resume (200, not 206) fails the poll and keeps the last scan", async () => {
+  it("a file that changed before the resume (200, not 206) restarts from fresh meta", async () => {
+    const oldBuf = png(40, 30, 55), newBuf = png(40, 30, 66);
+    let metaCalls = 0, plain = 0;
+    const fetcher = vi.fn(async (url: string, headers?: Record<string, string>) => {
+      if (url.endsWith(".json")) return meta(++metaCalls === 1 ? "2026-10-01T19:55:00Z" : "2026-10-01T19:57:00Z");
+      if (headers?.Range) return partial(newBuf, 0, 200, Infinity, '"v2"');     // changed under us
+      return ++plain === 1 ? partial(oldBuf, 0, 200, 300) : partial(newBuf, 0, 200, Infinity, '"v2"');
+    });
+    const feed = new RadarFeed({
+      center: { lat: 40.5, lon: -98 }, span: { w: 1, h: 1 }, refreshMs: 300_000, staleMs: 1_200_000, fetchTimeoutMs: 60_000, product: "n0q",
+      fetcher, now: () => Date.parse("2026-10-01T20:00:00Z"), grid: GRID,
+    });
+    await feed.pollOnce();
+    expect(feed.latest()!.scanTime).toBe(Date.parse("2026-10-01T19:57:00Z"));
+    expect(feed.latest()!.bytes.every((v) => v === 66)).toBe(true);
+  });
+
+  it("a file that keeps changing gives up after a few attempts and keeps the last scan", async () => {
     const buf = png(40, 30, 55);
     const fetcher = vi.fn(async (url: string, headers?: Record<string, string>) => {
       if (url.endsWith(".json")) return meta("2026-10-01T19:55:00Z");
@@ -99,13 +116,30 @@ describe("RadarFeed", () => {
     });
     const err = vi.spyOn(console, "error").mockImplementation(() => {});
     const feed = new RadarFeed({
-      center: { lat: 40.5, lon: -98 }, span: { w: 1, h: 1 }, refreshMs: 300_000, staleMs: 1_200_000, fetchTimeoutMs: 60_000,
+      center: { lat: 40.5, lon: -98 }, span: { w: 1, h: 1 }, refreshMs: 300_000, staleMs: 1_200_000, fetchTimeoutMs: 60_000, product: "n0q",
       fetcher, now: () => Date.parse("2026-10-01T20:00:00Z"), grid: GRID,
     });
     await feed.pollOnce();
     expect(feed.latest()).toBeNull();
+    expect(fetcher.mock.calls.filter(([u]) => String(u).endsWith(".json"))).toHaveLength(3);
+    expect(err).toHaveBeenCalledTimes(1);
     expect(String(err.mock.calls[0]?.[0])).toContain("changed");
     err.mockRestore();
+  });
+
+  it("mrms: reads meta.start_valid, and missing-coverage 255 becomes no-echo 0", async () => {
+    const buf = png(40, 30, 255);
+    const fetcher = vi.fn(async (url: string) => url.endsWith(".json")
+      ? { ok: true, status: 200, json: async () => ({ meta: { start_valid: "2026-10-01T19:58:00Z", end_valid: "2026-10-01T19:58:00Z" } }), arrayBuffer: async () => new ArrayBuffer(0) }
+      : image(buf));
+    const feed = new RadarFeed({
+      center: { lat: 40.5, lon: -98 }, span: { w: 1, h: 1 }, refreshMs: 300_000, staleMs: 1_200_000, fetchTimeoutMs: 60_000,
+      product: "mrms", fetcher, now: () => Date.parse("2026-10-01T20:00:00Z"), grid: GRID,
+    });
+    await feed.pollOnce();
+    expect(feed.latest()!.scanTime).toBe(Date.parse("2026-10-01T19:58:00Z"));
+    expect(feed.latest()!.bytes.every((v) => v === 0)).toBe(true);
+    expect(String(fetcher.mock.calls[0]![0])).toMatch(/mrms\/lcref\.json$/);
   });
 
   it("an unchanged meta.valid skips the image download and emits nothing", async () => {
@@ -191,7 +225,7 @@ describe("RadarFeed", () => {
   it("a crop box that misses the grid never fetches", async () => {
     const fetcher = vi.fn();
     const err = vi.spyOn(console, "error").mockImplementation(() => {});
-    const feed = new RadarFeed({ center: { lat: 0, lon: 0 }, span: { w: 1, h: 1 }, refreshMs: 1, staleMs: 1, fetchTimeoutMs: 1, fetcher, grid: GRID });
+    const feed = new RadarFeed({ center: { lat: 0, lon: 0 }, span: { w: 1, h: 1 }, refreshMs: 1, staleMs: 1, fetchTimeoutMs: 1, product: "n0q", fetcher, grid: GRID });
     await feed.pollOnce();
     expect(fetcher).not.toHaveBeenCalled();
     expect(feed.latest()).toBeNull();

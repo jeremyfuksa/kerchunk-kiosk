@@ -1,12 +1,12 @@
 // Live NEXRAD for the kiosk's Weather Glass layer (spec 2026-10-01). Polls
-// IEM's tiny n0q_0.json for the scan time and downloads the 4.6 MB national
+// IEM's tiny <product>.json for the scan time and downloads the national
 // composite only when it advances, decoding just the crop around the QTH. A
 // failure of any kind keeps the last good scan: staleness (not an error) is
 // what makes the frontend fade radar out, so old weather is never shown as
 // current. Lifecycle mirrors AircraftFeed: start/stop + an injectable fetcher.
 import { gzip } from "node:zlib";
 import { promisify } from "node:util";
-import { cropWindow, IEM_USCOMP, type Bounds, type CropWindow, type WorldGrid } from "./crop.js";
+import { cropWindow, IEM_MRMS, IEM_USCOMP, type Bounds, type CropWindow, type WorldGrid } from "./crop.js";
 import { decodeIndexedCrop } from "./pngIndexed.js";
 
 const gzipAsync = promisify(gzip);
@@ -18,8 +18,27 @@ const FUTURE_SLACK_MS = 10 * 60_000;
 // every 80-120 s). Each reset resumes with a Range request from the byte
 // reached; this caps resumes per poll, and only resets that made progress count.
 const MAX_RESUMES = 8;
+// MRMS publishes every 2 min; when the file changes before a resume, the
+// partial bytes are useless, so the poll starts over from fresh meta (which
+// names the new scan) this many times before waiting for the next cycle.
+const MAX_ATTEMPTS = 3;
+
+class ImageChangedError extends Error {}
 
 export const IEM_N0Q_BASE = "https://mesonet.agron.iastate.edu/data/gis/images/4326/USCOMP/n0q_0";
+
+/** Both products store index = (dBZ + 32) * 2, 0 = no echo, so the glass
+ *  shader's one formula covers either (n0q.ts).
+ *  - "mrms": MRMS SeamlessHSR (IEM lcref, every 2 min, 0.01 deg, ~720 KB).
+ *    NOAA QC strips clear-air return (insects, birds, refraction) that shows
+ *    as a 15-25 dBZ wash on fair days. 255 = missing coverage -> 0 (else it
+ *    would read as 95.5 dBZ). Source: akrherz/iem scripts/mrms/mrms_lcref_comp.py.
+ *  - "n0q": raw NEXRAD base reflectivity (0.005 deg, ~4.6 MB), unfiltered. */
+export type RadarProduct = "mrms" | "n0q";
+export const RADAR_PRODUCTS: Record<RadarProduct, { base: string; grid: WorldGrid; metaKey: "valid" | "start_valid"; missingIndex: number | null }> = {
+  mrms: { base: "https://mesonet.agron.iastate.edu/data/gis/images/4326/mrms/lcref", grid: IEM_MRMS, metaKey: "start_valid", missingIndex: 255 },
+  n0q: { base: IEM_N0Q_BASE, grid: IEM_USCOMP, metaKey: "valid", missingIndex: null },
+};
 
 export interface RadarScan {
   scanTime: number;
@@ -27,7 +46,7 @@ export interface RadarScan {
   bounds: Bounds;
   width: number;
   height: number;
-  /** Raw n0q indices, row-major, north row first. */
+  /** Raw indices (dBZ = -32 + 0.5*i, 0 = none), row-major, north row first. */
   bytes: Uint8Array;
   /** `bytes`, gzip'd once per scan for /api/radar/frame. */
   gz: Buffer;
@@ -60,6 +79,8 @@ export interface RadarFeedOpts {
   /** Per-request timeout. The whole image download must fit inside it, so on
    *  a slow link it needs headroom (config.display.radar.fetchTimeoutMs). */
   fetchTimeoutMs: number;
+  /** Which IEM composite (config.display.radar.source). Default "mrms". */
+  product?: RadarProduct;
   baseUrl?: string;
   fetcher?: (url: string, headers?: Record<string, string>) => Promise<RadarFetchResponse>;
   now?: () => number;
@@ -71,6 +92,8 @@ export class RadarFeed implements RadarSource {
   private readonly win: CropWindow | null;
   private readonly grid: WorldGrid;
   private readonly base: string;
+  private readonly metaKey: "valid" | "start_valid";
+  private readonly missingIndex: number | null;
   private readonly refreshMs: number;
   private readonly staleMs: number;
   private readonly fetcher: (url: string, headers?: Record<string, string>) => Promise<RadarFetchResponse>;
@@ -82,10 +105,13 @@ export class RadarFeed implements RadarSource {
   private failStreak = 0;
 
   constructor(opts: RadarFeedOpts) {
-    this.grid = opts.grid ?? IEM_USCOMP;
+    const spec = RADAR_PRODUCTS[opts.product ?? "mrms"];
+    this.grid = opts.grid ?? spec.grid;
+    this.metaKey = spec.metaKey;
+    this.missingIndex = spec.missingIndex;
     this.win = cropWindow(this.grid, opts.center, opts.span);
     if (!this.win) console.error("[radar] crop box is outside the radar grid; radar disabled");
-    this.base = opts.baseUrl ?? IEM_N0Q_BASE;
+    this.base = opts.baseUrl ?? spec.base;
     this.refreshMs = opts.refreshMs;
     this.staleMs = opts.staleMs;
     this.fetcher = opts.fetcher ?? ((u, headers) => fetch(u, { headers, signal: AbortSignal.timeout(opts.fetchTimeoutMs) }));
@@ -116,33 +142,50 @@ export class RadarFeed implements RadarSource {
     const win = this.win;
     if (!win) return;
     try {
-      const metaRes = await this.fetcher(`${this.base}.json`);
-      if (!metaRes.ok) throw new Error(`meta HTTP ${metaRes.status}`);
-      const body = await metaRes.json() as { meta?: { valid?: unknown } };
-      const scanTime = typeof body?.meta?.valid === "string" ? Date.parse(body.meta.valid) : NaN;
-      if (!Number.isFinite(scanTime)) throw new Error("meta.valid missing or unparseable");
-      if (scanTime > this.now() + FUTURE_SLACK_MS) throw new Error(`meta.valid ${body.meta?.valid} is in the future`);
-      // Any CHANGE is a new scan (not only an increase), so a corrected
-      // backwards timestamp can't freeze the feed either.
-      if (this.scan && scanTime === this.scan.scanTime) { this.failStreak = 0; return; }
-
-      const crop = await decodeIndexedCrop(this.imageBytes(`${this.base}.png`), win);
-      if (crop.imageWidth !== this.grid.width || crop.imageHeight !== this.grid.height) {
-        throw new Error(`image is ${crop.imageWidth}x${crop.imageHeight}, grid expects ${this.grid.width}x${this.grid.height}`);
+      for (let attempt = 1; ; attempt++) {
+        try {
+          await this.attempt(win);
+          break;
+        } catch (err) {
+          if (!(err instanceof ImageChangedError) || attempt >= MAX_ATTEMPTS) throw err;
+        }
       }
-      const gz = await gzipAsync(crop.bytes);
-      this.scan = {
-        scanTime, fetchedAt: this.now(), bounds: win.bounds,
-        width: crop.width, height: crop.height, bytes: crop.bytes, gz,
-      };
       this.failStreak = 0;
-      this.cb?.(this.scan);
     } catch (err) {
       this.failStreak++;
       if (this.failStreak === 1) {
         console.error(`[radar] feed error: ${err instanceof Error ? err.message : String(err)}`.slice(0, 200));
       }
     }
+  }
+
+  /** Meta, then (if the scan advanced) download, crop and publish. */
+  private async attempt(win: CropWindow): Promise<void> {
+    const metaRes = await this.fetcher(`${this.base}.json`);
+    if (!metaRes.ok) throw new Error(`meta HTTP ${metaRes.status}`);
+    const body = await metaRes.json() as { meta?: Record<string, unknown> };
+    const valid = body?.meta?.[this.metaKey];
+    const scanTime = typeof valid === "string" ? Date.parse(valid) : NaN;
+    if (!Number.isFinite(scanTime)) throw new Error(`meta.${this.metaKey} missing or unparseable`);
+    if (scanTime > this.now() + FUTURE_SLACK_MS) throw new Error(`meta.${this.metaKey} ${String(valid)} is in the future`);
+    // Any CHANGE is a new scan (not only an increase), so a corrected
+    // backwards timestamp can't freeze the feed either.
+    if (this.scan && scanTime === this.scan.scanTime) return;
+
+    const crop = await decodeIndexedCrop(this.imageBytes(`${this.base}.png`), win);
+    if (crop.imageWidth !== this.grid.width || crop.imageHeight !== this.grid.height) {
+      throw new Error(`image is ${crop.imageWidth}x${crop.imageHeight}, grid expects ${this.grid.width}x${this.grid.height}`);
+    }
+    if (this.missingIndex !== null) {
+      const miss = this.missingIndex;
+      for (let i = 0; i < crop.bytes.length; i++) if (crop.bytes[i] === miss) crop.bytes[i] = 0;
+    }
+    const gz = await gzipAsync(crop.bytes);
+    this.scan = {
+      scanTime, fetchedAt: this.now(), bounds: win.bounds,
+      width: crop.width, height: crop.height, bytes: crop.bytes, gz,
+    };
+    this.cb?.(this.scan);
   }
 
   /** The image's bytes as they arrive, resuming after mid-stream resets. The
@@ -153,7 +196,7 @@ export class RadarFeed implements RadarSource {
       const resume = offset > 0 && etag !== null;
       const res = await this.fetcher(url, resume ? { Range: `bytes=${offset}-`, "If-Range": etag! } : undefined);
       if (!res.ok) throw new Error(`image HTTP ${res.status}`);
-      if (resume && res.status !== 206) throw new Error("image changed mid-download");
+      if (resume && res.status !== 206) throw new ImageChangedError("image changed mid-download");
       if (!resume) etag = res.headers?.get("etag") ?? null;
       if (!res.body) { yield new Uint8Array(await res.arrayBuffer()); return; }
       const before = offset;

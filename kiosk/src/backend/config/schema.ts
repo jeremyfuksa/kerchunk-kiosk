@@ -353,6 +353,9 @@ export const configSchema = z.object({
     // cover the home framing plus the camera push.
     radar: z.object({
       enabled: z.boolean().default(true),
+      // "mrms" = NOAA-QC'd MRMS reflectivity (no clear-air insect/bird wash,
+      // ~720 KB); "n0q" = raw NEXRAD base reflectivity (~4.6 MB). Boot-time.
+      source: z.enum(["mrms", "n0q"]).default("mrms"),
       refreshMs: z.number().int().min(60_000).default(300_000),
       staleMs: z.number().int().min(60_000).default(1_200_000),
       // Per-request timeout for IEM. The image streams and stops once the
