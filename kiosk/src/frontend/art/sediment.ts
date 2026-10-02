@@ -1,7 +1,7 @@
 // Pure accumulator for the artistic kiosk. Each transmission is an INDEPENDENT
 // site key-up — deposits never link to other sites. A site accrues per-service
 // strata (sub-layers within its own footprint) and a decaying "breath" from
-// the most recent hit. Modeled on BlipField; rendered by art.ts each tick.
+// the most recent hit. Modeled on the map's former BlipField; rendered by art.ts each tick.
 
 export { startOfLocalDay, startOfNextLocalDay } from "../lib/localDay.js";
 

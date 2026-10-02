@@ -1322,6 +1322,14 @@ describe("kiosk reload", () => {
 });
 
 describe("kiosk render diag", () => {
+  it("POST /api/kiosk/diag accepts a pacing report", async () => {
+    const { server } = makeApp();
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    await request(server).post("/api/kiosk/diag").send({ kind: "pacing", glassRedrawsPerMin: 37.5 }).expect(200);
+    expect(err.mock.calls.some(([m]) => String(m).includes("glass redraws=37.5/min"))).toBe(true);
+    await request(server).post("/api/kiosk/diag").send({ kind: "pacing", glassRedrawsPerMin: "lots" }).expect(400);
+    err.mockRestore();
+  });
   it("POST /api/kiosk/diag accepts a well-formed report and rejects junk", async () => {
     const { server } = makeApp();
     await request(server).post("/api/kiosk/diag").send({ renderingType: "VECTOR", fps: 59.9, p95Ms: 17.2, maxMs: 33.4 }).expect(200);
