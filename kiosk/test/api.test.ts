@@ -1328,6 +1328,16 @@ describe("kiosk render diag", () => {
     await request(server).post("/api/kiosk/diag").send({ renderingType: "VECTOR", fps: "fast" }).expect(400);
     await request(server).post("/api/kiosk/diag").send({}).expect(400);
   });
+
+  it("POST /api/kiosk/diag logs the optional glass status, sanitised", async () => {
+    const { server } = makeApp();
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = await request(server).post("/api/kiosk/diag")
+      .send({ renderingType: "VECTOR", fps: 30, p95Ms: 34, maxMs: 40, glass: "off:no-webgl2<script>" });
+    expect(res.status).toBe(200);
+    expect(err.mock.calls.at(-1)?.[0]).toBe("[kiosk] map rendering=VECTOR display=30 fps p95=34 ms max=40 ms glass=off:no-webgl2script");
+    err.mockRestore();
+  });
 });
 
 describe("kiosk heartbeat", () => {

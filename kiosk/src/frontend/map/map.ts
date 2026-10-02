@@ -4,6 +4,9 @@ import { esc, fmtFreq } from "../lib/format.js";
 import { BlipField, coverageRadiusM } from "./blips.js";
 import { heldTxRadius } from "./txRing.js";
 import { AircraftLayer } from "./aircraft.js";
+import { GlassLayer } from "./glassLayer.js";
+import { RadarSync, httpRadarFetchers } from "./radarSync.js";
+import { EMPTY_FRAME } from "./glassMath.js";
 import type { EngineEvent } from "../../backend/engine/ScannerEngine.js";
 import icoTower from "lucide-static/icons/radio-tower.svg?raw";
 import { PIN_COLORS, colorFor, categoryFor, type PinCategory } from "../lib/serviceColor.js";
@@ -79,7 +82,7 @@ export function renderMap(root: HTMLElement): void {
     <div id="gmap"></div>
     <div class="mapLegend">
       <span class="lgAnt"></span> Pins are sites by service · a grey ? is unclassified
-      <span class="lgNote">Edge glow: activity with no known location · Weather: live NEXRAD</span>
+      <span class="lgNote">Edge glow: activity with no known location · Weather: live NEXRAD (IEM)</span>
     </div>
     <div id="mapMsg" class="mapMsg"></div>
   </div>`;
@@ -162,11 +165,6 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
     // idle loop. The layer is inert until the first snapshot arrives.
     const aircraft = new AircraftLayer(map, geo, cfg.aircraft?.trails ?? false);
 
-    // Kiosk render diagnostic (one journal line per page load): which renderer
-    // Google gave us -- VECTOR needs working WebGL, RASTER is its choppier
-    // fallback -- and the display's real frame pacing. Motion-smoothness work
-    // needs this, and the kiosk has no devtools.
-    if (!interactive) reportRenderDiag(map);
 
     // Edge glow: a hit with no honest map position has nowhere truthful to sit,
     // so instead of a synthetic dot we pulse the screen edges in the band's
@@ -187,90 +185,33 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
       glow.classList.add("pulse");
     }
 
-    // ── Radar overlay (ROADMAP Idea 2 follow-on, the SAME cross-tie: a warning
-    // banner with live precipitation under it). Three keyless products,
-    // selected by display.radarProduct:
-    //   "n0q" (default) — IEM cached NEXRAD base-reflectivity mosaic, ~5 min,
-    //     ready-made XYZ tiles. Familiar green dBZ palette, but raw: paints
-    //     clear-air green (bugs, ground clutter, AP) on dry days.
-    //   "mrms-reflectivity" — NOAA MRMS quality-controlled 1 km base
-    //     reflectivity (ArcGIS export, ~2 min). Same green palette, but
-    //     dual-pol QC strips the clear-air clutter, so dry days stay clean.
-    //   "mrms-preciprate" — IEM MRMS Q3 2-minute precipitation (WMS GetMap, ~2
-    //     min). Fully precip-gated, but a rainfall-rate palette (blue = light)
-    //     with low 2-minute dynamic range.
-    // The MRMS products have no XYZ scheme, so we hand-compute each tile's Web
-    // Mercator bbox. Every product is transparent where there's no weather (a
-    // dry day costs nothing; offline it just 404s to absence) and renders under
-    // every marker/circle so blips and coverage stay on top.
-    const radarProduct = cfg.display?.radarProduct ?? "n0q";
-    // Web Mercator (EPSG:3857) world half-extent in meters — the edge of the
-    // tile grid. A z-level splits 2×MERC_MAX into 2^z equal tiles per axis.
-    const MERC_MAX = 20037508.342789244;
-    function tileBbox(x: number, y: number, z: number): string {
-      const span = (MERC_MAX * 2) / Math.pow(2, z);
-      const minx = -MERC_MAX + x * span;
-      const maxx = -MERC_MAX + (x + 1) * span;
-      // Google tile rows count down from the north; mercator Y counts up.
-      const maxy = MERC_MAX - y * span;
-      const miny = MERC_MAX - (y + 1) * span;
-      return `${minx},${miny},${maxx},${maxy}`;
+    // ── Weather Glass (spec 2026-10-01): one GPU layer inside Google's GL
+    // context. Radar is IEM's real n0q composite, cropped by the backend
+    // (/api/radar) and crossfaded between scans. Needs a vector map (Map ID).
+    const display = cfg.display!;
+    const glass = mapId
+      ? new GlassLayer({ map, home, knobs: display.glass, getFrame: () => EMPTY_FRAME })
+      : null;
+    const glassStatus = (): string => (glass ? glass.status : "off:no-mapid");
+    const radarSync = glass && display.radar.enabled
+      ? new RadarSync({
+          ...httpRadarFetchers,
+          onFrame: (f) => glass.setRadar(f),
+          onStale: (stale) => glass.setRadarStale(stale),
+          staleMs: display.radar.staleMs,
+        })
+      : null;
+    if (radarSync) {
+      void radarSync.poll();
+      setInterval(() => void radarSync.poll(), display.radar.refreshMs);
+      setInterval(() => radarSync.checkStale(), 30_000);
     }
-    type RadarSpec = {
-      tileUrl: (x: number, y: number, z: number, epoch: number) => string;
-      opacity: number;
-      name: string;
-      refreshMs: number;
-    };
-    const RADAR = {
-      "n0q": {
-        tileUrl: (x, y, z, epoch) =>
-          `https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-900913/${z}/${x}/${y}.png?_=${epoch}`,
-        opacity: 0.55,
-        name: "nexrad",
-        refreshMs: 5 * 60_000,
-      },
-      "mrms-reflectivity": {
-        tileUrl: (x, y, z, epoch) =>
-          "https://mapservices.weather.noaa.gov/eventdriven/rest/services"
-          + "/radar/radar_base_reflectivity/MapServer/export"
-          + `?bbox=${tileBbox(x, y, z)}&bboxSR=3857&imageSR=3857&size=256,256`
-          + `&format=png32&transparent=true&layers=show:0&f=image&_=${epoch}`,
-        opacity: 0.55,
-        name: "mrms-qc",
-        refreshMs: 2 * 60_000,
-      },
-      "mrms-preciprate": {
-        tileUrl: (x, y, z, epoch) =>
-          "https://mesonet.agron.iastate.edu/cgi-bin/wms/us/mrms.cgi"
-          + "?service=WMS&version=1.1.1&request=GetMap&layers=mrms_a2m&styles="
-          + "&srs=EPSG:3857&width=256&height=256&format=image/png&transparent=true"
-          + `&bbox=${tileBbox(x, y, z)}&_=${epoch}`,
-        // Precip-rate tiles are sparser than a reflectivity wash; a touch more
-        // opacity keeps light rain legible across the room.
-        opacity: 0.65,
-        name: "mrms-rate",
-        refreshMs: 2 * 60_000,
-      },
-    } satisfies Record<string, RadarSpec>;
-    const spec = RADAR[radarProduct];
-    let radarEpoch = Date.now();
-    function radarLayer(): any {
-      return new google.maps.ImageMapType({
-        getTileUrl: (c: { x: number; y: number }, z: number) =>
-          spec.tileUrl(c.x, c.y, z, radarEpoch),
-        tileSize: new google.maps.Size(256, 256),
-        opacity: spec.opacity,
-        name: spec.name,
-      });
-    }
-    map.overlayMapTypes.push(radarLayer());
-    setInterval(() => {
-      // Swap in a fresh epoch so tiles re-fetch past the browser cache.
-      radarEpoch = Date.now();
-      map.overlayMapTypes.pop();
-      map.overlayMapTypes.push(radarLayer());
-    }, spec.refreshMs);
+
+    // Kiosk render diagnostic (one journal line per page load): which renderer
+    // Google gave us -- VECTOR needs working WebGL, RASTER is its choppier
+    // fallback -- and the display's real frame pacing, plus the glass layer's
+    // status. Motion-smoothness work needs this, and the kiosk has no devtools.
+    if (!interactive) reportRenderDiag(map, glassStatus);
 
     // Home: the kiosk's own antenna. Small, dim, unmistakable.
     new google.maps.Marker({
@@ -559,6 +500,8 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
         if (ch?.location?.lat != null && ch.location.lon != null) {
           punch(ch.location.lat, ch.location.lon);
         }
+      } else if (ev.type === "radar") {
+        void radarSync?.poll(); // a new scan landed — fetch it once
       } else if (ev.type === "aircraft") {
         // Full snapshot each poll — reconcile the marker set. No wake(): the
         // aircraft layer manages its own Google Maps markers and is independent
@@ -711,7 +654,7 @@ export const DARK_STYLE = [
 // loop runs only for those 2 s (no standing rAF: thermal rule).
 const DIAG_SETTLE_MS = 8000;
 const DIAG_MS = 2000;
-function reportRenderDiag(map: { getRenderingType?: () => string }): void {
+function reportRenderDiag(map: { getRenderingType?: () => string }, glassStatus: () => string): void {
   setTimeout(() => {
     const gaps: number[] = [];
     let last = 0;
@@ -728,6 +671,7 @@ function reportRenderDiag(map: { getRenderingType?: () => string }): void {
         fps: Math.round((1000 / mean) * 10) / 10,
         p95Ms: Math.round((gaps[Math.floor(gaps.length * 0.95)] ?? mean) * 10) / 10,
         maxMs: Math.round((gaps[gaps.length - 1] ?? mean) * 10) / 10,
+        glass: glassStatus(),
       };
       void fetch("/api/kiosk/diag", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) })
         .catch(() => { /* best-effort */ });

@@ -512,3 +512,21 @@ describe("display.radar", () => {
     expect(() => configSchema.parse({ ...base(), display: { ...base().display, radar: { refreshMs: 1000 } } })).toThrow();
   });
 });
+
+describe("display.glass + radarProduct retirement", () => {
+  const base = () => ({ ...defaultConfig(), display: { weatherLat: 39.1, weatherLon: -94.58 } });
+  it("fills the glass defaults", () => {
+    expect(configSchema.parse(base()).display!.glass).toEqual({
+      maxFps: 30, txFps: 60, hazeIntensity: 0.35, radarOpacity: 0.6,
+      radarMinDbz: 15, radarFadeMs: 20_000, txGrowMs: 900,
+    });
+  });
+  it("an old config carrying radarProduct still loads, and the key is stripped", () => {
+    const cfg = configSchema.parse({ ...base(), display: { ...base().display, radarProduct: "mrms-reflectivity" } });
+    expect("radarProduct" in cfg.display!).toBe(false);
+  });
+  it("rejects out-of-range knobs", () => {
+    expect(() => configSchema.parse({ ...base(), display: { ...base().display, glass: { maxFps: 0 } } })).toThrow();
+    expect(() => configSchema.parse({ ...base(), display: { ...base().display, glass: { hazeIntensity: 2 } } })).toThrow();
+  });
+});

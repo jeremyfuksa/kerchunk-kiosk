@@ -334,19 +334,9 @@ export const configSchema = z.object({
     mapLat: z.number().optional(),
     mapLon: z.number().optional(),
     mapZoom: z.number().int().optional(),
-    // Radar overlay product (defaults to "n0q").
-    //   "n0q" — IEM's cached NEXRAD base-reflectivity mosaic. Familiar green
-    //     dBZ palette, but raw: paints clear-air green (bugs, ground clutter,
-    //     AP) on dry days.
-    //   "mrms-reflectivity" — NOAA's MRMS quality-controlled 1 km base
-    //     reflectivity. Same green palette as n0q, but dual-pol QC strips the
-    //     clear-air clutter, so dry days stay clean. Best of both.
-    //   "mrms-preciprate" — IEM MRMS Q3 2-minute precipitation. Fully
-    //     precip-gated (empty over clear air), but a rainfall-rate palette
-    //     (blue = light) with low 2-minute dynamic range.
-    radarProduct: z
-      .enum(["n0q", "mrms-reflectivity", "mrms-preciprate"])
-      .optional(),
+    // (radarProduct — the retired n0q/MRMS tile picker — is gone: Weather
+    // Glass draws IEM's raw n0q composite itself. Old config files that still
+    // carry it parse fine; zod strips the unknown key.)
     // Live NEXRAD for the Weather Glass layer (backend/radar/RadarFeed.ts).
     // Read at boot like aircraft.*: changing it needs a kerchunk-kiosk restart.
     // spanDeg is the crop box around the QTH (degrees lon x lat); it must
@@ -366,6 +356,17 @@ export const configSchema = z.object({
         w: z.number().positive().max(20).default(4),
         h: z.number().positive().max(15).default(3),
       }).default({}),
+    }).default({}),
+    // Weather Glass layer (frontend/map/glassLayer.ts). Reaches the wall on
+    // its next load: PUT /api/config, then POST /api/kiosk/reload.
+    glass: z.object({
+      maxFps: z.number().int().min(1).max(60).default(30),        // steady redraw rate
+      txFps: z.number().int().min(1).max(60).default(60),         // while a front is growing
+      hazeIntensity: z.number().min(0).max(1).default(0.35),      // ambient haze, 0 = off
+      radarOpacity: z.number().min(0).max(1).default(0.6),
+      radarMinDbz: z.number().min(-30).max(60).default(15),       // invisible below (drizzle, clutter)
+      radarFadeMs: z.number().int().min(0).max(120_000).default(20_000), // crossfade between scans
+      txGrowMs: z.number().int().min(100).max(5_000).default(900),       // front expand time
     }).default({}),
   }).optional(),
   // Aircraft overlay (network ADS-B): plots airborne targets near the QTH on
