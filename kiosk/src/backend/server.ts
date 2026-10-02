@@ -1330,7 +1330,9 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
           width: scan.width, height: scan.height, stale: deps.radar.isStale(),
         });
       }
-      const etag = `"${scan.scanTime}"`;
+      // Geometry rides in the ETag: after a spanDeg/QTH change inside one
+      // scan, a cached frame of the OLD crop must not revalidate as current.
+      const etag = `"${scan.scanTime}-${scan.width}x${scan.height}-${scan.bounds.w},${scan.bounds.n}"`;
       if (req.headers["if-none-match"] === etag) { res.writeHead(304, { etag }); res.end(); return; }
       res.writeHead(200, {
         "content-type": "application/octet-stream", "content-encoding": "gzip",

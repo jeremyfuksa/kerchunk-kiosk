@@ -85,9 +85,14 @@ describe("radar routes", () => {
     expect(res.status).toBe(200);
     expect(res.headers["content-encoding"]).toBe("gzip");
     expect(res.headers["content-type"]).toBe("application/octet-stream");
-    expect(res.headers.etag).toBe('"1790000000000"');
+    // Geometry is part of the ETag: a span/QTH change inside one scan must not
+    // revalidate a cached frame of the old crop.
+    expect(res.headers.etag).toBe('"1790000000000-3x2--95,40"');
     expect(maybeGunzip(res.body as Buffer).equals(Buffer.from([0, 104, 120, 255, 64, 1]))).toBe(true);
-    const again = await request(server).get("/api/radar/frame").set("If-None-Match", '"1790000000000"');
+    const again = await request(server).get("/api/radar/frame").set("If-None-Match", '"1790000000000-3x2--95,40"');
+    expect(again.status).toBe(304);
+    const oldCrop = await request(server).get("/api/radar/frame").set("If-None-Match", '"1790000000000"');
+    expect(oldCrop.status).toBe(200);
     expect(again.status).toBe(304);
   });
 

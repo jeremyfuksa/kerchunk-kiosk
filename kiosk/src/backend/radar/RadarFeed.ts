@@ -11,6 +11,10 @@ import { decodeIndexedCrop } from "./pngIndexed.js";
 
 const gzipAsync = promisify(gzip);
 const FETCH_TIMEOUT_MS = 60_000;
+// A scan time this far past our clock is bogus (or our clock is wrong at
+// boot): accepting it would pin that frame as "current" — never stale, and
+// every later real scan would look older and be skipped.
+const FUTURE_SLACK_MS = 10 * 60_000;
 
 export const IEM_N0Q_BASE = "https://mesonet.agron.iastate.edu/data/gis/images/4326/USCOMP/n0q_0";
 
@@ -107,7 +111,10 @@ export class RadarFeed implements RadarSource {
       const body = await metaRes.json() as { meta?: { valid?: unknown } };
       const scanTime = typeof body?.meta?.valid === "string" ? Date.parse(body.meta.valid) : NaN;
       if (!Number.isFinite(scanTime)) throw new Error("meta.valid missing or unparseable");
-      if (this.scan && scanTime <= this.scan.scanTime) { this.failStreak = 0; return; }
+      if (scanTime > this.now() + FUTURE_SLACK_MS) throw new Error(`meta.valid ${body.meta?.valid} is in the future`);
+      // Any CHANGE is a new scan (not only an increase), so a corrected
+      // backwards timestamp can't freeze the feed either.
+      if (this.scan && scanTime === this.scan.scanTime) { this.failStreak = 0; return; }
 
       const imgRes = await this.fetcher(`${this.base}.png`);
       if (!imgRes.ok) throw new Error(`image HTTP ${imgRes.status}`);

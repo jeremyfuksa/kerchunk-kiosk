@@ -99,6 +99,22 @@ describe("RadarFeed", () => {
     err.mockRestore();
   });
 
+  it("a far-future meta.valid is rejected, and any changed scanTime counts as new (no freeze)", async () => {
+    // Clock skew at boot or a bogus IEM value must not pin one frame as "current".
+    let valid = "2026-10-01T23:00:00Z";            // 3 h ahead of the fake clock
+    const { feed } = makeFeed({ json: () => meta(valid), png: () => image(png(40, 30, 120)) });
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    await feed.pollOnce();
+    expect(feed.latest()).toBeNull();
+    valid = "2026-10-01T19:55:00Z";
+    await feed.pollOnce();
+    expect(feed.latest()!.scanTime).toBe(Date.parse(valid));
+    valid = "2026-10-01T19:50:00Z";                 // IEM corrected itself backwards
+    await feed.pollOnce();
+    expect(feed.latest()!.scanTime).toBe(Date.parse(valid));
+    err.mockRestore();
+  });
+
   it("isStale: true with no scan, flips true past staleMs after scanTime", async () => {
     let t = Date.parse("2026-10-01T20:00:00Z");
     const { feed } = makeFeed({ json: () => meta("2026-10-01T19:55:00Z"), png: () => image(png(40, 30, 1)) }, () => t);
