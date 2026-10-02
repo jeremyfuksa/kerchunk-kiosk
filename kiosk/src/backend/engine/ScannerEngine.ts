@@ -148,6 +148,9 @@ export type EngineEvent =
   // the server from the poller, like "alert"; rides the union so the WS hub
   // and dashboards treat it like any other event.
   | { type: "aircraft"; targets: AircraftTarget[]; ts: number }
+  // A new radar scan landed in RadarFeed (Weather Glass): the page fetches
+  // /api/radar/frame once. Synthesized by the server, like "aircraft".
+  | { type: "radar"; scanTime: number; ts: number }
   | { type: "status"; state: EngineState; ts: number }
   // Cold-start warm-up progress (drives the kiosk "WARMING UP" overlay). A
   // distinct type — NOT a status substate — so it never trips the WS replay
