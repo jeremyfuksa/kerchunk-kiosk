@@ -8,6 +8,8 @@ export interface CropWindow { x0: number; y0: number; width: number; height: num
 
 /** IEM USCOMP n0q composite: n0q_0.wld = 0.005, 0, 0, -0.005, -126.0, 50.0. */
 export const IEM_USCOMP: WorldGrid = { ulLon: -126, ulLat: 50, deg: 0.005, width: 12200, height: 5400 };
+/** IEM's MRMS lcref composite: lcref.wld = 0.01, 0, 0, -0.01, -129.995, 54.995. */
+export const IEM_MRMS: WorldGrid = { ulLon: -129.995, ulLat: 54.995, deg: 0.01, width: 7000, height: 3500 };
 
 export function cropWindow(
   grid: WorldGrid,

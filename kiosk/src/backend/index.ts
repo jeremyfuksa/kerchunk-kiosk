@@ -280,6 +280,7 @@ const radar = config.display && radarCfg?.enabled
       refreshMs: radarCfg.refreshMs,
       staleMs: radarCfg.staleMs,
       fetchTimeoutMs: radarCfg.fetchTimeoutMs,
+      product: radarCfg.source,
     })
   : undefined;
 

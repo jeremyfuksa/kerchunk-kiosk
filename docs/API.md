@@ -153,8 +153,8 @@ additionally removes orphans (recorded on a hit that never filed) and enforces
 | GET | `/api/stats` | Aggregated stats since `?since` (default 24 h). |
 | GET | `/api/recommendations/archive` | Channels heard once upon a time but silent for 30 days — archive candidates. |
 | POST | `/api/power/estimate` | Run the CPU-budget estimator. |
-| GET | `/api/radar` | Latest NEXRAD crop for the Weather Glass layer: `{ scanTime, fetchedAt, bounds:{n,s,e,w}, width, height, stale }` (`404` when `display.radar.enabled` is false, `503` before the first scan). Source: IEM n0q national composite, cropped to `display.radar.spanDeg` around the QTH. |
-| GET | `/api/radar/frame` | The crop's raw n0q indices (`width·height` bytes, row-major, north row first; index 0 = no echo, else dBZ = −32 + 0.5·index), gzip'd, `ETag: "<scanTime>-<w>x<h>-<west>,<north>"` (`304` on `If-None-Match`). |
+| GET | `/api/radar` | Latest NEXRAD crop for the Weather Glass layer: `{ scanTime, fetchedAt, bounds:{n,s,e,w}, width, height, stale }` (`404` when `display.radar.enabled` is false, `503` before the first scan). Source: `display.radar.source` — `mrms` (default; IEM's MRMS SeamlessHSR `lcref`, NOAA-QC'd so clear-air insect/bird return is removed) or `n0q` (raw NEXRAD base reflectivity) — cropped to `display.radar.spanDeg` around the QTH. |
+| GET | `/api/radar/frame` | The crop's raw reflectivity indices (`width·height` bytes, row-major, north row first; index 0 = no echo, else dBZ = −32 + 0.5·index, for either source), gzip'd, `ETag: "<scanTime>-<w>x<h>-<west>,<north>"` (`304` on `If-None-Match`). |
 
 ### Appliance plumbing
 
