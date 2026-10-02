@@ -530,3 +530,12 @@ describe("display.glass + radarProduct retirement", () => {
     expect(() => configSchema.parse({ ...base(), display: { ...base().display, glass: { hazeIntensity: 2 } } })).toThrow();
   });
 });
+describe("display.camera", () => {
+  const base = () => ({ ...defaultConfig(), display: { weatherLat: 39.1, weatherLon: -94.58 } });
+  it("defaults to a fixed stage (follow off)", () => {
+    expect(configSchema.parse(base()).display!.camera).toEqual({ follow: false });
+  });
+  it("accepts follow: true", () => {
+    expect(configSchema.parse({ ...base(), display: { ...base().display, camera: { follow: true } } }).display!.camera.follow).toBe(true);
+  });
+});

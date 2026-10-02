@@ -1,0 +1,69 @@
+// Fixed-stage geometry (spec 2026-10-02): the kiosk camera never moves, so an
+// audible site outside the padded frame is shown by a soft bloom on the screen
+// edge where the line toward it leaves the screen. Pure: no DOM, no Google.
+
+export interface Pt { x: number; y: number }
+export interface Rect { left: number; top: number; right: number; bottom: number }
+export interface LatLngBox { n: number; s: number; e: number; w: number }
+
+/** Bloom diameter in px (map.css .edgeBloom uses the same size). */
+export const BLOOM_PX = 480;
+
+export function padRect(width: number, height: number, pad: { top: number; right: number; bottom: number; left: number }): Rect {
+  return { left: pad.left, top: pad.top, right: width - pad.right, bottom: height - pad.bottom };
+}
+
+export function outside(p: Pt, r: Rect): boolean {
+  return p.x < r.left || p.x > r.right || p.y < r.top || p.y > r.bottom;
+}
+
+/** Where the ray from `center` (inside `r`) through `target` crosses `r`'s
+ *  border. The target may be inside or outside `r`; only its direction counts. */
+export function edgeExit(center: Pt, target: Pt, r: Rect): Pt {
+  const dx = target.x - center.x, dy = target.y - center.y;
+  if (dx === 0 && dy === 0) return { x: center.x, y: center.y };
+  let t = Infinity;
+  if (dx > 0) t = Math.min(t, (r.right - center.x) / dx);
+  if (dx < 0) t = Math.min(t, (r.left - center.x) / dx);
+  if (dy > 0) t = Math.min(t, (r.bottom - center.y) / dy);
+  if (dy < 0) t = Math.min(t, (r.top - center.y) / dy);
+  return { x: center.x + dx * t, y: center.y + dy * t };
+}
+
+const mercY = (lat: number): number => {
+  const r = (lat * Math.PI) / 180;
+  return Math.log(Math.tan(Math.PI / 4 + r / 2));
+};
+
+/** Project a site into viewport pixels from the map's visible bounds. Valid
+ *  for the kiosk's north-up, untilted camera; works off-screen too. */
+export function lngLatToViewPx(lat: number, lng: number, box: LatLngBox, width: number, height: number): Pt {
+  const x = ((lng - box.w) / (box.e - box.w)) * width;
+  const y = ((mercY(box.n) - mercY(lat)) / (mercY(box.n) - mercY(box.s))) * height;
+  return { x, y };
+}
+
+/** Inside any overlay rect (the clock, the expanded corner LCD)? A pin there
+ *  is on screen but unseen, so it blooms like an off-frame one. */
+export function occluded(p: Pt, rects: readonly Rect[]): boolean {
+  return rects.some((r) => !outside(p, r));
+}
+
+/** Slide a border anchor along its edge until the bloom (radius `margin`)
+ *  clears every overlay; the nearer in-view side wins. Unchanged when clear. */
+export function slideClear(at: Pt, rects: readonly Rect[], view: Rect, margin: number): Pt {
+  let p = { ...at };
+  for (const r of rects) {
+    const e = { left: r.left - margin, top: r.top - margin, right: r.right + margin, bottom: r.bottom + margin };
+    if (outside(p, e)) continue;
+    const horizontal = p.y <= view.top || p.y >= view.bottom; // anchor on the top/bottom edge
+    const [lo, hi, cur, min, max] = horizontal
+      ? [e.left, e.right, p.x, view.left, view.right]
+      : [e.top, e.bottom, p.y, view.top, view.bottom];
+    const options = [lo, hi].filter((v) => v >= min && v <= max);
+    if (!options.length) continue;
+    const best = options.reduce((a, b) => (Math.abs(b - cur) < Math.abs(a - cur) ? b : a));
+    p = horizontal ? { x: best, y: p.y } : { x: p.x, y: best };
+  }
+  return p;
+}
