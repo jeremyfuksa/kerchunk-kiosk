@@ -1271,6 +1271,12 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
       // frame pacing once per load (no devtools on the appliance). Journal only.
       const b = await readBody(req);
       const num = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
+      if (b?.kind === "pacing") {
+        // Event-paced glass (spec 2026-10-02): how often the wall really redraws.
+        if (!num(b.glassRedrawsPerMin)) return json(res, 400, { error: "expected { kind: 'pacing', glassRedrawsPerMin }" });
+        console.error(`[kiosk] glass redraws=${Math.round(b.glassRedrawsPerMin * 10) / 10}/min`);
+        return json(res, 200, { ok: true });
+      }
       if (!b || typeof b.renderingType !== "string" || !num(b.fps) || !num(b.p95Ms) || !num(b.maxMs)) {
         return json(res, 400, { error: "expected { renderingType, fps, p95Ms, maxMs }" });
       }

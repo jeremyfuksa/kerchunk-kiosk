@@ -19,9 +19,18 @@ export interface Front {
 /** A released site's fading footprint. */
 export interface Glow { key: string; lat: number; lng: number; radiusM: number; color: Rgb; strength: number }
 
-export interface GlassFrame { fronts: Front[]; glows: Glow[]; growing: boolean }
+export interface GlassFrame {
+  fronts: Front[]; glows: Glow[];
+  /** A front is in its grow phase: pace at txFps. */
+  growing: boolean;
+  /** Something moves every frame (a grow or a release dissolve). */
+  continuous: boolean;
+  /** Date.now() ms of the next VISIBLE change if no event arrives (a fade
+   *  step, a rate-limited signal step, a ttl expiry); null = never. */
+  nextChangeAt: number | null;
+}
 
-export const EMPTY_FRAME: GlassFrame = Object.freeze({ fronts: [], glows: [], growing: false }) as GlassFrame;
+export const EMPTY_FRAME: GlassFrame = Object.freeze({ fronts: [], glows: [], growing: false, continuous: false, nextChangeAt: null }) as GlassFrame;
 
 // Uniform-array sizes compiled into glassShaders.ts — keep in sync.
 export const MAX_FRONTS = 8;
@@ -67,4 +76,21 @@ export function hexToGlowRgb(hex: string): Rgb {
   const n = parseInt(hex.slice(1), 16);
   const lift = (v: number): number => Math.min(1, (v / 255) * 1.15);
   return [lift((n >> 16) & 255), lift((n >> 8) & 255), lift(n & 255)];
+}
+
+/** Floor for any scheduled redraw delay: a boundary at/before now (float
+ *  rounding) must never spin zero-delay timers. */
+export const MIN_STEP_MS = 16;
+
+/** How long until the glass layer must redraw, from the frame it just drew.
+ *  null = nothing will change on its own (no timer; events poke the layer). */
+export function paceDelay(
+  f: GlassFrame, now: number,
+  o: { haze: boolean; radarFading: boolean; maxFps: number; txFps: number },
+): number | null {
+  if (o.haze || o.radarFading || f.continuous) {
+    return 1000 / Math.max(1, f.growing ? o.txFps : o.maxFps);
+  }
+  if (f.nextChangeAt === null) return null;
+  return Math.max(MIN_STEP_MS, f.nextChangeAt - now);
 }

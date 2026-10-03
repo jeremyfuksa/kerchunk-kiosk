@@ -118,9 +118,8 @@ void main() {
     float r = R * (0.08 + 0.92 * b.x);
     float w = max(2.0, R * 0.035);
     float live = 1.0 - b.z;
-    float breathe = 0.8 + 0.2 * sin(uTime * 2.094 + a.w);          // ~3 s period
     float level = 0.35 + 0.65 * b.y;
-    float rim = exp(-pow((d - r) / w, 2.0)) * mix(1.4, breathe, b.x) * level;
+    float rim = exp(-pow((d - r) / w, 2.0)) * mix(1.4, 0.9, b.x) * level;   // still hold (spec 2026-10-02)
     float trail = 0.0;
     for (int k = 1; k <= 2; k++) {
       float rk = r - float(k) * w * 3.5;

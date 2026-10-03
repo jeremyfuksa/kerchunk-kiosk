@@ -184,6 +184,11 @@ do not "simplify" them away:
   park the scanner on one window forever.
 - **No `backdrop-filter` blur or full-screen overlays above the animating
   map** — measured +6 °C.
+- **The kiosk camera stays still and the glass layer stays event-paced.**
+  Camera moves made Google re-lay-out the vector map on the CPU at every hit,
+  and continuous glass redraws (haze 0.35) drove the box to its 90 °C trip on
+  2026-10-01. Don't add standing animation (breathing, drifting haze, smooth
+  long fades) without a thermal A/B.
 
 ## Verifying changes
 
@@ -272,6 +277,12 @@ even with green checks.
   lookup secret — `config.lookup.apiToken`, `radioReference` credentials,
   `config.display.placesApiKey` — lives in the appliance's config file
   (`config/schema.ts`), **not** env vars and never the repo.
+- **Weather Glass layer** (`src/frontend/map/glass*.ts`): one `WebGLOverlayView`
+  inside Google's GL context draws radar (backend `/api/radar`, QC'd MRMS by
+  default) and transmissions. It is **event-paced**: every glass frame
+  re-composites the whole map, so `glassState.frame()` reports `continuous` /
+  `nextChangeAt` and the layer redraws only then (`display.glass.*`). The
+  kiosk camera is a **fixed stage** (`display.camera.follow` false).
 
 ## Product direction
 

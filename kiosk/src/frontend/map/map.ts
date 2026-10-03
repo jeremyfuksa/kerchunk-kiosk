@@ -1,12 +1,12 @@
 import { ReconnectingWs } from "../lib/wsClient.js";
 import { api } from "../lib/api.js";
 import { esc, fmtFreq } from "../lib/format.js";
-import { BlipField, coverageRadiusM } from "./blips.js";
-import { heldTxRadius } from "./txRing.js";
+import { coverageRadiusM } from "./blips.js";
 import { AircraftLayer } from "./aircraft.js";
 import { GlassLayer } from "./glassLayer.js";
 import { RadarSync, httpRadarFetchers } from "./radarSync.js";
-import { EMPTY_FRAME } from "./glassMath.js";
+import { GlassState, RELEASE_MS, type GlassSite } from "./glassState.js";
+import { hexToGlowRgb } from "./glassMath.js";
 import { padRect, outside, edgeExit, lngLatToViewPx, occluded, slideClear, BLOOM_PX, type Rect } from "./stage.js";
 import type { EngineEvent } from "../../backend/engine/ScannerEngine.js";
 import icoTower from "lucide-static/icons/radio-tower.svg?raw";
@@ -63,6 +63,9 @@ function pinFor(freqHz: number, tags?: readonly string[]): string {
 // REPEATER/TRANSMITTER site, not the person talking.
 
 const BLIP_LIFETIME_MS = 60_000;
+// Safety cap if a `release` is ever missed; the audible channel re-arms it
+// on every `signal`, so a continuous carrier doesn't expire mid-transmission.
+const TX_TTL_MS = 60_000;
 const HISTORY_BACKFILL_MS = 3_600_000;
 
 declare const google: any; // loaded dynamically with the configured key
@@ -222,9 +225,26 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
     // context. Radar is IEM's real n0q composite, cropped by the backend
     // (/api/radar) and crossfaded between scans. Needs a vector map (Map ID).
     const display = cfg.display!;
+    const glassState = new GlassState({
+      growMs: display.glass.txGrowMs, releaseMs: RELEASE_MS,
+      glowLifetimeMs: BLIP_LIFETIME_MS, ttlMs: TX_TTL_MS,
+      holdFps: display.glass.holdFps, signalSteps: display.glass.signalSteps, fadeSteps: display.glass.fadeSteps,
+    });
     const glass = mapId
-      ? new GlassLayer({ map, home, knobs: display.glass, getFrame: () => EMPTY_FRAME })
+      ? new GlassLayer({ map, home, knobs: display.glass, getFrame: (now) => glassState.frame(now) })
       : null;
+    const poke = (): void => { if (glass && !glass.off) glass.poke(); };
+    // How often the wall really redraws (spec 2026-10-02 proof): one journal
+    // line every PACING_REPORT_MS on the kiosk.
+    const PACING_REPORT_MS = 5 * 60_000;
+    if (!interactive && glass) {
+      setInterval(() => {
+        if (glass.off) return;
+        const perMin = glass.takeRedraws() / (PACING_REPORT_MS / 60_000);
+        void fetch("/api/kiosk/diag", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "pacing", glassRedrawsPerMin: perMin }) })
+          .catch(() => { /* best-effort */ });
+      }, PACING_REPORT_MS);
+    }
     const glassStatus = (): string => (glass ? glass.status : "off:no-mapid");
     const radarSync = glass && display.radar.enabled
       ? new RadarSync({
@@ -292,29 +312,7 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
       return b;
     }
 
-    const field = new BlipField(BLIP_LIFETIME_MS);
-    // site key -> rendered circle + label marker (+ last-written style for the
-    // tick() dirty-check, so unchanged blips skip the WebGL re-upload).
-    const circles = new Map<string, { circle: any; info: any; last: any; alphaTag: string }>();
-    // Live transmission rings: when a hit is recorded a ring at the site does a
-    // quick eased expand from a small ring out to the site's tx (coverage)
-    // radius, then HOLDS at full for the rest of the transmission — so it stays
-    // visible even when the camera is pulled out wide (the old fixed ~5 km
-    // one-shot vanished there). Tied to the open->close lifecycle:
-    // active/closecall start it, release/idle end it; TX_TTL_MS is a safety cap
-    // if a release is ever missed.
-    const TX_GROW_MS = 420;      // quick (300-500ms) ease-out expand on the hit
-    // Extra delay after each rAF while a ring is growing. 0 = every display
-    // frame (smooth ease). It was 40 ms (~18 fps) when the GNU Radio engine
-    // left the box ~1 C under its thermal trip; the native engine freed ~2
-    // cores, and full rate only runs for the 420 ms grow, not while held.
-    const GROW_FRAME_DELAY_MS = 0;
-    // Safety cap if a `release` is ever missed; the audible channel re-arms it
-    // on every `signal`, so a continuous carrier doesn't expire mid-transmission.
-    const TX_TTL_MS = 60_000;
-    const liveTx = new Map<string, { lat: number; lng: number; key: string; color: string; born: number; until: number; radiusM?: number }>();
-    const liveCount = (): number => liveTx.size; // open transmissions (re-fit deferral)
-    const txRings = new Map<string, any>();
+    const liveCount = (): number => glassState.liveCount(); // open transmissions (re-fit deferral)
     // freq -> operator bank tags, learned from /api/channels. Lets the transient
     // blip layer (keyed only by frequency) honor the same operator service tag
     // the site pins do — a public-safety-tagged channel pulses red, not biz.
@@ -322,25 +320,23 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
     const tagsFor = (freq?: number): readonly string[] | undefined =>
       freq == null ? undefined : freqTags.get(freq);
     let audibleId: string | null = null; // current speaker owner (drives ring re-arm)
-    // The render loop self-suspends on a quiet map; wake() (defined with tick)
-    // restarts it. `ticking` guards against double-starting.
-    let ticking = false;
+    // Rendered footprint: power-rated sites use ESTIMATED COVERAGE (true
+    // geography); the rest use the old blip hit ramp (kiosk-scaled).
+    const siteRadius = (key: string, hits: number): number =>
+      coverage.get(key) ?? (3750 + 625 * Math.min(Math.max(hits, 1), 6)) * geo;
+    const glassSite = (lat: number, lng: number, freq: number | undefined, kind: "active" | "closecall"): GlassSite => ({
+      key: `${lat.toFixed(5)},${lng.toFixed(5)}`, lat, lng,
+      color: hexToGlowRgb(colorFor(freq, kind, tagsFor(freq))),
+    });
 
-    function startTx(id: string, lat: number, lng: number, freq: number | undefined, kind: "active" | "closecall", ttlMs = TX_TTL_MS): void {
-      const now = Date.now();
-      const existing = liveTx.get(id);
-      liveTx.set(id, {
-        lat, lng, key: `${lat.toFixed(5)},${lng.toFixed(5)}`,
-        color: colorFor(freq, kind, tagsFor(freq)), born: existing?.born ?? now, until: now + ttlMs,
-        // Preserved like `born`: the latched hold radius survives re-arms.
-        ...(existing?.radiusM !== undefined ? { radiusM: existing.radiusM } : {}),
-      });
-      wake();
+    function startTx(id: string, lat: number, lng: number, freq: number | undefined, kind: "active" | "closecall"): void {
+      const s = glassSite(lat, lng, freq, kind);
+      glassState.keyUp(id, s, siteRadius(s.key, glassState.hits(s.key) + 1), Date.now());
+      poke();
     }
     function endTx(id: string): void {
-      liveTx.delete(id);
-      const ring = txRings.get(id);
-      if (ring) { ring.setMap(null); txRings.delete(id); }
+      glassState.release(id, Date.now());
+      poke();
     }
 
     // ── Persistent antenna layer: any site heard at least once gets a small
@@ -489,12 +485,17 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
       glowEdges(colorFor(freqHz, "active", tagsFor(freqHz)));
     }
 
-    function push(lat: number, lon: number, alphaTag: string, kind: "active" | "closecall", ts: number, freq?: number): void {
-      field.add({ lat, lon, alphaTag, kind, ts, freq });
-      wake(); // a blip was planted (live or backfilled) — ensure the loop runs
-      // Live hits plant/refresh the persistent antenna. The pulse ring (startTx)
-      // and the camera punch (audible) are driven from the WS handler, not here.
-      if (Date.now() - ts < 2000) antenna(lat, lon, [alphaTag], 1, ts, true, freq);
+    function push(lat: number, lon: number, alphaTag: string, kind: "active" | "closecall", ts: number, freq?: number, live = false): void {
+      // Live hits plant/refresh the persistent antenna; the front itself is
+      // started by the WS handler (startTx). Backfilled rows seed afterglows.
+      // An explicit flag, not the old "ts < 2 s ago" test: the newest backfill
+      // rows are scaled to within 2 s of now and must still seed a glow.
+      if (live) antenna(lat, lon, [alphaTag], 1, ts, true, freq);
+      else {
+        const s = glassSite(lat, lon, freq, kind);
+        glassState.seedGlow(s, siteRadius(s.key, glassState.hits(s.key) + 1), ts, Date.now());
+        poke();
+      }
     }
 
     // Backfill: the last hour, pre-decayed.
@@ -519,7 +520,7 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
         const ch = ev.channel;
         if (ch.tags?.length) freqTags.set(ev.freq, ch.tags); // learn tags live, pre-fetch
         if (ch.location?.lat != null && ch.location.lon != null) {
-          push(ch.location.lat, ch.location.lon, ch.alphaTag || fmtFreq(ev.freq), "active", Date.now(), ev.freq);
+          push(ch.location.lat, ch.location.lon, ch.alphaTag || fmtFreq(ev.freq), "active", Date.now(), ev.freq, true);
           startTx(ch.id, ch.location.lat, ch.location.lon, ev.freq, "active");
         } else {
           // No location: edge-glow only — no synthetic dot, and no ring pulsing
@@ -530,13 +531,19 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
         endTx(ev.channelId); // transmission closed — stop its ring
       } else if (ev.type === "idle") {
         audibleId = null;
-        for (const id of [...liveTx.keys()]) endTx(id); // all closed
+        glassState.releaseAll(Date.now()); poke(); // all closed
         onQuiet();
       } else if (ev.type === "signal") {
-        // The audible channel emits power telemetry while it's open. Re-arm its
-        // ring's ttl so a continuously-keyed carrier (e.g. NOAA never keys down)
-        // keeps pulsing instead of dying on the safety ttl mid-transmission.
-        if (audibleId) { const tx = liveTx.get(audibleId); if (tx) tx.until = Date.now() + TX_TTL_MS; }
+        // The audible channel's telemetry: re-arm its ttl (a continuous carrier
+        // never expires mid-transmission) and step its rim brightness — at most
+        // holdFps times a second, only when the quantised level moves; a step
+        // parked inside the window gets its own redraw at the window's end.
+        if (audibleId) {
+          const now = Date.now();
+          glassState.rearm(audibleId, now);
+          const at = glassState.signal(audibleId, ev.dbfs, now);
+          if (at !== null && glass && !glass.off) glass.redrawAt(at);
+        }
       } else if (ev.type === "closecall") {
         // discoveries are unlocated at the moment they fire (identification is
         // async) — they pulse the edge glow; once enriched, future events and
@@ -559,124 +566,12 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
       } else if (ev.type === "radar") {
         pollRadar(); // a new scan landed — fetch it once
       } else if (ev.type === "aircraft") {
-        // Full snapshot each poll — reconcile the marker set. No wake(): the
-        // aircraft layer manages its own Google Maps markers and is independent
-        // of the blip render loop.
+        // Full snapshot each poll — reconcile the marker set. The aircraft
+        // layer manages its own Google Maps markers, independent of the glass.
         aircraft.update(ev.targets);
       }
     }).connect();
 
-    // Restart the render loop after a quiet period. tick() self-suspends (sets
-    // ticking=false) when nothing is alive and no transmission ring is live;
-    // every activity entry point (push/nofix/startTx) calls wake() so a hit
-    // after silence repaints.
-    function wake(): void { if (!ticking) { ticking = true; tick(); } }
-    function tick(): void {
-      const now = Date.now();
-      const alive = field.alive(now);
-      const seen = new Set<string>();
-      for (const b of alive) {
-        const key = `${b.lat.toFixed(5)},${b.lon.toFixed(5)}`;
-        seen.add(key);
-        let entry = circles.get(key);
-        if (!entry) {
-          const circle = new google.maps.Circle({
-            map, center: { lat: b.lat, lng: b.lon },
-            radius: 400, strokeWeight: 1.5,
-          });
-          const info = new google.maps.InfoWindow({ disableAutoPan: true });
-          const e = { circle, info, last: null, alphaTag: b.alphaTag };
-          circle.addListener("click", () => {
-            // Read the entry's CURRENT label, not the closed-over first blip —
-            // a reused circle (repeat traffic at one site within the 60s
-            // lifetime) otherwise always showed the first channel's name.
-            info.setContent(`<div class="blipInfo">${esc(e.alphaTag)}</div>`);
-            info.setPosition({ lat: b.lat, lng: b.lon });
-            info.open({ map });
-          });
-          entry = e;
-          circles.set(key, entry);
-        }
-        entry.alphaTag = b.alphaTag; // keep the click label current for this site
-        const col = colorFor(b.freq, b.kind, tagsFor(b.freq));
-        // Quantize the 60s opacity fade to ~16 steps so steady-state decay
-        // rarely changes a written value — the dirty-check then skips the
-        // (geometry+style) WebGL re-upload. Imperceptible at a 60s fade.
-        const op = Math.round(b.opacity * 16) / 16;
-        const opts = {
-          // Power-rated sites blip at ESTIMATED COVERAGE (true geography, no
-          // kiosk scale factor); the rest use the hit-count ramp.
-          radius: coverage.get(key) ?? (3750 + 625 * Math.min(b.hits, 6)) * geo,
-          strokeColor: col,
-          strokeOpacity: Math.min(1, op * 1.4),
-          fillColor: col,
-          fillOpacity: 0.3 * op,
-        };
-        const last = entry.last;
-        if (!last || last.radius !== opts.radius || last.strokeColor !== opts.strokeColor
-            || last.strokeOpacity !== opts.strokeOpacity || last.fillColor !== opts.fillColor
-            || last.fillOpacity !== opts.fillOpacity) {
-          entry.circle.setOptions(opts);
-          entry.last = opts;
-        }
-      }
-      for (const [key, entry] of circles) {
-        if (!seen.has(key)) {
-          entry.circle.setMap(null);
-          circles.delete(key);
-        }
-      }
-      // Live transmission rings: a one-shot ease-out expand from a small ring to
-      // the site's coverage radius when the hit lands, then a steady hold. `born`
-      // is preserved across signal re-arms, so it grows exactly once per
-      // transmission. ttl expiry is the safety net.
-      const expired: string[] = [];
-      for (const [id, tx] of liveTx) {
-        if (now >= tx.until) { expired.push(id); continue; }
-        // Latched on first resolve (see txRing.ts): the blip circle this can
-        // borrow from is pruned at 60s, which a re-armed continuous carrier
-        // outlives — re-deriving would pop the held ring to the default.
-        const txRadius = heldTxRadius(tx, coverage, circles.get(tx.key)?.last?.radius, geo);
-        const p = Math.min(1, (now - tx.born) / TX_GROW_MS);
-        const eased = 1 - Math.pow(1 - p, 3); // easeOutCubic — quick out, settle
-        const radius = Math.max(1, txRadius * (0.1 + 0.9 * eased));
-        let ring = txRings.get(id);
-        if (!ring) {
-          ring = new google.maps.Circle({
-            map, center: { lat: tx.lat, lng: tx.lng },
-            strokeColor: tx.color, strokeWeight: 2, fillOpacity: 0, clickable: false, radius: 1,
-          });
-          txRings.set(id, ring);
-        }
-        // Dirty-check: once settled at full, radius stops changing, so skip the
-        // WebGL re-upload — a held ring then costs nothing per tick.
-        if (ring._kcR !== radius) {
-          ring.setOptions({ radius, strokeOpacity: 0.75 });
-          ring._kcR = radius;
-        }
-      }
-      for (const id of expired) endTx(id);
-      // Quiet map: stop scheduling entirely so the WebGL compositor can deep-
-      // idle (it shares the CPU/iGPU envelope with the DSP). wake() resumes.
-      if (alive.length === 0 && liveTx.size === 0) { ticking = false; return; }
-      let growing = false;
-      for (const tx of liveTx.values()) if (now - tx.born < TX_GROW_MS) { growing = true; break; }
-      if (growing) {
-        // rAF gives the rings their smooth grow — but it must NEVER be the SOLE
-        // re-arm: if the compositor defers/drops the rAF (deep idle), a wall-clock
-        // fallback still continues the loop, so `ticking` can't get stranded true
-        // and freeze the map. `ran` guards against double-firing.
-        let ran = false;
-        const go = (): void => { if (ran) return; ran = true; tick(); };
-        requestAnimationFrame(() => (GROW_FRAME_DELAY_MS > 0 ? setTimeout(go, GROW_FRAME_DELAY_MS) : go()));
-        setTimeout(go, 250);
-      } else {
-        // Held rings (dirty-checked: no re-upload) and blip decay are fine on a
-        // bare timer — rAF would just force frames for nothing.
-        setTimeout(tick, 150);
-      }
-    }
-    wake();
   }
 }
 

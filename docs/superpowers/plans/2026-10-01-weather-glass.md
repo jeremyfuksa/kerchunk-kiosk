@@ -2351,6 +2351,8 @@ gh pr merge <n> --merge --delete-branch && git checkout main && git pull --ff-on
 
 ## PR 3 — Glass transmissions
 
+> **Superseded** by docs/superpowers/plans/2026-10-02-fixed-stage-event-pacing.md (PR B / dropped). Do not execute.
+
 Start: `git checkout main && git pull --ff-only && git checkout -b feat/glass-transmissions`
 
 ### Task 11: glassState — transmission and afterglow lifecycle
@@ -2955,6 +2957,8 @@ gh pr merge <n> --merge --delete-branch && git checkout main && git pull --ff-on
 ---
 
 ## PR 4 — Gentle camera + docs
+
+> **Superseded** by docs/superpowers/plans/2026-10-02-fixed-stage-event-pacing.md (PR B / dropped). Do not execute.
 
 Start: `git checkout main && git pull --ff-only && git checkout -b feat/glass-camera`
 
