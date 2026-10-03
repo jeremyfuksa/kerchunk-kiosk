@@ -1,6 +1,7 @@
 import { ReconnectingWs } from "../lib/wsClient.js";
 import { api } from "../lib/api.js";
 import { esc, fmtFreq } from "../lib/format.js";
+import { onWind } from "../lib/wind.js";
 import { coverageRadiusM } from "./blips.js";
 import { AircraftLayer } from "./aircraft.js";
 import { GlassLayer } from "./glassLayer.js";
@@ -58,15 +59,14 @@ function pinFor(freqHz: number, tags?: readonly string[]): string {
 
 // Live activity map (ROADMAP Idea 2, Google Maps per operator decision):
 // every channel opening / Close Call with a known transmitter site pulses on
-// the map and decays over a minute. Backfills the last hour from /api/history
-// so the picture is alive from first paint. Honest framing: a blip is the
+// the map and leaves wind-carried smoke for display.glass.smokeLifeMs.
+// Backfills that window from /api/history so the picture is alive from
+// first paint. Honest framing: a blip is the
 // REPEATER/TRANSMITTER site, not the person talking.
 
-const BLIP_LIFETIME_MS = 60_000;
 // Safety cap if a `release` is ever missed; the audible channel re-arms it
 // on every `signal`, so a continuous carrier doesn't expire mid-transmission.
 const TX_TTL_MS = 60_000;
-const HISTORY_BACKFILL_MS = 3_600_000;
 
 declare const google: any; // loaded dynamically with the configured key
 // The line above declares a VALUE, so `google.maps.X` in *type* position had
@@ -226,10 +226,14 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
     // (/api/radar) and crossfaded between scans. Needs a vector map (Map ID).
     const display = cfg.display!;
     const glassState = new GlassState({
-      growMs: display.glass.txGrowMs, releaseMs: RELEASE_MS,
-      glowLifetimeMs: BLIP_LIFETIME_MS, ttlMs: TX_TTL_MS,
-      holdFps: display.glass.holdFps, signalSteps: display.glass.signalSteps, fadeSteps: display.glass.fadeSteps,
+      growMs: display.glass.txGrowMs, releaseMs: RELEASE_MS, ttlMs: TX_TTL_MS,
+      holdFps: display.glass.holdFps, signalSteps: display.glass.signalSteps,
+      smokeLifeMs: display.glass.smokeLifeMs, smokeStepMs: display.glass.smokeStepMs,
+      smokePxPerMph: display.glass.smokePxPerMph, puffMergeMs: display.glass.puffMergeMs,
     });
+    // Smoke drifts with the dashboard's /api/weather wind (lib/wind.ts): no
+    // poll of our own. A wind change turns live smoke where it is (a bend).
+    onWind((w) => glassState.setWind(w, Date.now()));
     const glass = mapId
       ? new GlassLayer({ map, home, knobs: display.glass, getFrame: (now) => glassState.frame(now) })
       : null;
@@ -241,7 +245,8 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
       setInterval(() => {
         if (glass.off) return;
         const perMin = glass.takeRedraws() / (PACING_REPORT_MS / 60_000);
-        void fetch("/api/kiosk/diag", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "pacing", glassRedrawsPerMin: perMin }) })
+        const smokePerMin = glass.takeSmokeRenders() / (PACING_REPORT_MS / 60_000);
+        void fetch("/api/kiosk/diag", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "pacing", glassRedrawsPerMin: perMin, smokeRendersPerMin: smokePerMin }) })
           .catch(() => { /* best-effort */ });
       }, PACING_REPORT_MS);
     }
@@ -487,28 +492,25 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
 
     function push(lat: number, lon: number, alphaTag: string, kind: "active" | "closecall", ts: number, freq?: number, live = false): void {
       // Live hits plant/refresh the persistent antenna; the front itself is
-      // started by the WS handler (startTx). Backfilled rows seed afterglows.
-      // An explicit flag, not the old "ts < 2 s ago" test: the newest backfill
-      // rows are scaled to within 2 s of now and must still seed a glow.
+      // started by the WS handler (startTx). Backfilled rows seed smoke puffs
+      // in one batch (seedPuffs, below), not through here.
       if (live) antenna(lat, lon, [alphaTag], 1, ts, true, freq);
-      else {
-        const s = glassSite(lat, lon, freq, kind);
-        glassState.seedGlow(s, siteRadius(s.key, glassState.hits(s.key) + 1), ts, Date.now());
-        poke();
-      }
     }
 
-    // Backfill: the last hour, pre-decayed.
-    void fetch(`/api/history?since=${Date.now() - HISTORY_BACKFILL_MS}&limit=500`)
+    // Backfill: the smoke window, at real timestamps (puffs arrive part-aged).
+    const backfillMs = display.glass.smokeLifeMs;
+    void fetch(`/api/history?since=${Date.now() - backfillMs}&limit=500`)
       .then((r) => (r.ok ? r.json() : []))
       .then((rows: Array<{ lat: number | null; lon: number | null; alphaTag: string; kind: string; ts: number; freq: number }>) => {
+        // Rows arrive newest-first; seedPuffs replays them oldest-first so a
+        // busy site's trail and hit ramp match what live play builds.
+        const seeds = [];
         for (const r of rows) {
           if (r.lat == null || r.lon == null) continue;
-          // map hour-old rows into the blip lifetime tail: scale 1h -> 60s
-          const age = Date.now() - r.ts;
-          const scaledTs = Date.now() - (age / HISTORY_BACKFILL_MS) * BLIP_LIFETIME_MS;
-          push(r.lat, r.lon, r.alphaTag, r.kind === "closecall" ? "closecall" : "active", scaledTs, r.freq);
+          seeds.push({ site: glassSite(r.lat, r.lon, r.freq, r.kind === "closecall" ? "closecall" : "active"), ts: r.ts });
         }
+        glassState.seedPuffs(seeds, Date.now(), siteRadius);
+        poke();
       })
       .catch(() => {});
 

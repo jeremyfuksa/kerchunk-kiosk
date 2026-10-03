@@ -271,7 +271,7 @@ directly thematic to the project's name.
 
 ---
 
-> **Shipped 2026-10 — Weather Glass + fixed stage.** Real QC'd radar (MRMS) on a GPU layer (#282–#285); transmissions are glass fronts → still rim → stepped afterglow; the kiosk camera never moves (off-frame speakers bloom the edge toward them); the layer redraws only when its scene changes. Specs: `docs/superpowers/specs/2026-10-01-weather-glass-design.md`, `…/2026-10-02-fixed-stage-event-pacing-design.md`.
+> **Shipped 2026-10 — Weather Glass + fixed stage.** Real QC'd radar (MRMS) on a GPU layer (#282–#285); transmissions are glass fronts → still rim → wind-carried smoke & sparks (10 min, shared step tick); the kiosk camera never moves (off-frame speakers bloom the edge toward them); the layer redraws only when its scene changes. Specs: `docs/superpowers/specs/2026-10-01-weather-glass-design.md`, `…/2026-10-02-fixed-stage-event-pacing-design.md`, `…/2026-10-02-glass-smoke-design.md`.
 
 ## Idea 4 — Hear vs. see: decouple audio from visibility — *SHIPPED 2026-06-05*
 

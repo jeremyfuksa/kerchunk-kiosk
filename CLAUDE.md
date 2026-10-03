@@ -283,6 +283,10 @@ even with green checks.
   re-composites the whole map, so `glassState.frame()` reports `continuous` /
   `nextChangeAt` and the layer redraws only then (`display.glass.*`). The
   kiosk camera is a **fixed stage** (`display.camera.follow` false).
+  Released transmissions become **smoke** (`glassState` puffs): each drifts
+  downwind with the dashboard's `/api/weather` wind (`lib/wind.ts`, no second
+  poll) for `display.glass.smokeLifeMs`, changing only on one shared
+  `smokeStepMs` tick — the knob that trades stare-ability against heat.
 
 ## Product direction
 

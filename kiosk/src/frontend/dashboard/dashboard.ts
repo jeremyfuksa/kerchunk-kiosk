@@ -4,6 +4,7 @@ import { api } from "../lib/api.js";
 import { fmtFreq, esc } from "../lib/format.js";
 import { alertTheme } from "./alertTheme.js";
 import { mountActivityMap } from "../map/map.js";
+import { fromDeg, setWind } from "../lib/wind.js";
 import { cornerView, sentenceCase, meterFill, METER_SEGMENTS } from "./cornerView.js";
 import { pillHtml, glassHtml, cornerPaint, pillDetailText, alertFlip, type CornerMemo } from "./corner.js";
 import { createPoller } from "./poller.js";
@@ -383,16 +384,12 @@ export function renderDashboard(root: HTMLElement): void {
 
   // Wind → a direction ARROW (icon) + speed NUMBER, no words. NWS gives the
   // direction the wind comes FROM ("SW 3 mph"); the arrow points where it BLOWS.
-  const COMPASS: Record<string, number> = {
-    N: 0, NNE: 22, NE: 45, ENE: 67, E: 90, ESE: 112, SE: 135, SSE: 157,
-    S: 180, SSW: 202, SW: 225, WSW: 247, W: 270, WNW: 292, NW: 315, NNW: 337,
-  };
   function windBlock(wind: string): string {
     const speed = /(\d+)/.exec(wind)?.[1];
     if (!speed) return "";
-    const fromDeg = COMPASS[(/\b([NSEW]{1,3})\b/.exec(wind) ?? [])[1] ?? ""];
-    const arrow = fromDeg === undefined ? ""
-      : `<span class="kc-wx__arrow" aria-hidden="true" style="transform:rotate(${(fromDeg + 180) % 360}deg)">${icoArrow}</span>`;
+    const from = fromDeg(wind);
+    const arrow = from === undefined ? ""
+      : `<span class="kc-wx__arrow" aria-hidden="true" style="transform:rotate(${(from + 180) % 360}deg)">${icoArrow}</span>`;
     return `<span class="kc-wx__wind">${arrow}<span>${speed}</span></span>`;
   }
 
@@ -400,6 +397,7 @@ export function renderDashboard(root: HTMLElement): void {
     return fetch("/api/weather")
       .then((r) => (r.ok ? r.json() : null))
       .then((wx: { tempF: number; condition: string; wind: string; isDaytime: boolean } | null) => {
+        setWind(wx?.wind);   // feeds the glass smoke's drift (lib/wind.ts)
         // Glanceable: condition ICON + temp NUMBER + wind arrow + speed. The
         // condition WORDS are dropped — the icon already says it from across the room.
         wxEl.innerHTML = wx

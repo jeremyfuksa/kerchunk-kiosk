@@ -1328,6 +1328,8 @@ describe("kiosk render diag", () => {
     await request(server).post("/api/kiosk/diag").send({ kind: "pacing", glassRedrawsPerMin: 37.5 }).expect(200);
     expect(err.mock.calls.some(([m]) => String(m).includes("glass redraws=37.5/min"))).toBe(true);
     await request(server).post("/api/kiosk/diag").send({ kind: "pacing", glassRedrawsPerMin: "lots" }).expect(400);
+    await request(server).post("/api/kiosk/diag").send({ kind: "pacing", glassRedrawsPerMin: 900, smokeRendersPerMin: 10 }).expect(200);
+    expect(err.mock.calls.some(([m]) => String(m).includes("glass redraws=900/min smoke renders=10/min"))).toBe(true);
     err.mockRestore();
   });
   it("POST /api/kiosk/diag accepts a well-formed report and rejects junk", async () => {

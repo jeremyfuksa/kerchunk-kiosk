@@ -16,25 +16,47 @@ export interface Front {
   releasing: number;
 }
 
-/** A released site's fading footprint. */
-export interface Glow { key: string; lat: number; lng: number; radiusM: number; color: Rgb; strength: number }
+/** A released transmission's smoke (spec 2026-10-02 glass smoke), sampled at
+ *  the shared smoke tick. Screen terms: dir is [east, north]. */
+export interface Puff {
+  key: string; lat: number; lng: number; radiusM: number; color: Rgb;
+  /** Hit-ramp strength × the life dim. */
+  strength: number;
+  /** Heading the shape stretches along: the latest downwind unit vector
+   *  [east, north] it has had; [0, 0] = never windy (round). */
+  dir: readonly [number, number];
+  /** Drift so far [east, north], px at a 1080-px-tall viewport. A wind change
+   *  turns it from where it is, so it can bend. */
+  drift: readonly [number, number];
+  /** Radius multipliers along / across the wind. */
+  along: number; cross: number;
+  /** Stable 0..1 per puff: outline noise + spark hash. */
+  seed: number;
+}
 
 export interface GlassFrame {
-  fronts: Front[]; glows: Glow[];
+  fronts: Front[]; puffs: Puff[];
+  /** The shared smoke tick index (gridTick / smokeStepMs). Wrap with
+   *  STEP_WRAP before it becomes a shader uniform. */
+  step: number;
   /** A front is in its grow phase: pace at txFps. */
   growing: boolean;
   /** Something moves every frame (a grow or a release dissolve). */
   continuous: boolean;
-  /** Date.now() ms of the next VISIBLE change if no event arrives (a fade
-   *  step, a rate-limited signal step, a ttl expiry); null = never. */
+  /** Date.now() ms of the next VISIBLE change if no event arrives (a smoke
+   *  tick, a rate-limited signal step, a ttl expiry); null = never. */
   nextChangeAt: number | null;
 }
 
-export const EMPTY_FRAME: GlassFrame = Object.freeze({ fronts: [], glows: [], growing: false, continuous: false, nextChangeAt: null }) as GlassFrame;
+export const EMPTY_FRAME: GlassFrame = Object.freeze({ fronts: [], puffs: [], step: 0, growing: false, continuous: false, nextChangeAt: null }) as GlassFrame;
 
 // Uniform-array sizes compiled into glassShaders.ts — keep in sync.
 export const MAX_FRONTS = 8;
-export const MAX_GLOWS = 32;
+export const MAX_PUFFS = 48;
+/** The step index wraps here before the shader sees it: Date.now()/step is
+ *  ~3e8, far past float32 precision. A multiple of 7 keeps the 7-tick spark
+ *  reshuffle continuous across the wrap. */
+export const STEP_WRAP = 7000;
 
 export function fadeProgress(startMs: number, now: number, durMs: number): number {
   if (durMs <= 0) return 1;
@@ -93,4 +115,24 @@ export function paceDelay(
   }
   if (f.nextChangeAt === null) return null;
   return Math.max(MIN_STEP_MS, f.nextChangeAt - now);
+}
+
+/** The smoke pass is the costly part of a glass frame, and it only changes on
+ *  a smoke tick or a new puff — but the layer redraws for fronts, radar fades
+ *  and Google's own repaints far more often (~1000/min on a busy band; the
+ *  first deploy hit 95 °C). So smoke renders into a texture, and only when
+ *  its packed inputs change. stale() compares against a private copy. */
+export class SmokeCache {
+  private last: Float32Array | null = null;
+  stale(sig: Float32Array): boolean {
+    const l = this.last;
+    if (l && l.length === sig.length) {
+      let same = true;
+      for (let i = 0; i < sig.length; i++) if (l[i] !== sig[i]) { same = false; break; }
+      if (same) return false;
+    }
+    this.last = sig.slice();
+    return true;
+  }
+  invalidate(): void { this.last = null; }
 }
