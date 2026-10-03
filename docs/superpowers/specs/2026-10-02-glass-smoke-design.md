@@ -1,6 +1,6 @@
 # Glass smoke: afterglows become wind-carried smoke & sparks
 
-Date: 2026-10-02 · Status: design approved in brainstorm, awaiting spec review
+Date: 2026-10-02 · Status: implemented on `feat/glass-smoke`; on the wall, awaiting the operator's stare test
 Builds on: [`2026-10-02-fixed-stage-event-pacing-design.md`](2026-10-02-fixed-stage-event-pacing-design.md)
 (PR B, `feat/glass-transmissions`). It replaces that spec's **afterglow**
 (a per-site Gaussian fading over 60 s in `fadeSteps` steps). Fronts, the still
@@ -194,3 +194,26 @@ arrays.
 - Wind on `/map`, wind in the art or wall skins.
 - Using the radar or other weather fields to shape the smoke.
 - Changing fronts, the hold, the release dissolve or the camera.
+
+## Amendments from the wall (2026-10-02)
+
+- **The smoke pass is cached.** The first deploy drew the smoke on every glass
+  redraw. The wall redraws about 1 100 times a minute on a busy band (fronts,
+  radar fades and Google's own repaints), and the box hit 95 °C. The smoke now
+  renders into a half-resolution texture only when its packed puff uniforms
+  change (`SmokeCache`); every other frame samples that texture. The pacing
+  diag reports `smoke renders=<n>/min`. Measured on the wall: about 15.6
+  smoke renders/min against 1 160 redraws/min, averaging 68.9 °C with
+  chromium at 28.8 %.
+- **New knob `display.glass.smokeScale`** (default 0.4, range 0.2–2): puff
+  size as a fraction of the site's footprint radius. At 1.0, coverage-based
+  radii blanket the whole metro.
+- **Shader look:**
+  - an integer hash replaces `fract(sin())`, which hatched on the Intel GPU;
+  - fbm wisps inside the body;
+  - a gentler brightness curve;
+  - sparks gate on the strongest single puff's density, not the summed
+    density, which saturated into a uniform halftone.
+- **The backfill replays oldest-first** (`seedPuffs`). `/api/history` is
+  newest-first, and replaying it as-is seeded about 19 puffs per busy site
+  instead of about 10, with the hit ramp reversed.

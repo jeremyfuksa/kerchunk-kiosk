@@ -492,15 +492,9 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
 
     function push(lat: number, lon: number, alphaTag: string, kind: "active" | "closecall", ts: number, freq?: number, live = false): void {
       // Live hits plant/refresh the persistent antenna; the front itself is
-      // started by the WS handler (startTx). Backfilled rows seed smoke puffs.
-      // An explicit flag, not a "ts < 2 s ago" test: the newest backfill rows
-      // can be seconds old and must still seed a puff.
+      // started by the WS handler (startTx). Backfilled rows seed smoke puffs
+      // in one batch (seedPuffs, below), not through here.
       if (live) antenna(lat, lon, [alphaTag], 1, ts, true, freq);
-      else {
-        const s = glassSite(lat, lon, freq, kind);
-        glassState.seedPuff(s, siteRadius(s.key, glassState.hits(s.key) + 1), ts, Date.now());
-        poke();
-      }
     }
 
     // Backfill: the smoke window, at real timestamps (puffs arrive part-aged).
@@ -508,10 +502,15 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
     void fetch(`/api/history?since=${Date.now() - backfillMs}&limit=500`)
       .then((r) => (r.ok ? r.json() : []))
       .then((rows: Array<{ lat: number | null; lon: number | null; alphaTag: string; kind: string; ts: number; freq: number }>) => {
+        // Rows arrive newest-first; seedPuffs replays them oldest-first so a
+        // busy site's trail and hit ramp match what live play builds.
+        const seeds = [];
         for (const r of rows) {
           if (r.lat == null || r.lon == null) continue;
-          push(r.lat, r.lon, r.alphaTag, r.kind === "closecall" ? "closecall" : "active", r.ts, r.freq);
+          seeds.push({ site: glassSite(r.lat, r.lon, r.freq, r.kind === "closecall" ? "closecall" : "active"), ts: r.ts });
         }
+        glassState.seedPuffs(seeds, Date.now(), siteRadius);
+        poke();
       })
       .catch(() => {});
 

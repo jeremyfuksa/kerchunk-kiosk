@@ -166,6 +166,17 @@ export class GlassState {
     this.birth(site, radiusM, ts);
   }
 
+  /** Seed a history backfill. /api/history returns rows newest-first, but a
+   *  release only merges into its site's NEWEST puff, so rows must be replayed
+   *  oldest-first or a busy site seeds ~2× the puffs with its hit ramp
+   *  reversed (final review I1). `radiusFor(key, hits)` is asked after the
+   *  hit is counted, like a live key-up. */
+  seedPuffs(rows: readonly { site: GlassSite; ts: number }[], now: number, radiusFor: (key: string, hits: number) => number): void {
+    for (const r of [...rows].sort((a, b) => a.ts - b.ts)) {
+      this.seedPuff(r.site, radiusFor(r.site.key, this.hits(r.site.key) + 1), r.ts, now);
+    }
+  }
+
   private birth(site: GlassSite, radiusM: number, at: number): void {
     const strength0 = rampStrength(this.sites.get(site.key)?.hits ?? 1);
     let newest: LivePuff | undefined;

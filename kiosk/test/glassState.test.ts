@@ -218,6 +218,20 @@ describe("GlassState puffs (smoke)", () => {
     expect(f.puffs[0]!.strength).toBeCloseTo(rampStrength(1) * (1 - k) * (1 - k), 9);
   });
 
+  it("seedPuffs takes /api/history's newest-first rows and seeds them oldest-first (a trail, ramp rising to the newest)", () => {
+    const s = new GlassState(T);
+    const now = 600_000;
+    const rows = Array.from({ length: 20 }, (_, i) => ({ site: site("a"), ts: now - i * 30_000 }));   // DESC, 30 s cadence
+    s.seedPuffs(rows, now, () => 4000);
+    const puffs = s.frame(now).puffs;
+    expect(puffs.length).toBeGreaterThanOrEqual(9);
+    expect(puffs.length).toBeLessThanOrEqual(11);
+    expect(s.hits("a")).toBe(20);
+    // The newest puff (born at the 30 s-old row; the newest row re-fed it)
+    // carries the full ramp; replayed newest-first it would carry hit 1's.
+    expect(Math.max(...puffs.map((p) => p.strength))).toBeCloseTo(rampStrength(20) * puffShape(30_000 / 600_000, false).dim, 9);
+  });
+
   it("a wind change only affects puffs born after it", () => {
     const s = new GlassState(T);
     s.setWind(NE7);
