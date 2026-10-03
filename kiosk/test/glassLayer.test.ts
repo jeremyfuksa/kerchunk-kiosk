@@ -14,6 +14,7 @@ function fakeGl() {
     UNPACK_ALIGNMENT: 19, UNPACK_FLIP_Y_WEBGL: 20, UNPACK_PREMULTIPLY_ALPHA_WEBGL: 21,
     UNPACK_ROW_LENGTH: 22, UNPACK_SKIP_ROWS: 23, UNPACK_SKIP_PIXELS: 24,
     PIXEL_UNPACK_BUFFER: 25, PIXEL_UNPACK_BUFFER_BINDING: 26,
+    FRAMEBUFFER: 27, FRAMEBUFFER_BINDING: 28, VIEWPORT: 29,
   };
   const p = new Map<number, unknown>([
     [E.ACTIVE_TEXTURE, E.TEXTURE0], [E.CURRENT_PROGRAM, null], [E.VERTEX_ARRAY_BINDING, null], [E.ARRAY_BUFFER_BINDING, null],
@@ -21,6 +22,7 @@ function fakeGl() {
     [E.BLEND_EQUATION_RGB, 0x8006], [E.BLEND_EQUATION_ALPHA, 0x8006],
     [E.UNPACK_ALIGNMENT, 4], [E.UNPACK_FLIP_Y_WEBGL, false], [E.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false],
     [E.UNPACK_ROW_LENGTH, 0], [E.UNPACK_SKIP_ROWS, 0], [E.UNPACK_SKIP_PIXELS, 0], [E.PIXEL_UNPACK_BUFFER_BINDING, null],
+    [E.FRAMEBUFFER_BINDING, null], [E.VIEWPORT, new Int32Array([0, 0, 1920, 1080])],
   ]);
   const enabled = new Set<number>();
   const tex = new Map<number, unknown>();
@@ -38,6 +40,8 @@ function fakeGl() {
     blendFuncSeparate: (a: number, b: number, c: number, d: number) => { p.set(E.BLEND_SRC_RGB, a); p.set(E.BLEND_DST_RGB, b); p.set(E.BLEND_SRC_ALPHA, c); p.set(E.BLEND_DST_ALPHA, d); },
     blendEquationSeparate: (a: number, b: number) => { p.set(E.BLEND_EQUATION_RGB, a); p.set(E.BLEND_EQUATION_ALPHA, b); },
     pixelStorei: (k: number, v: unknown) => { p.set(k, v); },
+    bindFramebuffer: (_t: number, f: unknown) => { p.set(E.FRAMEBUFFER_BINDING, f); },
+    viewport: (x: number, y: number, w: number, h: number) => { p.set(E.VIEWPORT, new Int32Array([x, y, w, h])); },
   };
   return { gl: gl as unknown as WebGL2RenderingContext, E, p, tex, enabled };
 }
@@ -69,6 +73,17 @@ describe("glass GL state discipline", () => {
     expect([p.get(E.UNPACK_FLIP_Y_WEBGL), p.get(E.UNPACK_ROW_LENGTH), p.get(E.PIXEL_UNPACK_BUFFER_BINDING)]).toEqual([true, 64, "pbo"]);
     expect(enabled.has(E.STENCIL_TEST) && enabled.has(E.SCISSOR_TEST)).toBe(true);
   });
+
+  it("restoreGl puts back Google's framebuffer and viewport after the smoke pass", () => {
+    const { gl, E, p } = fakeGl();
+    p.set(E.FRAMEBUFFER_BINDING, "googleFbo");
+    const saved = saveGl(gl);
+    gl.bindFramebuffer(E.FRAMEBUFFER, "smokeFbo" as unknown as WebGLFramebuffer);   // the cached smoke render
+    gl.viewport(0, 0, 960, 540);
+    restoreGl(gl, saved);
+    expect(p.get(E.FRAMEBUFFER_BINDING)).toBe("googleFbo");
+    expect([...(p.get(E.VIEWPORT) as Int32Array)]).toEqual([0, 0, 1920, 1080]);
+  });
 });
 
 describe("GlassLayer when it can't run", () => {
@@ -80,7 +95,7 @@ describe("GlassLayer when it can't run", () => {
     const setMap = vi.fn();
     let ov: any;
     vi.stubGlobal("google", { maps: { WebGLOverlayView: class { constructor() { ov = this; } requestRedraw = requestRedraw; setMap = setMap; } } });
-    const knobs = { maxFps: 30, txFps: 60, hazeIntensity: 0.35, radarOpacity: 0.6, radarMinDbz: 15, radarFadeMs: 20_000, txGrowMs: 900, holdFps: 4, signalSteps: 8, smokeLifeMs: 600_000, smokeStepMs: 6000, smokePxPerMph: 60, smokeBody: 0.55, sparkDensity: 1, puffMergeMs: 60_000 };
+    const knobs = { maxFps: 30, txFps: 60, hazeIntensity: 0.35, radarOpacity: 0.6, radarMinDbz: 15, radarFadeMs: 20_000, txGrowMs: 900, holdFps: 4, signalSteps: 8, smokeLifeMs: 600_000, smokeStepMs: 6000, smokePxPerMph: 60, smokeBody: 0.55, sparkDensity: 1, puffMergeMs: 60_000, smokeScale: 0.6 };
     const layer = new GlassLayer({ map: {}, home: { lat: 39, lng: -94 }, knobs, getFrame: () => EMPTY_FRAME });
     ov.onContextRestored({ gl: {} });              // not a WebGL2 context (node has none)
     expect(layer.status).toBe("off:no-webgl2");
@@ -99,7 +114,7 @@ describe("GlassLayer pacing", () => {
     vi.useFakeTimers();
     const requestRedraw = vi.fn();
     vi.stubGlobal("google", { maps: { WebGLOverlayView: class { requestRedraw = requestRedraw; setMap = vi.fn(); } } });
-    const knobs = { maxFps: 30, txFps: 60, hazeIntensity: 0, radarOpacity: 0.6, radarMinDbz: 15, radarFadeMs: 20_000, txGrowMs: 900, holdFps: 4, signalSteps: 8, smokeLifeMs: 600_000, smokeStepMs: 6000, smokePxPerMph: 60, smokeBody: 0.55, sparkDensity: 1, puffMergeMs: 60_000 };
+    const knobs = { maxFps: 30, txFps: 60, hazeIntensity: 0, radarOpacity: 0.6, radarMinDbz: 15, radarFadeMs: 20_000, txGrowMs: 900, holdFps: 4, signalSteps: 8, smokeLifeMs: 600_000, smokeStepMs: 6000, smokePxPerMph: 60, smokeBody: 0.55, sparkDensity: 1, puffMergeMs: 60_000, smokeScale: 0.6 };
     const layer = new GlassLayer({ map: {}, home: { lat: 39, lng: -94 }, knobs, getFrame: () => EMPTY_FRAME });
     requestRedraw.mockClear();
     vi.advanceTimersByTime(1000);                 // no draw ever came back: the kick retries
@@ -119,7 +134,7 @@ describe("GlassLayer.redrawAt (review I2)", () => {
     vi.setSystemTime(10_000);
     const requestRedraw = vi.fn();
     vi.stubGlobal("google", { maps: { WebGLOverlayView: class { requestRedraw = requestRedraw; setMap = vi.fn(); } } });
-    const knobs = { maxFps: 30, txFps: 60, hazeIntensity: 0, radarOpacity: 0.6, radarMinDbz: 15, radarFadeMs: 20_000, txGrowMs: 900, holdFps: 4, signalSteps: 8, smokeLifeMs: 600_000, smokeStepMs: 6000, smokePxPerMph: 60, smokeBody: 0.55, sparkDensity: 1, puffMergeMs: 60_000 };
+    const knobs = { maxFps: 30, txFps: 60, hazeIntensity: 0, radarOpacity: 0.6, radarMinDbz: 15, radarFadeMs: 20_000, txGrowMs: 900, holdFps: 4, signalSteps: 8, smokeLifeMs: 600_000, smokeStepMs: 6000, smokePxPerMph: 60, smokeBody: 0.55, sparkDensity: 1, puffMergeMs: 60_000, smokeScale: 0.6 };
     const layer = new GlassLayer({ map: {}, home: { lat: 39, lng: -94 }, knobs, getFrame: () => EMPTY_FRAME });
     layer.redrawAt(10_200);                       // earlier than the 1 s kick → re-armed
     requestRedraw.mockClear();

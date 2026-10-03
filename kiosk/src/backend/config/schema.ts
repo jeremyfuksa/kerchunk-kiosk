@@ -385,6 +385,7 @@ export const configSchema = z.object({
       smokeBody: z.number().min(0).max(1).default(0.55),       // body brightness vs the old afterglow
       sparkDensity: z.number().min(0).max(3).default(1),       // 0 = no sparks
       puffMergeMs: z.number().int().min(0).max(600_000).default(60_000), // re-feed window per site
+      smokeScale: z.number().min(0.2).max(2).default(0.4),   // puff size vs the site's footprint radius
     }).default({}),
     // Kiosk camera (spec 2026-10-02 "fixed stage"): the wall frames once and
     // never moves on its own — camera moves made Google re-lay-out the vector

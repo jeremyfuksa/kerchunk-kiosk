@@ -245,7 +245,8 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
       setInterval(() => {
         if (glass.off) return;
         const perMin = glass.takeRedraws() / (PACING_REPORT_MS / 60_000);
-        void fetch("/api/kiosk/diag", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "pacing", glassRedrawsPerMin: perMin }) })
+        const smokePerMin = glass.takeSmokeRenders() / (PACING_REPORT_MS / 60_000);
+        void fetch("/api/kiosk/diag", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "pacing", glassRedrawsPerMin: perMin, smokeRendersPerMin: smokePerMin }) })
           .catch(() => { /* best-effort */ });
       }, PACING_REPORT_MS);
     }

@@ -6,9 +6,9 @@
 // GL state discipline: Google owns this context. Every draw saves what it
 // touches and restores it, and all texture uploads happen inside onDraw
 // (never from a fetch callback), so we never fight the map renderer.
-import { RADAR_VS, RADAR_FS, FX_VS, FX_FS } from "./glassShaders.js";
+import { RADAR_VS, RADAR_FS, FX_VS, FX_FS, SMOKE_FS } from "./glassShaders.js";
 import {
-  MAX_FRONTS, MAX_PUFFS, STEP_WRAP, mercatorOffsetM, clipToPx, paceDelay,
+  MAX_FRONTS, MAX_PUFFS, STEP_WRAP, SmokeCache, mercatorOffsetM, clipToPx, paceDelay,
   type GlassFrame,
 } from "./glassMath.js";
 import type { RadarFrame } from "./radarSync.js";
@@ -21,7 +21,7 @@ export interface GlassKnobs {
   radarMinDbz: number; radarFadeMs: number; txGrowMs: number;
   holdFps: number; signalSteps: number;
   smokeLifeMs: number; smokeStepMs: number; smokePxPerMph: number;
-  smokeBody: number; sparkDensity: number; puffMergeMs: number;
+  smokeBody: number; sparkDensity: number; puffMergeMs: number; smokeScale: number;
 }
 
 export interface GlassLayerOptions {
@@ -34,6 +34,7 @@ export interface GlassLayerOptions {
 // Fallback: if Google drops a requested redraw, retry after this long.
 const KICK_MS = 1000;
 const MESH_DIV = 32; // mesh subdivisions per axis (equirect → Mercator)
+const SMOKE_DOWNSCALE = 2; // smoke target is 1/2 the drawing buffer per axis
 
 type Gl = WebGL2RenderingContext;
 interface Prog { p: WebGLProgram; u: Record<string, WebGLUniformLocation | null> }
@@ -44,6 +45,12 @@ export class GlassLayer {
   private gl: Gl | null = null;
   private radarProg: Prog | null = null;
   private fxProg: Prog | null = null;
+  private smokeProg: Prog | null = null;
+  private smokeFbo: WebGLFramebuffer | null = null;
+  private smokeTex: WebGLTexture | null = null;
+  private smokeSize: [number, number] = [0, 0];
+  private readonly smokeCache = new SmokeCache();
+  private readonly smokeSig = new Float32Array(MAX_PUFFS * 12 + 4);
   private meshVao: WebGLVertexArrayObject | null = null;
   private meshCount = 0;
   private meshBounds: RadarFrame["meta"]["bounds"] | null = null;
@@ -64,6 +71,7 @@ export class GlassLayer {
   private readonly puffsC = new Float32Array(MAX_PUFFS * 4);
   private lastFrame: GlassFrame | null = null;
   private redraws = 0;
+  private smokeRenders = 0;
   private timerAt = 0; // Date.now() ms the armed timer fires
 
   /** True once the layer has given up (no WebGL2, shader failure): it is
@@ -75,7 +83,7 @@ export class GlassLayer {
     this.ov = new google.maps.WebGLOverlayView();
     this.ov.onAdd = () => {};
     this.ov.onContextRestored = ({ gl }: { gl: WebGLRenderingContext | Gl }) => this.init(gl);
-    this.ov.onContextLost = () => { this.gl = null; this.radarProg = this.fxProg = null; this.meshVao = this.fxVao = null; this.tex = [null, null]; this.meshBounds = null; this.fade.contextLost(); this.pending = this.last; };
+    this.ov.onContextLost = () => { this.gl = null; this.radarProg = this.fxProg = this.smokeProg = null; this.smokeFbo = null; this.smokeTex = null; this.smokeSize = [0, 0]; this.smokeCache.invalidate(); this.meshVao = this.fxVao = null; this.tex = [null, null]; this.meshBounds = null; this.fade.contextLost(); this.pending = this.last; };
     this.ov.onDraw = ({ gl, transformer }: { gl: Gl; transformer: any }) => this.draw(gl, transformer);
     this.ov.onRemove = () => {};
     this.ov.setMap(o.map);
@@ -155,6 +163,14 @@ export class GlassLayer {
     return n;
   }
 
+  /** Smoke-pass renders since the last call (diag: should track smoke ticks,
+   *  ~60 000 / smokeStepMs per minute, not the redraw rate). */
+  takeSmokeRenders(): number {
+    const n = this.smokeRenders;
+    this.smokeRenders = 0;
+    return n;
+  }
+
   private init(raw: WebGLRenderingContext | Gl): void {
     if (typeof WebGL2RenderingContext === "undefined" || !(raw instanceof WebGL2RenderingContext)) {
       this.giveUp("off:no-webgl2");
@@ -162,17 +178,17 @@ export class GlassLayer {
     }
     const gl = raw;
     this.radarProg = link(gl, RADAR_VS, RADAR_FS, ["uMvp", "uPrev", "uNext", "uTexSize", "uMix", "uAlpha", "uMinDbz", "uOpacity"]);
-    this.fxProg = link(gl, FX_VS, FX_FS, ["uRes", "uTime", "uHaze", "uFrontA", "uFrontB", "uFrontC", "uNFronts", "uPuffA", "uPuffB", "uPuffC", "uNPuffs", "uStep", "uSmokeBody", "uSparkDensity"]);
-    if (!this.radarProg || !this.fxProg) { this.giveUp("off:shader"); return; }
+    this.fxProg = link(gl, FX_VS, FX_FS, ["uRes", "uTime", "uHaze", "uFrontA", "uFrontB", "uFrontC", "uNFronts", "uSmoke", "uHasSmoke"]);
+    this.smokeProg = link(gl, FX_VS, SMOKE_FS, ["uScale", "uPuffA", "uPuffB", "uPuffC", "uNPuffs", "uStep", "uSmokeBody", "uSparkDensity"]);
+    if (!this.radarProg || !this.fxProg || !this.smokeProg) { this.giveUp("off:shader"); return; }
     const saved = saveGl(gl);
     this.fxVao = gl.createVertexArray();
     gl.bindVertexArray(this.fxVao);
     const fxBuf = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, fxBuf);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
-    const loc = gl.getAttribLocation(this.fxProg.p, "aPos");
-    gl.enableVertexAttribArray(loc);
-    gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(0);   // aPos is layout(location = 0) in FX_VS (FX + SMOKE)
+    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
     gl.activeTexture(gl.TEXTURE0);
     for (let i = 0; i < 2; i++) {
       const t = gl.createTexture();
@@ -259,7 +275,7 @@ export class GlassLayer {
   }
 
   private draw(gl: Gl, transformer: any): void {
-    if (!this.gl || this.gl !== gl || !this.radarProg || !this.fxProg) return;
+    if (!this.gl || this.gl !== gl || !this.radarProg || !this.fxProg || !this.smokeProg) return;
     this.redraws++;
     const now = performance.now();
     const saved = saveGl(gl);
@@ -316,7 +332,7 @@ export class GlassLayer {
     for (const p of frame.puffs) {
       if (np >= MAX_PUFFS) break;
       const m = transformer.fromLatLngAltitude({ lat: p.lat, lng: p.lng, altitude: 0 });
-      const c = clipToPx(m, 0, 0, 0, W, H), e = clipToPx(m, p.radiusM, 0, 0, W, H);
+      const c = clipToPx(m, 0, 0, 0, W, H), e = clipToPx(m, p.radiusM * k.smokeScale, 0, 0, W, H);
       if (!c || !e) continue;
       const drift = p.driftPx * px1080;   // gl px: origin bottom-left, so +y = north
       this.puffsA.set([c[0] + p.dir[0] * drift, c[1] + p.dir[1] * drift, Math.hypot(e[0] - c[0], e[1] - c[1]), p.strength], np * 4);
@@ -324,6 +340,7 @@ export class GlassLayer {
       this.puffsC.set([p.color[0], p.color[1], p.color[2], p.seed], np * 4);
       np++;
     }
+    if (np > 0) this.renderSmoke(gl, saved, W, H, np, frame.step % STEP_WRAP);
     if (k.hazeIntensity > 0 || nf > 0 || np > 0) {
       const u = this.fxProg.u;
       gl.useProgram(this.fxProg.p);
@@ -335,18 +352,63 @@ export class GlassLayer {
       gl.uniform4fv(u.uFrontB!, this.frontsB);
       gl.uniform3fv(u.uFrontC!, this.frontsC);
       gl.uniform1i(u.uNFronts!, nf);
-      gl.uniform4fv(u.uPuffA!, this.puffsA);
-      gl.uniform4fv(u.uPuffB!, this.puffsB);
-      gl.uniform4fv(u.uPuffC!, this.puffsC);
-      gl.uniform1i(u.uNPuffs!, np);
-      gl.uniform1f(u.uStep!, frame.step % STEP_WRAP);
-      gl.uniform1f(u.uSmokeBody!, k.smokeBody);
-      gl.uniform1f(u.uSparkDensity!, k.sparkDensity);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, np > 0 ? this.smokeTex : null);
+      gl.uniform1i(u.uSmoke!, 0);
+      gl.uniform1f(u.uHasSmoke!, np > 0 ? 1 : 0);
       gl.bindVertexArray(this.fxVao);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
     }
     restoreGl(gl, saved);
     this.reschedule();
+  }
+
+  /** The smoke pass, cached (spec 2026-10-02 glass smoke): render puffs into a
+   *  half-res texture only when their packed inputs change (a smoke tick or a
+   *  new puff); every other glass frame just samples it. Leaves Google's
+   *  framebuffer and viewport as they were. */
+  private renderSmoke(gl: Gl, saved: SavedGl, W: number, H: number, np: number, step: number): void {
+    const sw = Math.max(1, Math.ceil(W / SMOKE_DOWNSCALE)), sh = Math.max(1, Math.ceil(H / SMOKE_DOWNSCALE));
+    const sig = this.smokeSig;
+    sig.set(this.puffsA, 0); sig.set(this.puffsB, MAX_PUFFS * 4); sig.set(this.puffsC, MAX_PUFFS * 8);
+    sig.set([np, step, W, H], MAX_PUFFS * 12);
+    const sized = this.smokeTex && this.smokeSize[0] === sw && this.smokeSize[1] === sh;
+    if (!sized) {
+      if (!this.smokeTex) this.smokeTex = gl.createTexture();
+      if (!this.smokeFbo) this.smokeFbo = gl.createFramebuffer();
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, this.smokeTex);
+      pinUnpack(gl);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, sw, sh, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, this.smokeFbo);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.smokeTex, 0);
+      this.smokeSize = [sw, sh];
+      this.smokeCache.invalidate();
+    }
+    if (!this.smokeCache.stale(sig)) return;
+    this.smokeRenders++;
+    const k = this.o.knobs, u = this.smokeProg!.u;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.smokeFbo);
+    gl.viewport(0, 0, sw, sh);
+    gl.disable(gl.BLEND);                    // opaque write covers every texel: no clear needed
+    gl.useProgram(this.smokeProg!.p);
+    gl.uniform1f(u.uScale!, W / sw);
+    gl.uniform4fv(u.uPuffA!, this.puffsA);
+    gl.uniform4fv(u.uPuffB!, this.puffsB);
+    gl.uniform4fv(u.uPuffC!, this.puffsC);
+    gl.uniform1i(u.uNPuffs!, np);
+    gl.uniform1f(u.uStep!, step);
+    gl.uniform1f(u.uSmokeBody!, k.smokeBody);
+    gl.uniform1f(u.uSparkDensity!, k.sparkDensity);
+    gl.bindVertexArray(this.fxVao);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, saved.framebuffer);
+    gl.viewport(saved.viewport[0]!, saved.viewport[1]!, saved.viewport[2]!, saved.viewport[3]!);
+    gl.enable(gl.BLEND);
   }
 }
 
@@ -383,6 +445,7 @@ export interface SavedGl {
   srcRgb: number; dstRgb: number; srcA: number; dstA: number; eqRgb: number; eqA: number;
   unpack: number; flipY: boolean; premult: boolean; rowLength: number; skipRows: number; skipPixels: number;
   unpackBuffer: WebGLBuffer | null;
+  framebuffer: WebGLFramebuffer | null; viewport: Int32Array;
 }
 
 /** Pin every pixel-unpack parameter for a raw R8 upload: Google may leave
@@ -418,6 +481,7 @@ export function saveGl(gl: Gl): SavedGl {
     flipY: gl.getParameter(gl.UNPACK_FLIP_Y_WEBGL), premult: gl.getParameter(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL),
     rowLength: gl.getParameter(gl.UNPACK_ROW_LENGTH), skipRows: gl.getParameter(gl.UNPACK_SKIP_ROWS),
     skipPixels: gl.getParameter(gl.UNPACK_SKIP_PIXELS), unpackBuffer: gl.getParameter(gl.PIXEL_UNPACK_BUFFER_BINDING),
+    framebuffer: gl.getParameter(gl.FRAMEBUFFER_BINDING), viewport: gl.getParameter(gl.VIEWPORT),
   };
 }
 
@@ -447,4 +511,6 @@ export function restoreGl(gl: Gl, s: SavedGl): void {
   gl.pixelStorei(gl.UNPACK_SKIP_ROWS, s.skipRows);
   gl.pixelStorei(gl.UNPACK_SKIP_PIXELS, s.skipPixels);
   gl.bindBuffer(gl.PIXEL_UNPACK_BUFFER, s.unpackBuffer);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, s.framebuffer);
+  gl.viewport(s.viewport[0]!, s.viewport[1]!, s.viewport[2]!, s.viewport[3]!);
 }

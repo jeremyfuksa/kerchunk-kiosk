@@ -1274,7 +1274,10 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
       if (b?.kind === "pacing") {
         // Event-paced glass (spec 2026-10-02): how often the wall really redraws.
         if (!num(b.glassRedrawsPerMin)) return json(res, 400, { error: "expected { kind: 'pacing', glassRedrawsPerMin }" });
-        console.error(`[kiosk] glass redraws=${Math.round(b.glassRedrawsPerMin * 10) / 10}/min`);
+        // smokeRendersPerMin (glass smoke): the cached smoke pass should track
+        // smoke ticks, not the redraw rate — the tell if the cache stops working.
+        const smoke = num(b.smokeRendersPerMin) ? ` smoke renders=${Math.round(b.smokeRendersPerMin * 10) / 10}/min` : "";
+        console.error(`[kiosk] glass redraws=${Math.round(b.glassRedrawsPerMin * 10) / 10}/min${smoke}`);
         return json(res, 200, { ok: true });
       }
       if (!b || typeof b.renderingType !== "string" || !num(b.fps) || !num(b.p95Ms) || !num(b.maxMs)) {

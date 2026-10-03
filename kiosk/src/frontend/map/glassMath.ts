@@ -114,3 +114,23 @@ export function paceDelay(
   if (f.nextChangeAt === null) return null;
   return Math.max(MIN_STEP_MS, f.nextChangeAt - now);
 }
+
+/** The smoke pass is the costly part of a glass frame, and it only changes on
+ *  a smoke tick or a new puff — but the layer redraws for fronts, radar fades
+ *  and Google's own repaints far more often (~1000/min on a busy band; the
+ *  first deploy hit 95 °C). So smoke renders into a texture, and only when
+ *  its packed inputs change. stale() compares against a private copy. */
+export class SmokeCache {
+  private last: Float32Array | null = null;
+  stale(sig: Float32Array): boolean {
+    const l = this.last;
+    if (l && l.length === sig.length) {
+      let same = true;
+      for (let i = 0; i < sig.length; i++) if (l[i] !== sig[i]) { same = false; break; }
+      if (same) return false;
+    }
+    this.last = sig.slice();
+    return true;
+  }
+  invalidate(): void { this.last = null; }
+}

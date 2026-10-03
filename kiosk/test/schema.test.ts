@@ -521,7 +521,7 @@ describe("display.glass + radarProduct retirement", () => {
       radarMinDbz: 15, radarFadeMs: 20_000, txGrowMs: 900,
       holdFps: 4, signalSteps: 8,
       smokeLifeMs: 600_000, smokeStepMs: 6000, smokePxPerMph: 60,
-      smokeBody: 0.55, sparkDensity: 1, puffMergeMs: 60_000,
+      smokeBody: 0.55, sparkDensity: 1, puffMergeMs: 60_000, smokeScale: 0.4,
     });
   });
   it("an old config carrying glass.fadeSteps still loads; the key is stripped", () => {
@@ -537,6 +537,8 @@ describe("display.glass + radarProduct retirement", () => {
     expect(() => configSchema.parse(g({ smokePxPerMph: 201 }))).toThrow();
     expect(() => configSchema.parse(g({ smokeBody: 1.5 }))).toThrow();
     expect(() => configSchema.parse(g({ sparkDensity: -1 }))).toThrow();
+    expect(() => configSchema.parse(g({ smokeScale: 0.1 }))).toThrow();
+    expect(() => configSchema.parse(g({ smokeScale: 2.5 }))).toThrow();
   });
   it("an old config carrying radarProduct still loads, and the key is stripped", () => {
     const cfg = configSchema.parse({ ...base(), display: { ...base().display, radarProduct: "mrms-reflectivity" } });

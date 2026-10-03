@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { fadeProgress, easeOutCubic, mercatorOffsetM, clipToPx, hexToGlowRgb, EMPTY_FRAME, MAX_FRONTS, MAX_PUFFS, STEP_WRAP } from "../src/frontend/map/glassMath.js";
+import { fadeProgress, easeOutCubic, mercatorOffsetM, clipToPx, hexToGlowRgb, EMPTY_FRAME, MAX_FRONTS, MAX_PUFFS, STEP_WRAP, SmokeCache } from "../src/frontend/map/glassMath.js";
 
 describe("glassMath", () => {
   it("fadeProgress clamps and treats a zero duration as done", () => {
@@ -45,5 +45,20 @@ describe("glassMath", () => {
     expect([MAX_FRONTS, MAX_PUFFS]).toEqual([8, 48]);
     expect(STEP_WRAP % 7).toBe(0);
     expect(Math.fround(STEP_WRAP - 1)).toBe(STEP_WRAP - 1);   // exact in float32
+  });
+});
+
+describe("SmokeCache (smoke re-renders only when its inputs change)", () => {
+  it("stale on first use, on any change and after invalidate; fresh for equal content", () => {
+    const c = new SmokeCache();
+    const a = new Float32Array([1, 2, 3]);
+    expect(c.stale(a)).toBe(true);
+    expect(c.stale(new Float32Array([1, 2, 3]))).toBe(false);   // a new array, same content
+    a[1] = 9;                                                      // the caller mutating its buffer
+    expect(c.stale(a)).toBe(true);                                 // compares against a copy
+    expect(c.stale(a)).toBe(false);
+    c.invalidate();
+    expect(c.stale(a)).toBe(true);
+    expect(c.stale(new Float32Array([1, 9]))).toBe(true);          // length change
   });
 });
