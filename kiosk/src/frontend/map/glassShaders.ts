@@ -7,7 +7,7 @@ import { radarPaletteGlsl } from "./radarPalette.js";
 //          from radarPalette.ts (conventional radar meaning, theme-tuned shades).
 //          Index→dBZ is the n0q scale from backend/radar/n0q.ts.
 //  FX    — full-viewport additive pass in drawing-buffer pixels: ambient haze,
-//          afterglows, live transmission fronts. Array sizes = MAX_GLOWS /
+//          afterglow smoke (puffs + sparks), live transmission fronts. Array sizes = MAX_PUFFS /
 //          MAX_FRONTS in glassMath.ts.
 
 export const RADAR_VS = `#version 300 es
@@ -74,9 +74,13 @@ uniform vec4 uFrontA[8];   // centre px (xy), radius px, age s
 uniform vec4 uFrontB[8];   // grow, bright, releasing, unused
 uniform vec3 uFrontC[8];
 uniform int uNFronts;
-uniform vec4 uGlowA[32];   // centre px (xy), radius px, strength
-uniform vec3 uGlowC[32];
-uniform int uNGlows;
+uniform vec4 uPuffA[48];   // centre px (xy, drift applied), base radius px, strength
+uniform vec4 uPuffB[48];   // downwind unit (xy; gl px, +y north; 0,0 = calm), along, cross
+uniform vec4 uPuffC[48];   // rgb, seed
+uniform int uNPuffs;
+uniform float uStep;       // shared smoke tick, wrapped (STEP_WRAP): outline + spark generations
+uniform float uSmokeBody;
+uniform float uSparkDensity;
 out vec4 O;
 
 float h21(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -101,11 +105,35 @@ void main() {
     col += vec3(0.12, 0.32, 0.36) * pow(hz, 3.0) * uHaze;
   }
 
-  for (int i = 0; i < 32; i++) {
-    if (i >= uNGlows) break;
-    vec4 g = uGlowA[i];
-    float d = distance(px, g.xy) / max(g.z, 1.0);
-    col += uGlowC[i] * exp(-d * d * 2.2) * g.w * 0.35;
+  // Smoke & sparks (spec 2026-10-02 glass smoke). Static between ticks: only
+  // uStep and the puff uniforms change, and only on the shared smoke tick.
+  vec3 acc = vec3(0.0);
+  float dens = 0.0;
+  for (int i = 0; i < 48; i++) {
+    if (i >= uNPuffs) break;
+    vec4 a = uPuffA[i];
+    vec4 b = uPuffB[i];
+    vec4 c = uPuffC[i];
+    float R = max(a.z, 1.0);
+    vec2 d = px - a.xy;
+    vec2 ax = dot(b.xy, b.xy) > 0.5 ? b.xy : vec2(1.0, 0.0);
+    float u = dot(d, ax) / (R * b.z);
+    float v = dot(d, vec2(-ax.y, ax.x)) / (R * b.w);
+    float r2 = u * u + v * v;
+    if (r2 > 4.0) continue;
+    float n = vnoise(d / R * 1.6 + vec2(c.w * 97.0, c.w * 41.0) + uStep * 0.15) - 0.5;   // ragged edge, shifts per tick
+    float f = a.w * exp(-r2 * 2.2 * (1.0 + n * 1.4));
+    acc += c.rgb * f;
+    dens += f;
+  }
+  float m = max(max(acc.r, acc.g), acc.b);
+  if (m > 0.002) {
+    vec3 hue = acc / m;                                    // keep service hues; compress brightness only
+    col += hue * (1.0 - exp(-m * 1.6)) * uSmokeBody * 0.44; // smokeBody 1 ≈ the old afterglow peak
+    vec2 cell = floor(px / 2.0);
+    float gen = floor((uStep + h21(cell) * 7.0) / 7.0);  // each grain reshuffles every 7 ticks, staggered
+    float g = h21(cell + gen * vec2(17.31, 5.13));
+    if (g < dens * uSparkDensity * 0.12) col += hue * min(1.0, 0.45 + dens);
   }
 
   for (int i = 0; i < 8; i++) {

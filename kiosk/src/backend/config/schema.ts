@@ -372,10 +372,19 @@ export const configSchema = z.object({
       txGrowMs: z.number().int().min(100).max(5_000).default(900),       // front expand time
       // Event pacing (spec 2026-10-02): the layer redraws only when its scene
       // visibly changes. A held rim's brightness moves in signalSteps levels at
-      // most holdFps times a second; an afterglow fades in fadeSteps steps.
+      // most holdFps times a second.
       holdFps: z.number().int().min(1).max(30).default(4),
       signalSteps: z.number().int().min(2).max(32).default(8),
-      fadeSteps: z.number().int().min(4).max(120).default(24),
+      // Glass smoke (spec 2026-10-02 glass smoke): each release births a puff
+      // that drifts downwind (dashboard /api/weather wind) for smokeLifeMs,
+      // changing only on a shared smokeStepMs tick — redraws/min ≈ 60000 /
+      // smokeStepMs while smoke is on screen, 0 on a quiet band.
+      smokeLifeMs: z.number().int().min(60_000).max(3_600_000).default(600_000),
+      smokeStepMs: z.number().int().min(1_000).max(60_000).default(6_000),
+      smokePxPerMph: z.number().min(0).max(200).default(60),   // drift over a life per mph, px @1080 tall
+      smokeBody: z.number().min(0).max(1).default(0.55),       // body brightness vs the old afterglow
+      sparkDensity: z.number().min(0).max(3).default(1),       // 0 = no sparks
+      puffMergeMs: z.number().int().min(0).max(600_000).default(60_000), // re-feed window per site
     }).default({}),
     // Kiosk camera (spec 2026-10-02 "fixed stage"): the wall frames once and
     // never moves on its own — camera moves made Google re-lay-out the vector

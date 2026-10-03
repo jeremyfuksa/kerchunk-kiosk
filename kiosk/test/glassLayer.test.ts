@@ -80,7 +80,7 @@ describe("GlassLayer when it can't run", () => {
     const setMap = vi.fn();
     let ov: any;
     vi.stubGlobal("google", { maps: { WebGLOverlayView: class { constructor() { ov = this; } requestRedraw = requestRedraw; setMap = setMap; } } });
-    const knobs = { maxFps: 30, txFps: 60, hazeIntensity: 0.35, radarOpacity: 0.6, radarMinDbz: 15, radarFadeMs: 20_000, txGrowMs: 900, holdFps: 4, signalSteps: 8, fadeSteps: 24 };
+    const knobs = { maxFps: 30, txFps: 60, hazeIntensity: 0.35, radarOpacity: 0.6, radarMinDbz: 15, radarFadeMs: 20_000, txGrowMs: 900, holdFps: 4, signalSteps: 8, smokeLifeMs: 600_000, smokeStepMs: 6000, smokePxPerMph: 60, smokeBody: 0.55, sparkDensity: 1, puffMergeMs: 60_000 };
     const layer = new GlassLayer({ map: {}, home: { lat: 39, lng: -94 }, knobs, getFrame: () => EMPTY_FRAME });
     ov.onContextRestored({ gl: {} });              // not a WebGL2 context (node has none)
     expect(layer.status).toBe("off:no-webgl2");
@@ -99,7 +99,7 @@ describe("GlassLayer pacing", () => {
     vi.useFakeTimers();
     const requestRedraw = vi.fn();
     vi.stubGlobal("google", { maps: { WebGLOverlayView: class { requestRedraw = requestRedraw; setMap = vi.fn(); } } });
-    const knobs = { maxFps: 30, txFps: 60, hazeIntensity: 0, radarOpacity: 0.6, radarMinDbz: 15, radarFadeMs: 20_000, txGrowMs: 900, holdFps: 4, signalSteps: 8, fadeSteps: 24 };
+    const knobs = { maxFps: 30, txFps: 60, hazeIntensity: 0, radarOpacity: 0.6, radarMinDbz: 15, radarFadeMs: 20_000, txGrowMs: 900, holdFps: 4, signalSteps: 8, smokeLifeMs: 600_000, smokeStepMs: 6000, smokePxPerMph: 60, smokeBody: 0.55, sparkDensity: 1, puffMergeMs: 60_000 };
     const layer = new GlassLayer({ map: {}, home: { lat: 39, lng: -94 }, knobs, getFrame: () => EMPTY_FRAME });
     requestRedraw.mockClear();
     vi.advanceTimersByTime(1000);                 // no draw ever came back: the kick retries
@@ -119,7 +119,7 @@ describe("GlassLayer.redrawAt (review I2)", () => {
     vi.setSystemTime(10_000);
     const requestRedraw = vi.fn();
     vi.stubGlobal("google", { maps: { WebGLOverlayView: class { requestRedraw = requestRedraw; setMap = vi.fn(); } } });
-    const knobs = { maxFps: 30, txFps: 60, hazeIntensity: 0, radarOpacity: 0.6, radarMinDbz: 15, radarFadeMs: 20_000, txGrowMs: 900, holdFps: 4, signalSteps: 8, fadeSteps: 24 };
+    const knobs = { maxFps: 30, txFps: 60, hazeIntensity: 0, radarOpacity: 0.6, radarMinDbz: 15, radarFadeMs: 20_000, txGrowMs: 900, holdFps: 4, signalSteps: 8, smokeLifeMs: 600_000, smokeStepMs: 6000, smokePxPerMph: 60, smokeBody: 0.55, sparkDensity: 1, puffMergeMs: 60_000 };
     const layer = new GlassLayer({ map: {}, home: { lat: 39, lng: -94 }, knobs, getFrame: () => EMPTY_FRAME });
     layer.redrawAt(10_200);                       // earlier than the 1 s kick → re-armed
     requestRedraw.mockClear();

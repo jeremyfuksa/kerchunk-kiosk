@@ -8,7 +8,7 @@
 // (never from a fetch callback), so we never fight the map renderer.
 import { RADAR_VS, RADAR_FS, FX_VS, FX_FS } from "./glassShaders.js";
 import {
-  MAX_FRONTS, MAX_GLOWS, mercatorOffsetM, clipToPx, paceDelay,
+  MAX_FRONTS, MAX_PUFFS, STEP_WRAP, mercatorOffsetM, clipToPx, paceDelay,
   type GlassFrame,
 } from "./glassMath.js";
 import type { RadarFrame } from "./radarSync.js";
@@ -19,7 +19,9 @@ declare const google: any;
 export interface GlassKnobs {
   maxFps: number; txFps: number; hazeIntensity: number; radarOpacity: number;
   radarMinDbz: number; radarFadeMs: number; txGrowMs: number;
-  holdFps: number; signalSteps: number; fadeSteps: number;
+  holdFps: number; signalSteps: number;
+  smokeLifeMs: number; smokeStepMs: number; smokePxPerMph: number;
+  smokeBody: number; sparkDensity: number; puffMergeMs: number;
 }
 
 export interface GlassLayerOptions {
@@ -57,8 +59,9 @@ export class GlassLayer {
   private readonly fronts = new Float32Array(MAX_FRONTS * 4);
   private readonly frontsB = new Float32Array(MAX_FRONTS * 4);
   private readonly frontsC = new Float32Array(MAX_FRONTS * 3);
-  private readonly glows = new Float32Array(MAX_GLOWS * 4);
-  private readonly glowsC = new Float32Array(MAX_GLOWS * 3);
+  private readonly puffsA = new Float32Array(MAX_PUFFS * 4);
+  private readonly puffsB = new Float32Array(MAX_PUFFS * 4);
+  private readonly puffsC = new Float32Array(MAX_PUFFS * 4);
   private lastFrame: GlassFrame | null = null;
   private redraws = 0;
   private timerAt = 0; // Date.now() ms the armed timer fires
@@ -159,7 +162,7 @@ export class GlassLayer {
     }
     const gl = raw;
     this.radarProg = link(gl, RADAR_VS, RADAR_FS, ["uMvp", "uPrev", "uNext", "uTexSize", "uMix", "uAlpha", "uMinDbz", "uOpacity"]);
-    this.fxProg = link(gl, FX_VS, FX_FS, ["uRes", "uTime", "uHaze", "uFrontA", "uFrontB", "uFrontC", "uNFronts", "uGlowA", "uGlowC", "uNGlows"]);
+    this.fxProg = link(gl, FX_VS, FX_FS, ["uRes", "uTime", "uHaze", "uFrontA", "uFrontB", "uFrontC", "uNFronts", "uPuffA", "uPuffB", "uPuffC", "uNPuffs", "uStep", "uSmokeBody", "uSparkDensity"]);
     if (!this.radarProg || !this.fxProg) { this.giveUp("off:shader"); return; }
     const saved = saveGl(gl);
     this.fxVao = gl.createVertexArray();
@@ -294,7 +297,7 @@ export class GlassLayer {
       gl.drawElements(gl.TRIANGLES, this.meshCount, gl.UNSIGNED_SHORT, 0);
     }
 
-    // (2) haze + afterglows + fronts
+    // (2) haze + smoke + fronts
     const frame = this.o.getFrame(Date.now());
     this.lastFrame = frame;
     let nf = 0;
@@ -308,17 +311,20 @@ export class GlassLayer {
       this.frontsC.set(fr.color, nf * 3);
       nf++;
     }
-    let ng = 0;
-    for (const g of frame.glows) {
-      if (ng >= MAX_GLOWS) break;
-      const m = transformer.fromLatLngAltitude({ lat: g.lat, lng: g.lng, altitude: 0 });
-      const c = clipToPx(m, 0, 0, 0, W, H), e = clipToPx(m, g.radiusM, 0, 0, W, H);
+    let np = 0;
+    const px1080 = H / 1080;   // drift is authored at 1080 tall
+    for (const p of frame.puffs) {
+      if (np >= MAX_PUFFS) break;
+      const m = transformer.fromLatLngAltitude({ lat: p.lat, lng: p.lng, altitude: 0 });
+      const c = clipToPx(m, 0, 0, 0, W, H), e = clipToPx(m, p.radiusM, 0, 0, W, H);
       if (!c || !e) continue;
-      this.glows.set([c[0], c[1], Math.hypot(e[0] - c[0], e[1] - c[1]), g.strength], ng * 4);
-      this.glowsC.set(g.color, ng * 3);
-      ng++;
+      const drift = p.driftPx * px1080;   // gl px: origin bottom-left, so +y = north
+      this.puffsA.set([c[0] + p.dir[0] * drift, c[1] + p.dir[1] * drift, Math.hypot(e[0] - c[0], e[1] - c[1]), p.strength], np * 4);
+      this.puffsB.set([p.dir[0], p.dir[1], p.along, p.cross], np * 4);
+      this.puffsC.set([p.color[0], p.color[1], p.color[2], p.seed], np * 4);
+      np++;
     }
-    if (k.hazeIntensity > 0 || nf > 0 || ng > 0) {
+    if (k.hazeIntensity > 0 || nf > 0 || np > 0) {
       const u = this.fxProg.u;
       gl.useProgram(this.fxProg.p);
       gl.blendFunc(gl.ONE, gl.ONE);
@@ -329,9 +335,13 @@ export class GlassLayer {
       gl.uniform4fv(u.uFrontB!, this.frontsB);
       gl.uniform3fv(u.uFrontC!, this.frontsC);
       gl.uniform1i(u.uNFronts!, nf);
-      gl.uniform4fv(u.uGlowA!, this.glows);
-      gl.uniform3fv(u.uGlowC!, this.glowsC);
-      gl.uniform1i(u.uNGlows!, ng);
+      gl.uniform4fv(u.uPuffA!, this.puffsA);
+      gl.uniform4fv(u.uPuffB!, this.puffsB);
+      gl.uniform4fv(u.uPuffC!, this.puffsC);
+      gl.uniform1i(u.uNPuffs!, np);
+      gl.uniform1f(u.uStep!, frame.step % STEP_WRAP);
+      gl.uniform1f(u.uSmokeBody!, k.smokeBody);
+      gl.uniform1f(u.uSparkDensity!, k.sparkDensity);
       gl.bindVertexArray(this.fxVao);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
     }
