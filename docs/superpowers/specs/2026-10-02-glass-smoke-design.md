@@ -10,7 +10,9 @@ hold, the release dissolve, the pacing contract and the fixed stage all stand.
 
 The operator's read of the shipped afterglow: the rings are right and the
 same-service haze is a good start, but it fades far too fast and *does nothing*
-while it lasts. The map should feel alive between transmissions. The
+while it lasts. The map should feel alive between transmissions: in the
+operator's words, a lava lamp for radio, **something you can just stare at**.
+The
 constraint is still the box's thermals: every glass redraw re-composites the
 whole Google map, and continuous haze drove it to its 90 °C trip on
 2026-10-01. So anything that happens between transmissions has to be **coarse
@@ -39,8 +41,10 @@ Mockups: `.superpowers/brainstorm/371816-1790988283/content/haze-bd-mix.html`
   **wind at birth** (direction + speed), plus a stable per-puff seed.
 - **Re-feed.** If the site's newest puff was born less than `puffMergeMs` ago
   (60 s), a new release does not add a puff. It bumps that puff's strength
-  (the 1–6 hit ramp, `rampStrength`) and restarts its age. A busy site
-  therefore holds at most `smokeLifeMs / puffMergeMs` ≈ 10 puffs.
+  (the 1–6 hit ramp, `rampStrength`) and **keeps its birth time**. Restarting
+  the age would let a site hit every 30 s hold one puff at the source forever,
+  with no trail. A busy site therefore holds at most
+  `smokeLifeMs / puffMergeMs` ≈ 10 puffs.
 - **Ageing.** Over `smokeLifeMs` (10 min), with `k = age / smokeLifeMs`:
   - **drift:** the centre moves downwind by `k × smokePxPerMph × mph`
     (screen px, scaled to a 1080-px-tall viewport so a resize keeps the look);
@@ -54,8 +58,10 @@ Mockups: `.superpowers/brainstorm/371816-1790988283/content/haze-bd-mix.html`
   alive, the weakest current puff is dropped first.
 - **History seed.** `seedGlow` becomes `seedPuff`: a backfilled transmission
   makes a puff whose birth time is the row's `ts`, so on reload the wall
-  shows smoke already part-way through its life. Rows older than
-  `smokeLifeMs` are skipped. Seeds use the wind known at reload (or none).
+  shows smoke already part-way through its life. The backfill fetch asks for
+  the last `smokeLifeMs`, not the last hour, and uses the rows' real
+  timestamps (the old 1 h → 60 s rescale goes). Seeds use the wind known at
+  reload (or none).
 
 **Rendering: smoke & sparks.**
 
@@ -158,6 +164,10 @@ arrays.
   services overlapping, a single kerchunk. Capture at the source, mid-drift
   and while dying out. With a key in `test/tx` there's no wind override, so
   also verify on the live band with the real wind.
+- **Stare test (the goal).** Run the live band at `smokeStepMs` 6000, 3000
+  and 1500, about 10 minutes each, with temperature and chromium CPU noted for
+  each. The operator picks the default by eye within the thermal budget, and
+  the spec's 6000 changes if they pick another.
 - The pacing diag (`glassRedraws/min`) reads ≈ 60 000 / `smokeStepMs` while
   smoke lives, and 0 on a quiet band.
 - **Thermal:** a 10-minute live-band run (temperature, CPU, chromium) against
