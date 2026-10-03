@@ -2,7 +2,8 @@
 // (specs 2026-10-02 event pacing + glass smoke). key-up → eased grow → STILL
 // hold (brightness follows the audible channel's signal, quantised and
 // rate-limited) → release dissolves the rim over RELEASE_MS and births a
-// smoke PUFF. A puff drifts downwind with the wind at its birth, stretches,
+// smoke PUFF. A puff drifts downwind with the current wind (a wind change
+// turns it where it is, so a plume bends), stretches,
 // and dims over smokeLifeMs, sampled on ONE shared smokeStepMs tick so any
 // number of puffs costs one redraw per tick. A release within puffMergeMs of
 // the site's newest puff re-feeds it (birth kept), so a hot site streams a
@@ -89,7 +90,13 @@ interface LiveFront {
   id: string; site: GlassSite; radiusM: number; born: number; until: number;
   bright: number; brightAt: number; pending: number | null; releasedAt: number | null;
 }
-interface LivePuff { site: GlassSite; radiusM: number; born: number; strength0: number; wind: Wind | null; seed: number }
+// A puff drifts in legs: `off` is where earlier winds already carried it, and
+// the current `wind` has carried it on since `legAt`. A wind change banks the
+// leg so live smoke turns where it is instead of jumping.
+interface LivePuff {
+  site: GlassSite; radiusM: number; born: number; strength0: number; seed: number;
+  wind: Wind | null; legAt: number; off: [number, number]; heading: [number, number] | null;
+}
 interface SiteState { hits: number }
 
 export class GlassState {
@@ -152,9 +159,27 @@ export class GlassState {
     for (const id of this.fronts.keys()) this.release(id, now);
   }
 
-  /** The wind new puffs latch (lib/wind.ts). 0 mph counts as calm. */
-  setWind(w: Wind | null): void {
+  /** The current wind (lib/wind.ts); 0 mph counts as calm. Live puffs bank
+   *  their drift at the current tick and carry on with the new wind. */
+  setWind(w: Wind | null, now: number): void {
     this.wind = w && w.mph > 0 ? w : null;
+    const tick = gridTick(now, this.t.smokeStepMs);
+    for (const p of this.puffs) {
+      const [e, n] = this.legDrift(p, tick);
+      p.off = [p.off[0] + e, p.off[1] + n];
+      p.legAt = Math.max(p.legAt, tick);
+      p.wind = this.wind;
+      if (this.wind) p.heading = windDir(this.wind.towardDeg);
+    }
+  }
+
+  /** Drift along the current leg at `tick`, px at 1080 tall. */
+  private legDrift(p: LivePuff, tick: number): [number, number] {
+    const w = p.wind;
+    if (!w) return [0, 0];
+    const d = (Math.max(0, tick - p.legAt) / this.t.smokeLifeMs) * this.t.smokePxPerMph * w.mph;
+    const [e, n] = windDir(w.towardDeg);
+    return [e * d, n * d];
   }
 
   /** History backfill: a puff born at the row's real ts, already part-aged. */
@@ -187,14 +212,18 @@ export class GlassState {
       newest.strength0 = strength0; newest.radiusM = radiusM; newest.site = site;
       return;
     }
-    this.puffs.push({ site, radiusM, born: at, strength0, wind: this.wind, seed: puffSeed(site.key, at) });
+    const w = this.wind;
+    this.puffs.push({
+      site, radiusM, born: at, strength0, seed: puffSeed(site.key, at),
+      wind: w, legAt: at, off: [0, 0], heading: w ? windDir(w.towardDeg) : null,
+    });
     if (this.puffs.length > MAX_PUFFS) this.dropWeakest(at);
   }
 
   private dropWeakest(at: number): void {
     let wi = 0, ws = Infinity;
     this.puffs.forEach((p, i) => {
-      const v = p.strength0 * puffShape((at - p.born) / this.t.smokeLifeMs, p.wind !== null).dim;
+      const v = p.strength0 * puffShape((at - p.born) / this.t.smokeLifeMs, p.heading !== null).dim;
       if (v < ws) { ws = v; wi = i; }
     });
     this.puffs.splice(wi, 1);
@@ -241,13 +270,13 @@ export class GlassState {
       const p = this.puffs[i]!;
       const k = Math.max(0, tick - p.born) / life;
       if (k >= 1) { this.puffs.splice(i, 1); continue; }
-      const w = p.wind;
-      const sh = puffShape(k, w !== null);
+      const sh = puffShape(k, p.heading !== null);
+      const [e, n] = this.legDrift(p, tick);
       puffs.push({
         key: p.site.key, lat: p.site.lat, lng: p.site.lng, radiusM: p.radiusM, color: p.site.color,
         strength: p.strength0 * sh.dim,
-        dir: w ? windDir(w.towardDeg) : [0, 0],
-        driftPx: w ? k * this.t.smokePxPerMph * w.mph : 0,
+        dir: p.heading ?? [0, 0],
+        drift: [p.off[0] + e, p.off[1] + n],
         along: sh.along, cross: sh.cross, seed: p.seed,
       });
     }

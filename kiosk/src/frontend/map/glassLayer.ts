@@ -334,8 +334,8 @@ export class GlassLayer {
       const m = transformer.fromLatLngAltitude({ lat: p.lat, lng: p.lng, altitude: 0 });
       const c = clipToPx(m, 0, 0, 0, W, H), e = clipToPx(m, p.radiusM * k.smokeScale, 0, 0, W, H);
       if (!c || !e) continue;
-      const drift = p.driftPx * px1080;   // gl px: origin bottom-left, so +y = north
-      this.puffsA.set([c[0] + p.dir[0] * drift, c[1] + p.dir[1] * drift, Math.hypot(e[0] - c[0], e[1] - c[1]), p.strength], np * 4);
+      // gl px: origin bottom-left, so +y = north
+      this.puffsA.set([c[0] + p.drift[0] * px1080, c[1] + p.drift[1] * px1080, Math.hypot(e[0] - c[0], e[1] - c[1]), p.strength], np * 4);
       this.puffsB.set([p.dir[0], p.dir[1], p.along, p.cross], np * 4);
       this.puffsC.set([p.color[0], p.color[1], p.color[2], p.seed], np * 4);
       np++;

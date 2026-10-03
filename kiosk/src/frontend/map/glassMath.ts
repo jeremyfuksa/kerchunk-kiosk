@@ -22,10 +22,12 @@ export interface Puff {
   key: string; lat: number; lng: number; radiusM: number; color: Rgb;
   /** Hit-ramp strength × the life dim. */
   strength: number;
-  /** Downwind unit vector [east, north]; [0, 0] = calm (no drift). */
+  /** Heading the shape stretches along: the latest downwind unit vector
+   *  [east, north] it has had; [0, 0] = never windy (round). */
   dir: readonly [number, number];
-  /** Drift so far along `dir`, px at a 1080-px-tall viewport. */
-  driftPx: number;
+  /** Drift so far [east, north], px at a 1080-px-tall viewport. A wind change
+   *  turns it from where it is, so it can bend. */
+  drift: readonly [number, number];
   /** Radius multipliers along / across the wind. */
   along: number; cross: number;
   /** Stable 0..1 per puff: outline noise + spark hash. */

@@ -232,8 +232,8 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
       smokePxPerMph: display.glass.smokePxPerMph, puffMergeMs: display.glass.puffMergeMs,
     });
     // Smoke drifts with the dashboard's /api/weather wind (lib/wind.ts): no
-    // poll of our own. A new wind only steers puffs born after it.
-    onWind((w) => glassState.setWind(w));
+    // poll of our own. A wind change turns live smoke where it is (a bend).
+    onWind((w) => glassState.setWind(w, Date.now()));
     const glass = mapId
       ? new GlassLayer({ map, home, knobs: display.glass, getFrame: (now) => glassState.frame(now) })
       : null;

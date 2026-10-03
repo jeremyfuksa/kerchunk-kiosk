@@ -39,6 +39,8 @@ Mockups: `.superpowers/brainstorm/371816-1790988283/content/haze-bd-mix.html`
   (unchanged), and a **puff** is born at the site in the service colour. The
   puff carries: site position, service colour, birth time, strength, and the
   **wind at birth** (direction + speed), plus a stable per-puff seed.
+  *Amended 2026-10-02:* a wind change re-steers live puffs too, see
+  "Wind changes" under Ageing.
 - **Re-feed.** If the site's newest puff was born less than `puffMergeMs` ago
   (60 s), a new release does not add a puff. It bumps that puff's strength
   (the 1–6 hit ramp, `rampStrength`) and **keeps its birth time**. Restarting
@@ -48,6 +50,12 @@ Mockups: `.superpowers/brainstorm/371816-1790988283/content/haze-bd-mix.html`
 - **Ageing.** Over `smokeLifeMs` (10 min), with `k = age / smokeLifeMs`:
   - **drift:** the centre moves downwind by `k × smokePxPerMph × mph`
     (screen px, scaled to a 1080-px-tall viewport so a resize keeps the look);
+  - **wind changes** (amended 2026-10-02, operator ask): drift runs in legs.
+    `setWind(w, now)` banks each live puff's drift at the current shared tick
+    and the puff carries on with the new wind from where it is, so it never
+    jumps and the plume bends. Its shape turns to the new heading. Calm parks
+    it: drift frozen, last heading and stretch kept. Re-sending the same wind
+    (every poll) is a no-op;
   - **stretch:** the along-wind radius grows by `1 + 1.6 k`, the cross-wind by
     `1 + 0.8 √k`, starting from the site's latched radius (`siteRadius`);
   - **dim:** strength × `(1 − k)²`;
@@ -93,7 +101,8 @@ Mockups: `.superpowers/brainstorm/371816-1790988283/content/haze-bd-mix.html`
 - `dashboard.ts`'s existing `/api/weather` poll (`POLL_MS.weather`, 10 min)
   calls `setWind`. **No new poll**: the appliance can deadlock on concurrent
   requests. The map subscribes with `onWind` and hands the latest value to
-  `glassState.setWind()`. A new wind only affects puffs born after it.
+  `glassState.setWind()`. A new wind re-steers live puffs from where they are
+  (amended 2026-10-02; it used to affect only puffs born after it).
 - `/map` (interactive) has no weather poll, so its smoke pools. That's
   acceptable.
 
@@ -154,7 +163,7 @@ arrays.
   - `nextChangeAt` lands on the next tick while puffs live and is `null` for
     an empty scene;
   - `seedPuff` pre-ages a puff and skips rows that are too old;
-  - a wind change leaves existing puffs alone.
+  - a wind change turns live puffs with no jump; calm parks them.
 - Schema: the defaults and ranges; an old config containing `fadeSteps`
   still loads.
 

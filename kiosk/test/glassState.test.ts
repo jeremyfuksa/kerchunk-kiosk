@@ -12,6 +12,7 @@ const T = {
 const TICK = 6000;
 const NE7 = { towardDeg: 225, mph: 7 };   // "NE 7 mph": blows toward the SW
 const site = (key = "a", color: readonly [number, number, number] = [1, 0, 0]) => ({ key, lat: 39, lng: -94, color });
+const mag = (p: { drift: readonly [number, number] }) => Math.hypot(p.drift[0], p.drift[1]);
 const fire = (s: GlassState, id: string, key: string, on: number, off: number) => {
   s.keyUp(id, site(key), 5000, on); s.release(id, off);
 };
@@ -113,13 +114,13 @@ describe("GlassState fronts", () => {
 describe("GlassState puffs (smoke)", () => {
   it("a release births a puff at the site with the current wind", () => {
     const s = new GlassState(T);
-    s.setWind(NE7);
+    s.setWind(NE7, 0);
     fire(s, "ch1", "a", 0, 10_000);
     const mid = s.frame(10_750);
     expect(mid.continuous).toBe(true);                           // the rim is still dissolving
     expect(mid.fronts[0]!.releasing).toBeCloseTo(0.5, 6);
     const p = mid.puffs[0]!;
-    expect(p).toMatchObject({ key: "a", radiusM: 5000, driftPx: 0, along: 1, cross: 1 });
+    expect(p).toMatchObject({ key: "a", radiusM: 5000, drift: [0, 0], along: 1, cross: 1 });
     expect(p.strength).toBeCloseTo(rampStrength(1), 9);
     expect(p.dir[0]).toBeCloseTo(-Math.SQRT1_2, 9);
     expect(p.dir[1]).toBeCloseTo(-Math.SQRT1_2, 9);
@@ -141,31 +142,32 @@ describe("GlassState puffs (smoke)", () => {
 
   it("a hot site leaves a trail: one puff per merge window, older ones further downwind", () => {
     const s = new GlassState(T);
-    s.setWind(NE7);
+    s.setWind(NE7, 0);
     for (let i = 0; i < 20; i++) fire(s, `k${i}`, "a", i * 30_000, i * 30_000 + 2000);   // every 30 s for 10 min
     const f = s.frame(20 * 30_000);
     expect(f.puffs.length).toBeGreaterThanOrEqual(9);
     expect(f.puffs.length).toBeLessThanOrEqual(11);
-    const drifts = f.puffs.map((p) => p.driftPx).sort((a, b) => a - b);
+    const drifts = f.puffs.map(mag).sort((a, b) => a - b);
     expect(drifts[drifts.length - 1]!).toBeGreaterThan(drifts[0]! + 200);
   });
 
   it("drift = k × pxPerMph × mph at the sampled tick", () => {
     const s = new GlassState(T);
-    s.setWind(NE7);
+    s.setWind(NE7, 0);
     fire(s, "k0", "a", 0, 1000);
     const p = s.frame(72_000).puffs[0]!;
-    expect(p.driftPx).toBeCloseTo(((72_000 - 1000) / 600_000) * 60 * 7, 6);
+    expect(mag(p)).toBeCloseTo(((72_000 - 1000) / 600_000) * 60 * 7, 6);
+    expect(p.drift[0] / mag(p)).toBeCloseTo(-Math.SQRT1_2, 9);            // along the wind
     expect(p.along).toBeCloseTo(puffShape(71_000 / 600_000, true).along, 9);
   });
 
   it("a puff only changes across a smokeStepMs boundary", () => {
     const s = new GlassState(T);
-    s.setWind(NE7);
+    s.setWind(NE7, 0);
     fire(s, "k0", "a", 0, 0);
     const a = s.frame(2 * TICK).puffs, b = s.frame(3 * TICK - 1).puffs, c = s.frame(3 * TICK).puffs;
     expect(b).toEqual(a);
-    expect(c[0]!.driftPx).toBeGreaterThan(a[0]!.driftPx);
+    expect(mag(c[0]!)).toBeGreaterThan(mag(a[0]!));
   });
 
   it("nextChangeAt is the next shared tick while smoke lives, never ≤ now; null once gone", () => {
@@ -232,25 +234,73 @@ describe("GlassState puffs (smoke)", () => {
     expect(Math.max(...puffs.map((p) => p.strength))).toBeCloseTo(rampStrength(20) * puffShape(30_000 / 600_000, false).dim, 9);
   });
 
-  it("a wind change only affects puffs born after it", () => {
+  it("a wind change turns live smoke where it is: no jump, then the new leg", () => {
     const s = new GlassState(T);
-    s.setWind(NE7);
+    s.setWind(NE7, 0);
     fire(s, "k0", "a", 0, 0);
-    s.setWind({ towardDeg: 90, mph: 10 });
-    fire(s, "k1", "b", 0, 100);
-    const f = s.frame(200);
-    const a = f.puffs.find((p) => p.key === "a")!, b = f.puffs.find((p) => p.key === "b")!;
-    expect(a.dir[0]).toBeCloseTo(-Math.SQRT1_2, 9);
-    expect(b.dir[0]).toBeCloseTo(1, 9);
+    const before = s.frame(300_000).puffs[0]!;                   // half its life on NE 7
+    s.setWind({ towardDeg: 90, mph: 10 }, 300_000);
+    const at = s.frame(300_000).puffs[0]!;
+    expect(at.drift[0]).toBeCloseTo(before.drift[0], 9);         // no jump at the change
+    expect(at.drift[1]).toBeCloseTo(before.drift[1], 9);
+    expect(at.dir[0]).toBeCloseTo(1, 9);                         // shape turns to the new wind
+    const later = s.frame(420_000).puffs[0]!;
+    const leg1 = 0.5 * 60 * 7, leg2 = 0.2 * 60 * 10;
+    expect(later.drift[0]).toBeCloseTo(-Math.SQRT1_2 * leg1 + leg2, 6);
+    expect(later.drift[1]).toBeCloseTo(-Math.SQRT1_2 * leg1, 6);
+  });
+
+  it("a wind change mid-step banks at the tick the puff is drawn at", () => {
+    const s = new GlassState(T);
+    s.setWind(NE7, 0);
+    fire(s, "k0", "a", 0, 0);
+    const before = s.frame(300_000 + 2000).puffs[0]!;
+    s.setWind({ towardDeg: 90, mph: 10 }, 303_000);
+    const at = s.frame(300_000 + 4000).puffs[0]!;               // same tick: nothing moves
+    expect(at.drift[0]).toBeCloseTo(before.drift[0], 9);
+    expect(at.drift[1]).toBeCloseTo(before.drift[1], 9);
+  });
+
+  it("re-sending the same wind (every weather poll) doesn't move smoke", () => {
+    const a = new GlassState(T), b = new GlassState(T);
+    for (const s of [a, b]) { s.setWind(NE7, 0); fire(s, "k0", "a", 0, 0); }
+    for (let t = 60_000; t < 400_000; t += 60_000) { b.frame(t); b.setWind({ ...NE7 }, t + 1234); }
+    const pa = a.frame(420_000).puffs[0]!, pb = b.frame(420_000).puffs[0]!;
+    expect(pb.drift[0]).toBeCloseTo(pa.drift[0], 9);
+    expect(pb.drift[1]).toBeCloseTo(pa.drift[1], 9);
+  });
+
+  it("wind dropping to calm parks the smoke: drift frozen, heading and stretch kept", () => {
+    const s = new GlassState(T);
+    s.setWind(NE7, 0);
+    fire(s, "k0", "a", 0, 0);
+    const before = s.frame(300_000).puffs[0]!;
+    s.setWind(null, 300_000);
+    const later = s.frame(420_000).puffs[0]!;
+    expect(later.drift).toEqual(before.drift);
+    expect(later.dir).toEqual(before.dir);
+    expect(later.along).toBeCloseTo(puffShape(0.7, true).along, 9);
+    expect(later.along).toBeGreaterThan(later.cross);
+  });
+
+  it("smoke born calm starts drifting when wind arrives", () => {
+    const s = new GlassState(T);
+    fire(s, "k0", "a", 0, 0);
+    s.frame(300_000);
+    s.setWind({ towardDeg: 90, mph: 10 }, 300_000);
+    const p = s.frame(420_000).puffs[0]!;
+    expect(p.drift[0]).toBeCloseTo(0.2 * 60 * 10, 6);
+    expect(p.drift[1]).toBeCloseTo(0, 9);
+    expect(p.dir[0]).toBeCloseTo(1, 9);
   });
 
   it("calm (null or 0 mph): no drift, even spread", () => {
     for (const w of [null, { towardDeg: 90, mph: 0 }]) {
       const s = new GlassState(T);
-      s.setWind(w);
+      s.setWind(w, 0);
       fire(s, "k0", "a", 0, 0);
       const p = s.frame(300_000).puffs[0]!;
-      expect(p.driftPx).toBe(0);
+      expect(p.drift).toEqual([0, 0]);
       expect(p.dir).toEqual([0, 0]);
       expect(p.along).toBe(p.cross);
       expect(p.along).toBeGreaterThan(1);
