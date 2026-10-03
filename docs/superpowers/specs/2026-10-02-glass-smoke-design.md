@@ -1,8 +1,8 @@
 # Glass smoke: afterglows become wind-carried smoke & sparks
 
-Date: 2026-10-02 · Status: implemented on `feat/glass-smoke`; on the wall, awaiting the operator's stare test
+Date: 2026-10-02 · Status: shipped. Stare test 2026-10-02: the operator kept `smokeStepMs` 6000 (3000 within budget; 1500 +2.9 °C, over).
 Builds on: [`2026-10-02-fixed-stage-event-pacing-design.md`](2026-10-02-fixed-stage-event-pacing-design.md)
-(PR B, `feat/glass-transmissions`). It replaces that spec's **afterglow**
+(PR B, #288). It replaces that spec's **afterglow**
 (a per-site Gaussian fading over 60 s in `fadeSteps` steps). Fronts, the still
 hold, the release dissolve, the pacing contract and the fixed stage all stand.
 
