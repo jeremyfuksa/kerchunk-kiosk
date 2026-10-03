@@ -16,25 +16,45 @@ export interface Front {
   releasing: number;
 }
 
-/** A released site's fading footprint. */
-export interface Glow { key: string; lat: number; lng: number; radiusM: number; color: Rgb; strength: number }
+/** A released transmission's smoke (spec 2026-10-02 glass smoke), sampled at
+ *  the shared smoke tick. Screen terms: dir is [east, north]. */
+export interface Puff {
+  key: string; lat: number; lng: number; radiusM: number; color: Rgb;
+  /** Hit-ramp strength × the life dim. */
+  strength: number;
+  /** Downwind unit vector [east, north]; [0, 0] = calm (no drift). */
+  dir: readonly [number, number];
+  /** Drift so far along `dir`, px at a 1080-px-tall viewport. */
+  driftPx: number;
+  /** Radius multipliers along / across the wind. */
+  along: number; cross: number;
+  /** Stable 0..1 per puff: outline noise + spark hash. */
+  seed: number;
+}
 
 export interface GlassFrame {
-  fronts: Front[]; glows: Glow[];
+  fronts: Front[]; puffs: Puff[];
+  /** The shared smoke tick index (gridTick / smokeStepMs). Wrap with
+   *  STEP_WRAP before it becomes a shader uniform. */
+  step: number;
   /** A front is in its grow phase: pace at txFps. */
   growing: boolean;
   /** Something moves every frame (a grow or a release dissolve). */
   continuous: boolean;
-  /** Date.now() ms of the next VISIBLE change if no event arrives (a fade
-   *  step, a rate-limited signal step, a ttl expiry); null = never. */
+  /** Date.now() ms of the next VISIBLE change if no event arrives (a smoke
+   *  tick, a rate-limited signal step, a ttl expiry); null = never. */
   nextChangeAt: number | null;
 }
 
-export const EMPTY_FRAME: GlassFrame = Object.freeze({ fronts: [], glows: [], growing: false, continuous: false, nextChangeAt: null }) as GlassFrame;
+export const EMPTY_FRAME: GlassFrame = Object.freeze({ fronts: [], puffs: [], step: 0, growing: false, continuous: false, nextChangeAt: null }) as GlassFrame;
 
 // Uniform-array sizes compiled into glassShaders.ts — keep in sync.
 export const MAX_FRONTS = 8;
-export const MAX_GLOWS = 32;
+export const MAX_PUFFS = 48;
+/** The step index wraps here before the shader sees it: Date.now()/step is
+ *  ~3e8, far past float32 precision. A multiple of 7 keeps the 7-tick spark
+ *  reshuffle continuous across the wrap. */
+export const STEP_WRAP = 7000;
 
 export function fadeProgress(startMs: number, now: number, durMs: number): number {
   if (durMs <= 0) return 1;

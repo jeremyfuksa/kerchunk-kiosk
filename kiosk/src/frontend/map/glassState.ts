@@ -1,23 +1,33 @@
-// Pure transmission/afterglow lifecycle for Weather Glass, event-paced
-// (spec 2026-10-02). key-up → eased grow → STILL hold (brightness follows the
-// audible channel's signal, quantised + rate-limited) → release dissolves the
-// rim over RELEASE_MS while the site's afterglow fades in fadeSteps steps.
-// Every frame also says how it will change (continuous / nextChangeAt) so the
-// layer redraws only when something visibly moves. Replaces BlipField + txRing.
+// Pure transmission + smoke lifecycle for Weather Glass, event-paced
+// (specs 2026-10-02 event pacing + glass smoke). key-up → eased grow → STILL
+// hold (brightness follows the audible channel's signal, quantised and
+// rate-limited) → release dissolves the rim over RELEASE_MS and births a
+// smoke PUFF. A puff drifts downwind with the wind at its birth, stretches,
+// and dims over smokeLifeMs, sampled on ONE shared smokeStepMs tick so any
+// number of puffs costs one redraw per tick. A release within puffMergeMs of
+// the site's newest puff re-feeds it (birth kept), so a hot site streams a
+// trail. Every frame says how it will change (continuous / nextChangeAt).
 import {
-  MAX_FRONTS, MAX_GLOWS, easeOutCubic, fadeProgress,
-  type Rgb, type Front, type Glow, type GlassFrame,
+  MAX_FRONTS, MAX_PUFFS, easeOutCubic, fadeProgress,
+  type Rgb, type Front, type Puff, type GlassFrame,
 } from "./glassMath.js";
+import type { Wind } from "../lib/wind.js";
 
 export interface GlassSite { key: string; lat: number; lng: number; color: Rgb }
 export interface GlassTimings {
-  growMs: number; releaseMs: number; glowLifetimeMs: number; ttlMs: number;
+  growMs: number; releaseMs: number; ttlMs: number;
   /** Max held-rim brightness steps per second (display.glass.holdFps). */
   holdFps: number;
   /** Brightness levels for a held rim (display.glass.signalSteps). */
   signalSteps: number;
-  /** Visible steps across an afterglow's life (display.glass.fadeSteps). */
-  fadeSteps: number;
+  /** A puff's life (display.glass.smokeLifeMs). */
+  smokeLifeMs: number;
+  /** The shared smoke tick (display.glass.smokeStepMs). */
+  smokeStepMs: number;
+  /** Drift over a full life per mph, px at 1080 tall (display.glass.smokePxPerMph). */
+  smokePxPerMph: number;
+  /** A release within this of the site's newest puff's birth re-feeds it. */
+  puffMergeMs: number;
 }
 
 export const RELEASE_MS = 1500;
@@ -39,38 +49,54 @@ export function signalLevel(dbfs: number, steps: number): number {
   return Math.max(MIN_BRIGHT, Math.round(k * n) / n);
 }
 
-/** Afterglows step on ONE absolute grid (review I1): every glow changes on
- *  the same tick, so N glows cost fadeSteps redraws per lifetime, not
- *  N × fadeSteps. The latest tick at or before `now`. */
-export function gridTick(now: number, lifeMs: number, steps: number): number {
-  const step = lifeMs / steps;
-  return Math.floor(now / step) * step;
-}
-
-/** A glow's remaining strength (1 → 0), its age sampled at the latest grid
- *  tick; 0 once that age reaches the lifetime. */
-export function fadeAt(start: number, now: number, lifeMs: number, steps: number): number {
-  const age = Math.max(0, gridTick(now, lifeMs, steps) - start);
-  return age >= lifeMs ? 0 : 1 - age / lifeMs;
+/** Puffs step on ONE absolute grid: every puff changes on the same tick, so
+ *  N puffs cost one redraw per tick, not N. The latest tick at or before `now`. */
+export function gridTick(now: number, stepMs: number): number {
+  return Math.floor(now / stepMs) * stepMs;
 }
 
 /** The first grid tick strictly after `now` (float guard included). */
-function nextTick(now: number, lifeMs: number, steps: number): number {
-  const step = lifeMs / steps;
-  let t = gridTick(now, lifeMs, steps) + step;
-  while (t <= now) t += step;
+function nextTick(now: number, stepMs: number): number {
+  let t = gridTick(now, stepMs) + stepMs;
+  while (t <= now) t += stepMs;
   return t;
+}
+
+/** A puff's shape at life fraction k: radius multipliers and dim. Calm air
+ *  spreads evenly; wind stretches along more than across. */
+export function puffShape(k: number, windy: boolean): { along: number; cross: number; dim: number } {
+  const c = Math.min(1, Math.max(0, k));
+  const dim = (1 - c) * (1 - c);
+  if (!windy) { const r = 1 + 1.2 * Math.sqrt(c); return { along: r, cross: r, dim }; }
+  return { along: 1 + 1.6 * c, cross: 1 + 0.8 * Math.sqrt(c), dim };
+}
+
+/** Stable 0..1 seed per puff (FNV-1a of key@born). */
+export function puffSeed(key: string, born: number): number {
+  const s = `${key}@${born}`;
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return (h >>> 0) / 4294967296;
+}
+
+/** Downwind unit vector [east, north] for a compass "toward" bearing. */
+export function windDir(towardDeg: number): [number, number] {
+  const r = (towardDeg * Math.PI) / 180;
+  return [Math.sin(r), Math.cos(r)];
 }
 
 interface LiveFront {
   id: string; site: GlassSite; radiusM: number; born: number; until: number;
   bright: number; brightAt: number; pending: number | null; releasedAt: number | null;
 }
-interface SiteState { site: GlassSite; radiusM: number; hits: number; glowStart: number | null }
+interface LivePuff { site: GlassSite; radiusM: number; born: number; strength0: number; wind: Wind | null; seed: number }
+interface SiteState { hits: number }
 
 export class GlassState {
   private readonly fronts = new Map<string, LiveFront>();
   private readonly sites = new Map<string, SiteState>();
+  private readonly puffs: LivePuff[] = [];
+  private wind: Wind | null = null;
   private readonly gapMs: number;
 
   constructor(private readonly t: GlassTimings) {
@@ -85,8 +111,8 @@ export class GlassState {
       bright: DEFAULT_BRIGHT, brightAt: -Infinity, pending: null, releasedAt: null,
     });
     const s = this.sites.get(site.key);
-    if (s) { s.hits++; s.radiusM = radiusM; s.site = site; }
-    else this.sites.set(site.key, { site, radiusM, hits: 1, glowStart: null });
+    if (s) s.hits++;
+    else this.sites.set(site.key, { hits: 1 });
     if (this.fronts.size > MAX_FRONTS) {
       const oldest = [...this.fronts.values()].sort((a, b) => a.born - b.born)[0];
       if (oldest) this.fronts.delete(oldest.id);
@@ -119,19 +145,48 @@ export class GlassState {
     if (!f || f.releasedAt !== null) return;
     f.releasedAt = now;
     f.pending = null;
-    const s = this.sites.get(f.site.key);
-    if (s) s.glowStart = now;
+    this.birth(f.site, f.radiusM, now);
   }
 
   releaseAll(now: number): void {
     for (const id of this.fronts.keys()) this.release(id, now);
   }
 
-  seedGlow(site: GlassSite, radiusM: number, ts: number, now: number): void {
-    if (now - ts >= this.t.glowLifetimeMs) return;
+  /** The wind new puffs latch (lib/wind.ts). 0 mph counts as calm. */
+  setWind(w: Wind | null): void {
+    this.wind = w && w.mph > 0 ? w : null;
+  }
+
+  /** History backfill: a puff born at the row's real ts, already part-aged. */
+  seedPuff(site: GlassSite, radiusM: number, ts: number, now: number): void {
+    if (now - ts >= this.t.smokeLifeMs) return;
     const s = this.sites.get(site.key);
-    if (s) { s.hits++; s.glowStart = Math.max(s.glowStart ?? ts, ts); s.radiusM = radiusM; }
-    else this.sites.set(site.key, { site, radiusM, hits: 1, glowStart: ts });
+    if (s) s.hits++;
+    else this.sites.set(site.key, { hits: 1 });
+    this.birth(site, radiusM, ts);
+  }
+
+  private birth(site: GlassSite, radiusM: number, at: number): void {
+    const strength0 = rampStrength(this.sites.get(site.key)?.hits ?? 1);
+    let newest: LivePuff | undefined;
+    for (const p of this.puffs) if (p.site.key === site.key && (!newest || p.born > newest.born)) newest = p;
+    if (newest && Math.abs(at - newest.born) < this.t.puffMergeMs) {
+      // Re-feed: thicker, birth KEPT — restarting the age would pin a hot
+      // site's smoke at the source forever (no trail).
+      newest.strength0 = strength0; newest.radiusM = radiusM; newest.site = site;
+      return;
+    }
+    this.puffs.push({ site, radiusM, born: at, strength0, wind: this.wind, seed: puffSeed(site.key, at) });
+    if (this.puffs.length > MAX_PUFFS) this.dropWeakest(at);
+  }
+
+  private dropWeakest(at: number): void {
+    let wi = 0, ws = Infinity;
+    this.puffs.forEach((p, i) => {
+      const v = p.strength0 * puffShape((at - p.born) / this.t.smokeLifeMs, p.wind !== null).dim;
+      if (v < ws) { ws = v; wi = i; }
+    });
+    this.puffs.splice(wi, 1);
   }
 
   hits(key: string): number {
@@ -168,25 +223,30 @@ export class GlassState {
         ageMs: now - f.born, grow: easeOutCubic(p), bright: f.bright, releasing,
       });
     }
-    const liveKeys = new Set([...this.fronts.values()].map((f) => f.site.key));
-    const glows: Glow[] = [];
-    const life = this.t.glowLifetimeMs;
-    for (const [key, s] of this.sites) {
-      const fade = s.glowStart === null ? 0 : fadeAt(s.glowStart, now, life, this.t.fadeSteps);
-      if (fade <= 0) {
-        s.glowStart = null;
-        if (!liveKeys.has(key)) this.sites.delete(key);   // window over: hits reset
-        continue;
-      }
-      glows.push({
-        key, lat: s.site.lat, lng: s.site.lng, radiusM: s.radiusM, color: s.site.color,
-        strength: rampStrength(s.hits) * fade,
+    const life = this.t.smokeLifeMs, stepMs = this.t.smokeStepMs;
+    const tick = gridTick(now, stepMs);
+    const puffs: Puff[] = [];
+    for (let i = this.puffs.length - 1; i >= 0; i--) {
+      const p = this.puffs[i]!;
+      const k = Math.max(0, tick - p.born) / life;
+      if (k >= 1) { this.puffs.splice(i, 1); continue; }
+      const w = p.wind;
+      const sh = puffShape(k, w !== null);
+      puffs.push({
+        key: p.site.key, lat: p.site.lat, lng: p.site.lng, radiusM: p.radiusM, color: p.site.color,
+        strength: p.strength0 * sh.dim,
+        dir: w ? windDir(w.towardDeg) : [0, 0],
+        driftPx: w ? k * this.t.smokePxPerMph * w.mph : 0,
+        along: sh.along, cross: sh.cross, seed: p.seed,
       });
     }
-    if (glows.length) next = Math.min(next, nextTick(now, life, this.t.fadeSteps));
-    glows.sort((a, b) => b.strength - a.strength);
+    const alive = new Set<string>([...this.fronts.values()].map((f) => f.site.key));
+    for (const p of this.puffs) alive.add(p.site.key);
+    for (const key of [...this.sites.keys()]) if (!alive.has(key)) this.sites.delete(key);   // window over: hits reset
+    if (this.puffs.length) next = Math.min(next, nextTick(now, stepMs));
+    puffs.sort((a, b) => b.strength - a.strength);
     return {
-      fronts, glows: glows.slice(0, MAX_GLOWS), growing, continuous,
+      fronts, puffs, step: Math.round(tick / stepMs), growing, continuous,
       nextChangeAt: Number.isFinite(next) ? next : null,
     };
   }
