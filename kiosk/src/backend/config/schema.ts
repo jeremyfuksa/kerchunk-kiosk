@@ -387,6 +387,16 @@ export const configSchema = z.object({
       puffMergeMs: z.number().int().min(0).max(600_000).default(60_000), // re-feed window per site
       smokeScale: z.number().min(0.2).max(2).default(0.4),   // puff size vs the site's footprint radius
     }).default({}),
+    // Persistent site markers. With the glass carrying colour and motion, the
+    // marker only has to say "a transmitter lives here": "pin" = the service
+    // teardrop (the pre-glass look, 19), "dot" = a service-colour dot cut
+    // out of the ground colour. sizePx is the arm's-length width (the kiosk
+    // scales it 1.6x); 9 was picked on the wall 2026-10-03 — 6 vanished into
+    // the sparks from across the room. Applies on kiosk/reload.
+    pins: z.object({
+      style: z.enum(["pin", "dot"]).default("dot"),
+      sizePx: z.number().min(3).max(40).default(9),
+    }).default({}),
     // Kiosk camera (spec 2026-10-02 "fixed stage"): the wall frames once and
     // never moves on its own — camera moves made Google re-lay-out the vector
     // map on CPU at every hit. follow: true restores the old push toward the

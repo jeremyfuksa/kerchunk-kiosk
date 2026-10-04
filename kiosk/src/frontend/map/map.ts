@@ -40,6 +40,20 @@ function pinMarker(svg: string, w: number): any {
   };
 }
 
+// display.pins.style "dot": a service-colour disc ringed in the map ground,
+// so it reads as cut into the map rather than stuck on it. Centred anchor —
+// the dot IS the site. d = outer diameter, CSS px.
+function dotMarker(cat: PinCategory, d: number): any {
+  const fill = PIN_COLORS[cat] ?? PIN_COLORS.unknown!;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">`
+    + `<circle cx="10" cy="10" r="8" fill="${fill}" stroke="${MAP_GROUND}" stroke-width="3"/></svg>`;
+  return {
+    url: "data:image/svg+xml;charset=UTF-8," + encodeURIComponent(svg),
+    scaledSize: new google.maps.Size(d, d),
+    anchor: new google.maps.Point(d / 2, d / 2),
+  };
+}
+
 // Which pin does a frequency's service wear? The full operator-designed
 // family covers every allocation; anything unclassified gets the gray "?"
 // pin, which deliberately recedes next to the vivid services.
@@ -56,6 +70,9 @@ const PIN_SVG: Record<PinCategory, string> = {
 function pinFor(freqHz: number, tags?: readonly string[]): string {
   return PIN_SVG[categoryFor(freqHz, tags)];
 }
+const PIN_CATEGORY = new Map<string, PinCategory>(
+  (Object.entries(PIN_SVG) as Array<[PinCategory, string]>).map(([cat, svg]) => [svg, cat]),
+);
 
 // Live activity map (ROADMAP Idea 2, Google Maps per operator decision):
 // every channel opening / Close Call with a known transmitter site pulses on
@@ -349,6 +366,9 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
     // pulses play on top of it. (The per-site "heat" glow disc was removed —
     // it wasn't reading as meaningful; revisit if a better heat idea lands.)
     const antennas = new Map<string, any>();
+    const siteIcon = (svg: string): any => display.pins.style === "dot"
+      ? dotMarker(PIN_CATEGORY.get(svg) ?? "unknown", Math.round(display.pins.sizePx * mk))
+      : pinMarker(svg, Math.round(display.pins.sizePx * mk));
     const siteInfo = new google.maps.InfoWindow({ disableAutoPan: true });
 
     function antenna(lat: number, lon: number, names: string[], hits: number, lastTs: number, increment = false, freq?: number): void {
@@ -367,7 +387,7 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
           const better = sitePin.get(key) ?? pinFor(freq, tagsFor(freq));
           if (better !== pinUnknown) {
             existing.pin = better;
-            existing.marker.setIcon(pinMarker(better, Math.round(19 * mk)));
+            existing.marker.setIcon(siteIcon(better));
           }
         }
         return;
@@ -378,7 +398,7 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
       const pin = sitePin.get(key) ?? (freq != null ? pinFor(freq, tagsFor(freq)) : pinUnknown);
       const marker = new google.maps.Marker({
         map, position: { lat, lng: lon },
-        icon: pinMarker(pin, Math.round(19 * mk)),
+        icon: siteIcon(pin),
         title: names.join(", "),
       });
       const entry = { marker, names: [...names], hits, lastTs, pin };

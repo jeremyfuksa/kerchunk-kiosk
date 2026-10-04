@@ -287,6 +287,8 @@ even with green checks.
   downwind with the dashboard's `/api/weather` wind (`lib/wind.ts`, no second
   poll) for `display.glass.smokeLifeMs`, changing only on one shared
   `smokeStepMs` tick — the knob that trades stare-ability against heat.
+  Site markers stay quiet under the glass: `display.pins` (`dot`, 9 px
+  arm's-length; `pin` = the old service teardrops).
 
 ## Product direction
 
