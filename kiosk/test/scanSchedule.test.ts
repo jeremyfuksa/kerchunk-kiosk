@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   ActivityTracker, dwellFactor, scaledDwellMs, resolveAutoDwell, AUTO_DWELL_DEFAULTS,
   nextRevisitTarget, resolvePriorityRevisit, PRIORITY_REVISIT_DEFAULTS,
+  resolveVisualHold, VISUAL_HOLD_DEFAULTS,
 } from "../src/backend/engine/scanSchedule.js";
 
 describe("activity-weighted dwell math", () => {
@@ -55,5 +56,18 @@ describe("priority revisit helpers", () => {
   it("resolves defaults (everyMs 8000, lookMs 700)", () => {
     expect(resolvePriorityRevisit(undefined)).toEqual(PRIORITY_REVISIT_DEFAULTS);
     expect(resolvePriorityRevisit({ lookMs: 900 })).toEqual({ ...PRIORITY_REVISIT_DEFAULTS, lookMs: 900 });
+  });
+});
+
+describe("visual hold helpers", () => {
+  it("defaults: enabled, 15 s cap, credits dwell", () => {
+    expect(VISUAL_HOLD_DEFAULTS).toEqual({ enabled: true, maxMs: 15000, creditDwell: true });
+    expect(resolveVisualHold(undefined)).toEqual(VISUAL_HOLD_DEFAULTS);
+  });
+
+  it("fills only the missing fields", () => {
+    expect(resolveVisualHold({ maxMs: 8000 })).toEqual({ ...VISUAL_HOLD_DEFAULTS, maxMs: 8000 });
+    expect(resolveVisualHold({ enabled: false, creditDwell: false }))
+      .toEqual({ enabled: false, maxMs: 15000, creditDwell: false });
   });
 });
