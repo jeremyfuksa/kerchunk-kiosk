@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { PIN_COLORS, colorFor, categoryFor } from "../src/frontend/lib/serviceColor.js";
+import { PIN_COLORS, PIN_GLYPH_INK, FAMILY_OKLCH, colorFor, categoryFor } from "../src/frontend/lib/serviceColor.js";
+import { linearRgb, linearToOklab } from "../src/frontend/lib/oklch.js";
 
 describe("colorFor", () => {
   it("maps a ham frequency to the ham pin color", () => {
@@ -33,10 +34,40 @@ describe("colorFor", () => {
     expect(colorFor(160_000_000, "active")).toBe(PIN_COLORS.rail);
   });
 
-  it("pins the recolored/added head hexes (blip + pin palette)", () => {
-    expect(PIN_COLORS.rail).toBe("#8B5034"); // subdued rust, was #F5821F
-    expect(PIN_COLORS.biz).toBe("#6D28D9"); // deeper violet, was #7C4FE0
-    expect(PIN_COLORS.publicsafety).toBe("#E5383B"); // new public-safety red
+  it("pins the glow-tuned family palette (spec 2026-10-04)", () => {
+    expect(PIN_COLORS).toEqual({
+      publicsafety: "#e54059", rail: "#e58212", weather: "#f5b40e", gmrs: "#56db8f",
+      marine: "#07baaa", biz: "#21d4f0", air: "#0f90fe", ham: "#c55ac7", unknown: "#747B8A",
+    });
+  });
+  it("glyph ink: white on public safety and unknown, dark ink elsewhere", () => {
+    expect(PIN_GLYPH_INK.publicsafety).toBe("#ffffff");
+    expect(PIN_GLYPH_INK.unknown).toBe("#ffffff");
+    for (const k of ["rail", "weather", "gmrs", "marine", "biz", "air", "ham"] as const) {
+      expect(PIN_GLYPH_INK[k], k).toBe("#1f2530");
+    }
+  });
+  it("families stay apart under colour-vision deficiency (worst ΔE_ok ≥ 0.10)", () => {
+    // Machado 2009 severity-1.0 matrices, applied in linear RGB.
+    const M: Record<string, number[][]> = {
+      normal: [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
+      deutan: [[0.367322, 0.860646, -0.227968], [0.280085, 0.672501, 0.047413], [-0.011820, 0.042940, 0.968881]],
+      protan: [[0.152286, 1.052583, -0.204868], [0.114503, 0.786281, 0.099216], [-0.003882, -0.048116, 1.051998]],
+    };
+    const fams = Object.keys(FAMILY_OKLCH);
+    for (const [name, m] of Object.entries(M)) {
+      const P = fams.map((f) => {
+        const v = linearRgb(PIN_COLORS[f]!);
+        const sim = m.map((r) => Math.min(1, Math.max(0, r[0]! * v[0] + r[1]! * v[1] + r[2]! * v[2]))) as [number, number, number];
+        return linearToOklab(sim);
+      });
+      for (let i = 0; i < P.length; i++) {
+        for (let j = i + 1; j < P.length; j++) {
+          const d = Math.hypot(P[i]![0] - P[j]![0], P[i]![1] - P[j]![1], P[i]![2] - P[j]![2]);
+          expect(d, `${name} ${fams[i]}/${fams[j]}`).toBeGreaterThanOrEqual(0.10);
+        }
+      }
+    }
   });
 });
 

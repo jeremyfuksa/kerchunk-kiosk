@@ -47,7 +47,7 @@ describe("cornerView — glass states", () => {
     expect(v.show).toBe("glass");
     if (v.show !== "glass") return;
     expect(v.lcd).toEqual({ state: "live", meta: "Live · Public safety", name: "KC Fire Dispatch", freq: "154.4300", silent: null });
-    expect(v.head?.color).toBe("#E5383B");
+    expect(v.head?.color).toBe("#e54059");
     expect(v.meter).toBe(true);
     expect(v.hint).toBeNull();
   });

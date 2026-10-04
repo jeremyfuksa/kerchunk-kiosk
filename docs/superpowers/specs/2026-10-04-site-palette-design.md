@@ -40,21 +40,23 @@ glow-tuned set on the wall 2026-10-04:
 
 | Family | OKLCH (L C h) | Hex | Glyph ink | Glyph contrast |
 |---|---|---|---|---|
-| publicsafety | 0.62 0.20 17 | `#e63e58` | white | 4.04 |
-| rail | 0.70 0.20 60 | `#e58312` | ink | 5.56 |
-| weather | 0.81 0.18 82 | `#f4b313` | ink | 8.28 |
-| gmrs | 0.80 0.16 155 | `#55dc8f` | ink | 8.80 |
-| marine | 0.71 0.14 184 | `#1abbab` | ink | 6.40 |
-| biz | 0.80 0.23 212 | `#06d5f1` | ink | 8.64 |
-| air | 0.66 0.20 252 | `#1d92ff` | ink | 4.84 |
+| publicsafety | 0.62 0.20 17 | `#e54059` | white | 4.03 |
+| rail | 0.70 0.20 60 | `#e58212` | ink | 5.52 |
+| weather | 0.81 0.18 82 | `#f5b40e` | ink | 8.36 |
+| gmrs | 0.80 0.16 155 | `#56db8f` | ink | 8.73 |
+| marine | 0.71 0.14 184 | `#07baaa` | ink | 6.31 |
+| biz | 0.80 0.23 212 | `#21d4f0` | ink | 8.60 |
+| air | 0.65 0.20 252 | `#0f90fe` | ink | 4.72 |
 | ham | 0.64 0.19 327 | `#c55ac7` | ink | 4.15 |
 | unknown | unchanged | `#747B8A` | white | — |
 
-Worst-case pairwise ΔE_ok: **0.104** across normal / deutan / protan, vs the
+Worst-case pairwise ΔE_ok: **0.101** across normal / deutan / protan (hexes
+are exactly the two-decimal OKLCH values above; air L 0.66 → 0.65 during
+implementation to clear the 0.10 floor after rounding), vs the
 old palette's 0.098 / **0.032** / 0.042 (old deutan worst: GMRS vs public
 safety). "Ink" = `#1f2530` (the pins' dark). Glyph ink is whichever of white /
-ink has the higher WCAG contrast on the head (all ≥ 4.04 : 1, icon floor
-3 : 1); every head ≥ 4.70 : 1 on the LCD well (`#0c1113`).
+ink has the higher WCAG contrast on the head (all ≥ 4.03 : 1, icon floor
+3 : 1); every head ≥ 4.71 : 1 on the LCD well (`#0c1113`).
 
 `PIN_COLORS` stays the single source of truth (`lib/serviceColor.ts`); a new
 `PIN_GLYPH_INK` beside it holds the per-family glyph colour.
