@@ -1,6 +1,6 @@
 # Site palette — service families, varied per site
 
-Status: design picked on the wall 2026-10-04 (hybrid); awaiting written-spec review.
+Status: picked on the wall 2026-10-04 (hybrid per-site bands, glow-tuned family palette); approved to plan.
 
 ## Why
 
@@ -31,28 +31,30 @@ branch `preview/site-palette` (`b124117`), throwaway.
 ## 1. Family palette (replaces `PIN_COLORS`)
 
 OKLCH, searched for the best worst-case separation under normal,
-deuteranopic and protanopic vision (Machado 2009 matrices) with design
-floors (public safety a vivid red, weather a bright gold, every family
-chroma ≥ its floor):
+deuteranopic and protanopic vision (Machado 2009 matrices), constrained to a
+**glow-friendly band** — every family L 0.62–0.84 and chroma ≥ its floor —
+because the strictest CVD optimum (worst case 0.130) got there by pushing
+lightness to the extremes: on the wall its business smoke washed out pale
+and its ham / public-safety plumes glowed dim. The operator picked the
+glow-tuned set on the wall 2026-10-04:
 
-| Family | OKLCH (L C h) | Hex | Glyph ink |
-|---|---|---|---|
-| publicsafety | 0.56 0.19 25 | `#cc3334` | white |
-| rail | 0.68 0.22 52 | `#e87511` | ink |
-| weather | 0.82 0.17 85 | `#f3b801` | ink |
-| gmrs | 0.88 0.14 155 | `#85f3af` | ink |
-| marine | 0.73 0.12 172 | `#3abf9d` | ink |
-| biz | 0.82 0.21 234 | `#7bd0fe` | ink |
-| air | 0.66 0.20 264 | `#5a8bfd` | ink |
-| ham | 0.56 0.15 322 | `#9c51a8` | white |
-| unknown | unchanged | `#747B8A` | white |
+| Family | OKLCH (L C h) | Hex | Glyph ink | Glyph contrast |
+|---|---|---|---|---|
+| publicsafety | 0.62 0.20 17 | `#e63e58` | white | 4.04 |
+| rail | 0.70 0.20 60 | `#e58312` | ink | 5.56 |
+| weather | 0.81 0.18 82 | `#f4b313` | ink | 8.28 |
+| gmrs | 0.80 0.16 155 | `#55dc8f` | ink | 8.80 |
+| marine | 0.71 0.14 184 | `#1abbab` | ink | 6.40 |
+| biz | 0.80 0.23 212 | `#06d5f1` | ink | 8.64 |
+| air | 0.66 0.20 252 | `#1d92ff` | ink | 4.84 |
+| ham | 0.64 0.19 327 | `#c55ac7` | ink | 4.15 |
+| unknown | unchanged | `#747B8A` | white | — |
 
-Worst-case pairwise ΔE_ok: **0.126** across normal / deutan / protan, vs the
-old palette's 0.098 / **0.032** / 0.042. (The unconstrained optimum was
-0.130 with business at h 220; business moved to 234 so its per-site arc
-stays clear of marine and GMRS — see §3 containment.) "Ink" = `#1f2530` (the pins' dark).
-Glyph ink is whichever of white / ink has the higher WCAG contrast on the
-head; every head ≥ 4.79 : 1 with its ink, and ≥ 3 : 1 on the LCD well.
+Worst-case pairwise ΔE_ok: **0.104** across normal / deutan / protan, vs the
+old palette's 0.098 / **0.032** / 0.042 (old deutan worst: GMRS vs public
+safety). "Ink" = `#1f2530` (the pins' dark). Glyph ink is whichever of white /
+ink has the higher WCAG contrast on the head (all ≥ 4.04 : 1, icon floor
+3 : 1); every head ≥ 4.70 : 1 on the LCD well (`#0c1113`).
 
 `PIN_COLORS` stays the single source of truth (`lib/serviceColor.ts`); a new
 `PIN_GLYPH_INK` beside it holds the per-family glyph colour.
@@ -86,22 +88,21 @@ its colour across reloads and restarts:
 | Family | arc (±°) | L spread |
 |---|---|---|
 | biz | 28 | 0.12 |
-| ham | 20 | 0.16 |
-| gmrs | 15 | 0.12 |
-| air | 10 | 0.14 |
-| publicsafety | 7 | 0.08 |
+| ham | 20 | 0.12 |
+| gmrs | 12 | 0.10 |
+| air | 8 | 0.10 |
+| publicsafety | 6 | 0.06 |
 | rail | 6 | 0.08 |
 | marine | 4 | 0.08 |
 | weather, unknown | 0 | 0 |
 
-(Public safety and rail get narrow ranges: on the wall the wide lightness
-spread pushed some hospital sites toward rail's orange.)
-
-**Containment test:** for a sweep of site keys, every variant's nearest
-family base (ΔE_ok, normal vision) is its own family. Verified while
-writing this spec over 1 500 keys per family: business at h 220 ±32 / L ±0.08
-leaked 9 % of sites toward marine (and, with marine moved, toward GMRS);
-h 234 ±28 / L spread 0.12 has zero leaks.
+**Containment test:** for a sweep of site keys (1 500 per family), every
+variant's nearest family base (ΔE_ok, normal vision) is its own family —
+with one exception: business variants may sit nearer **marine**. Marine has
+no located sites (its channels are unlocated; hits only edge-glow), so no
+marine plume exists to be confused with; without the exception business is
+squeezed to ±16° / 0.08. Verified while writing this spec: zero leaks under
+these arcs.
 
 **Where site colour applies:** glass rings, smoke and sparks (via
 `glassSite().color` in `map.ts`, incl. the history backfill), and the map
@@ -133,7 +134,7 @@ after deploy.
 
 ## Testing
 
-- `serviceColor.test.ts`: new hexes; CVD worst-case ΔE_ok ≥ 0.12 across
+- `serviceColor.test.ts`: new hexes; CVD worst-case ΔE_ok ≥ 0.10 across
   normal/deutan/protan (pins the property, not just the values).
 - `siteColor.test.ts`: deterministic per key; in gamut; containment.
 - Pin SVG drift test (§2); `serviceHead` glyph-ink and ring tests.
