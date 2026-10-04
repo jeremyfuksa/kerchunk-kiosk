@@ -993,6 +993,20 @@ describe("review fixes: engine lifecycle", () => {
     expect(updates.at(-1)?.visualHold).toEqual({ maxMs: 8000, creditDwell: false });
   });
 
+  it("display.glass palette knobs default and validate", async () => {
+    const { server } = makeApp();
+    const cfg = (await request(server).get("/api/config")).body;
+    cfg.display = { weatherLat: 39, weatherLon: -94.5 };
+    const ok = await request(server).put("/api/config").send(cfg);
+    expect(ok.status).toBe(200);
+    expect(ok.body.display.glass.siteColor).toBe("site");
+    expect(ok.body.display.glass.hueDominance).toBe(4);
+    cfg.display = { ...ok.body.display, glass: { ...ok.body.display.glass, hueDominance: 12 } };
+    expect((await request(server).put("/api/config").send(cfg)).status).toBe(400);
+    cfg.display = { ...ok.body.display, glass: { ...ok.body.display.glass, siteColor: "rainbow" } };
+    expect((await request(server).put("/api/config").send(cfg)).status).toBe(400);
+  });
+
   it("PUT /api/config rejects out-of-range visualHold", async () => {
     const { server } = makeApp();
     const cfg = (await request(server).get("/api/config")).body;

@@ -151,6 +151,7 @@ uniform int uNPuffs;
 uniform float uStep;       // shared smoke tick, wrapped (STEP_WRAP): outline + spark generations
 uniform float uSmokeBody;
 uniform float uSparkDensity;
+uniform float uHueDominance; // hue weight f^k: k = 1 is the plain average
 out vec4 O;
 ${NOISE}
 void main() {
@@ -159,6 +160,7 @@ void main() {
   // Smoke & sparks (spec 2026-10-02 glass smoke). Static between ticks: only
   // uStep and the puff uniforms change, and only on the shared smoke tick.
   vec3 acc = vec3(0.0);
+  vec3 accP = vec3(0.0);   // hue weighted by f^k: the strongest puff owns its colour, near-equal puffs blend
   float peak = 0.0;
   for (int i = 0; i < 48; i++) {
     if (i >= uNPuffs) break;
@@ -176,11 +178,13 @@ void main() {
     float f = a.w * exp(-r2 * 2.2 * (1.0 + n * 1.4));
     f *= 0.25 + 1.1 * fbm(d / R * 2.4 + vec2(c.w * 13.0, c.w * 29.0) + uStep * 0.04);   // wisps inside the body
     acc += c.rgb * f;
+    accP += c.rgb * pow(f, uHueDominance);
     peak = max(peak, f);
   }
   float m = max(max(acc.r, acc.g), acc.b);
   if (m > 0.002) {
-    vec3 hue = acc / m;                                    // keep service hues; compress brightness only
+    float mp = max(max(accP.r, accP.g), accP.b);
+    vec3 hue = mp > 1e-9 ? accP / mp : acc / m;            // dominant puff's hue; brightness still from acc
     col += hue * (1.0 - exp(-m * 0.9)) * uSmokeBody * 0.6;  // gentle curve: stacked puffs keep their wisps
     vec2 cell = floor(gl_FragCoord.xy);   // 1 px here = 2 px on screen
     float gen = floor((uStep + h21(cell) * 7.0) / 7.0);  // each grain reshuffles every 7 ticks, staggered
