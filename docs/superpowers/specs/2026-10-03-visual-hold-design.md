@@ -116,3 +116,16 @@ schema comment.
 - Airband `dwellWeight` rebalance.
 - `/api/recommendations/archive` 5000-row cap bug.
 - Smaller map pins (`display` knob; separate UI PR).
+
+## Amendment (final review, 2026-10-03)
+
+- `maxMs` is a **per-visit budget**, not a per-hold cap: a visit's visual
+  holds share it (clock starts at the visit's first visual hold; reset only
+  by a tune/spawn/stop), and a muted close past the budget no longer re-arms
+  the dwell. Without this, back-to-back muted traffic re-started the cap on
+  every key-up and could park the scanner on a muted-only window
+  indefinitely.
+- A due **priority peek pre-empts a visual hold** (nobody is listening to
+  it); audible holds still can't be pre-empted.
+- The visual hold no longer writes `holdStartedAt`, so an audible open that
+  follows a visual hold gets its full `maxHoldMs`.

@@ -147,8 +147,9 @@ replays the warm-up overlay on the wall.
   respawns only the scanner helper; volume/mute stay live.
   Scan scheduling is Node-side and live (no respawn): `config.scan.autoDwell`,
   `priorityRevisit`, and `visualHold` (`enabled` true / `maxMs` 15000 /
-  `creditDwell` true) — a MUTED channel's open holds its window up to `maxMs`
-  so the map sees the whole transmission; audible holds keep `maxHoldMs`.
+  `creditDwell` true) — a MUTED channel's open holds its window (a `maxMs`
+  budget per visit; priority peeks pre-empt it) so the map sees the whole
+  transmission; audible holds keep `maxHoldMs`.
 - **ALSA is addressed by name** (`plughw:CARD=PCH,DEV=0`) — card indices swap
   across boots. The sink is exclusive (no dmix): exactly one process owns
   audio.
