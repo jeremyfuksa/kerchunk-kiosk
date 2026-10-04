@@ -22,6 +22,7 @@ export interface GlassKnobs {
   holdFps: number; signalSteps: number;
   smokeLifeMs: number; smokeStepMs: number; smokePxPerMph: number;
   smokeBody: number; sparkDensity: number; puffMergeMs: number; smokeScale: number;
+  hueDominance: number;
 }
 
 export interface GlassLayerOptions {
@@ -179,7 +180,7 @@ export class GlassLayer {
     const gl = raw;
     this.radarProg = link(gl, RADAR_VS, RADAR_FS, ["uMvp", "uPrev", "uNext", "uTexSize", "uMix", "uAlpha", "uMinDbz", "uOpacity"]);
     this.fxProg = link(gl, FX_VS, FX_FS, ["uRes", "uTime", "uHaze", "uFrontA", "uFrontB", "uFrontC", "uNFronts", "uSmoke", "uHasSmoke"]);
-    this.smokeProg = link(gl, FX_VS, SMOKE_FS, ["uScale", "uPuffA", "uPuffB", "uPuffC", "uNPuffs", "uStep", "uSmokeBody", "uSparkDensity"]);
+    this.smokeProg = link(gl, FX_VS, SMOKE_FS, ["uScale", "uPuffA", "uPuffB", "uPuffC", "uNPuffs", "uStep", "uSmokeBody", "uSparkDensity", "uHueDominance"]);
     if (!this.radarProg || !this.fxProg || !this.smokeProg) { this.giveUp("off:shader"); return; }
     const saved = saveGl(gl);
     this.fxVao = gl.createVertexArray();
@@ -404,6 +405,7 @@ export class GlassLayer {
     gl.uniform1f(u.uStep!, step);
     gl.uniform1f(u.uSmokeBody!, k.smokeBody);
     gl.uniform1f(u.uSparkDensity!, k.sparkDensity);
+    gl.uniform1f(u.uHueDominance!, k.hueDominance);
     gl.bindVertexArray(this.fxVao);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.bindFramebuffer(gl.FRAMEBUFFER, saved.framebuffer);

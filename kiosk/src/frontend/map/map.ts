@@ -12,6 +12,7 @@ import { padRect, outside, edgeExit, lngLatToViewPx, occluded, slideClear, BLOOM
 import type { EngineEvent } from "../../backend/engine/ScannerEngine.js";
 import icoTower from "lucide-static/icons/radio-tower.svg?raw";
 import { PIN_COLORS, colorFor, categoryFor, type PinCategory } from "../lib/serviceColor.js";
+import { siteColor } from "../lib/siteColor.js";
 // Operator-designed service pins (claude.ai/design handoff, 2026-06-07):
 // cream teardrops with vivid service heads; Home is deliberately inverted
 // (sea-glass ring, cream head) so the QTH reads as YOURS on the dark map.
@@ -43,8 +44,7 @@ function pinMarker(svg: string, w: number): any {
 // display.pins.style "dot": a service-colour disc ringed in the map ground,
 // so it reads as cut into the map rather than stuck on it. Centred anchor —
 // the dot IS the site. d = outer diameter, CSS px.
-function dotMarker(cat: PinCategory, d: number): any {
-  const fill = PIN_COLORS[cat] ?? PIN_COLORS.unknown!;
+function dotMarker(cat: PinCategory, d: number, fill: string = PIN_COLORS[cat] ?? PIN_COLORS.unknown!): any {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">`
     + `<circle cx="10" cy="10" r="8" fill="${fill}" stroke="${MAP_GROUND}" stroke-width="3"/></svg>`;
   return {
@@ -346,10 +346,15 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
     // geography); the rest use the old blip hit ramp (kiosk-scaled).
     const siteRadius = (key: string, hits: number): number =>
       coverage.get(key) ?? (3750 + 625 * Math.min(Math.max(hits, 1), 6)) * geo;
-    const glassSite = (lat: number, lng: number, freq: number | undefined, kind: "active" | "closecall"): GlassSite => ({
-      key: `${lat.toFixed(5)},${lng.toFixed(5)}`, lat, lng,
-      color: hexToGlowRgb(colorFor(freq, kind, tagsFor(freq))),
-    });
+    const glassSite = (lat: number, lng: number, freq: number | undefined, kind: "active" | "closecall"): GlassSite => {
+      const key = `${lat.toFixed(5)},${lng.toFixed(5)}`;
+      // Site palette (spec 2026-10-04): a live site wears its own variation of
+      // its family colour; Close Call hits keep their flamingo/service colour.
+      const hex = kind === "active"
+        ? siteColor(key, categoryFor(freq, tagsFor(freq)), display.glass.siteColor)
+        : colorFor(freq, kind, tagsFor(freq));
+      return { key, lat, lng, color: hexToGlowRgb(hex) };
+    };
 
     function startTx(id: string, lat: number, lng: number, freq: number | undefined, kind: "active" | "closecall"): void {
       const s = glassSite(lat, lng, freq, kind);
@@ -366,9 +371,12 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
     // pulses play on top of it. (The per-site "heat" glow disc was removed —
     // it wasn't reading as meaningful; revisit if a better heat idea lands.)
     const antennas = new Map<string, any>();
-    const siteIcon = (svg: string): any => display.pins.style === "dot"
-      ? dotMarker(PIN_CATEGORY.get(svg) ?? "unknown", Math.round(display.pins.sizePx * mk))
-      : pinMarker(svg, Math.round(display.pins.sizePx * mk));
+    const siteIcon = (svg: string, key: string): any => {
+      const cat = PIN_CATEGORY.get(svg) ?? "unknown";
+      return display.pins.style === "dot"
+        ? dotMarker(cat, Math.round(display.pins.sizePx * mk), siteColor(key, cat, display.glass.siteColor))
+        : pinMarker(svg, Math.round(display.pins.sizePx * mk));
+    };
     const siteInfo = new google.maps.InfoWindow({ disableAutoPan: true });
 
     function antenna(lat: number, lon: number, names: string[], hits: number, lastTs: number, increment = false, freq?: number): void {
@@ -387,7 +395,7 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
           const better = sitePin.get(key) ?? pinFor(freq, tagsFor(freq));
           if (better !== pinUnknown) {
             existing.pin = better;
-            existing.marker.setIcon(siteIcon(better));
+            existing.marker.setIcon(siteIcon(better, key));
           }
         }
         return;
@@ -398,7 +406,7 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
       const pin = sitePin.get(key) ?? (freq != null ? pinFor(freq, tagsFor(freq)) : pinUnknown);
       const marker = new google.maps.Marker({
         map, position: { lat, lng: lon },
-        icon: siteIcon(pin),
+        icon: siteIcon(pin, key),
         title: names.join(", "),
       });
       const entry = { marker, names: [...names], hits, lastTs, pin };

@@ -294,6 +294,10 @@ even with green checks.
   `smokeStepMs` tick — the knob that trades stare-ability against heat.
   Site markers stay quiet under the glass: `display.pins` (`dot`, 9 px
   arm's-length; `pin` = the old service teardrops).
+  Colour is family + site (spec 2026-10-04): `lib/serviceColor.ts`
+  `FAMILY_OKLCH` is the one palette (pin SVGs are drift-tested against it);
+  `display.glass.siteColor` (`site` | `service`) and `hueDominance` (1 = old
+  averaged smoke) tune the glass.
 
 ## Product direction
 

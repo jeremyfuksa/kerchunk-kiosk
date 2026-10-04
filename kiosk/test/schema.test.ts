@@ -522,6 +522,7 @@ describe("display.glass + radarProduct retirement", () => {
       holdFps: 4, signalSteps: 8,
       smokeLifeMs: 600_000, smokeStepMs: 6000, smokePxPerMph: 60,
       smokeBody: 0.55, sparkDensity: 1, puffMergeMs: 60_000, smokeScale: 0.4,
+      siteColor: "site", hueDominance: 4,
     });
   });
   it("an old config carrying glass.fadeSteps still loads; the key is stripped", () => {

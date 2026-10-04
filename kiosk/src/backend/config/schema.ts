@@ -397,6 +397,12 @@ export const configSchema = z.object({
       sparkDensity: z.number().min(0).max(3).default(1),       // 0 = no sparks
       puffMergeMs: z.number().int().min(0).max(600_000).default(60_000), // re-feed window per site
       smokeScale: z.number().min(0.2).max(2).default(0.4),   // puff size vs the site's footprint radius
+      // Site palette (spec 2026-10-04): "site" = each transmitter its own
+      // variation of its family colour on the glass and dot markers;
+      // "service" = plain family colours. hueDominance = how strongly the
+      // strongest overlapping puff keeps its own hue (1 = old even average).
+      siteColor: z.enum(["site", "service"]).default("site"),
+      hueDominance: z.number().min(1).max(8).default(4),
     }).default({}),
     // Persistent site markers. With the glass carrying colour and motion, the
     // marker only has to say "a transmitter lives here": "pin" = the service
