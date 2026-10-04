@@ -154,6 +154,17 @@ export const configSchema = z.object({
       everyMs: z.number().int().min(1000).max(60_000).optional(),
       lookMs: z.number().int().min(300).max(5000).optional(),
     }).optional(),
+    // Visual hold (spec 2026-10-03): an open on a MUTED scan channel holds
+    // its window so the map sees the whole transmission, within a budget of
+    // maxMs per visit; the speaker stays silent, audible opens keep first
+    // claim (maxHoldMs) and a due priority peek pre-empts it.
+    // creditDwell lets muted opens count toward autoDwell. Live like
+    // autoDwell. Omitted = enabled, 15000, true.
+    visualHold: z.object({
+      enabled: z.boolean().optional(),
+      maxMs: z.number().int().min(1000).max(180_000).optional(),
+      creditDwell: z.boolean().optional(),
+    }).optional(),
     // Ceiling on ONE continuous hold-through (default 180 s). A lane that
     // reads open past this is treated as stuck and abandoned so it can't park
     // the scanner. Applied at engine construction — changing it needs a

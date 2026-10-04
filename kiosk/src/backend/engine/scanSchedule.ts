@@ -119,3 +119,28 @@ export function nextRevisitTarget(targets: number[], cursor: number): { index: n
   const index = targets[cursor % targets.length]!;
   return { index, cursor: (cursor + 1) % targets.length };
 }
+
+/** config.scan.visualHold — muted channels earn scan time for the map
+ *  (spec 2026-10-03 visual hold). A muted open holds its window for up to
+ *  maxMs of continuous hold; the speaker stays silent. */
+export interface VisualHoldConfig {
+  enabled?: boolean;
+  /** Ceiling on ONE continuous visual hold, ms. Audible holds keep maxHoldMs. */
+  maxMs?: number;
+  /** Muted opens also count toward autoDwell activity. */
+  creditDwell?: boolean;
+}
+
+export const VISUAL_HOLD_DEFAULTS = {
+  enabled: true,
+  maxMs: 15_000, // a typical rail / business / WOF transmission is 9-12 s
+  creditDwell: true,
+} as const;
+
+export function resolveVisualHold(c: VisualHoldConfig | undefined): Required<VisualHoldConfig> {
+  return {
+    enabled: c?.enabled ?? VISUAL_HOLD_DEFAULTS.enabled,
+    maxMs: c?.maxMs ?? VISUAL_HOLD_DEFAULTS.maxMs,
+    creditDwell: c?.creditDwell ?? VISUAL_HOLD_DEFAULTS.creditDwell,
+  };
+}
