@@ -90,16 +90,21 @@ its colour across reloads and restarts:
 | Family | arc (±°) | L spread |
 |---|---|---|
 | biz | 28 | 0.12 |
-| ham | 20 | 0.12 |
-| gmrs | 12 | 0.10 |
-| air | 8 | 0.10 |
+| ham | 6 | 0.08 |
+| gmrs | 4 | 0.10 |
+| air | 6 | 0.08 |
 | publicsafety | 6 | 0.06 |
 | rail | 6 | 0.08 |
 | marine | 4 | 0.08 |
 | weather, unknown | 0 | 0 |
 
+(Final review amendment: ham ±20/0.12, air ±8/0.10 and GMRS ±12/0.10 leaked
+under simulated deuteranopia/protanopia — ham variants read as air — so they
+were narrowed to the widest arcs that hold for CVD viewers too.)
+
 **Containment test:** for a sweep of site keys (1 500 per family), every
-variant's nearest family base (ΔE_ok, normal vision) is its own family —
+variant's nearest family base (ΔE_ok, under normal, deuteranopic AND
+protanopic vision) is its own family —
 with one exception: business variants may sit nearer **marine**. Marine has
 no located sites (its channels are unlocated; hits only edge-glow), so no
 marine plume exists to be confused with; without the exception business is

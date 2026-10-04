@@ -9,10 +9,12 @@ export type SiteColorMode = "site" | "service";
 
 /** ± hue degrees and total lightness spread per family. Business gets the most
  *  room (it is ~half the smoke); public safety and rail stay tight so a hospital
- *  plume never drifts toward rail orange. Containment-tested. */
+ *  plume never drifts toward rail orange. Containment-tested under normal,
+ *  deuteranopic and protanopic vision — ham/air/GMRS are narrow because wider
+ *  variants read as each other to a CVD viewer (final review, 2026-10-04). */
 export const SITE_ARC: Record<PinCategory, { hue: number; light: number }> = {
-  biz: { hue: 28, light: 0.12 }, ham: { hue: 20, light: 0.12 }, gmrs: { hue: 12, light: 0.10 },
-  air: { hue: 8, light: 0.10 }, publicsafety: { hue: 6, light: 0.06 }, rail: { hue: 6, light: 0.08 },
+  biz: { hue: 28, light: 0.12 }, ham: { hue: 6, light: 0.08 }, gmrs: { hue: 4, light: 0.10 },
+  air: { hue: 6, light: 0.08 }, publicsafety: { hue: 6, light: 0.06 }, rail: { hue: 6, light: 0.08 },
   marine: { hue: 4, light: 0.08 }, weather: { hue: 0, light: 0 }, unknown: { hue: 0, light: 0 },
 };
 
