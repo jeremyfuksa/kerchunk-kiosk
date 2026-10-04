@@ -741,6 +741,19 @@ export class WidebandEngine implements ScannerEngine {
     return false;
   }
 
+  // Is a muted, configured, non-background channel of the CURRENT group open?
+  // Visual hold (spec 2026-10-03): the map should see its transmission whole.
+  // Close Call lanes never reach here — hasAudibleOpen() already counts them.
+  private hasVisualOpen(): boolean {
+    const group = this.groups[this.groupIndex];
+    if (!group) return false;
+    for (const id of this.openIds) {
+      const channel = group.channels.find((c) => c.id === id);
+      if (channel && channel.audible === false && !channel.background) return true;
+    }
+    return false;
+  }
+
   // One squelch-calibration line. The helper emits a retune-cut episode under
   // its OLD id just before the new group's "tuned", so resolve the freq
   // against the whole configured channel list, not the current group.
@@ -923,8 +936,19 @@ export class WidebandEngine implements ScannerEngine {
         this.audibleId = null;
         this.holdStartedAt = 0;
         this.groupStartedAt = 0; // fall through and let the advance below fire now
+      } else if (this.visualHold().enabled && this.hasVisualOpen()) {
+        // Visual hold (spec 2026-10-03): a MUTED open keeps the window so the
+        // map sees the whole transmission. Its own, shorter cap; on breach
+        // fall through to the plain advance — no openIds clear and no log: a
+        // long muted transmission is not a stuck lane, and a continuously
+        // keyed muted carrier would otherwise log every rotation.
+        if (this.holdStartedAt === 0) this.holdStartedAt = this.now();
+        if (this.now() - this.holdStartedAt < this.visualHold().maxMs) {
+          this.groupStartedAt = this.now();
+          return;
+        }
       } else {
-        // Nothing audible is open: the window gets its plain dwell, no hold.
+        // Nothing holds: the window gets its plain dwell, no hold.
         this.holdStartedAt = 0;
       }
       if (this.sweeping) {

@@ -182,7 +182,7 @@ describe("WidebandEngine", () => {
     expect(lines(tunes)).toHaveLength(tunesAtHold); // held: no further hop while open
   });
 
-  it("an open on an INAUDIBLE channel does not hold the rotation", async () => {
+  it("visualHold disabled: an open on an INAUDIBLE channel does not hold the rotation", async () => {
     // The muted-business-channel wedge: a 463 MHz lane the operator has muted
     // read open continuously and parked the scanner for the whole max-hold cap,
     // producing minutes of silence that sound like a lockup. A channel nobody
@@ -197,7 +197,7 @@ describe("WidebandEngine", () => {
       FAKE_WB_TUNES_FILE: tunes,
       FAKE_WB_SCRIPT: `{"ev":"open","id":"${muted.id}","db":-10}`, // opens, never closes
     }, { groupDwellMs: 1000 });
-    await engine.start(cfg([muted, VHF_B, UHF]));
+    await engine.start(cfg([muted, VHF_B, UHF], { visualHold: { enabled: false } }));
     const accepted = await waitFor(
       () => events.some((e) => e.type === "active" && e.channel.id === muted.id), 1000);
     expect(accepted).toBe(true);
@@ -295,6 +295,89 @@ describe("WidebandEngine", () => {
     await engine.stop();
     expect(resumed).toBe(true);
     expect(logs.some((m) => m.includes("max-hold"))).toBe(true);
+  });
+
+  describe("visual hold (scan.visualHold)", () => {
+    const muted = ch(146_790_000, { audible: false });
+
+    it("a muted open holds past the plain dwell", async () => {
+      const tunes = tmpFile("tunes");
+      const { engine, events } = makeEngine({
+        FAKE_WB_TUNES_FILE: tunes,
+        FAKE_WB_SCRIPT: `{"ev":"open","id":"${muted.id}","db":-10}`, // never closes
+      }, { groupDwellMs: 1000 });
+      await engine.start(cfg([muted, VHF_B, UHF], { visualHold: { maxMs: 60_000 } }));
+      expect(await waitFor(() => events.some((e) => e.type === "active" && e.channel.id === muted.id), 1000)).toBe(true);
+      const tunesAtOpen = lines(tunes).length;
+      await new Promise((r) => setTimeout(r, 1800)); // well past the 1 s dwell
+      await engine.stop();
+      expect(lines(tunes)).toHaveLength(tunesAtOpen);
+    });
+
+    it("visual hold releases at maxMs: hops, no max-hold log, lane not force-closed", async () => {
+      const tunes = tmpFile("tunes");
+      const logs: string[] = [];
+      const { engine, events } = makeEngine({
+        FAKE_WB_TUNES_FILE: tunes,
+        FAKE_WB_SCRIPT: `{"ev":"open","id":"${muted.id}","db":-10}`,
+      }, { groupDwellMs: 1000, log: (m: string) => logs.push(m) });
+      await engine.start(cfg([muted, VHF_B, UHF], { visualHold: { maxMs: 300 } }));
+      expect(await waitFor(() => events.some((e) => e.type === "active" && e.channel.id === muted.id), 1000)).toBe(true);
+      const tunesAtOpen = lines(tunes).length;
+      // Cap 300 ms, then the plain 1 s dwell -> hop well inside 2.5 s.
+      expect(await waitFor(() => lines(tunes).length > tunesAtOpen, 2500)).toBe(true);
+      await engine.stop();
+      expect(logs.some((m) => m.includes("max-hold"))).toBe(false);
+    });
+
+    it("an audible open during a visual hold keeps holding past maxMs", async () => {
+      const tunes = tmpFile("tunes");
+      const { engine, events } = makeEngine({
+        FAKE_WB_TUNES_FILE: tunes,
+        FAKE_WB_SCRIPT: [
+          `{"ev":"open","id":"${muted.id}","db":-10}`,
+          `{"ev":"open","id":"${VHF_B.id}","db":-10}`,
+        ].join("\n"),
+      });
+      await engine.start(cfg([muted, VHF_B, UHF], { visualHold: { maxMs: 200 } }));
+      expect(await waitFor(() => events.filter((e) => e.type === "signal").length >= 2, 1000)).toBe(true);
+      const tunesAtHold = lines(tunes).length;
+      await new Promise((r) => setTimeout(r, 600)); // 3x the visual cap
+      await engine.stop();
+      expect(lines(tunes)).toHaveLength(tunesAtHold);
+    });
+
+    it("a background channel open does not visually hold", async () => {
+      const tunes = tmpFile("tunes");
+      const bg = { ...ch(146_790_000), audible: false, background: true };
+      const { engine, events } = makeEngine({
+        FAKE_WB_TUNES_FILE: tunes,
+        FAKE_WB_SCRIPT: `{"ev":"open","id":"${bg.id}","db":-10}`,
+      }, { groupDwellMs: 1000 });
+      await engine.start(cfg([bg, VHF_B, UHF], { visualHold: { maxMs: 60_000 } }));
+      expect(await waitFor(() => events.some((e) => e.type === "active" && e.channel.id === bg.id), 1000)).toBe(true);
+      const tunesAtOpen = lines(tunes).length;
+      expect(await waitFor(() => lines(tunes).length > tunesAtOpen, 2500)).toBe(true);
+      await engine.stop();
+    });
+
+    it("updateScheduling({ visualHold: { enabled: false } }) releases a visual hold live", async () => {
+      const tunes = tmpFile("tunes");
+      const args = tmpFile("args");
+      const { engine, events } = makeEngine({
+        FAKE_WB_TUNES_FILE: tunes, FAKE_WB_ARGS_FILE: args,
+        FAKE_WB_SCRIPT: `{"ev":"open","id":"${muted.id}","db":-10}`,
+      }, { groupDwellMs: 300 });
+      await engine.start(cfg([muted, VHF_B, UHF], { visualHold: { maxMs: 60_000 } }));
+      expect(await waitFor(() => events.some((e) => e.type === "active" && e.channel.id === muted.id), 1000)).toBe(true);
+      const tunesAtOpen = lines(tunes).length;
+      await new Promise((r) => setTimeout(r, 700)); // held past the 300 ms dwell
+      expect(lines(tunes)).toHaveLength(tunesAtOpen);
+      engine.updateScheduling({ visualHold: { enabled: false } });
+      expect(await waitFor(() => lines(tunes).length > tunesAtOpen, 1500)).toBe(true);
+      await engine.stop();
+      expect(lines(args)).toHaveLength(1); // no respawn
+    });
   });
 
   it("a single group never hops", async () => {
