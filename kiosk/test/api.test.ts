@@ -979,6 +979,28 @@ describe("review fixes: engine lifecycle", () => {
     expect(res.status).toBe(400);
   });
 
+  it("PUT /api/config with only visualHold changes applies it live (no restart)", async () => {
+    const { server, engine } = makeApp();
+    let starts = 0;
+    const realStart = engine.start.bind(engine);
+    engine.start = async (sc) => { starts++; return realStart(sc); };
+    const cfg = (await request(server).get("/api/config")).body;
+    cfg.scan.visualHold = { maxMs: 8000, creditDwell: false };
+    const res = await request(server).put("/api/config").send(cfg);
+    expect(res.status).toBe(200);
+    expect(starts).toBe(0);
+    const updates = (engine as { schedulingUpdates?: Array<Record<string, unknown>> }).schedulingUpdates ?? [];
+    expect(updates.at(-1)?.visualHold).toEqual({ maxMs: 8000, creditDwell: false });
+  });
+
+  it("PUT /api/config rejects out-of-range visualHold", async () => {
+    const { server } = makeApp();
+    const cfg = (await request(server).get("/api/config")).body;
+    cfg.scan.visualHold = { maxMs: 500 };
+    const res = await request(server).put("/api/config").send(cfg);
+    expect(res.status).toBe(400);
+  });
+
   it("PUT /api/config rejects out-of-range autoDwell", async () => {
     const { server } = makeApp();
     const cfg = (await request(server).get("/api/config")).body;

@@ -15,6 +15,7 @@ import { TxStatsLog } from "./txStats.js";
 import {
   ActivityTracker, dwellFactor, resolveAutoDwell, scaledDwellMs, type AutoDwellConfig,
   nextRevisitTarget, resolvePriorityRevisit, type PriorityRevisitConfig,
+  resolveVisualHold, type VisualHoldConfig,
 } from "./scanSchedule.js";
 
 /** config.audio speaker-loudness knob -> kerchunk-dsp flag (AGC + limiter). */
@@ -340,6 +341,10 @@ export class WidebandEngine implements ScannerEngine {
     return resolveAutoDwell(this.config?.autoDwell);
   }
 
+  private visualHold(): Required<VisualHoldConfig> {
+    return resolveVisualHold(this.config?.visualHold);
+  }
+
   private static groupKey(group: ChannelGroup<ScanChannel>): string {
     return String(group.centerHz);
   }
@@ -373,12 +378,12 @@ export class WidebandEngine implements ScannerEngine {
     return this.groups.map((_, i) => this.effectiveDwellMs(i));
   }
 
-  /** Live scheduling update (config.scan.autoDwell / priorityRevisit):
+  /** Live scheduling update (config.scan.autoDwell / priorityRevisit / visualHold):
    *  Node-side only, so no tune, no respawn — the next tick simply uses the
    *  new numbers (a look already in progress finishes normally). */
-  updateScheduling(s: { autoDwell?: AutoDwellConfig; priorityRevisit?: PriorityRevisitConfig }): void {
+  updateScheduling(s: { autoDwell?: AutoDwellConfig; priorityRevisit?: PriorityRevisitConfig; visualHold?: VisualHoldConfig }): void {
     if (!this.config) return;
-    this.config = { ...this.config, autoDwell: s.autoDwell, priorityRevisit: s.priorityRevisit };
+    this.config = { ...this.config, autoDwell: s.autoDwell, priorityRevisit: s.priorityRevisit, visualHold: s.visualHold };
     // Re-arm only a live timer (the tick rate depends on autoDwell.enabled);
     // groupStartedAt is untouched, so the current dwell just continues.
     if (this.dwellTimer) this.startDwellTimer();
