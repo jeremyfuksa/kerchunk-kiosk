@@ -157,6 +157,16 @@ export class HistoryStore {
       .map((r) => ({ ...r, tags: JSON.parse(String(r.tags)) }) as unknown as HistoryRow);
   }
 
+  /** Distinct frequencies with at least one `kind` row in [sinceMs, untilMs].
+   *  Uncapped on purpose (unlike query): a "was it heard at all?" check over a
+   *  busy month must not be answered from the newest few thousand rows. */
+  heardFreqs(q: { kind: string; sinceMs?: number; untilMs?: number }): Set<number> {
+    const rows = this.db.prepare(
+      `SELECT DISTINCT freq FROM events WHERE kind = ? AND ts >= ? AND ts <= ?`,
+    ).all(q.kind, q.sinceMs ?? 0, q.untilMs ?? Number.MAX_SAFE_INTEGER) as Array<{ freq: number }>;
+    return new Set(rows.map((r) => r.freq));
+  }
+
   /** Distinct transmitter sites for the map's persistent antenna layer. Returns
    *  per-site the distinct frequencies heard there, each with its LATEST stored
    *  label (one MAX(ts) per (site,freq) group lets SQLite's bare-column rule pull

@@ -1494,7 +1494,7 @@ describe("archive recommendations", () => {
     configStore.save(cfg);
     const history = {
       record: () => {}, release: () => {},
-      query: (q: { untilMs?: number }) => q.untilMs ? [{ freq: 100 }] : [],
+      heardFreqs: (q: { untilMs?: number }) => new Set(q.untilMs ? [100] : []),
       sites: () => [], stats: () => ({}),
     };
     const { server } = createServer({
@@ -1503,6 +1503,36 @@ describe("archive recommendations", () => {
     });
     const res = await request(server).get("/api/recommendations/archive").expect(200);
     expect(res.body.map((c: { id: string }) => c.id)).toEqual(["old"]);
+  });
+});
+
+describe("archive recommendations over a busy history", () => {
+  it("a channel heard 2 days ago is not recommended, however many newer rows bury it", async () => {
+    // Regression: "heard in 30 days" came from query({ limit: 5000 }) — at
+    // ~7k opens/day that saw only the last ~17 h, so a channel merely quiet
+    // for a day was recommended for archiving.
+    dir = mkdtempSync(join(tmpdir(), "ksrv-"));
+    const configStore = new ConfigStore(join(dir, "config.json"));
+    const cfg = configStore.load();
+    cfg.channels = [
+      { id: "quiet", freq: 400_000_000, alphaTag: "Quiet", mode: "nfm", enabled: true },
+      { id: "gone", freq: 410_000_000, alphaTag: "Gone", mode: "nfm", enabled: true },
+    ];
+    configStore.save(cfg);
+    const history = new HistoryStore({ path: ":memory:" });
+    const now = Date.now();
+    const day = 86_400_000;
+    const ev = (freq: number, ts: number) => ({ ts, kind: "active" as const, channelId: `c${freq}`, freq, alphaTag: "x" });
+    history.record(ev(400_000_000, now - 31 * day)); // heard before the cutoff...
+    history.record(ev(400_000_000, now - 2 * day));  // ...and inside the window
+    history.record(ev(410_000_000, now - 31 * day)); // heard before, silent since
+    for (let i = 0; i < 5200; i++) history.record(ev(420_000_000, now - 60_000 - i)); // a busy chirper
+    const { server } = createServer({
+      configStore, engine: new FakeEngine(), activityLog: new ActivityLog(10),
+      wsHub: new WsHub(), staticDir: dir, history,
+    });
+    const res = await request(server).get("/api/recommendations/archive").expect(200);
+    expect(res.body.map((c: { id: string }) => c.id)).toEqual(["gone"]);
   });
 });
 
