@@ -198,6 +198,10 @@ export class WidebandEngine implements ScannerEngine {
   // from groupStartedAt, which the hold path re-arms every tick; this one is
   // NOT re-armed, so it measures true continuous hold against the max-hold cap.
   private holdStartedAt = 0;
+  // When this VISIT's first visual hold began (0 = none yet). Reset only by a
+  // tune / spawn / stop — never by a close — so maxMs is a per-visit budget:
+  // a chain of muted key-ups can't park the scanner (final review I1).
+  private visualVisitStartedAt = 0;
   private dwellTimer: NodeJS.Timeout | null = null;
   // Activity-weighted dwell (config.scan.autoDwell): decayed open counts per
   // group, keyed by the group's center so it survives a same-shape retune.
@@ -590,6 +594,7 @@ export class WidebandEngine implements ScannerEngine {
     this.openIds.clear();
     this.audibleId = null;
     this.holdStartedAt = 0;
+    this.visualVisitStartedAt = 0;
     this.lastStderrLine = "";
     this.readyTimer = setTimeout(
       () => this.watchdogFire(child, `no "ready" within ${this.readyTimeoutMs} ms`), this.readyTimeoutMs);
@@ -676,8 +681,12 @@ export class WidebandEngine implements ScannerEngine {
           this.holdStartedAt = 0; // hold ended cleanly; next hold clocks fresh
           this.emit({ type: "idle", ts: this.now() });
           // Idle again: dwell restarts from now, so a long hold doesn't cause
-          // an instant hop the moment the channel closes.
-          this.groupStartedAt = this.now();
+          // an instant hop the moment the channel closes — except a muted
+          // close once this visit's visual budget is spent: re-arming there
+          // would let back-to-back muted traffic hold the window forever.
+          const closed = this.groups[this.groupIndex]?.channels.find((c) => c.id === ev.id);
+          const spentMuted = closed?.audible === false && this.visualHold().enabled && !this.visualBudgetLeft();
+          if (!spentMuted) this.groupStartedAt = this.now();
         }
         break;
       case "rf":
@@ -746,6 +755,13 @@ export class WidebandEngine implements ScannerEngine {
     return false;
   }
 
+  // Does this visit still have visual-hold budget (maxMs since its first
+  // visual hold)? A visit with no visual hold yet has the whole budget.
+  private visualBudgetLeft(): boolean {
+    return this.visualVisitStartedAt === 0
+      || this.now() - this.visualVisitStartedAt < this.visualHold().maxMs;
+  }
+
   // Is a muted, configured, non-background channel of the CURRENT group open?
   // Visual hold (spec 2026-10-03): the map should see its transmission whole.
   // Close Call lanes never reach here — hasAudibleOpen() already counts them.
@@ -792,6 +808,7 @@ export class WidebandEngine implements ScannerEngine {
     this.openIds.clear();
     this.audibleId = null;
     this.holdStartedAt = 0;
+    this.visualVisitStartedAt = 0;
     this.groupStartedAt = this.now();
     this.child.stdin.write(JSON.stringify({
       cmd: "tune", centerHz, channels: [],
@@ -811,6 +828,7 @@ export class WidebandEngine implements ScannerEngine {
     this.openIds.clear();
     this.audibleId = null;
     this.holdStartedAt = 0;
+    this.visualVisitStartedAt = 0;
     this.groupStartedAt = this.now();
     const cmd = {
       cmd: "tune",
@@ -943,12 +961,18 @@ export class WidebandEngine implements ScannerEngine {
         this.groupStartedAt = 0; // fall through and let the advance below fire now
       } else if (this.visualHold().enabled && this.hasVisualOpen()) {
         // Visual hold (spec 2026-10-03): a MUTED open keeps the window so the
-        // map sees the whole transmission. Its own, shorter cap; on breach
-        // fall through to the plain advance — no openIds clear and no log: a
-        // long muted transmission is not a stuck lane, and a continuously
-        // keyed muted carrier would otherwise log every rotation.
-        if (this.holdStartedAt === 0) this.holdStartedAt = this.now();
-        if (this.now() - this.holdStartedAt < this.visualHold().maxMs) {
+        // map sees the whole transmission, within a per-VISIT budget of maxMs
+        // (visualVisitStartedAt). On breach fall through to the plain advance
+        // — no openIds clear and no log: a long muted transmission is not a
+        // stuck lane, and a continuously keyed muted carrier would otherwise
+        // log every rotation. holdStartedAt stays 0 so an audible open that
+        // arrives later gets its full maxHoldMs, not an already-aged one.
+        this.holdStartedAt = 0;
+        if (this.visualVisitStartedAt === 0) this.visualVisitStartedAt = this.now();
+        if (this.visualBudgetLeft()) {
+          // Nobody is listening to a visual hold: a due priority peek
+          // pre-empts it (final review I2). Audible holds still can't be.
+          if (this.maybeStartRevisit(deltaMs)) return;
           this.groupStartedAt = this.now();
           return;
         }
@@ -1189,6 +1213,7 @@ export class WidebandEngine implements ScannerEngine {
     this.openIds.clear();
     this.audibleId = null;
     this.holdStartedAt = 0;
+    this.visualVisitStartedAt = 0;
     this.setState("stopped");
   }
 

@@ -361,6 +361,25 @@ describe("WidebandEngine", () => {
       await engine.stop();
     });
 
+    it("a chain of muted transmissions can't extend a visit past the per-visit visual budget", async () => {
+      // Review finding: each muted key-up used to start a fresh maxMs hold and
+      // each close re-armed the dwell, so back-to-back muted traffic parked
+      // the scanner on a muted-only window indefinitely.
+      const tunes = tmpFile("tunes");
+      const chain = Array.from({ length: 30 }, () => [
+        `{"ev":"open","id":"${muted.id}","db":-10}`, "sleep:150",
+        `{"ev":"close","id":"${muted.id}"}`, "sleep:50",
+      ]).flat().join("\n"); // ~6 s of back-to-back muted traffic
+      const { engine, events } = makeEngine({ FAKE_WB_TUNES_FILE: tunes, FAKE_WB_SCRIPT: chain },
+        { groupDwellMs: 1000 });
+      await engine.start(cfg([muted, VHF_B, UHF], { visualHold: { maxMs: 300 }, autoDwell: { enabled: false } }));
+      expect(await waitFor(() => events.some((e) => e.type === "active" && e.channel.id === muted.id), 1000)).toBe(true);
+      const tunesAtOpen = lines(tunes).length;
+      // Budget 300 ms + one plain 1 s dwell: the hop lands well before the chain ends.
+      expect(await waitFor(() => lines(tunes).length > tunesAtOpen, 2500)).toBe(true);
+      await engine.stop();
+    });
+
     it("updateScheduling({ visualHold: { enabled: false } }) releases a visual hold live", async () => {
       const tunes = tmpFile("tunes");
       const args = tmpFile("args");
@@ -1364,6 +1383,22 @@ describe("priority revisit (scan.priorityRevisit)", () => {
     await settle();
     expect(lines(tunes)).toHaveLength(2);            // held on the priority open
     expect(engine.groupDwellPlan()).toEqual([10_000, 10_000, 10_000]); // not credited
+    await engine.stop();
+  });
+
+  it("a priority peek pre-empts a visual hold (muted map traffic never outranks priority)", async () => {
+    const tunes = tmpFile("tunes");
+    const mutedA = { ...VHF_A, audible: false };
+    const { engine, events, clock } = clockEngine({
+      FAKE_WB_TUNES_FILE: tunes,
+      FAKE_WB_SCRIPT: `{"ev":"open","id":"${mutedA.id}","db":-10}`, // muted, never closes
+    });
+    await engine.start(cfg([mutedA, VHF_B, MID, { ...UHF, priority: true }],
+      { ...noAuto, visualHold: { maxMs: 60_000 } }));
+    expect(await waitFor(() => events.some((e) => e.type === "active"), 1000)).toBe(true);
+    clock.t += 4100;                                 // a peek is due, mid visual hold
+    expect(await waitFor(() => lines(tunes).length >= 2, 1000)).toBe(true);
+    expect(tuneIds(tunes)[1]).toEqual(G2);
     await engine.stop();
   });
 
