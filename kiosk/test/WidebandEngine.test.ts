@@ -1268,15 +1268,41 @@ describe("activity-weighted dwell (scan.autoDwell)", () => {
     await engine.stop();
   });
 
-  it("opens on muted or Close Call lanes don't count as the group's traffic", async () => {
+  it("visualHold disabled: opens on muted or Close Call lanes don't count as the group's traffic", async () => {
     const tunes = tmpFile("tunes");
     const muted = { ...VHF_A, audible: false };
     const { engine, events } = clockEngine({
       FAKE_WB_TUNES_FILE: tunes,
       FAKE_WB_SCRIPT: [opens(muted.id, 2), opens("cc_146900000", 2)].join("\n"),
     });
-    await engine.start(cfg([muted, VHF_B, MID, UHF]));
+    await engine.start(cfg([muted, VHF_B, MID, UHF], { visualHold: { enabled: false } }));
     expect(await waitFor(() => closes(events) >= 4, 1000)).toBe(true);
+    expect(engine.groupDwellPlan()).toEqual([3000, 3000, 3000]);
+    await engine.stop();
+  });
+
+  it("creditDwell: muted opens count as the group's traffic (Close Call still doesn't)", async () => {
+    const tunes = tmpFile("tunes");
+    const muted = { ...VHF_A, audible: false };
+    const { engine, events } = clockEngine({
+      FAKE_WB_TUNES_FILE: tunes,
+      FAKE_WB_SCRIPT: [opens(muted.id, 3), opens("cc_146900000", 2)].join("\n"),
+    });
+    await engine.start(cfg([muted, VHF_B, MID, UHF]));
+    expect(await waitFor(() => closes(events) >= 5, 1000)).toBe(true);
+    // Same shape as the audible case: a = [3,0,0] -> [6000, 1500, 1500].
+    expect(engine.groupDwellPlan()).toEqual([6000, 1500, 1500]);
+    await engine.stop();
+  });
+
+  it("creditDwell:false keeps muted opens out of the activity count", async () => {
+    const tunes = tmpFile("tunes");
+    const muted = { ...VHF_A, audible: false };
+    const { engine, events } = clockEngine({
+      FAKE_WB_TUNES_FILE: tunes, FAKE_WB_SCRIPT: opens(muted.id, 3),
+    });
+    await engine.start(cfg([muted, VHF_B, MID, UHF], { visualHold: { creditDwell: false } }));
+    expect(await waitFor(() => closes(events) >= 3, 1000)).toBe(true);
     expect(engine.groupDwellPlan()).toEqual([3000, 3000, 3000]);
     await engine.stop();
   });

@@ -392,13 +392,18 @@ export class WidebandEngine implements ScannerEngine {
   // Credit one transmission to the group being dwelt on. Only a NEW open of
   // an audible, configured channel of the current group counts: Close Call
   // lanes and background decoder feeds aren't the group's traffic, a muted
-  // carrier would inflate it, and sweep stops aren't groups.
+  // carrier counts only with visualHold.creditDwell, and sweep stops aren't
+  // groups.
   private recordActivity(id: string): void {
     // A priority look is not the group's own turn: revisits don't count.
     if (this.sweeping || this.revisit || this.openIds.has(id)) return;
     const group = this.groups[this.groupIndex];
     const channel = group?.channels.find((c) => c.id === id);
-    if (!group || !channel || channel.audible === false || channel.background) return;
+    if (!group || !channel || channel.background) return;
+    // A muted carrier counts only when visual hold credits it (spec
+    // 2026-10-03): the map wants a busy muted window (rail) visited more.
+    const vh = this.visualHold();
+    if (channel.audible === false && !(vh.enabled && vh.creditDwell)) return;
     this.activity.record(WidebandEngine.groupKey(group), this.now(), this.autoDwell().halfLifeMin * 60_000);
   }
 
