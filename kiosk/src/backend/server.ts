@@ -32,7 +32,7 @@ export interface ServerDeps {
   /** Optional current-conditions provider for the kiosk header. */
   weather?: Pick<NwsWeather, "current">;
   /** Optional durable activity history (ROADMAP Idea 5). */
-  history?: Pick<HistoryStore, "record" | "release" | "query" | "sites" | "stats" | "deleteAlert" | "clearAlerts">
+  history?: Pick<HistoryStore, "record" | "release" | "query" | "heardFreqs" | "sites" | "stats" | "deleteAlert" | "clearAlerts">
     & Partial<Pick<HistoryStore, "setRf">>;
   /** Dedicated weather radio engine (Idea 10): its SAME events feed the
    *  same tee as the main engine's. */
@@ -1158,8 +1158,11 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
     if (method === "GET" && path === "/api/recommendations/archive") {
       if (!deps.history) return json(res, 404, { error: "no history store" });
       const cutoff = Date.now() - 30 * 86_400_000;
-      const heard = new Set(deps.history.query({ sinceMs: cutoff, kind: "active", limit: 5000 }).map((r) => r.freq));
-      const heardBefore = new Set(deps.history.query({ untilMs: cutoff, kind: "active", limit: 5000 }).map((r) => r.freq));
+      // Uncapped DISTINCT-freq reads: query()'s 5000-row cap saw only ~17 h of
+      // a busy month, so "unheard in 30 days" really meant "quiet since
+      // yesterday".
+      const heard = deps.history.heardFreqs({ sinceMs: cutoff, kind: "active" });
+      const heardBefore = deps.history.heardFreqs({ untilMs: cutoff, kind: "active" });
       return json(res, 200, config.channels
         .filter((c) => c.enabled && !c.priority && c.location?.source !== "operator"
           && heardBefore.has(c.freq) && !heard.has(c.freq))
