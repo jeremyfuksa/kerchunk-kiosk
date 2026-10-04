@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { glyphOf, serviceHead, WELL_HEX, HEAD_MIN_CONTRAST } from "../src/frontend/faceplate/serviceHead.js";
-import { PIN_COLORS, type PinCategory } from "../src/frontend/lib/serviceColor.js";
+import { PIN_COLORS, PIN_GLYPH_INK, type PinCategory } from "../src/frontend/lib/serviceColor.js";
 import { readProps, resolve, contrast } from "./cssTokens.js";
 
 const CATS = Object.keys(PIN_COLORS) as PinCategory[];
@@ -10,13 +10,14 @@ describe("serviceHead", () => {
     for (const cat of CATS) {
       const h = serviceHead(cat);
       expect(h.color, cat).toBe(PIN_COLORS[cat]);
+      expect(h.ink, cat).toBe(PIN_GLYPH_INK[cat]);
       expect(h.glyph, cat).toMatch(/<(path|circle|rect|line|polyline)\b/);
       expect(h.glyph, cat).not.toContain("<g");
     }
   });
-  it("rings exactly the heads under 3:1 on the well (today: business, rail)", () => {
+  it("rings exactly the heads under 3:1 on the well (today: none)", () => {
     const ringed = CATS.filter((c) => serviceHead(c).ringed).sort();
-    expect(ringed).toEqual(["biz", "rail"]);
+    expect(ringed).toEqual([]);
     for (const c of CATS) {
       const h = serviceHead(c);
       expect(h.ringed, c).toBe(contrast(h.color, WELL_HEX) < HEAD_MIN_CONTRAST);

@@ -41,7 +41,7 @@ export function segmentsLit(fill: number, count: number): number {
 function headSvg(h: ServiceHead): string {
   return `<svg class="kc-lcd__head${h.ringed ? " kc-lcd__head--ringed" : ""}" viewBox="0 0 42 42" aria-hidden="true">`
     + `<circle cx="21" cy="21" r="21" fill="${h.color}"/>`
-    + `<g transform="translate(9 9)" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">${h.glyph}</g></svg>`;
+    + `<g transform="translate(9 9)" fill="none" stroke="${h.ink}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">${h.glyph}</g></svg>`;
 }
 
 /** The segmented meter row (also the kiosk's warm-up pill). */

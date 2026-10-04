@@ -50,13 +50,15 @@ describe("faceplate lcd — kiosk extras", () => {
 
   it("head renders the disc + glyph left of name and freq, aria-hidden", () => {
     const h = lcd(live, { head: serviceHead("publicsafety") });
-    expect(h).toMatch(/<div class="kc-lcd__row"><svg class="kc-lcd__head" viewBox="0 0 42 42" aria-hidden="true"><circle cx="21" cy="21" r="21" fill="#E5383B"\/>/);
-    expect(h).toContain('stroke="currentColor"');
+    expect(h).toMatch(/<div class="kc-lcd__row"><svg class="kc-lcd__head" viewBox="0 0 42 42" aria-hidden="true"><circle cx="21" cy="21" r="21" fill="#e54059"\/>/);
+    expect(h).toContain('stroke="#ffffff"');
     expect(h.indexOf("kc-lcd__head")).toBeLessThan(h.indexOf("kc-lcd__name"));
     expect(h).toContain('<div class="kc-lcd__text">');
   });
   it("a low-contrast head is ringed", () => {
-    expect(lcd(live, { head: serviceHead("rail") })).toContain('class="kc-lcd__head kc-lcd__head--ringed"');
+    // No family is under 3:1 on the well since the 2026-10-04 palette; the ring
+    // path still renders for a head that needs it.
+    expect(lcd(live, { head: { ...serviceHead("rail"), ringed: true } })).toContain('class="kc-lcd__head kc-lcd__head--ringed"');
     expect(lcd(live, { head: serviceHead("air") })).not.toContain("kc-lcd__head--ringed");
   });
   it("segments replace the four-bar meta meter and light round(fill × count)", () => {

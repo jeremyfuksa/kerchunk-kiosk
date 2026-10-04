@@ -2,7 +2,7 @@
 // on the kiosk's glass beside a live channel (spec 2026-10-01). Built from the
 // map's own pin SVGs, so the pin stays the one source of each service's icon —
 // the head is the pin's head, without the teardrop.
-import { PIN_COLORS, type PinCategory } from "../lib/serviceColor.js";
+import { PIN_COLORS, PIN_GLYPH_INK, type PinCategory } from "../lib/serviceColor.js";
 import pinAir from "../map/pins/pin-air.svg?raw";
 import pinRail from "../map/pins/pin-rail.svg?raw";
 import pinHam from "../map/pins/pin-ham.svg?raw";
@@ -16,6 +16,8 @@ import pinUnknown from "../map/pins/pin-unknown.svg?raw";
 export interface ServiceHead {
   /** The disc fill — PIN_COLORS for the category. */
   color: string;
+  /** The glyph stroke — PIN_GLYPH_INK for the category (white or dark ink). */
+  ink: string;
   /** The lucide glyph's inner SVG elements (paths etc.), no wrapper. */
   glyph: string;
   /** True when the disc is under HEAD_MIN_CONTRAST on the glass; the LCD then
@@ -66,7 +68,10 @@ export function serviceHead(cat: PinCategory): ServiceHead {
     // the unknown head as a whole — colour and glyph — rather than throwing.
     const known = cat in PIN_SVG ? cat : "unknown";
     const color = PIN_COLORS[known] ?? PIN_COLORS.unknown!;
-    h = { color, glyph: glyphOf(PIN_SVG[known]), ringed: contrastOnWell(color) < HEAD_MIN_CONTRAST };
+    h = {
+      color, ink: PIN_GLYPH_INK[known],
+      glyph: glyphOf(PIN_SVG[known]), ringed: contrastOnWell(color) < HEAD_MIN_CONTRAST,
+    };
     HEADS.set(cat, h);
   }
   return h;
