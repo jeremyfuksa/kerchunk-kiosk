@@ -532,7 +532,13 @@ describe("display.glass + radarProduct retirement", () => {
       smokeLifeMs: 600_000, smokeStepMs: 6000, smokePxPerMph: 60,
       smokeBody: 0.55, sparkDensity: 1, puffMergeMs: 60_000, smokeScale: 0.4,
       siteColor: "site", hueDominance: 4,
+      scatter: { enabled: true, marginPx: 80 }, liveSparkStepMs: 750,
     });
+  });
+  it("liveSparkStepMs accepts 0 and 250-6000 only", () => {
+    const c = base();
+    const ok = (v: number) => configSchema.safeParse({ ...c, display: { ...c.display, glass: { liveSparkStepMs: v } } }).success;
+    expect([ok(0), ok(250), ok(6000), ok(100), ok(7000)]).toEqual([true, true, true, false, false]);
   });
   it("an old config carrying glass.fadeSteps still loads; the key is stripped", () => {
     const cfg = configSchema.parse({ ...base(), display: { ...base().display, glass: { fadeSteps: 24, holdFps: 6 } } });

@@ -8,6 +8,7 @@ import { GlassLayer } from "./glassLayer.js";
 import { RadarSync, httpRadarFetchers } from "./radarSync.js";
 import { GlassState, RELEASE_MS, type GlassSite } from "./glassState.js";
 import { hexToGlowRgb } from "./glassMath.js";
+import { scatterSpot, isSilentHit, SCATTER_KEY, type ScatterStage } from "./scatter.js";
 import { padRect, outside, edgeExit, lngLatToViewPx, occluded, slideClear, BLOOM_PX, type Rect } from "./stage.js";
 import type { EngineEvent } from "../../backend/engine/ScannerEngine.js";
 import icoTower from "lucide-static/icons/radio-tower.svg?raw";
@@ -356,10 +357,36 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
       return { key, lat, lng, color: hexToGlowRgb(hex) };
     };
 
-    function startTx(id: string, lat: number, lng: number, freq: number | undefined, kind: "active" | "closecall"): void {
-      const s = glassSite(lat, lng, freq, kind);
+    // Scatter stage: captured once, from the home framing, the first time the
+    // map is idle (the kiosk camera never moves after that).
+    let scatterStage: ScatterStage | null = null;
+    const scatter = display.glass.scatter;
+    const stageReady = new Promise<void>((resolve) => {
+      if (!scatter.enabled) { resolve(); return; }
+      google.maps.event.addListenerOnce(map, "idle", () => {
+        const b = map.getBounds();
+        if (b) {
+          const ne = b.getNorthEast(), sw = b.getSouthWest();
+          const W = root.clientWidth, H = root.clientHeight;
+          scatterStage = { box: { n: ne.lat(), s: sw.lat(), e: ne.lng(), w: sw.lng() }, width: W, height: H, inner: padRect(W, H, KIOSK_FIT_PAD) };
+        }
+        resolve();
+      });
+    });
+    const audibleFamilies: readonly string[] = cfg.audio?.audibleFamilies ?? ["air", "rail", "marine", "ham", "gmrs"];
+    /** An invented site for a silent unlocated hit, or null (edge glow). */
+    const scatterSite = (freq: number): GlassSite | null => {
+      if (!scatter.enabled || !scatterStage) return null;
+      const s = scatterSpot(freq, scatterStage, scatter.marginPx);
+      return { key: SCATTER_KEY(freq), lat: s.lat, lng: s.lng, color: hexToGlowRgb(s.hex) };
+    };
+
+    function startTxAt(id: string, s: GlassSite): void {
       glassState.keyUp(id, s, siteRadius(s.key, glassState.hits(s.key) + 1), Date.now());
       poke();
+    }
+    function startTx(id: string, lat: number, lng: number, freq: number | undefined, kind: "active" | "closecall"): void {
+      startTxAt(id, glassSite(lat, lng, freq, kind));
     }
     function endTx(id: string): void {
       glassState.release(id, Date.now());
@@ -527,14 +554,20 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
 
     // Backfill: the smoke window, at real timestamps (puffs arrive part-aged).
     const backfillMs = display.glass.smokeLifeMs;
-    void fetch(`/api/history?since=${Date.now() - backfillMs}&limit=500`)
+    // Waits for the scatter stage so unlocated silent rows can be placed.
+    void stageReady
+      .then(() => fetch(`/api/history?since=${Date.now() - backfillMs}&limit=500`))
       .then((r) => (r.ok ? r.json() : []))
-      .then((rows: Array<{ lat: number | null; lon: number | null; alphaTag: string; kind: string; ts: number; freq: number }>) => {
+      .then((rows: Array<{ lat: number | null; lon: number | null; alphaTag: string; kind: string; ts: number; freq: number; tags?: string[] }>) => {
         // Rows arrive newest-first; seedPuffs replays them oldest-first so a
         // busy site's trail and hit ramp match what live play builds.
         const seeds = [];
         for (const r of rows) {
-          if (r.lat == null || r.lon == null) continue;
+          if (r.lat == null || r.lon == null) {
+            const site = isSilentHit(r.freq, r.tags, undefined, audibleFamilies) ? scatterSite(r.freq) : null;
+            if (site) seeds.push({ site, ts: r.ts });
+            continue;
+          }
           seeds.push({ site: glassSite(r.lat, r.lon, r.freq, r.kind === "closecall" ? "closecall" : "active"), ts: r.ts });
         }
         glassState.seedPuffs(seeds, Date.now(), siteRadius);
@@ -553,9 +586,12 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
           push(ch.location.lat, ch.location.lon, ch.alphaTag || fmtFreq(ev.freq), "active", Date.now(), ev.freq, true);
           startTx(ch.id, ch.location.lat, ch.location.lon, ev.freq, "active");
         } else {
-          // No location: edge-glow only — no synthetic dot, and no ring pulsing
-          // at a made-up spot.
-          nofix(ev.freq);
+          // No location. A SILENT hit gets its invented metro spot (spec
+          // 2026-10-13: glass/sparks/smoke, no antenna marker — a dot means a
+          // real place); an audible one keeps the edge glow.
+          const site = isSilentHit(ev.freq, ch.tags, ch.audible, audibleFamilies) ? scatterSite(ev.freq) : null;
+          if (site) startTxAt(ch.id, site);
+          else nofix(ev.freq);
         }
       } else if (ev.type === "release") {
         endTx(ev.channelId); // transmission closed — stop its ring
@@ -575,10 +611,10 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
           if (at !== null && glass && !glass.off) glass.redrawAt(at);
         }
       } else if (ev.type === "closecall") {
-        // discoveries are unlocated at the moment they fire (identification is
-        // async) — they pulse the edge glow; once enriched, future events and
-        // history backfills place them on the map properly.
-        nofix(ev.freqHz);
+        // A silent CC hit is placed by its lane's `active` (scatter spot); an
+        // audible one has no honest position yet — edge glow. Once enriched,
+        // future events and history backfills place them properly.
+        if (!isSilentHit(ev.freqHz, undefined, undefined, audibleFamilies)) nofix(ev.freqHz);
       } else if (ev.type === "audible") {
         // Camera follows AUDIO only in follow mode. On the fixed stage an
         // audible site outside the padded frame blooms the edge toward it.

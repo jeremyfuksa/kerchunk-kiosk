@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { scatterSpot, type ScatterStage } from "../src/frontend/map/scatter.js";
+import { scatterSpot, isSilentHit, type ScatterStage } from "../src/frontend/map/scatter.js";
 import { lngLatToViewPx } from "../src/frontend/map/stage.js";
 
 const STAGE: ScatterStage = {
@@ -43,5 +43,19 @@ describe("scatterSpot", () => {
     const p = lngLatToViewPx(s.lat, s.lng, STAGE.box, STAGE.width, STAGE.height);
     expect(Math.abs(p.x - 960)).toBeLessThan(1);
     expect(Math.abs(p.y - 605)).toBeLessThan(1);
+  });
+});
+
+describe("isSilentHit", () => {
+  const FAM = ["air", "rail", "marine", "ham", "gmrs"];
+  it("live channel flag wins when present", () => {
+    expect(isSilentHit(146_790_000, undefined, false, FAM)).toBe(true);
+    expect(isSilentHit(463_562_500, undefined, true, FAM)).toBe(false);
+  });
+  it("history rows (no flag) fall back to family", () => {
+    expect(isSilentHit(463_562_500, undefined, undefined, FAM)).toBe(true);
+    expect(isSilentHit(463_562_500, ["ham"], undefined, FAM)).toBe(false);
+    expect(isSilentHit(162_550_000, undefined, undefined, [])).toBe(false);   // weather
+    expect(isSilentHit(300_000_000, undefined, undefined, FAM)).toBe(true);   // unknown
   });
 });

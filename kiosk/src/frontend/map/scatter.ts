@@ -5,6 +5,7 @@
 // Area-uniform in the stage rect; the camera never moves, so stable on the wall.
 import type { LatLngBox, Rect } from "./stage.js";
 import { oklchHex } from "../lib/oklch.js";
+import { familyFor } from "../../backend/config/family.js";
 
 export interface ScatterStage { box: LatLngBox; width: number; height: number; inner: Rect }
 
@@ -36,4 +37,16 @@ export function scatterSpot(freqHz: number, stage: ScatterStage, marginPx: numbe
   const lat = invMercY(mercY(box.n) - (y / height) * (mercY(box.n) - mercY(box.s)));
   const hex = oklchHex({ L: SCATTER_L, C: SCATTER_C, h: u01(freqHz, "hue") * 360 });
   return { lat, lng, hex };
+}
+
+/** Silent by the speaker rule (spec 2026-10-13): a live event carries the
+ *  engine-resolved channel.audible; a history row has none, so the family
+ *  rule decides (a per-channel mute isn't visible there — acceptable). */
+export function isSilentHit(
+  freqHz: number, tags: readonly string[] | undefined,
+  channelAudible: boolean | undefined, audibleFamilies: readonly string[],
+): boolean {
+  if (channelAudible !== undefined) return !channelAudible;
+  const fam = familyFor(freqHz, tags);
+  return fam !== "weather" && !audibleFamilies.includes(fam);
 }
