@@ -71,3 +71,26 @@ export function familyFor(freqHz: number | undefined, tags?: readonly string[]):
   }
   return freqHz === undefined ? "unknown" : familyForService(serviceFor(freqHz));
 }
+
+const MAX_HZ = 6_000_000_000;
+
+/** The exact integer-Hz partition of the service table whose family is
+ *  audible (weather always), merged — sent to the helper as ccAudibleHz so a
+ *  Close Call hit outside every range never takes the speaker. serviceFor is
+ *  constant between consecutive allocation edges (lo, hi+1), so each
+ *  elementary interval is classified by its first Hz. */
+export function ccAudibleRanges(families: readonly Family[]): Array<[number, number]> {
+  const edges = new Set<number>([0, MAX_HZ + 1]);
+  for (const a of ALLOCATIONS) { edges.add(a.lo); edges.add(a.hi + 1); }
+  const pts = [...edges].sort((a, b) => a - b);
+  const out: Array<[number, number]> = [];
+  for (let i = 0; i + 1 < pts.length; i++) {
+    const lo = pts[i]!, hi = pts[i + 1]! - 1;
+    const fam = familyForService(serviceFor(lo));
+    if (fam !== "weather" && !families.includes(fam)) continue;
+    const last = out[out.length - 1];
+    if (last && last[1] + 1 === lo) last[1] = hi;
+    else out.push([lo, hi]);
+  }
+  return out;
+}

@@ -42,6 +42,11 @@ std::optional<Command> parse_command(const std::string& line, std::string& err) 
       t.close_call = get_or<bool>(j, "closeCall", false);
       t.close_call_db = get_or<double>(j, "closeCallDb", CC_DB_DEFAULT);
       t.known_hz = num_list(j, "knownHz");
+      if (auto it = j.find("ccAudibleHz"); it != j.end() && !it->is_null()) {
+        std::vector<std::pair<double, double>> r;
+        for (const auto& p : *it) r.emplace_back(p.at(0).get<double>(), p.at(1).get<double>());
+        t.cc_audible_hz = std::move(r);
+      }
       if (auto it = j.find("channels"); it != j.end() && !it->is_null()) {
         for (const auto& c : *it) {
           ChannelCmd ch;

@@ -79,6 +79,7 @@ void Engine::tune(const TuneCmd& t) {
     }
     ok.push_back(c);
   }
+  sc_.set_cc_audible(t.cc_audible_hz);
   sc_.tune(center_, ok, t.monitor);
   std::vector<double> offsets(opt_.lanes, 0.0);
   for (int i = 0; i < opt_.lanes; i++)

@@ -795,6 +795,11 @@ export class WidebandEngine implements ScannerEngine {
     this.txStats!.append(rec);
   }
 
+  private ccAudible(freqHz: number): boolean {
+    const r = this.config?.ccAudibleHz;
+    return !r || r.some(([lo, hi]) => freqHz >= lo && freqHz <= hi);
+  }
+
   private findChannel(id: string): Channel | null {
     // Close Call lanes aren't in any group: synthesize a channel so the
     // dashboard banner / Recent log / activity all work unchanged.
@@ -803,6 +808,7 @@ export class WidebandEngine implements ScannerEngine {
       return {
         id, freq: Number(cc[1]), alphaTag: "CLOSE CALL",
         mode: "nfm", enabled: true, priority: true,
+        audible: this.ccAudible(Number(cc[1])),
       };
     }
     const group = this.groups[this.groupIndex];
@@ -824,6 +830,7 @@ export class WidebandEngine implements ScannerEngine {
       monitor: false, closeCall: this.config?.closeCall ?? true,
       closeCallDb: this.config?.closeCallDb ?? 15,
       knownHz: this.config?.knownHz ?? [],
+      ...(this.config?.ccAudibleHz ? { ccAudibleHz: this.config.ccAudibleHz } : {}),
     }) + "\n");
     this.emit({ type: "tuned", freqHz: centerHz, channelIds: [], ts: this.now() });
   }
@@ -866,6 +873,7 @@ export class WidebandEngine implements ScannerEngine {
         ...(this.config?.channels ?? []).map((c) => c.freq),
         ...(this.config?.lockoutHz ?? []),
       ],
+      ...(this.config?.ccAudibleHz ? { ccAudibleHz: this.config.ccAudibleHz } : {}),
     };
     this.child.stdin.write(JSON.stringify(cmd) + "\n");
     // Tell the UIs where the radio is parked (bank indicator).

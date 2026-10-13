@@ -6,6 +6,7 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "constants.hpp"
@@ -71,6 +72,7 @@ class Scanner {
   long long skip(double holdoff_s, double now);
   void alert_unmute(const std::string& id, double hold_s, double now);
   int assign_cc(long long freq_hz);
+  void set_cc_audible(std::optional<std::vector<std::pair<double, double>>> r) { cc_audible_ = std::move(r); }
   // Lane i needs its sub-audible (CTCSS + DCS) detectors fed: an FM, non-background, non-Close-Call
   // lane that is open or has a carrier episode in progress. Everything else leaves them idle (reset).
   bool wants_tone(int i) const;
@@ -85,6 +87,7 @@ class Scanner {
   nlohmann::json noise_levels(const std::vector<LaneReading>& r) const;
 
  private:
+  std::optional<std::vector<std::pair<double, double>>> cc_audible_;   // null = every CC hit audible
   void assign(int i, const ChannelCmd& c);
   void park(int i) { end_tx(i); lanes_[i] = LaneState{}; }
   // End lane i's carrier episode (if any) and emit its txstat, BEFORE the lane's id can change.

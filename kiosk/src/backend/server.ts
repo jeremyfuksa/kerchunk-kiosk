@@ -15,6 +15,7 @@ import type { AircraftSource } from "./aircraft.js";
 import type { RadarSource } from "./radar/RadarFeed.js";
 import { setVolume as amixerVolume, setMuted as amixerMuted, type AmixerOpts } from "./audio.js";
 import { isScannable, isAudible, profileFor } from "./config/banks.js";
+import { ccAudibleRanges } from "./config/family.js";
 import { collides, findDuplicateSets } from "./config/channelDedup.js";
 import { solveK, estimateWatts, distKm, type Anchor } from "./powerEstimator.js";
 import { parseSame, fipsMatch, fipsNames, isTest, isEom } from "./same.js";
@@ -164,6 +165,7 @@ export function toScanConfig(
       ...(cfg.discoveries ?? []).map((d) => d.freq),
       ...(cfg.scan.lockoutHz ?? []),
     ],
+    ...(mode === "scan" ? { ccAudibleHz: ccAudibleRanges(cfg.audio.audibleFamilies) } : {}),
     closeCall: cfg.scan.closeCall,
     closeCallDb: cfg.scan.closeCallDb,
     lockoutHz: cfg.scan.lockoutHz,

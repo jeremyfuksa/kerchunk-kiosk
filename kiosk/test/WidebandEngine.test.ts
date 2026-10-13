@@ -1479,4 +1479,29 @@ describe("priority revisit (scan.priorityRevisit)", () => {
     expect(lines(tunes)).toHaveLength(1);
     await engine.stop();
   });
+
+  it("a silent Close Call open does not hold the rotation; an audible one does", async () => {
+    for (const [ranges, expectHop] of [[[[144_000_000, 148_000_000]], false], [[], true]] as const) {
+      const tunes = tmpFile("tunes");
+      const { engine, events } = makeEngine({
+        FAKE_WB_TUNES_FILE: tunes,
+        FAKE_WB_SCRIPT: `{"ev":"open","id":"cc_146012500","db":-10}`,
+      }, { groupDwellMs: 1000 });
+      await engine.start(cfg([VHF_A, VHF_B, UHF], { ccAudibleHz: ranges as Array<[number, number]> }));
+      expect(await waitFor(() => events.some((e) => e.type === "active" && e.channel.id === "cc_146012500"), 1000)).toBe(true);
+      const at = lines(tunes).length;
+      const hopped = await waitFor(() => lines(tunes).length > at, 2500);
+      await engine.stop();
+      expect(hopped).toBe(expectHop);
+    }
+  });
+
+  it("tune commands carry ccAudibleHz", async () => {
+    const tunes = tmpFile("tunes");
+    const { engine } = makeEngine({ FAKE_WB_TUNES_FILE: tunes });
+    await engine.start(cfg([VHF_A], { ccAudibleHz: [[1, 2]] }));
+    await waitFor(() => lines(tunes).length >= 1, 1000);
+    await engine.stop();
+    expect(JSON.parse(lines(tunes)[0]!).ccAudibleHz).toEqual([[1, 2]]);
+  });
 });

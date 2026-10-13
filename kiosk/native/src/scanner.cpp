@@ -320,6 +320,13 @@ int Scanner::assign_cc(long long freq_hz) {
     c.priority = true;   // a live Close Call hit preempts
     // Airband is AM: an FM lane there never quiets, so the hit would be muted yet hold the lane.
     if (freq_hz >= AIRBAND_LO_HZ && freq_hz <= AIRBAND_HI_HZ) c.mode = "am";
+    // Silent family (spec 2026-10-13): the hit still opens, logs and parks, but never speaks or
+    // pre-empts the audible lanes.
+    if (cc_audible_) {
+      bool ok = false;
+      for (const auto& [lo, hi] : *cc_audible_) if ((double)freq_hz >= lo && (double)freq_hz <= hi) { ok = true; break; }
+      if (!ok) { c.audible = false; c.priority = false; }
+    }
     assign(i, c);
     return i;
   }

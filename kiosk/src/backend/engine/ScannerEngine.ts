@@ -80,6 +80,9 @@ export interface ScanConfig {
   // Frequencies Close Call must never fire on (channels + discoveries +
   // lockouts). Computed by the server, which owns all three lists.
   knownHz?: number[];
+  // Close Call speaker gate (spec 2026-10-13): audible [lo, hi] Hz ranges,
+  // sent on every tune. Absent = every CC hit audible.
+  ccAudibleHz?: Array<[number, number]>;
   // Remote listening: when true the wideband helper builds the PCM streaming
   // tee (--audio-fd) that /api/stream.wav drains. Off => no tee, no idle cost.
   remoteListening?: boolean;

@@ -854,3 +854,39 @@ TEST(scanner_cc_lane_in_airband_demodulates_am) {
   CHECK(air >= 0 && m.s.lane(air).am);
   CHECK(vhf >= 0 && !m.s.lane(vhf).am);
 }
+
+TEST(scanner_silent_cc_lane_never_takes_the_speaker) {
+  Sim m;
+  m.s.tune(146e6, {ch("a")}, false);
+  m.s.set_cc_audible(std::vector<std::pair<double, double>>{{144e6, 145e6}});   // 146.0125 outside
+  m.run(0.8);
+  const int slot = m.s.assign_cc(146012500);
+  CHECK(slot >= 0 && !m.s.lane(slot).priority && !m.s.lane(slot).allow_audio);
+  m.run(0.8);
+  m.set(slot, KEYED, true);
+  m.run(0.2);
+  CHECK(opens_of(m, "cc_146012500") == 1);
+  CHECK(m.s.audible() != slot);
+  for (auto& e : m.of("audible")) CHECK(e["id"] != "cc_146012500");
+}
+
+TEST(scanner_cc_inside_audible_range_behaves_as_before) {
+  Sim m;
+  m.s.tune(146e6, {ch("a")}, false);
+  m.s.set_cc_audible(std::vector<std::pair<double, double>>{{144e6, 148e6}});
+  m.run(0.8);
+  const int slot = m.s.assign_cc(146012500);
+  CHECK(slot >= 0 && m.s.lane(slot).priority);
+  m.run(0.8);
+  m.set(slot, KEYED, true);
+  m.run(0.2);
+  CHECK(m.s.audible() == slot);
+}
+
+TEST(scanner_cc_audible_absent_means_all_audible) {
+  Sim m;
+  m.s.tune(146e6, {ch("a")}, false);
+  m.s.set_cc_audible(std::nullopt);
+  const int slot = m.s.assign_cc(146012500);
+  CHECK(slot >= 0 && m.s.lane(slot).priority);
+}
