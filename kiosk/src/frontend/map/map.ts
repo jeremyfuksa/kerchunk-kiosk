@@ -357,22 +357,24 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
       return { key, lat, lng, color: hexToGlowRgb(hex) };
     };
 
-    // Scatter stage: captured once, from the home framing, the first time the
-    // map is idle (the kiosk camera never moves after that).
+    // Scatter stage: captured from the FITTED home frame (captureStage, called
+    // after the home fit settles, with a bounded fallback, and on every refit).
     let scatterStage: ScatterStage | null = null;
     const scatter = display.glass.scatter;
-    const stageReady = new Promise<void>((resolve) => {
-      if (!scatter.enabled) { resolve(); return; }
-      google.maps.event.addListenerOnce(map, "idle", () => {
-        const b = map.getBounds();
-        if (b) {
-          const ne = b.getNorthEast(), sw = b.getSouthWest();
-          const W = root.clientWidth, H = root.clientHeight;
-          scatterStage = { box: { n: ne.lat(), s: sw.lat(), e: ne.lng(), w: sw.lng() }, width: W, height: H, inner: padRect(W, H, KIOSK_FIT_PAD) };
-        }
-        resolve();
-      });
-    });
+    let stageResolve: () => void = () => {};
+    const stageReady = new Promise<void>((resolve) => { stageResolve = resolve; });
+    if (!scatter.enabled) stageResolve();
+    function captureStage(): void {
+      const b = map.getBounds();
+      if (b) {
+        const ne = b.getNorthEast(), sw = b.getSouthWest();
+        const W = root.clientWidth, H = root.clientHeight;
+        const pad = typeof fitPad === "number" ? { top: fitPad, right: fitPad, bottom: fitPad, left: fitPad } : fitPad;
+        scatterStage = { box: { n: ne.lat(), s: sw.lat(), e: ne.lng(), w: sw.lng() }, width: W, height: H, inner: padRect(W, H, pad) };
+      }
+      stageResolve();
+    }
+    const STAGE_FALLBACK_MS = 3000;   // fitBounds that changes nothing emits no idle
     const audibleFamilies: readonly string[] = cfg.audio?.audibleFamilies ?? ["air", "rail", "marine", "ham", "gmrs"];
     /** An invented site for a silent unlocated hit, or null (edge glow). */
     const scatterSite = (freq: number): GlassSite | null => {
@@ -497,7 +499,8 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
         map.fitBounds(framedBounds(), fitPad);
         // Remember the home zoom once the fit settles — the punch zoom and
         // the pull-back both reference it.
-        google.maps.event.addListenerOnce(map, "idle", () => { homeZoom = map.getZoom(); });
+        google.maps.event.addListenerOnce(map, "idle", () => { homeZoom = map.getZoom(); captureStage(); });
+        setTimeout(() => { if (!scatterStage) captureStage(); }, STAGE_FALLBACK_MS);
       });
 
     // ── Camera (spec 2026-10-02 "fixed stage"): the kiosk frames once and
@@ -532,6 +535,7 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
       if (liveCount() > 0) { refitDue = true; return; }
       refitDue = false;
       map.fitBounds(framedBounds(), fitPad);
+      google.maps.event.addListenerOnce(map, "idle", captureStage);
     }
     function onQuiet(): void { if (refitDue) refit(); }
     if (!interactive && !follow) {
@@ -554,23 +558,27 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
 
     // Backfill: the smoke window, at real timestamps (puffs arrive part-aged).
     const backfillMs = display.glass.smokeLifeMs;
-    // Waits for the scatter stage so unlocated silent rows can be placed.
-    void stageReady
-      .then(() => fetch(`/api/history?since=${Date.now() - backfillMs}&limit=500`))
+    void fetch(`/api/history?since=${Date.now() - backfillMs}&limit=500`)
       .then((r) => (r.ok ? r.json() : []))
       .then((rows: Array<{ lat: number | null; lon: number | null; alphaTag: string; kind: string; ts: number; freq: number; tags?: string[] }>) => {
         // Rows arrive newest-first; seedPuffs replays them oldest-first so a
         // busy site's trail and hit ramp match what live play builds.
         const seeds = [];
+        const unlocated: typeof rows = [];
         for (const r of rows) {
-          if (r.lat == null || r.lon == null) {
-            const site = isSilentHit(r.freq, r.tags, undefined, audibleFamilies) ? scatterSite(r.freq) : null;
-            if (site) seeds.push({ site, ts: r.ts });
-            continue;
-          }
+          if (r.lat == null || r.lon == null) { unlocated.push(r); continue; }
           seeds.push({ site: glassSite(r.lat, r.lon, r.freq, r.kind === "closecall" ? "closecall" : "active"), ts: r.ts });
         }
         glassState.seedPuffs(seeds, Date.now(), siteRadius);
+        // Only silent unlocated rows wait for the scatter stage; none if it never lands.
+        void stageReady.then(() => {
+          const sc = [];
+          for (const r of unlocated) {
+            const site = isSilentHit(r.freq, r.tags, undefined, audibleFamilies) ? scatterSite(r.freq) : null;
+            if (site) sc.push({ site, ts: r.ts });
+          }
+          if (sc.length) { glassState.seedPuffs(sc, Date.now(), siteRadius); poke(); }
+        });
         poke();
       })
       .catch(() => {});
@@ -614,7 +622,7 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
         // A silent CC hit is placed by its lane's `active` (scatter spot); an
         // audible one has no honest position yet — edge glow. Once enriched,
         // future events and history backfills place them properly.
-        if (!isSilentHit(ev.freqHz, undefined, undefined, audibleFamilies)) nofix(ev.freqHz);
+        if (!isSilentHit(ev.freqHz, tagsFor(ev.freqHz), undefined, audibleFamilies)) nofix(ev.freqHz);
       } else if (ev.type === "audible") {
         // Camera follows AUDIO only in follow mode. On the fixed stage an
         // audible site outside the padded frame blooms the edge toward it.
