@@ -1,6 +1,7 @@
 // Rolling scan-coverage meter (spec 2026-10-13 silent chatter): where the
 // scanner's wall time goes — holding for audible opens, holding for silent
-// ones (visual hold, until it is retired), quiet dwell, sweep stops. Fixed
+// ones (never recorded now that visual hold is retired; the kind is kept so
+// baseline and after numbers share a shape), quiet dwell, sweep stops. Fixed
 // one-minute buckets over a ten-minute window: O(1) record, no per-tick alloc.
 export type CoverageKind = "audible" | "silent" | "quiet" | "sweep";
 const KINDS: readonly CoverageKind[] = ["audible", "silent", "quiet", "sweep"];

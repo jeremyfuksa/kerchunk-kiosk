@@ -157,12 +157,9 @@ export const configSchema = z.object({
       everyMs: z.number().int().min(1000).max(60_000).optional(),
       lookMs: z.number().int().min(300).max(5000).optional(),
     }).optional(),
-    // Visual hold (spec 2026-10-03): an open on a MUTED scan channel holds
-    // its window so the map sees the whole transmission, within a budget of
-    // maxMs per visit; the speaker stays silent, audible opens keep first
-    // claim (maxHoldMs) and a due priority peek pre-empts it.
-    // creditDwell lets muted opens count toward autoDwell. Live like
-    // autoDwell. Omitted = enabled, 15000, true.
+    // DEPRECATED (spec 2026-10-13 silent chatter): visual hold is retired —
+    // silent traffic takes no scan time. Still parsed so older configs load;
+    // ignored everywhere.
     visualHold: z.object({
       enabled: z.boolean().optional(),
       maxMs: z.number().int().min(1000).max(180_000).optional(),

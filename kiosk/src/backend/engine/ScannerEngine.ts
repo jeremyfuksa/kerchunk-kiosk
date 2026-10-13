@@ -1,6 +1,6 @@
 import type { Channel } from "../config/schema.js";
 import type { CoverageKind } from "./coverage.js";
-import type { AutoDwellConfig, PriorityRevisitConfig, VisualHoldConfig } from "./scanSchedule.js";
+import type { AutoDwellConfig, PriorityRevisitConfig } from "./scanSchedule.js";
 
 // A channel as the engine scans it: the config channel plus per-channel
 // scan-profile overrides resolved from its banks (ROADMAP Idea 7). The
@@ -48,9 +48,6 @@ export interface ScanConfig {
   // Priority revisit (config.scan.priorityRevisit, see scanSchedule.ts) —
   // same live path as autoDwell.
   priorityRevisit?: PriorityRevisitConfig;
-  // Visual hold (config.scan.visualHold, see scanSchedule.ts) — same live
-  // path as autoDwell.
-  visualHold?: VisualHoldConfig;
   openAboveFloorDb?: number;
   // Quieting threshold on kerchunk-dsp's dB scale (see schema).
   nativeQuietDb?: number;
@@ -193,7 +190,7 @@ export interface ScannerEngine {
   retune?(config: ScanConfig): Promise<void>;
   /** Apply Node-side scan-scheduling knobs live (no tune, no respawn).
    *  Optional — engines that don't group-hop ignore scheduling. */
-  updateScheduling?(s: Pick<ScanConfig, "autoDwell" | "priorityRevisit" | "visualHold">): void;
+  updateScheduling?(s: Pick<ScanConfig, "autoDwell" | "priorityRevisit">): void;
   /** Rolling scan-coverage fractions (spec 2026-10-13); engines without a
    *  hop loop omit it. */
   scanCoverage?(): Record<CoverageKind, number> & { windowMs: number };
