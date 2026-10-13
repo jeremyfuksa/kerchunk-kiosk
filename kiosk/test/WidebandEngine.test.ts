@@ -1504,4 +1504,30 @@ describe("priority revisit (scan.priorityRevisit)", () => {
     await engine.stop();
     expect(JSON.parse(lines(tunes)[0]!).ccAudibleHz).toEqual([[1, 2]]);
   });
+
+  it("a hop releases every still-open lane (the map's front settles)", async () => {
+    const muted = ch(146_790_000, { audible: false });
+    const { engine, events } = makeEngine({
+      FAKE_WB_SCRIPT: `{"ev":"open","id":"${muted.id}","db":-10}`,   // never closes
+    }, { groupDwellMs: 300 });
+    await engine.start(cfg([muted, VHF_B, UHF], { visualHold: { enabled: false } }));
+    expect(await waitFor(() => events.some((e) => e.type === "release" && e.channelId === muted.id), 2500)).toBe(true);
+    await engine.stop();
+  });
+
+  it("a silent close does not restart the dwell clock", async () => {
+    const muted = ch(146_790_000, { audible: false });
+    const tunes = tmpFile("tunes");
+    // Opens and closes repeatedly: under the old rule each close re-armed
+    // groupStartedAt and the window never hopped.
+    const burst = Array.from({ length: 40 }, () =>
+      `{"ev":"open","id":"${muted.id}","db":-10}\n{"ev":"close","id":"${muted.id}"}`).join("\n");
+    const { engine } = makeEngine({ FAKE_WB_TUNES_FILE: tunes, FAKE_WB_SCRIPT: burst, FAKE_WB_SCRIPT_GAP_MS: "50" },
+      { groupDwellMs: 800 });
+    await engine.start(cfg([muted, VHF_B, UHF], { visualHold: { enabled: false } }));
+    const at = (await waitFor(() => lines(tunes).length >= 1, 1000), lines(tunes).length);
+    expect(await waitFor(() => lines(tunes).length > at, 2000)).toBe(true);
+    await engine.stop();
+  });
+
 });

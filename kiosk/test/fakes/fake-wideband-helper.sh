@@ -7,6 +7,7 @@
 #   FAKE_WB_CMDS_FILE   - append EVERY received command line (skip etc.)
 #   FAKE_WB_SCRIPT      - newline-separated events to emit after the FIRST tune;
 #                         lines of the form "sleep:<ms>" pause between events
+#   FAKE_WB_SCRIPT_GAP_MS - pause (ms) after each emitted script event (default 0)
 #   FAKE_WB_MODE        - "nodevice" -> print device error to stderr, exit 1
 #                         "crash"    -> emit ready, then exit 2 after 100ms
 #                         "wedge"    -> emit ready, then IGNORE quit/EOF and
@@ -61,7 +62,8 @@ while IFS= read -r line; do
           while IFS= read -r ev; do
             case "$ev" in
               sleep:*) sleep "$(awk "BEGIN{print ${ev#sleep:}/1000}")" ;;
-              *) echo "$ev" ;;
+              *) echo "$ev"
+                 [ "${FAKE_WB_SCRIPT_GAP_MS:-0}" != 0 ] && sleep "$(awk "BEGIN{print ${FAKE_WB_SCRIPT_GAP_MS}/1000}")" ;;
             esac
           done <<< "$FAKE_WB_SCRIPT"
         ) &

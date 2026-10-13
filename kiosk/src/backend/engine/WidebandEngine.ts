@@ -679,22 +679,20 @@ export class WidebandEngine implements ScannerEngine {
         if (typeof ev.db === "number") this.emit({ type: "signal", dbfs: ev.db, ts });
         break;
       }
-      case "close":
+      case "close": {
         if (typeof ev.id !== "string") return;
-        this.openIds.delete(ev.id);
+        if (!this.openIds.delete(ev.id)) return; // stale: already released by a hop
         this.emit({ type: "release", channelId: ev.id, ts: this.now() });
         if (this.openIds.size === 0) {
           this.holdStartedAt = 0; // hold ended cleanly; next hold clocks fresh
           this.emit({ type: "idle", ts: this.now() });
-          // Idle again: dwell restarts from now, so a long hold doesn't cause
-          // an instant hop the moment the channel closes — except a muted
-          // close once this visit's visual budget is spent: re-arming there
-          // would let back-to-back muted traffic hold the window forever.
-          const closed = this.groups[this.groupIndex]?.channels.find((c) => c.id === ev.id);
-          const spentMuted = closed?.audible === false && this.visualHold().enabled && !this.visualBudgetLeft();
-          if (!spentMuted) this.groupStartedAt = this.now();
+          // Idle again: dwell restarts from now so a long AUDIBLE hold doesn't
+          // cause an instant hop when it closes. A silent close never re-arms
+          // (spec 2026-10-13): silent traffic takes no scan time.
+          if (this.findChannel(ev.id)?.audible !== false) this.groupStartedAt = this.now();
         }
         break;
+      }
       case "rf":
         if (typeof ev.id === "string" && typeof ev.db === "number") {
           this.emit({ type: "rf", channelId: ev.id, db: ev.db, ts: this.now() });
@@ -815,9 +813,20 @@ export class WidebandEngine implements ScannerEngine {
     return group?.channels.find((c) => c.id === id) ?? null;
   }
 
+  // A hop ends every open transmission from the map's point of view: emit its
+  // release so the glass front settles into rim and smoke instead of hanging
+  // until its ttl (spec 2026-10-13). The helper's own late "close" for these
+  // ids is ignored — openIds no longer holds them and GlassState.release is
+  // idempotent.
+  private releaseOpenOnHop(): void {
+    const ts = this.now();
+    for (const id of this.openIds) this.emit({ type: "release", channelId: id, ts });
+    this.openIds.clear();
+  }
+
   private sendSweepTune(centerHz: number): void {
     if (!this.child?.stdin?.writable) return;
-    this.openIds.clear();
+    this.releaseOpenOnHop();
     this.audibleId = null;
     this.holdStartedAt = 0;
     this.visualVisitStartedAt = 0;
@@ -838,7 +847,7 @@ export class WidebandEngine implements ScannerEngine {
   private sendTune(): void {
     const group = this.groups[this.groupIndex];
     if (!group || !this.child?.stdin?.writable) return;
-    this.openIds.clear();
+    this.releaseOpenOnHop();
     this.audibleId = null;
     this.holdStartedAt = 0;
     this.visualVisitStartedAt = 0;
