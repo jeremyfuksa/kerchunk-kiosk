@@ -1525,8 +1525,65 @@ describe("priority revisit (scan.priorityRevisit)", () => {
     const { engine } = makeEngine({ FAKE_WB_TUNES_FILE: tunes, FAKE_WB_SCRIPT: burst, FAKE_WB_SCRIPT_GAP_MS: "50" },
       { groupDwellMs: 800 });
     await engine.start(cfg([muted, VHF_B, UHF], { visualHold: { enabled: false } }));
-    const at = (await waitFor(() => lines(tunes).length >= 1, 1000), lines(tunes).length);
+    await waitFor(() => lines(tunes).length >= 1, 1000);
+    const at = lines(tunes).length;
     expect(await waitFor(() => lines(tunes).length > at, 2000)).toBe(true);
+    await engine.stop();
+  });
+
+
+  it("a hop emits release then idle before that hop's tuned", async () => {
+    const muted = ch(146_790_000, { audible: false });
+    const { engine, events } = makeEngine({
+      FAKE_WB_SCRIPT: `{"ev":"open","id":"${muted.id}","db":-10}`,
+    }, { groupDwellMs: 300 });
+    await engine.start(cfg([muted, VHF_B, UHF], { visualHold: { enabled: false } }));
+    expect(await waitFor(() => events.some((e) => e.type === "release"), 2500)).toBe(true);
+    await waitFor(() => events.some((e) => e.type === "tuned" && events.findIndex((x) => x.type === "release") < events.indexOf(e)), 1000);
+    const types = events.map((e) => e.type);
+    const r = types.indexOf("release");
+    expect(types[r + 1]).toBe("idle");
+    expect(types.indexOf("tuned", r)).toBeGreaterThan(r + 1);
+    await engine.stop();
+  });
+
+  it("a late helper close after a hop adds no release, idle or dwell re-arm", async () => {
+    const muted = ch(146_790_000, { audible: false });
+    const { engine, events } = makeEngine({
+      FAKE_WB_SCRIPT: `{"ev":"open","id":"${muted.id}","db":-10}\nsleep:700\n{"ev":"close","id":"${muted.id}"}`,
+    }, { groupDwellMs: 300 });
+    await engine.start(cfg([muted, VHF_B, UHF], { visualHold: { enabled: false } }));
+    expect(await waitFor(() => events.some((e) => e.type === "release"), 2500)).toBe(true);
+    await new Promise((r) => setTimeout(r, 1000)); // the late close lands meanwhile
+    expect(events.filter((e) => e.type === "release" && e.channelId === muted.id).length).toBe(1);
+    expect(events.filter((e) => e.type === "idle").length).toBe(1);
+    await engine.stop();
+  });
+
+  it("an audible close still re-arms the dwell clock", async () => {
+    const loud = ch(146_790_000, { audible: true });
+    const tunes = tmpFile("tunes");
+    const { engine } = makeEngine({
+      FAKE_WB_TUNES_FILE: tunes,
+      FAKE_WB_SCRIPT: `{"ev":"open","id":"${loud.id}","db":-10}\nsleep:500\n{"ev":"close","id":"${loud.id}"}`,
+    }, { groupDwellMs: 300 });
+    await engine.start(cfg([loud, VHF_B, UHF], { visualHold: { enabled: false } }));
+    await waitFor(() => lines(tunes).length >= 1, 1000);
+    const at = lines(tunes).length;
+    await new Promise((r) => setTimeout(r, 650)); // past the close (~500 ms)
+    const t0 = Date.now();
+    expect(await waitFor(() => lines(tunes).length > at, 2000)).toBe(true);
+    expect(Date.now() - t0).toBeGreaterThan(100);
+    await engine.stop();
+  });
+
+  it("a max-hold force-hop releases the stuck lane", async () => {
+    const stuck = ch(146_790_000, { audible: true });
+    const { engine, events } = makeEngine({
+      FAKE_WB_SCRIPT: `{"ev":"open","id":"${stuck.id}","db":-10}`,
+    }, { groupDwellMs: 200, maxHoldMs: 400 });
+    await engine.start(cfg([stuck, VHF_B, UHF], { visualHold: { enabled: false } }));
+    expect(await waitFor(() => events.some((e) => e.type === "release" && e.channelId === stuck.id), 3000)).toBe(true);
     await engine.stop();
   });
 

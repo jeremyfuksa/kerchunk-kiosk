@@ -820,8 +820,12 @@ export class WidebandEngine implements ScannerEngine {
   // idempotent.
   private releaseOpenOnHop(): void {
     const ts = this.now();
+    if (this.openIds.size === 0) return;
     for (const id of this.openIds) this.emit({ type: "release", channelId: id, ts });
     this.openIds.clear();
+    // Consumers (dashboard, admin live, ws) clear their now-playing on idle;
+    // the helper's late close used to deliver it, and is now dropped as stale.
+    this.emit({ type: "idle", ts });
   }
 
   private sendSweepTune(centerHz: number): void {
@@ -985,7 +989,7 @@ export class WidebandEngine implements ScannerEngine {
           `[wideband] max-hold ${this.maxHoldMs}ms exceeded on group ${this.groupIndex} ` +
           `(${this.openIds.size} open); forcing hop`,
         );
-        this.openIds.clear();
+        this.releaseOpenOnHop();
         this.audibleId = null;
         this.holdStartedAt = 0;
         this.groupStartedAt = 0; // fall through and let the advance below fire now
