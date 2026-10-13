@@ -12,6 +12,7 @@ import { DEFAULT_GROUP_DWELL_MS, DEFAULT_READY_TIMEOUT_MS, DEFAULT_SILENCE_TIMEO
 import { groupChannels, sweepCenters, type ChannelGroup, type GroupingOptions } from "./grouping.js";
 import { setVolume as amixerVolume, setMuted as amixerMuted } from "../audio.js";
 import { TxStatsLog } from "./txStats.js";
+import { CoverageMeter, type CoverageKind } from "./coverage.js";
 import {
   ActivityTracker, dwellFactor, resolveAutoDwell, scaledDwellMs, type AutoDwellConfig,
   nextRevisitTarget, resolvePriorityRevisit, type PriorityRevisitConfig,
@@ -214,6 +215,7 @@ export class WidebandEngine implements ScannerEngine {
   private revisitCreditMs = 0;
   private revisitCursor = 0;
   private lastTickAt = 0;
+  private readonly coverage = new CoverageMeter();
   private restartTimer: NodeJS.Timeout | null = null;
 
   // Warm-up milestones (drive the kiosk "WARMING UP" overlay). One-shot per
@@ -380,6 +382,10 @@ export class WidebandEngine implements ScannerEngine {
    *  (diagnostics + tests). */
   groupDwellPlan(): number[] {
     return this.groups.map((_, i) => this.effectiveDwellMs(i));
+  }
+
+  scanCoverage(): Record<CoverageKind, number> & { windowMs: number } {
+    return this.coverage.fractions(this.now());
   }
 
   /** Live scheduling update (config.scan.autoDwell / priorityRevisit / visualHold):
@@ -937,6 +943,12 @@ export class WidebandEngine implements ScannerEngine {
       const tickAt = this.now();
       const deltaMs = Math.max(0, tickAt - this.lastTickAt);
       this.lastTickAt = tickAt;
+      this.coverage.record(
+        this.sweeping ? "sweep"
+          : this.hasAudibleOpen() ? "audible"
+          : this.hasVisualOpen() ? "silent"
+          : "quiet",
+        deltaMs, tickAt);
       // Only an AUDIBLE open has a claim on the radio. A muted channel reading
       // open — a continuously-keyed business carrier, say — would otherwise
       // park the scanner in SILENCE for the whole max-hold cap, which sounds

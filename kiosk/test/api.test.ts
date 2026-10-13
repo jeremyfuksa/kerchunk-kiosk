@@ -137,6 +137,13 @@ describe("HTTP API", () => {
     expect(typeof res.body.coreCount).toBe("number");
   });
 
+  it("GET /api/system carries scanCoverage (null for engines without a hop loop)", async () => {
+    const { server } = makeApp();
+    const res = await request(server).get("/api/system");
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty("scanCoverage");
+  });
+
   it("GET /api/status returns engine state", async () => {
     const { server } = makeApp();
     const res = await request(server).get("/api/status");

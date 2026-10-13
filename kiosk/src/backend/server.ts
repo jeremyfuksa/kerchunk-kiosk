@@ -1152,7 +1152,7 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
           // at boot, so snap.now is almost always set. TROUBLE is the honest read
           // for a genuine no-telemetry case — we can't confirm the radio is working.
           { verdict: "trouble" as const, reason: "No telemetry yet." };
-      return json(res, 200, { ...snap, safetyMode, health, coreCount: os.cpus().length });
+      return json(res, 200, { ...snap, safetyMode, health, coreCount: os.cpus().length, scanCoverage: engine.scanCoverage?.() ?? null });
     }
 
     if (method === "GET" && path === "/api/recommendations/archive") {

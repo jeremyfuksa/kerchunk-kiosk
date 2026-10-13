@@ -142,7 +142,7 @@ additionally removes orphans (recorded on a hit that never filed) and enforces
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| GET | `/api/system` | System stats snapshot + `safetyMode` + health verdict (`healthy`/`stressed`/`trouble`) + `coreCount`. |
+| GET | `/api/system` | System stats snapshot + `safetyMode` + health verdict (`healthy`/`stressed`/`trouble`) + `coreCount` + `scanCoverage` (below). |
 | GET | `/api/status` | See above (external consumer). |
 | GET | `/api/logs` | See above (external consumer). |
 | GET | `/api/weather` | See above (external consumer). |
@@ -155,6 +155,13 @@ additionally removes orphans (recorded on a hit that never filed) and enforces
 | POST | `/api/power/estimate` | Run the CPU-budget estimator. |
 | GET | `/api/radar` | Latest NEXRAD crop for the Weather Glass layer: `{ scanTime, fetchedAt, bounds:{n,s,e,w}, width, height, stale }` (`404` when `display.radar.enabled` is false, `503` before the first scan). Source: `display.radar.source` — `mrms` (default; IEM's MRMS SeamlessHSR `lcref`, NOAA-QC'd so clear-air insect/bird return is removed) or `n0q` (raw NEXRAD base reflectivity) — cropped to `display.radar.spanDeg` around the QTH. |
 | GET | `/api/radar/frame` | The crop's raw reflectivity indices (`width·height` bytes, row-major, north row first; index 0 = no echo, else dBZ = −32 + 0.5·index, for either source), gzip'd, `ETag: "<scanTime>-<w>x<h>-<west>,<north>"` (`304` on `If-None-Match`). |
+
+`/api/system` `scanCoverage`:
+
+- `scanCoverage` — `{ audible, silent, quiet, sweep, windowMs }` or `null`.
+  Fractions (0–1) of the scanner's wall time over the last `windowMs`
+  (10 min): holding for an audible open, holding for a silent one, plain
+  quiet dwell, sweep stops. Wideband engine only.
 
 ### Appliance plumbing
 

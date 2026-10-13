@@ -1,4 +1,5 @@
 import type { Channel } from "../config/schema.js";
+import type { CoverageKind } from "./coverage.js";
 import type { AutoDwellConfig, PriorityRevisitConfig, VisualHoldConfig } from "./scanSchedule.js";
 
 // A channel as the engine scans it: the config channel plus per-channel
@@ -190,6 +191,9 @@ export interface ScannerEngine {
   /** Apply Node-side scan-scheduling knobs live (no tune, no respawn).
    *  Optional — engines that don't group-hop ignore scheduling. */
   updateScheduling?(s: Pick<ScanConfig, "autoDwell" | "priorityRevisit" | "visualHold">): void;
+  /** Rolling scan-coverage fractions (spec 2026-10-13); engines without a
+   *  hop loop omit it. */
+  scanCoverage?(): Record<CoverageKind, number> & { windowMs: number };
   setVolume(percent: number): Promise<void>;
   setMuted(muted: boolean): Promise<void>;
   readonly state: EngineState;
