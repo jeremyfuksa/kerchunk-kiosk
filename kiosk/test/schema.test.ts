@@ -5,11 +5,20 @@ import { CTCSS_TONES } from "../src/backend/config/ctcss.js";
 import { DCS_CODES, dcsAlias, dcsWord, isDcsCode } from "../src/backend/config/dcs.js";
 
 describe("configSchema", () => {
+  it("audio.audibleFamilies defaults to the five listening families", () => {
+    expect(defaultConfig().audio.audibleFamilies).toEqual(["air", "rail", "marine", "ham", "gmrs"]);
+  });
+  it("audio.audibleFamilies rejects weather and unknown names", () => {
+    const c = defaultConfig();
+    expect(configSchema.safeParse({ ...c, audio: { ...c.audio, audibleFamilies: ["weather"] } }).success).toBe(false);
+    expect(configSchema.safeParse({ ...c, audio: { ...c.audio, audibleFamilies: ["cb"] } }).success).toBe(false);
+  });
+
   it("accepts a valid config", () => {
     const cfg = {
       version: 1,
       scan: { sampleRate: 12000, squelchLevel: 150, gain: "auto", dwellMs: 2000 },
-      audio: { sink: "hdmi:CARD=vc4hdmi0", volume: 70, muted: false, remoteListening: false },
+      audio: { sink: "hdmi:CARD=vc4hdmi0", volume: 70, muted: false, remoteListening: false, audibleFamilies: ["air", "rail", "marine", "ham", "gmrs"] },
       channels: [
         { id: "ch_001", freq: 145130000, alphaTag: "KC0KW", mode: "nfm", enabled: true },
       ],

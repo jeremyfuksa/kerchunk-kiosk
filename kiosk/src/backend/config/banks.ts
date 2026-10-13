@@ -1,4 +1,9 @@
 import type { Channel, Bank } from "./schema.js";
+import { familyFor, serviceFor, type Family } from "./family.js";
+
+// serviceFor moved to family.ts (it feeds familyFor); re-exported so existing
+// importers keep working.
+export { serviceFor } from "./family.js";
 
 // Banks (ROADMAP Idea 1): named channel collections.
 // Two orthogonal axes, per the roadmap's recommended model:
@@ -31,10 +36,15 @@ export function isScannable(channel: Channel, _banks: Bank[]): boolean {
   return channel.enabled;
 }
 
-// May this tracked channel own the speaker? Absent remains true for legacy
-// configs; banks never override the individual choice.
-export function isAudible(channel: Channel, _banks: Bank[]): boolean {
-  return channel.audible !== false;
+// May this tracked channel own the speaker? The channel's own audible:false
+// always silences. With an audibleFamilies list (spec 2026-10-13), a channel
+// whose family isn't listed is silent too — except weather, always heard.
+// No list = the legacy per-channel rule (absent audible stays true).
+export function isAudible(channel: Channel, _banks: Bank[], audibleFamilies?: readonly Family[]): boolean {
+  if (channel.audible === false) return false;
+  if (!audibleFamilies) return true;
+  const fam = familyFor(channel.freq, channel.tags);
+  return fam === "weather" || audibleFamilies.includes(fam);
 }
 
 // Per-bank scan profiles (ROADMAP Idea 7). Field-wise FIRST-MATCH-WINS in
@@ -57,37 +67,6 @@ export function profileFor(channel: Channel, banks: Bank[]): BankProfile {
     }
   }
   return out;
-}
-
-// ── US service allocations (operator: label what KIND of hit a Close Call
-// is from frequency alone — and expose when one is a true OUTBAND oddity).
-// Coarse on purpose: a triage label, not a band plan.
-const ALLOCATIONS: Array<{ lo: number; hi: number; svc: string }> = [
-  { lo: 118_000_000, hi: 137_000_000, svc: "air" },
-  { lo: 144_000_000, hi: 148_000_000, svc: "ham 2m" },
-  { lo: 156_000_000, hi: 157_450_000, svc: "marine" },
-  { lo: 159_810_000, hi: 161_565_000, svc: "rail" },
-  { lo: 161_600_000, hi: 162_025_000, svc: "marine" },
-  { lo: 162_400_000, hi: 162_550_000, svc: "NOAA wx" },
-  { lo: 148_000_000, hi: 174_000_000, svc: "VHF biz/PS" },   // after the carve-outs above
-  { lo: 222_000_000, hi: 225_000_000, svc: "ham 1.25m" },
-  { lo: 420_000_000, hi: 450_000_000, svc: "ham 70cm" },
-  { lo: 462_537_500, hi: 462_737_500, svc: "GMRS/FRS" },
-  { lo: 467_537_500, hi: 467_737_500, svc: "GMRS/FRS" },
-  { lo: 450_000_000, hi: 470_000_000, svc: "UHF biz/PS" },   // after GMRS carve-outs
-  { lo: 470_000_000, hi: 512_000_000, svc: "T-band" },
-  { lo: 764_000_000, hi: 776_000_000, svc: "700 PS" },
-  { lo: 794_000_000, hi: 806_000_000, svc: "700 PS" },
-  { lo: 806_000_000, hi: 824_000_000, svc: "800 trunked" },
-  { lo: 851_000_000, hi: 869_000_000, svc: "800 trunked" },
-  { lo: 929_000_000, hi: 932_000_000, svc: "paging" },
-  { lo: 896_000_000, hi: 940_000_000, svc: "900 biz" },
-];
-
-/** Rough service for a frequency; undefined = a true outband hit. */
-export function serviceFor(freqHz: number): string | undefined {
-  // First match wins — specific carve-outs precede their parent ranges.
-  return ALLOCATIONS.find((a) => freqHz >= a.lo && freqHz <= a.hi)?.svc;
 }
 
 // Spectrum slice names for the kiosk's tuned-window chip — INFORMATION,

@@ -98,7 +98,7 @@ export function toScanConfig(
               // helper only ever see concrete per-channel numbers.
               .map((c) => ({
                 ...c,
-                audible: isAudible(c, cfg.banks ?? []),
+                audible: isAudible(c, cfg.banks ?? [], cfg.audio.audibleFamilies),
                 ...profileFor(c, cfg.banks ?? []),
               })),
             // SAME (Idea 11): with a dedicated weather radio (Idea 10) the
@@ -400,7 +400,7 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
     });
     // Pull-in: a see-only channel is demodulated but muted — break it into
     // the speaker. An audible channel is already playing; nothing to do.
-    if (!isAudible(ch, config.banks ?? [])) {
+    if (!isAudible(ch, config.banks ?? [], config.audio.audibleFamilies)) {
       engine.alertUnmute?.(ch.id, holdSeconds);
     }
     const ntfyUrl = config.alerts?.ntfyUrl;

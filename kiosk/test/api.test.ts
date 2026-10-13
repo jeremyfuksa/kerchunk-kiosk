@@ -916,6 +916,23 @@ describe("review fixes: engine lifecycle", () => {
     expect(sc.lockoutHz).toEqual([464999999]);
   });
 
+  it("toScanConfig applies audibleFamilies in scan mode only", async () => {
+    const { toScanConfig } = await import("../src/backend/server.js");
+    const cfg = {
+      ...JSON.parse(JSON.stringify((await import("../src/backend/config/schema.js")).defaultConfig())),
+      channels: [
+        { id: "ham", freq: 146790000, alphaTag: "H", mode: "nfm", enabled: true },
+        { id: "biz", freq: 463562500, alphaTag: "B", mode: "nfm", enabled: true },
+      ],
+    };
+    const sc = toScanConfig(cfg, "scan");
+    expect(sc.channels.find((c) => c.id === "ham")?.audible).toBe(true);
+    expect(sc.channels.find((c) => c.id === "biz")?.audible).toBe(false);
+    // Monitor = the operator's direct tune: deliberate listening, never gated.
+    const mon = toScanConfig(cfg, "monitor", cfg.channels[1]);
+    expect(mon.channels[0]?.audible).not.toBe(false);
+  });
+
   it("PUT /api/config with only metadata changes does NOT restart the engine", async () => {
     const { server, engine } = makeApp();
     engine.emitCloseCall(462887500);
@@ -1315,6 +1332,16 @@ describe("alerts (ROADMAP Idea 6)", () => {
     enabled: true, audible: false, alert: true,
   };
 
+  it("a flagged channel in a silent family (no audible field) is pulled into the speaker", async () => {
+    const { server, engine, unmutes } = makeAlertApp();
+    const bizCh = { id: "al2", freq: 463562500, alphaTag: "Biz Tac", mode: "nfm" as const, enabled: true, alert: true };
+    await request(server).post("/api/channels").send(bizCh).expect(201);
+    const res = await request(server).get("/api/channels");
+    const ch = res.body.find((c: { freq: number }) => c.freq === bizCh.freq);
+    engine.emitActive(ch);
+    expect(unmutes).toEqual([[ch.id, 30]]);
+  });
+
   it("a hit on a flagged see-only channel broadcasts, records, and unmutes", async () => {
     const { server, engine, sent, recorded, unmutes } = makeAlertApp();
     await request(server).post("/api/channels").send(alertCh).expect(201);
@@ -1330,9 +1357,12 @@ describe("alerts (ROADMAP Idea 6)", () => {
 
   it("cooldown suppresses repeats; an audible channel never unmutes", async () => {
     const { server, engine, sent, unmutes } = makeAlertApp();
-    await request(server).post("/api/channels").send({ ...alertCh, audible: true }).expect(201);
+    // Ham 2m: an audible-family channel (the default audibleFamilies list);
+    // alertCh's 155.475 is biz/PS, which is silent by family now.
+    const hamCh = { ...alertCh, freq: 146790000, audible: true };
+    await request(server).post("/api/channels").send(hamCh).expect(201);
     const ch = (await request(server).get("/api/channels")).body
-      .find((c: { freq: number }) => c.freq === alertCh.freq);
+      .find((c: { freq: number }) => c.freq === hamCh.freq);
     engine.emitActive(ch);
     engine.emitActive(ch); // within cooldown — must not re-fire
     expect(sent.filter((e) => (e as { type: string }).type === "alert")).toHaveLength(1);
