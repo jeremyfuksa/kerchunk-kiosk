@@ -51,8 +51,10 @@ A transmission is **silent** when its family is not in
 - `config.audio.audibleFamilies`: array of
   `"air" | "rail" | "marine" | "ham" | "gmrs" | "biz" | "publicsafety" | "unknown"`,
   default `["air","rail","marine","ham","gmrs"]`. `"weather"` is not a
-  member, because it is always audible. Live via `PUT /api/config`: a change
-  re-resolves the channels and `retune()`s in place, with no respawn.
+  member, because it is always audible. Changed via `PUT /api/config`, it
+  takes the same scan-relevant path as any per-channel `audible` edit today.
+  The gate applies in `scan` mode only: `weather` and `monitor` (an operator's
+  direct tune) are deliberate listening and stay audible.
 - **This is a runtime gate, not a bulk edit.** It supersedes "individual
   choice wins" *for the family only*. A per-channel `audible: false` still
   silences an allowed-family channel, but a per-channel `audible: true` can't
@@ -93,12 +95,15 @@ A transmission is **silent** when its family is not in
 The helper owns CC lane assignment, so it has to know which CC hits are
 silent.
 
-- `tune` gains `ccSilentHz: [[loHz, hiHz], ...]`. These are the frequency
-  ranges whose family is silent, computed in Node from the service table and
-  `audibleFamilies`, and sent on every tune. Absent or empty = today's
-  behaviour.
+- `tune` gains `ccAudibleHz: [[loHz, hiHz], ...]` (integer Hz, inclusive):
+  the exact partition of the service table whose family is audible, computed
+  in Node (`ccAudibleRanges`) and sent on every tune. **Absent** = today's
+  behaviour (every CC hit audible). **Present** (even empty) = a CC hit
+  outside every range is silent. Sending the audible set rather than the
+  silent set keeps unallocated gaps ("unknown") silent unless `unknown` is
+  in the list.
 - `Scanner::assign_cc` sets `audible = false` and `priority = false` for a
-  frequency inside a silent range. The lane still opens, closes, emits
+  frequency outside every audible range. The lane still opens, closes, emits
   `closecall` and parks as today. It just never takes the speaker or
   pre-empts.
 - `ccRecorder` needs no change: it only fires on `audible`, which a silent CC
@@ -125,12 +130,15 @@ gains a `scanCoverage` block: rolling 10 min fractions of wall time spent
 
 - `scatterSpot(freqHz, stage) → { lat, lng, color }`. A 32-bit hash of the
   frequency (with a fixed salt) gives two uniforms. They map to a point
-  **area-uniform** in a disc (`r = R·√u`) centred on the kiosk's fixed
-  stage centre, clipped to the stage less `marginPx` (rejection with
-  re-hashing, bounded tries, then clamp). The result is deterministic, so
-  there is no storage and it is stable across reloads and restarts.
-- Knob `display.glass.scatter`: `{ enabled: true, radiusKm?, marginPx: 80 }`.
-  `radiusKm` absent = fit the stage. `enabled: false` = today's edge glow.
+  **area-uniform** inside the kiosk's padded stage rect (`KIOSK_FIT_PAD`,
+  the frame the fit already keeps clear of the clock and corner) inset by
+  `marginPx` more. The stage box is captured once, from the home framing,
+  when the map first goes idle; the kiosk camera never moves, so the result
+  is deterministic and stable across reloads and restarts with nothing
+  stored.
+- Knob `display.glass.scatter`: `{ enabled: true, marginPx: 80 }`.
+  `enabled: false` = today's edge glow. (A `radiusKm` was dropped in
+  planning: the padded stage already *is* the visible metro.)
 - **Who uses it:** a live `active`/`closecall` hit, or a history backfill
   row, with no location **and** silent by the Section 1 rule. The frontend
   gets `audibleFamilies` from the config it already loads and reuses the
@@ -179,9 +187,8 @@ The result goes in the PR.
 
 | Knob | Default | Live? |
 |---|---|---|
-| `audio.audibleFamilies` | `["air","rail","marine","ham","gmrs"]` (weather implicit) | yes (retune in place) |
+| `audio.audibleFamilies` | `["air","rail","marine","ham","gmrs"]` (weather implicit) | yes (`PUT /api/config`) |
 | `display.glass.scatter.enabled` | `true` | kiosk/reload |
-| `display.glass.scatter.radiusKm` | fit stage | kiosk/reload |
 | `display.glass.scatter.marginPx` | 80 | kiosk/reload |
 | `display.glass.liveSparkStepMs` | 750 (0 = off) | kiosk/reload |
 | `scan.visualHold` | — | **deprecated, ignored** |
@@ -192,7 +199,7 @@ The result goes in the PR.
   weather always, per-channel false); `toScanConfig` carries it; engine:
   silent open doesn't hold, silent close doesn't re-arm, silent `cc_` doesn't
   hold, audible `cc_` still does, hop emits `release` for open ids;
-  `ccSilentHz` ranges computed from families; `scanCoverage` accounting;
+  `ccAudibleRanges` exact against `familyFor` at every boundary; `scanCoverage` accounting;
   `scatterSpot` determinism, in-stage bounds, area spread (χ² over a grid,
   loose), colour stability; `glassState` live tick in `nextChangeAt` only
   while live.
