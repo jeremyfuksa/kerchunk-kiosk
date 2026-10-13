@@ -208,6 +208,23 @@ describe("WidebandEngine", () => {
     expect(hopped).toBe(true);
   });
 
+  it("scanCoverage: a muted open with visualHold disabled is never counted as silent hold", async () => {
+    const tunes = tmpFile("tunes");
+    const muted = ch(146_790_000, { audible: false });
+    const { engine, events } = makeEngine({
+      FAKE_WB_TUNES_FILE: tunes,
+      FAKE_WB_SCRIPT: `{"ev":"open","id":"${muted.id}","db":-10}`,
+    }, { groupDwellMs: 300 });
+    await engine.start(cfg([muted, VHF_B, UHF], { visualHold: { enabled: false } }));
+    await waitFor(() => events.some((e) => e.type === "active" && e.channel.id === muted.id), 1000);
+    const start = lines(tunes).length;
+    await waitFor(() => lines(tunes).length > start + 1, 2500);
+    const cov = engine.scanCoverage();
+    await engine.stop();
+    expect(cov.silent).toBe(0);
+    expect(cov.quiet).toBeGreaterThan(0);
+  });
+
   it("an open for an id outside the current group (stale, after a hop) is dropped, not held", async () => {
     // The helper can have an old group's "open" in the pipe when a hop's tune
     // goes out; sendTune has already cleared openIds, and an id the current

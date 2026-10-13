@@ -142,6 +142,7 @@ describe("HTTP API", () => {
     const res = await request(server).get("/api/system");
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty("scanCoverage");
+    expect(res.body.scanCoverage).toBeNull(); // FakeEngine has no hop loop
   });
 
   it("GET /api/status returns engine state", async () => {

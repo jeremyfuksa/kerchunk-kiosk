@@ -946,7 +946,8 @@ export class WidebandEngine implements ScannerEngine {
       this.coverage.record(
         this.sweeping ? "sweep"
           : this.hasAudibleOpen() ? "audible"
-          : this.hasVisualOpen() ? "silent"
+          : this.visualHold().enabled && this.hasVisualOpen()
+            && (this.visualVisitStartedAt === 0 || this.visualBudgetLeft()) ? "silent"
           : "quiet",
         deltaMs, tickAt);
       // Only an AUDIBLE open has a claim on the radio. A muted channel reading
