@@ -271,6 +271,8 @@ directly thematic to the project's name.
 
 ---
 
+> **Shipped 2026-10-13 — Silent chatter (`feat/silent-chatter`).** The speaker and scan time are gated by `config.audio.audibleFamilies` (default air/rail/marine/ham/gmrs; weather always audible); every other family is silent: lane, history and map, never the speaker and never scan time. Silent hits with no location glow at stable invented spots (`display.glass.scatter`), and live fronts throw embers (`display.glass.liveSparkStepMs`). `scan.visualHold` is retired. History durations for silent families are censored to about one dwell, so don't read them as real air time. Spec: `docs/superpowers/specs/2026-10-13-silent-chatter-design.md` (supersedes the visual-hold spec).
+>
 > **Shipped 2026-10 — Weather Glass + fixed stage.** Real QC'd radar (MRMS) on a GPU layer (#282–#285); transmissions are glass fronts → still rim → wind-carried smoke & sparks (10 min, shared step tick); the kiosk camera never moves (off-frame speakers bloom the edge toward them); the layer redraws only when its scene changes. Specs: `docs/superpowers/specs/2026-10-01-weather-glass-design.md`, `…/2026-10-02-fixed-stage-event-pacing-design.md`, `…/2026-10-02-glass-smoke-design.md`.
 
 ## Idea 4 — Hear vs. see: decouple audio from visibility — *SHIPPED 2026-06-05*

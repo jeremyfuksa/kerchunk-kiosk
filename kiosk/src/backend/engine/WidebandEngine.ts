@@ -12,10 +12,10 @@ import { DEFAULT_GROUP_DWELL_MS, DEFAULT_READY_TIMEOUT_MS, DEFAULT_SILENCE_TIMEO
 import { groupChannels, sweepCenters, type ChannelGroup, type GroupingOptions } from "./grouping.js";
 import { setVolume as amixerVolume, setMuted as amixerMuted } from "../audio.js";
 import { TxStatsLog } from "./txStats.js";
+import { CoverageMeter, type CoverageKind } from "./coverage.js";
 import {
   ActivityTracker, dwellFactor, resolveAutoDwell, scaledDwellMs, type AutoDwellConfig,
   nextRevisitTarget, resolvePriorityRevisit, type PriorityRevisitConfig,
-  resolveVisualHold, type VisualHoldConfig,
 } from "./scanSchedule.js";
 
 /** config.audio speaker-loudness knob -> kerchunk-dsp flag (AGC + limiter). */
@@ -191,6 +191,9 @@ export class WidebandEngine implements ScannerEngine {
 
   private openIds = new Set<string>();
   private audibleId: string | null = null;
+  // Silent channels the alert pull-in has unmuted, id -> hold deadline (ms).
+  // While unexpired the channel counts as audible for hold/dwell purposes.
+  private alertUntil = new Map<string, number>();
   private lastSignalTs = 0;
 
   private groupStartedAt = 0;
@@ -198,10 +201,6 @@ export class WidebandEngine implements ScannerEngine {
   // from groupStartedAt, which the hold path re-arms every tick; this one is
   // NOT re-armed, so it measures true continuous hold against the max-hold cap.
   private holdStartedAt = 0;
-  // When this VISIT's first visual hold began (0 = none yet). Reset only by a
-  // tune / spawn / stop — never by a close — so maxMs is a per-visit budget:
-  // a chain of muted key-ups can't park the scanner (final review I1).
-  private visualVisitStartedAt = 0;
   private dwellTimer: NodeJS.Timeout | null = null;
   // Activity-weighted dwell (config.scan.autoDwell): decayed open counts per
   // group, keyed by the group's center so it survives a same-shape retune.
@@ -214,6 +213,7 @@ export class WidebandEngine implements ScannerEngine {
   private revisitCreditMs = 0;
   private revisitCursor = 0;
   private lastTickAt = 0;
+  private readonly coverage = new CoverageMeter();
   private restartTimer: NodeJS.Timeout | null = null;
 
   // Warm-up milestones (drive the kiosk "WARMING UP" overlay). One-shot per
@@ -345,10 +345,6 @@ export class WidebandEngine implements ScannerEngine {
     return resolveAutoDwell(this.config?.autoDwell);
   }
 
-  private visualHold(): Required<VisualHoldConfig> {
-    return resolveVisualHold(this.config?.visualHold);
-  }
-
   private static groupKey(group: ChannelGroup<ScanChannel>): string {
     return String(group.centerHz);
   }
@@ -382,12 +378,16 @@ export class WidebandEngine implements ScannerEngine {
     return this.groups.map((_, i) => this.effectiveDwellMs(i));
   }
 
-  /** Live scheduling update (config.scan.autoDwell / priorityRevisit / visualHold):
+  scanCoverage(): Record<CoverageKind, number> & { windowMs: number } {
+    return this.coverage.fractions(this.now());
+  }
+
+  /** Live scheduling update (config.scan.autoDwell / priorityRevisit):
    *  Node-side only, so no tune, no respawn — the next tick simply uses the
    *  new numbers (a look already in progress finishes normally). */
-  updateScheduling(s: { autoDwell?: AutoDwellConfig; priorityRevisit?: PriorityRevisitConfig; visualHold?: VisualHoldConfig }): void {
+  updateScheduling(s: { autoDwell?: AutoDwellConfig; priorityRevisit?: PriorityRevisitConfig }): void {
     if (!this.config) return;
-    this.config = { ...this.config, autoDwell: s.autoDwell, priorityRevisit: s.priorityRevisit, visualHold: s.visualHold };
+    this.config = { ...this.config, autoDwell: s.autoDwell, priorityRevisit: s.priorityRevisit };
     // Re-arm only a live timer (the tick rate depends on autoDwell.enabled);
     // groupStartedAt is untouched, so the current dwell just continues.
     if (this.dwellTimer) this.startDwellTimer();
@@ -396,18 +396,15 @@ export class WidebandEngine implements ScannerEngine {
   // Credit one transmission to the group being dwelt on. Only a NEW open of
   // an audible, configured channel of the current group counts: Close Call
   // lanes and background decoder feeds aren't the group's traffic, a muted
-  // carrier counts only with visualHold.creditDwell, and sweep stops aren't
-  // groups.
+  // carrier never counts, and sweep stops aren't groups.
   private recordActivity(id: string): void {
     // A priority look is not the group's own turn: revisits don't count.
     if (this.sweeping || this.revisit || this.openIds.has(id)) return;
     const group = this.groups[this.groupIndex];
     const channel = group?.channels.find((c) => c.id === id);
     if (!group || !channel || channel.background) return;
-    // A muted carrier counts only when visual hold credits it (spec
-    // 2026-10-03): the map wants a busy muted window (rail) visited more.
-    const vh = this.visualHold();
-    if (channel.audible === false && !(vh.enabled && vh.creditDwell)) return;
+    // Silent carriers earn no dwell (spec 2026-10-13): the scan is for listening.
+    if (!this.isAudibleNow(channel)) return;
     this.activity.record(WidebandEngine.groupKey(group), this.now(), this.autoDwell().halfLifeMin * 60_000);
   }
 
@@ -594,7 +591,6 @@ export class WidebandEngine implements ScannerEngine {
     this.openIds.clear();
     this.audibleId = null;
     this.holdStartedAt = 0;
-    this.visualVisitStartedAt = 0;
     this.lastStderrLine = "";
     this.readyTimer = setTimeout(
       () => this.watchdogFire(child, `no "ready" within ${this.readyTimeoutMs} ms`), this.readyTimeoutMs);
@@ -673,22 +669,21 @@ export class WidebandEngine implements ScannerEngine {
         if (typeof ev.db === "number") this.emit({ type: "signal", dbfs: ev.db, ts });
         break;
       }
-      case "close":
+      case "close": {
         if (typeof ev.id !== "string") return;
-        this.openIds.delete(ev.id);
+        if (!this.openIds.delete(ev.id)) return; // stale: already released by a hop
         this.emit({ type: "release", channelId: ev.id, ts: this.now() });
         if (this.openIds.size === 0) {
           this.holdStartedAt = 0; // hold ended cleanly; next hold clocks fresh
           this.emit({ type: "idle", ts: this.now() });
-          // Idle again: dwell restarts from now, so a long hold doesn't cause
-          // an instant hop the moment the channel closes — except a muted
-          // close once this visit's visual budget is spent: re-arming there
-          // would let back-to-back muted traffic hold the window forever.
-          const closed = this.groups[this.groupIndex]?.channels.find((c) => c.id === ev.id);
-          const spentMuted = closed?.audible === false && this.visualHold().enabled && !this.visualBudgetLeft();
-          if (!spentMuted) this.groupStartedAt = this.now();
+          // Idle again: dwell restarts from now so a long AUDIBLE hold doesn't
+          // cause an instant hop when it closes. A silent close never re-arms
+          // (spec 2026-10-13): silent traffic takes no scan time.
+          const closed = this.findChannel(ev.id);
+          if (!closed || this.isAudibleNow(closed)) this.groupStartedAt = this.now();
         }
         break;
+      }
       case "rf":
         if (typeof ev.id === "string" && typeof ev.db === "number") {
           this.emit({ type: "rf", channelId: ev.id, db: ev.db, ts: this.now() });
@@ -750,28 +745,19 @@ export class WidebandEngine implements ScannerEngine {
   private hasAudibleOpen(): boolean {
     for (const id of this.openIds) {
       const channel = this.findChannel(id);
-      if (!channel || channel.audible !== false) return true;
+      if (!channel || this.isAudibleNow(channel)) return true;
     }
     return false;
   }
 
-  // Does this visit still have visual-hold budget (maxMs since its first
-  // visual hold)? A visit with no visual hold yet has the whole budget.
-  private visualBudgetLeft(): boolean {
-    return this.visualVisitStartedAt === 0
-      || this.now() - this.visualVisitStartedAt < this.visualHold().maxMs;
-  }
-
-  // Is a muted, configured, non-background channel of the CURRENT group open?
-  // Visual hold (spec 2026-10-03): the map should see its transmission whole.
-  // Close Call lanes never reach here — hasAudibleOpen() already counts them.
-  private hasVisualOpen(): boolean {
-    const group = this.groups[this.groupIndex];
-    if (!group) return false;
-    for (const id of this.openIds) {
-      const channel = group.channels.find((c) => c.id === id);
-      if (channel && channel.audible === false && !channel.background) return true;
-    }
+  // Audible per config, or temporarily so via an unexpired alert pull-in.
+  // Expired entries are dropped here.
+  private isAudibleNow(channel: ScanChannel): boolean {
+    if (channel.audible !== false) return true;
+    const until = this.alertUntil.get(channel.id);
+    if (until === undefined) return false;
+    if (this.now() < until) return true;
+    this.alertUntil.delete(channel.id);
     return false;
   }
 
@@ -789,6 +775,11 @@ export class WidebandEngine implements ScannerEngine {
     this.txStats!.append(rec);
   }
 
+  private ccAudible(freqHz: number): boolean {
+    const r = this.config?.ccAudibleHz;
+    return !r || r.some(([lo, hi]) => freqHz >= lo && freqHz <= hi);
+  }
+
   private findChannel(id: string): Channel | null {
     // Close Call lanes aren't in any group: synthesize a channel so the
     // dashboard banner / Recent log / activity all work unchanged.
@@ -797,18 +788,33 @@ export class WidebandEngine implements ScannerEngine {
       return {
         id, freq: Number(cc[1]), alphaTag: "CLOSE CALL",
         mode: "nfm", enabled: true, priority: true,
+        audible: this.ccAudible(Number(cc[1])),
       };
     }
     const group = this.groups[this.groupIndex];
     return group?.channels.find((c) => c.id === id) ?? null;
   }
 
+  // A hop ends every open transmission from the map's point of view: emit its
+  // release so the glass front settles into rim and smoke instead of hanging
+  // until its ttl (spec 2026-10-13). The helper's own late "close" for these
+  // ids is ignored — openIds no longer holds them and GlassState.release is
+  // idempotent.
+  private releaseOpenOnHop(): void {
+    const ts = this.now();
+    if (this.openIds.size === 0) return;
+    for (const id of this.openIds) this.emit({ type: "release", channelId: id, ts });
+    this.openIds.clear();
+    // Consumers (dashboard, admin live, ws) clear their now-playing on idle;
+    // the helper's late close used to deliver it, and is now dropped as stale.
+    this.emit({ type: "idle", ts });
+  }
+
   private sendSweepTune(centerHz: number): void {
     if (!this.child?.stdin?.writable) return;
-    this.openIds.clear();
+    this.releaseOpenOnHop();
     this.audibleId = null;
     this.holdStartedAt = 0;
-    this.visualVisitStartedAt = 0;
     this.groupStartedAt = this.now();
     this.child.stdin.write(JSON.stringify({
       cmd: "tune", centerHz, channels: [],
@@ -818,6 +824,7 @@ export class WidebandEngine implements ScannerEngine {
       monitor: false, closeCall: this.config?.closeCall ?? true,
       closeCallDb: this.config?.closeCallDb ?? 15,
       knownHz: this.config?.knownHz ?? [],
+      ...(this.config?.ccAudibleHz ? { ccAudibleHz: this.config.ccAudibleHz } : {}),
     }) + "\n");
     this.emit({ type: "tuned", freqHz: centerHz, channelIds: [], ts: this.now() });
   }
@@ -825,10 +832,9 @@ export class WidebandEngine implements ScannerEngine {
   private sendTune(): void {
     const group = this.groups[this.groupIndex];
     if (!group || !this.child?.stdin?.writable) return;
-    this.openIds.clear();
+    this.releaseOpenOnHop();
     this.audibleId = null;
     this.holdStartedAt = 0;
-    this.visualVisitStartedAt = 0;
     this.groupStartedAt = this.now();
     const cmd = {
       cmd: "tune",
@@ -860,6 +866,7 @@ export class WidebandEngine implements ScannerEngine {
         ...(this.config?.channels ?? []).map((c) => c.freq),
         ...(this.config?.lockoutHz ?? []),
       ],
+      ...(this.config?.ccAudibleHz ? { ccAudibleHz: this.config.ccAudibleHz } : {}),
     };
     this.child.stdin.write(JSON.stringify(cmd) + "\n");
     // Tell the UIs where the radio is parked (bank indicator).
@@ -937,6 +944,7 @@ export class WidebandEngine implements ScannerEngine {
       const tickAt = this.now();
       const deltaMs = Math.max(0, tickAt - this.lastTickAt);
       this.lastTickAt = tickAt;
+      this.coverage.record(this.sweeping ? "sweep" : this.hasAudibleOpen() ? "audible" : "quiet", deltaMs, tickAt);
       // Only an AUDIBLE open has a claim on the radio. A muted channel reading
       // open — a continuously-keyed business carrier, say — would otherwise
       // park the scanner in SILENCE for the whole max-hold cap, which sounds
@@ -955,29 +963,12 @@ export class WidebandEngine implements ScannerEngine {
           `[wideband] max-hold ${this.maxHoldMs}ms exceeded on group ${this.groupIndex} ` +
           `(${this.openIds.size} open); forcing hop`,
         );
-        this.openIds.clear();
+        this.releaseOpenOnHop();
         this.audibleId = null;
         this.holdStartedAt = 0;
         this.groupStartedAt = 0; // fall through and let the advance below fire now
-      } else if (this.visualHold().enabled && this.hasVisualOpen()) {
-        // Visual hold (spec 2026-10-03): a MUTED open keeps the window so the
-        // map sees the whole transmission, within a per-VISIT budget of maxMs
-        // (visualVisitStartedAt). On breach fall through to the plain advance
-        // — no openIds clear and no log: a long muted transmission is not a
-        // stuck lane, and a continuously keyed muted carrier would otherwise
-        // log every rotation. holdStartedAt stays 0 so an audible open that
-        // arrives later gets its full maxHoldMs, not an already-aged one.
-        this.holdStartedAt = 0;
-        if (this.visualVisitStartedAt === 0) this.visualVisitStartedAt = this.now();
-        if (this.visualBudgetLeft()) {
-          // Nobody is listening to a visual hold: a due priority peek
-          // pre-empts it (final review I2). Audible holds still can't be.
-          if (this.maybeStartRevisit(deltaMs)) return;
-          this.groupStartedAt = this.now();
-          return;
-        }
       } else {
-        // Nothing holds: the window gets its plain dwell, no hold.
+        // Nothing audible holds: silent traffic gets no scan time (spec 2026-10-13).
         this.holdStartedAt = 0;
       }
       if (this.sweeping) {
@@ -1186,6 +1177,10 @@ export class WidebandEngine implements ScannerEngine {
     // the hold. If the channel's window isn't tuned right now the command
     // finds no chain and is a no-op — the kiosk banner still fires; only the
     // audio break-in is best-effort (same coverage truth as detection).
+    const hold = Math.max(1, holdSeconds);
+    // The helper speaks for the hold; mirror it so a silent channel holds the
+    // window too (maxHoldMs still caps it).
+    this.alertUntil.set(channelId, this.now() + hold * 1000);
     if (this.child?.stdin?.writable) {
       this.child.stdin.write(JSON.stringify(
         { cmd: "alert_unmute", id: channelId, holdS: Math.max(1, holdSeconds) }) + "\n");
@@ -1211,9 +1206,9 @@ export class WidebandEngine implements ScannerEngine {
     this.clearWarmupReadyTimer();
     this.killChild();
     this.openIds.clear();
+    this.alertUntil.clear();
     this.audibleId = null;
     this.holdStartedAt = 0;
-    this.visualVisitStartedAt = 0;
     this.setState("stopped");
   }
 

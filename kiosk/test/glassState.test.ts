@@ -7,7 +7,7 @@ import { MAX_FRONTS, MAX_PUFFS } from "../src/frontend/map/glassMath.js";
 
 const T = {
   growMs: 900, releaseMs: RELEASE_MS, ttlMs: 60_000, holdFps: 4, signalSteps: 8,
-  smokeLifeMs: 600_000, smokeStepMs: 6000, smokePxPerMph: 60, puffMergeMs: 60_000,
+  smokeLifeMs: 600_000, smokeStepMs: 6000, smokePxPerMph: 60, puffMergeMs: 60_000, liveSparkStepMs: 0,
 };
 const TICK = 6000;
 const NE7 = { towardDeg: 225, mph: 7 };   // "NE 7 mph": blows toward the SW
@@ -373,5 +373,36 @@ describe("GlassState signal pacing", () => {
     expect(s.signal("nope", -20, 1000)).toBeNull();
     expect(() => s.release("nope", 1)).not.toThrow();
     expect(() => s.rearm("nope", 1)).not.toThrow();
+  });
+});
+
+describe("live-spark tick (spec 2026-10-13)", () => {
+  const lsite = { key: "k", lat: 39, lng: -94.5, color: [1, 0.5, 0.2] as [number, number, number] };
+  const L = { ...T, liveSparkStepMs: 750 };
+  it("schedules the next live tick while a front is live and fully grown", () => {
+    const g = new GlassState(L);
+    g.keyUp("a", lsite, 5000, 0);
+    const f = g.frame(10_000);
+    expect(f.nextChangeAt).toBe(10_500);
+    expect(f.liveStep).toBe(Math.floor(10_000 / 750));
+  });
+  it("contributes nothing with no live front (quiet band = zero redraws)", () => {
+    const g = new GlassState(L);
+    expect(g.frame(10_000).nextChangeAt).toBeNull();
+  });
+  it("0 disables it", () => {
+    const g = new GlassState({ ...L, liveSparkStepMs: 0 });
+    g.keyUp("a", lsite, 5000, 0);
+    const f = g.frame(10_000);
+    expect(f.nextChangeAt).not.toBe(10_500);
+    expect(f.liveStep).toBe(0);
+  });
+  it("a released front no longer schedules the live tick", () => {
+    const g = new GlassState(L);
+    g.keyUp("a", lsite, 5000, 0);
+    g.release("a", 9000);
+    const f = g.frame(10_000);
+    expect(f.liveStep).toBe(0);
+    expect(f.nextChangeAt).not.toBe(10_500);
   });
 });

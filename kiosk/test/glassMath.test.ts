@@ -41,7 +41,7 @@ describe("glassMath", () => {
     expect(hexToGlowRgb("#E5383B")[0]).toBe(1); // 0xE5 * 1.15 > 255: clamped
   });
   it("exports the empty frame and the shader caps", () => {
-    expect(EMPTY_FRAME).toEqual({ fronts: [], puffs: [], step: 0, growing: false, continuous: false, nextChangeAt: null });
+    expect(EMPTY_FRAME).toEqual({ fronts: [], puffs: [], step: 0, growing: false, continuous: false, nextChangeAt: null, liveStep: 0 });
     expect([MAX_FRONTS, MAX_PUFFS]).toEqual([8, 48]);
     expect(STEP_WRAP % 7).toBe(0);
     expect(Math.fround(STEP_WRAP - 1)).toBe(STEP_WRAP - 1);   // exact in float32

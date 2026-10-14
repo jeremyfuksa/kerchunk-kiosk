@@ -6,8 +6,9 @@ import { coverageRadiusM } from "./blips.js";
 import { AircraftLayer } from "./aircraft.js";
 import { GlassLayer } from "./glassLayer.js";
 import { RadarSync, httpRadarFetchers } from "./radarSync.js";
-import { GlassState, RELEASE_MS, type GlassSite } from "./glassState.js";
+import { GlassState, RELEASE_MS, windDir, type GlassSite } from "./glassState.js";
 import { hexToGlowRgb } from "./glassMath.js";
+import { scatterSpot, isSilentHit, SCATTER_KEY, type ScatterStage } from "./scatter.js";
 import { padRect, outside, edgeExit, lngLatToViewPx, occluded, slideClear, BLOOM_PX, type Rect } from "./stage.js";
 import type { EngineEvent } from "../../backend/engine/ScannerEngine.js";
 import icoTower from "lucide-static/icons/radio-tower.svg?raw";
@@ -247,13 +248,17 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
       holdFps: display.glass.holdFps, signalSteps: display.glass.signalSteps,
       smokeLifeMs: display.glass.smokeLifeMs, smokeStepMs: display.glass.smokeStepMs,
       smokePxPerMph: display.glass.smokePxPerMph, puffMergeMs: display.glass.puffMergeMs,
+      liveSparkStepMs: display.glass.liveSparkStepMs,
     });
     // Smoke drifts with the dashboard's /api/weather wind (lib/wind.ts): no
     // poll of our own. A wind change turns live smoke where it is (a bend).
-    onWind((w) => glassState.setWind(w, Date.now()));
     const glass = mapId
       ? new GlassLayer({ map, home, knobs: display.glass, getFrame: (now) => glassState.frame(now) })
       : null;
+    onWind((w) => {
+      glassState.setWind(w, Date.now());
+      glass?.setWind(w && w.mph > 0 ? windDir(w.towardDeg) : null);
+    });
     const poke = (): void => { if (glass && !glass.off) glass.poke(); };
     // How often the wall really redraws (spec 2026-10-02 proof): one journal
     // line every PACING_REPORT_MS on the kiosk.
@@ -356,10 +361,38 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
       return { key, lat, lng, color: hexToGlowRgb(hex) };
     };
 
-    function startTx(id: string, lat: number, lng: number, freq: number | undefined, kind: "active" | "closecall"): void {
-      const s = glassSite(lat, lng, freq, kind);
+    // Scatter stage: captured from the FITTED home frame (captureStage, called
+    // after the home fit settles, with a bounded fallback, and on every refit).
+    let scatterStage: ScatterStage | null = null;
+    const scatter = display.glass.scatter;
+    let stageResolve: () => void = () => {};
+    const stageReady = new Promise<void>((resolve) => { stageResolve = resolve; });
+    if (!scatter.enabled) stageResolve();
+    function captureStage(): void {
+      const b = map.getBounds();
+      if (b) {
+        const ne = b.getNorthEast(), sw = b.getSouthWest();
+        const W = root.clientWidth, H = root.clientHeight;
+        const pad = typeof fitPad === "number" ? { top: fitPad, right: fitPad, bottom: fitPad, left: fitPad } : fitPad;
+        scatterStage = { box: { n: ne.lat(), s: sw.lat(), e: ne.lng(), w: sw.lng() }, width: W, height: H, inner: padRect(W, H, pad) };
+      }
+      stageResolve();
+    }
+    const STAGE_FALLBACK_MS = 3000;   // fitBounds that changes nothing emits no idle
+    const audibleFamilies: readonly string[] = cfg.audio?.audibleFamilies ?? ["air", "rail", "marine", "ham", "gmrs"];
+    /** An invented site for a silent unlocated hit, or null (edge glow). */
+    const scatterSite = (freq: number): GlassSite | null => {
+      if (!scatter.enabled || !scatterStage) return null;
+      const s = scatterSpot(freq, scatterStage, scatter.marginPx);
+      return { key: SCATTER_KEY(freq), lat: s.lat, lng: s.lng, color: hexToGlowRgb(s.hex) };
+    };
+
+    function startTxAt(id: string, s: GlassSite): void {
       glassState.keyUp(id, s, siteRadius(s.key, glassState.hits(s.key) + 1), Date.now());
       poke();
+    }
+    function startTx(id: string, lat: number, lng: number, freq: number | undefined, kind: "active" | "closecall"): void {
+      startTxAt(id, glassSite(lat, lng, freq, kind));
     }
     function endTx(id: string): void {
       glassState.release(id, Date.now());
@@ -470,7 +503,8 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
         map.fitBounds(framedBounds(), fitPad);
         // Remember the home zoom once the fit settles — the punch zoom and
         // the pull-back both reference it.
-        google.maps.event.addListenerOnce(map, "idle", () => { homeZoom = map.getZoom(); });
+        google.maps.event.addListenerOnce(map, "idle", () => { homeZoom = map.getZoom(); captureStage(); });
+        setTimeout(() => { if (!scatterStage) captureStage(); }, STAGE_FALLBACK_MS);
       });
 
     // ── Camera (spec 2026-10-02 "fixed stage"): the kiosk frames once and
@@ -505,6 +539,7 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
       if (liveCount() > 0) { refitDue = true; return; }
       refitDue = false;
       map.fitBounds(framedBounds(), fitPad);
+      google.maps.event.addListenerOnce(map, "idle", captureStage);
     }
     function onQuiet(): void { if (refitDue) refit(); }
     if (!interactive && !follow) {
@@ -529,15 +564,25 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
     const backfillMs = display.glass.smokeLifeMs;
     void fetch(`/api/history?since=${Date.now() - backfillMs}&limit=500`)
       .then((r) => (r.ok ? r.json() : []))
-      .then((rows: Array<{ lat: number | null; lon: number | null; alphaTag: string; kind: string; ts: number; freq: number }>) => {
+      .then((rows: Array<{ lat: number | null; lon: number | null; alphaTag: string; kind: string; ts: number; freq: number; tags?: string[] }>) => {
         // Rows arrive newest-first; seedPuffs replays them oldest-first so a
         // busy site's trail and hit ramp match what live play builds.
         const seeds = [];
+        const unlocated: typeof rows = [];
         for (const r of rows) {
-          if (r.lat == null || r.lon == null) continue;
+          if (r.lat == null || r.lon == null) { unlocated.push(r); continue; }
           seeds.push({ site: glassSite(r.lat, r.lon, r.freq, r.kind === "closecall" ? "closecall" : "active"), ts: r.ts });
         }
         glassState.seedPuffs(seeds, Date.now(), siteRadius);
+        // Only silent unlocated rows wait for the scatter stage; none if it never lands.
+        void stageReady.then(() => {
+          const sc = [];
+          for (const r of unlocated) {
+            const site = isSilentHit(r.freq, r.tags, undefined, audibleFamilies) ? scatterSite(r.freq) : null;
+            if (site) sc.push({ site, ts: r.ts });
+          }
+          if (sc.length) { glassState.seedPuffs(sc, Date.now(), siteRadius); poke(); }
+        });
         poke();
       })
       .catch(() => {});
@@ -553,9 +598,12 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
           push(ch.location.lat, ch.location.lon, ch.alphaTag || fmtFreq(ev.freq), "active", Date.now(), ev.freq, true);
           startTx(ch.id, ch.location.lat, ch.location.lon, ev.freq, "active");
         } else {
-          // No location: edge-glow only — no synthetic dot, and no ring pulsing
-          // at a made-up spot.
-          nofix(ev.freq);
+          // No location. A SILENT hit gets its invented metro spot (spec
+          // 2026-10-13: glass/sparks/smoke, no antenna marker — a dot means a
+          // real place); an audible one keeps the edge glow.
+          const site = isSilentHit(ev.freq, ch.tags, ch.audible, audibleFamilies) ? scatterSite(ev.freq) : null;
+          if (site) startTxAt(ch.id, site);
+          else nofix(ev.freq);
         }
       } else if (ev.type === "release") {
         endTx(ev.channelId); // transmission closed — stop its ring
@@ -575,10 +623,10 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
           if (at !== null && glass && !glass.off) glass.redrawAt(at);
         }
       } else if (ev.type === "closecall") {
-        // discoveries are unlocated at the moment they fire (identification is
-        // async) — they pulse the edge glow; once enriched, future events and
-        // history backfills place them on the map properly.
-        nofix(ev.freqHz);
+        // A silent CC hit is placed by its lane's `active` (scatter spot); an
+        // audible one has no honest position yet — edge glow. Once enriched,
+        // future events and history backfills place them properly.
+        if (!isSilentHit(ev.freqHz, tagsFor(ev.freqHz), undefined, audibleFamilies)) nofix(ev.freqHz);
       } else if (ev.type === "audible") {
         // Camera follows AUDIO only in follow mode. On the fixed stage an
         // audible site outside the padded frame blooms the edge toward it.

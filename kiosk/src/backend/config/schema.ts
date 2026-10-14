@@ -4,6 +4,9 @@ import { isCtcssTone } from "./ctcss.js";
 import { isDcsCode } from "./dcs.js";
 import { wallWatchdogSchema } from "../wallWatchdog.js";
 
+// Default speaker families (spec 2026-10-13): the listening services.
+export const AUDIBLE_FAMILIES_DEFAULT = ["air", "rail", "marine", "ham", "gmrs"] as const;
+
 // airplanes.live REST base, over HTTPS. The endpoint 301s http -> https, so a
 // cleartext base spent two requests and two TCP connections per poll — double
 // the rate-limit budget the 5s cadence is sized against, and double the surface
@@ -154,12 +157,9 @@ export const configSchema = z.object({
       everyMs: z.number().int().min(1000).max(60_000).optional(),
       lookMs: z.number().int().min(300).max(5000).optional(),
     }).optional(),
-    // Visual hold (spec 2026-10-03): an open on a MUTED scan channel holds
-    // its window so the map sees the whole transmission, within a budget of
-    // maxMs per visit; the speaker stays silent, audible opens keep first
-    // claim (maxHoldMs) and a due priority peek pre-empts it.
-    // creditDwell lets muted opens count toward autoDwell. Live like
-    // autoDwell. Omitted = enabled, 15000, true.
+    // DEPRECATED (spec 2026-10-13 silent chatter): visual hold is retired —
+    // silent traffic takes no scan time. Still parsed so older configs load;
+    // ignored everywhere.
     visualHold: z.object({
       enabled: z.boolean().optional(),
       maxMs: z.number().int().min(1000).max(180_000).optional(),
@@ -262,6 +262,15 @@ export const configSchema = z.object({
     // feed is rarely listened to. Toggling it respawns the helper (the tee is a
     // helper spawn arg).
     remoteListening: z.boolean().default(false),
+    // Which service FAMILIES may own the speaker (spec 2026-10-13 silent
+    // chatter; config/family.ts). Everything else is SILENT: it still gets a
+    // lane, history and the map, but never the speaker and never scan time
+    // (no hold, no dwell re-arm). Weather is always audible and is not a
+    // member. A runtime gate: per-channel audible:false still silences an
+    // allowed family; audible:true can't un-silence a disallowed one — tag
+    // the channel into an allowed family instead.
+    audibleFamilies: z.array(z.enum(["air", "rail", "marine", "ham", "gmrs", "biz", "publicsafety", "unknown"]))
+      .default([...AUDIBLE_FAMILIES_DEFAULT]),
     // Speaker loudness (kerchunk-dsp's AGC/compressor + peak limiter; they
     // replaced the per-channel level trims). All optional: omitted = the
     // helper's defaults (native/src/constants.hpp). Scanner helper only — the
@@ -403,6 +412,18 @@ export const configSchema = z.object({
       // strongest overlapping puff keeps its own hue (1 = old even average).
       siteColor: z.enum(["site", "service"]).default("site"),
       hueDominance: z.number().min(1).max(8).default(4),
+      // Silent chatter (spec 2026-10-13): a SILENT transmission with no
+      // location lands at a stable invented spot inside the padded stage
+      // (map/scatter.ts), inset marginPx more. enabled:false = the old edge
+      // glow. Applies on kiosk/reload.
+      scatter: z.object({
+        enabled: z.boolean().default(true),
+        marginPx: z.number().int().min(0).max(400).default(80),
+      }).default({}),
+      // Live sparks: while a transmission is on the air its transmit point
+      // throws embers that reshuffle every liveSparkStepMs — a redraw per step,
+      // ONLY while a front is live (quiet band = zero redraws). 0 = off.
+      liveSparkStepMs: z.union([z.literal(0), z.number().int().min(250).max(6000)]).default(750),
     }).default({}),
     // Persistent site markers. With the glass carrying colour and motion, the
     // marker only has to say "a transmitter lives here": "pin" = the service
@@ -544,7 +565,7 @@ export function defaultConfig(): Config {
     // noise spikes ~1436, real signal ~2900. 1800 clears the noise spikes with
     // margin while staying below signal, avoiding constant false squelch-opens.
     scan: { sampleRate: 12000, squelchLevel: 1800, gain: "auto", dwellMs: 2000 },
-    audio: { sink: "hdmi:CARD=vc4hdmi0", volume: 70, muted: false, remoteListening: false },
+    audio: { sink: "hdmi:CARD=vc4hdmi0", volume: 70, muted: false, remoteListening: false, audibleFamilies: [...AUDIBLE_FAMILIES_DEFAULT] },
     channels: [],
   };
 }

@@ -4,6 +4,7 @@
 #include <nlohmann/json.hpp>
 #include <optional>
 #include <string>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -30,6 +31,9 @@ struct TuneCmd {
   bool close_call = false;
   double close_call_db = CC_DB_DEFAULT;
   std::vector<double> known_hz;
+  // Close Call speaker gate (spec 2026-10-13): inclusive [lo, hi] Hz ranges whose CC hits may
+  // speak. nullopt (field absent) = every CC hit audible, as before.
+  std::optional<std::vector<std::pair<double, double>>> cc_audible_hz;
 };
 struct KnownCmd { std::vector<double> known_hz; };
 struct SkipCmd { double holdoff_s = SKIP_HOLDOFF_S; };

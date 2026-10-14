@@ -180,3 +180,25 @@ describe("groupChannelsByBank — the unified Channels page's skeleton", () => {
     expect(g[3]!.channels.map((c) => c.id)).toEqual(["stray1", "stray9"]);
   });
 });
+
+describe("isAudible with audibleFamilies (spec 2026-10-13)", () => {
+  const FAM = ["air", "rail", "marine", "ham", "gmrs"] as const;
+  it("disallowed family is silent even when the channel says audible", () => {
+    expect(isAudible(ch(463_562_500, { audible: true }), [], FAM)).toBe(false);   // biz
+    expect(isAudible(ch(851_012_500), [], FAM)).toBe(false);                      // public safety
+    expect(isAudible(ch(300_000_000), [], FAM)).toBe(false);                      // unknown
+  });
+  it("allowed family follows the channel's own flag", () => {
+    expect(isAudible(ch(146_790_000), [], FAM)).toBe(true);
+    expect(isAudible(ch(146_790_000, { audible: false }), [], FAM)).toBe(false);
+  });
+  it("weather is always audible regardless of the list", () => {
+    expect(isAudible(ch(162_550_000), [], [])).toBe(true);
+  });
+  it("an operator tag moves a channel into an allowed family", () => {
+    expect(isAudible(ch(463_562_500, { tags: ["ham"] }), [], FAM)).toBe(true);
+  });
+  it("no list = legacy per-channel rule", () => {
+    expect(isAudible(ch(463_562_500), [])).toBe(true);
+  });
+});

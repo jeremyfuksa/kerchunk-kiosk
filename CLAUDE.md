@@ -145,11 +145,13 @@ replays the warm-up overlay on the wall.
   / `limiterCeiling` (0.7) / `limiterReleaseMs` (50) → `--agc-*` /
   `--limiter-*`, scanner helper only. Changing one via `PUT /api/config`
   respawns only the scanner helper; volume/mute stay live.
-  Scan scheduling is Node-side and live (no respawn): `config.scan.autoDwell`,
-  `priorityRevisit`, and `visualHold` (`enabled` true / `maxMs` 15000 /
-  `creditDwell` true) — a MUTED channel's open holds its window (a `maxMs`
-  budget per visit; priority peeks pre-empt it) so the map sees the whole
-  transmission; audible holds keep `maxHoldMs`.
+  Scan scheduling is Node-side and live (no respawn): `config.scan.autoDwell`
+  and `priorityRevisit`. Speaker gate: `config.audio.audibleFamilies`
+  (default air/rail/marine/ham/gmrs; weather always) — every other family is
+  SILENT: lane + history + map, never the speaker, never scan time (no hold,
+  no dwell re-arm; `scan.visualHold` is retired and ignored). Close Call hits
+  follow it through the tune's `ccAudibleHz` ranges. Audible holds keep
+  `maxHoldMs`.
 - **ALSA is addressed by name** (`plughw:CARD=PCH,DEV=0`) — card indices swap
   across boots. The sink is exclusive (no dmix): exactly one process owns
   audio.
@@ -298,6 +300,10 @@ even with green checks.
   `FAMILY_OKLCH` is the one palette (pin SVGs are drift-tested against it);
   `display.glass.siteColor` (`site` | `service`) and `hueDominance` (1 = old
   averaged smoke) tune the glass.
+  Silent hits with no location glow at a stable invented spot per frequency
+  (`map/scatter.ts`, `display.glass.scatter`) — glass only, no marker. Live
+  fronts throw embers on `display.glass.liveSparkStepMs` (750; 0 = off),
+  only while something is on the air.
 
 ## Product direction
 

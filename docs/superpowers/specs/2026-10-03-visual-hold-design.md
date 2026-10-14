@@ -1,6 +1,8 @@
 # Visual hold — muted channels earn scan time for the map
 
-Status: design approved in chat 2026-10-03; awaiting written-spec review.
+Status: design approved in chat 2026-10-03. **Superseded by
+`2026-10-13-silent-chatter-design.md`** — `scan.visualHold` is retired and
+ignored; the speaker/scan-time gate is `audio.audibleFamilies`.
 
 ## Why
 

@@ -137,6 +137,14 @@ describe("HTTP API", () => {
     expect(typeof res.body.coreCount).toBe("number");
   });
 
+  it("GET /api/system carries scanCoverage (null for engines without a hop loop)", async () => {
+    const { server } = makeApp();
+    const res = await request(server).get("/api/system");
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty("scanCoverage");
+    expect(res.body.scanCoverage).toBeNull(); // FakeEngine has no hop loop
+  });
+
   it("GET /api/status returns engine state", async () => {
     const { server } = makeApp();
     const res = await request(server).get("/api/status");
@@ -908,6 +916,37 @@ describe("review fixes: engine lifecycle", () => {
     expect(sc.lockoutHz).toEqual([464999999]);
   });
 
+  it("toScanConfig applies audibleFamilies in scan mode only", async () => {
+    const { toScanConfig } = await import("../src/backend/server.js");
+    const cfg = {
+      ...JSON.parse(JSON.stringify((await import("../src/backend/config/schema.js")).defaultConfig())),
+      channels: [
+        { id: "ham", freq: 146790000, alphaTag: "H", mode: "nfm", enabled: true },
+        { id: "biz", freq: 463562500, alphaTag: "B", mode: "nfm", enabled: true },
+      ],
+    };
+    const sc = toScanConfig(cfg, "scan");
+    expect(sc.channels.find((c) => c.id === "ham")?.audible).toBe(true);
+    expect(sc.channels.find((c) => c.id === "biz")?.audible).toBe(false);
+    // Monitor = the operator's direct tune: deliberate listening, never gated.
+    const mon = toScanConfig(cfg, "monitor", cfg.channels[1]);
+    expect(mon.channels[0]?.audible).toBe(true);
+  });
+
+  it("PUT /api/config broadcasts a kiosk reload only when audibleFamilies changed", async () => {
+    const { server, wsHub } = makeApp();
+    const sent: Array<{ type?: string }> = [];
+    const realBroadcast = wsHub.broadcast.bind(wsHub);
+    wsHub.broadcast = (m: never) => { sent.push(m); return realBroadcast(m); };
+    const cfg = (await request(server).get("/api/config")).body;
+    cfg.discoveries = [];
+    await request(server).put("/api/config").send(cfg).expect(200);
+    expect(sent.filter((m) => m.type === "reload")).toHaveLength(0);
+    cfg.audio = { ...cfg.audio, audibleFamilies: ["ham"] };
+    await request(server).put("/api/config").send(cfg).expect(200);
+    expect(sent.filter((m) => m.type === "reload")).toHaveLength(1);
+  });
+
   it("PUT /api/config with only metadata changes does NOT restart the engine", async () => {
     const { server, engine } = makeApp();
     engine.emitCloseCall(462887500);
@@ -979,18 +1018,18 @@ describe("review fixes: engine lifecycle", () => {
     expect(res.status).toBe(400);
   });
 
-  it("PUT /api/config with only visualHold changes applies it live (no restart)", async () => {
+  it("scan.visualHold is accepted (deprecated) and ignored — no restart, no scheduling push", async () => {
     const { server, engine } = makeApp();
     let starts = 0;
     const realStart = engine.start.bind(engine);
     engine.start = async (sc) => { starts++; return realStart(sc); };
     const cfg = (await request(server).get("/api/config")).body;
-    cfg.scan.visualHold = { maxMs: 8000, creditDwell: false };
+    cfg.scan.visualHold = { maxMs: 8000 };
     const res = await request(server).put("/api/config").send(cfg);
     expect(res.status).toBe(200);
     expect(starts).toBe(0);
     const updates = (engine as { schedulingUpdates?: Array<Record<string, unknown>> }).schedulingUpdates ?? [];
-    expect(updates.at(-1)?.visualHold).toEqual({ maxMs: 8000, creditDwell: false });
+    expect(updates).toHaveLength(0);
   });
 
   it("display.glass palette knobs default and validate", async () => {
@@ -1005,14 +1044,6 @@ describe("review fixes: engine lifecycle", () => {
     expect((await request(server).put("/api/config").send(cfg)).status).toBe(400);
     cfg.display = { ...ok.body.display, glass: { ...ok.body.display.glass, siteColor: "rainbow" } };
     expect((await request(server).put("/api/config").send(cfg)).status).toBe(400);
-  });
-
-  it("PUT /api/config rejects out-of-range visualHold", async () => {
-    const { server } = makeApp();
-    const cfg = (await request(server).get("/api/config")).body;
-    cfg.scan.visualHold = { maxMs: 500 };
-    const res = await request(server).put("/api/config").send(cfg);
-    expect(res.status).toBe(400);
   });
 
   it("PUT /api/config rejects out-of-range autoDwell", async () => {
@@ -1307,6 +1338,16 @@ describe("alerts (ROADMAP Idea 6)", () => {
     enabled: true, audible: false, alert: true,
   };
 
+  it("a flagged channel in a silent family (no audible field) is pulled into the speaker", async () => {
+    const { server, engine, unmutes } = makeAlertApp();
+    const bizCh = { id: "al2", freq: 463562500, alphaTag: "Biz Tac", mode: "nfm" as const, enabled: true, alert: true };
+    await request(server).post("/api/channels").send(bizCh).expect(201);
+    const res = await request(server).get("/api/channels");
+    const ch = res.body.find((c: { freq: number }) => c.freq === bizCh.freq);
+    engine.emitActive(ch);
+    expect(unmutes).toEqual([[ch.id, 30]]);
+  });
+
   it("a hit on a flagged see-only channel broadcasts, records, and unmutes", async () => {
     const { server, engine, sent, recorded, unmutes } = makeAlertApp();
     await request(server).post("/api/channels").send(alertCh).expect(201);
@@ -1322,9 +1363,12 @@ describe("alerts (ROADMAP Idea 6)", () => {
 
   it("cooldown suppresses repeats; an audible channel never unmutes", async () => {
     const { server, engine, sent, unmutes } = makeAlertApp();
-    await request(server).post("/api/channels").send({ ...alertCh, audible: true }).expect(201);
+    // Ham 2m: an audible-family channel (the default audibleFamilies list);
+    // alertCh's 155.475 is biz/PS, which is silent by family now.
+    const hamCh = { ...alertCh, freq: 146790000, audible: true };
+    await request(server).post("/api/channels").send(hamCh).expect(201);
     const ch = (await request(server).get("/api/channels")).body
-      .find((c: { freq: number }) => c.freq === alertCh.freq);
+      .find((c: { freq: number }) => c.freq === hamCh.freq);
     engine.emitActive(ch);
     engine.emitActive(ch); // within cooldown — must not re-fire
     expect(sent.filter((e) => (e as { type: string }).type === "alert")).toHaveLength(1);

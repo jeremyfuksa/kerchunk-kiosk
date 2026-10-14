@@ -15,6 +15,7 @@ import type { AircraftSource } from "./aircraft.js";
 import type { RadarSource } from "./radar/RadarFeed.js";
 import { setVolume as amixerVolume, setMuted as amixerMuted, type AmixerOpts } from "./audio.js";
 import { isScannable, isAudible, profileFor } from "./config/banks.js";
+import { ccAudibleRanges } from "./config/family.js";
 import { collides, findDuplicateSets } from "./config/channelDedup.js";
 import { solveK, estimateWatts, distKm, type Anchor } from "./powerEstimator.js";
 import { parseSame, fipsMatch, fipsNames, isTest, isEom } from "./same.js";
@@ -86,7 +87,9 @@ export function toScanConfig(
     mode === "weather"
       ? (cfg.weatherChannel ? [{ ...cfg.weatherChannel, enabled: true }] : [])
       : mode === "monitor"
-        ? (monitorChannel ? [{ ...monitorChannel, enabled: true }] : [])
+        // Deliberate listening is never family-gated: resolve audible
+        // explicitly so live events (and the wall map) report true.
+        ? (monitorChannel ? [{ ...monitorChannel, enabled: true, audible: monitorChannel.audible !== false }] : [])
         // Individual channel state is authoritative. Banks are collections
         // whose admin controls apply explicit bulk edits, never hidden runtime
         // overrides. knownHz below intentionally still covers EVERY configured
@@ -98,7 +101,7 @@ export function toScanConfig(
               // helper only ever see concrete per-channel numbers.
               .map((c) => ({
                 ...c,
-                audible: isAudible(c, cfg.banks ?? []),
+                audible: isAudible(c, cfg.banks ?? [], cfg.audio.audibleFamilies),
                 ...profileFor(c, cfg.banks ?? []),
               })),
             // SAME (Idea 11): with a dedicated weather radio (Idea 10) the
@@ -132,7 +135,6 @@ export function toScanConfig(
     // scanChanged diff and pushed live via engine.updateScheduling.
     autoDwell: cfg.scan.autoDwell,
     priorityRevisit: cfg.scan.priorityRevisit,
-    visualHold: cfg.scan.visualHold,
     openAboveFloorDb: cfg.scan.openAboveFloorDb,
     nativeQuietDb: cfg.scan.nativeQuietDb,
     nativeAmGainDb: cfg.scan.nativeAmGainDb,
@@ -164,6 +166,7 @@ export function toScanConfig(
       ...(cfg.discoveries ?? []).map((d) => d.freq),
       ...(cfg.scan.lockoutHz ?? []),
     ],
+    ...(mode === "scan" ? { ccAudibleHz: ccAudibleRanges(cfg.audio.audibleFamilies) } : {}),
     closeCall: cfg.scan.closeCall,
     closeCallDb: cfg.scan.closeCallDb,
     lockoutHz: cfg.scan.lockoutHz,
@@ -400,7 +403,7 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
     });
     // Pull-in: a see-only channel is demodulated but muted — break it into
     // the speaker. An audible channel is already playing; nothing to do.
-    if (!isAudible(ch, config.banks ?? [])) {
+    if (!isAudible(ch, config.banks ?? [], config.audio.audibleFamilies)) {
       engine.alertUnmute?.(ch.id, holdSeconds);
     }
     const ntfyUrl = config.alerts?.ntfyUrl;
@@ -879,10 +882,14 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
       // own lockoutHz field is only a fallback it never reads when the server
       // supplies knownHz. Leaving it in the diff made every lockout-only edit
       // take the restart branch this comparison exists to avoid.
-      // Scheduling knobs (autoDwell, priorityRevisit, visualHold) are Node-side hop timing, not helper
+      // Scheduling knobs (autoDwell, priorityRevisit) are Node-side hop timing, not helper
       // state: stripped here too and applied live, so tuning them never
       // bounces audio.
-      const strip = (s: ScanConfig) => ({ ...s, knownHz: [], lockoutHz: [], autoDwell: undefined, priorityRevisit: undefined, visualHold: undefined });
+      const strip = (s: ScanConfig) => ({ ...s, knownHz: [], lockoutHz: [], autoDwell: undefined, priorityRevisit: undefined });
+      // The wall map reads audibleFamilies at load (silent/scatter decisions):
+      // reload it when the list actually changed.
+      const familiesChanged = JSON.stringify(prev.audio.audibleFamilies)
+        !== JSON.stringify(config.audio.audibleFamilies);
       const scanChanged = JSON.stringify(strip(before)) !== JSON.stringify(strip(after));
       if (scanChanged) {
         await engine.stop();
@@ -891,11 +898,12 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
         if (JSON.stringify(before.knownHz) !== JSON.stringify(after.knownHz)) {
           engine.updateKnownHz?.(after.knownHz ?? []);
         }
-        if (JSON.stringify([before.autoDwell, before.priorityRevisit, before.visualHold])
-          !== JSON.stringify([after.autoDwell, after.priorityRevisit, after.visualHold])) {
-          engine.updateScheduling?.({ autoDwell: after.autoDwell, priorityRevisit: after.priorityRevisit, visualHold: after.visualHold });
+        if (JSON.stringify([before.autoDwell, before.priorityRevisit])
+          !== JSON.stringify([after.autoDwell, after.priorityRevisit])) {
+          engine.updateScheduling?.({ autoDwell: after.autoDwell, priorityRevisit: after.priorityRevisit });
         }
       }
+      if (familiesChanged) deps.wsHub.broadcast({ type: "reload", ts: Date.now() });
       return json(res, 200, config);
     }
 
@@ -1152,7 +1160,7 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
           // at boot, so snap.now is almost always set. TROUBLE is the honest read
           // for a genuine no-telemetry case — we can't confirm the radio is working.
           { verdict: "trouble" as const, reason: "No telemetry yet." };
-      return json(res, 200, { ...snap, safetyMode, health, coreCount: os.cpus().length });
+      return json(res, 200, { ...snap, safetyMode, health, coreCount: os.cpus().length, scanCoverage: engine.scanCoverage?.() ?? null });
     }
 
     if (method === "GET" && path === "/api/recommendations/archive") {

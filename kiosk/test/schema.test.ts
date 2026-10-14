@@ -5,11 +5,20 @@ import { CTCSS_TONES } from "../src/backend/config/ctcss.js";
 import { DCS_CODES, dcsAlias, dcsWord, isDcsCode } from "../src/backend/config/dcs.js";
 
 describe("configSchema", () => {
+  it("audio.audibleFamilies defaults to the five listening families", () => {
+    expect(defaultConfig().audio.audibleFamilies).toEqual(["air", "rail", "marine", "ham", "gmrs"]);
+  });
+  it("audio.audibleFamilies rejects weather and unknown names", () => {
+    const c = defaultConfig();
+    expect(configSchema.safeParse({ ...c, audio: { ...c.audio, audibleFamilies: ["weather"] } }).success).toBe(false);
+    expect(configSchema.safeParse({ ...c, audio: { ...c.audio, audibleFamilies: ["cb"] } }).success).toBe(false);
+  });
+
   it("accepts a valid config", () => {
     const cfg = {
       version: 1,
       scan: { sampleRate: 12000, squelchLevel: 150, gain: "auto", dwellMs: 2000 },
-      audio: { sink: "hdmi:CARD=vc4hdmi0", volume: 70, muted: false, remoteListening: false },
+      audio: { sink: "hdmi:CARD=vc4hdmi0", volume: 70, muted: false, remoteListening: false, audibleFamilies: ["air", "rail", "marine", "ham", "gmrs"] },
       channels: [
         { id: "ch_001", freq: 145130000, alphaTag: "KC0KW", mode: "nfm", enabled: true },
       ],
@@ -523,7 +532,13 @@ describe("display.glass + radarProduct retirement", () => {
       smokeLifeMs: 600_000, smokeStepMs: 6000, smokePxPerMph: 60,
       smokeBody: 0.55, sparkDensity: 1, puffMergeMs: 60_000, smokeScale: 0.4,
       siteColor: "site", hueDominance: 4,
+      scatter: { enabled: true, marginPx: 80 }, liveSparkStepMs: 750,
     });
+  });
+  it("liveSparkStepMs accepts 0 and 250-6000 only", () => {
+    const c = base();
+    const ok = (v: number) => configSchema.safeParse({ ...c, display: { ...c.display, glass: { liveSparkStepMs: v } } }).success;
+    expect([ok(0), ok(250), ok(6000), ok(100), ok(7000)]).toEqual([true, true, true, false, false]);
   });
   it("an old config carrying glass.fadeSteps still loads; the key is stripped", () => {
     const cfg = configSchema.parse({ ...base(), display: { ...base().display, glass: { fadeSteps: 24, holdFps: 6 } } });

@@ -70,3 +70,14 @@ TEST(protocol_event_formatting) {
   CHECK_NEAR(kc::round1(-42.349), -42.3, 1e-9);
   CHECK(kc::num(1.5).is_number_float());
 }
+
+TEST(protocol_parses_cc_audible_ranges) {
+  std::string err;
+  auto c = kc::parse_command(R"({"cmd":"tune","centerHz":1,"ccAudibleHz":[[118000000,137000000],[144000000,148000000]]})", err);
+  CHECK(c.has_value());
+  const auto& t = std::get<kc::TuneCmd>(*c);
+  CHECK(t.cc_audible_hz.has_value() && t.cc_audible_hz->size() == 2);
+  CHECK_NEAR((*t.cc_audible_hz)[1].first, 144000000, 0);
+  auto absent = kc::parse_command(R"({"cmd":"tune","centerHz":1})", err);
+  CHECK(!std::get<kc::TuneCmd>(*absent).cc_audible_hz.has_value());   // absent = all CC audible
+}

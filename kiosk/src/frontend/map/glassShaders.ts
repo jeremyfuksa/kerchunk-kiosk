@@ -98,6 +98,9 @@ uniform vec3 uFrontC[8];
 uniform int uNFronts;
 uniform sampler2D uSmoke;  // the cached smoke pass (SMOKE_FS)
 uniform float uHasSmoke;
+uniform float uLiveStep;      // live-spark grid tick (wrapped); embers reshuffle on it
+uniform float uSparkDensity;  // shared with the smoke sparks
+uniform vec2 uWind;           // downwind unit, gl px (+y north); 0,0 = calm
 out vec4 O;
 
 ${NOISE}
@@ -132,7 +135,21 @@ void main() {
     }
     float flash = exp(-a.w * 7.0) * exp(-(d * d) / (R * R * 0.004));  // ~300 ms
     float core = exp(-(d * d) / (R * R * 0.0015)) * 0.6 * level;
-    col += c * ((rim + trail + core) * live + flash);
+    // Live embers (spec 2026-10-13): grain thrown off the transmit point while
+    // it is on the air, dense at the source, thinning outward, nudged
+    // downwind. Static between live ticks — event-paced like the smoke.
+    float ember = 0.0;
+    if (live > 0.0 && uSparkDensity > 0.0) {
+      vec2 rel = (px - a.xy) / R;
+      vec2 up = dot(uWind, uWind) > 0.5 ? uWind : vec2(0.0);
+      float reach = length(rel - up * 0.3);   // centre drifts a short way downwind
+      float dens = exp(-reach * reach * 9.0);
+      vec2 cell = floor(px * 0.5);
+      float gen = uLiveStep + floor(h21(cell) * 3.0);
+      float g = h21(cell + vec2(gen * 61.0, gen * 17.0));
+      if (g < dens * dens * uSparkDensity * 0.10) ember = 0.9 * level;
+    }
+    col += c * ((rim + trail + core + ember) * live + flash);
   }
 
   O = vec4(col, 0.0); // additive: blendFunc(ONE, ONE)
