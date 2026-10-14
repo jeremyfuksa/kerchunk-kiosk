@@ -131,11 +131,19 @@ export interface ActivityMapOptions {
  * key is configured (the caller keeps its non-map layout); rejects when the
  * Maps script itself fails to load.
  */
-export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptions = {}): Promise<boolean> {
+/** What the dashboard can do to a mounted map. The CB stage (spec 2026-10-14)
+ *  hides the map: pause() stops every draw and poll; resume() picks up where
+ *  it left off (live events kept the glass state current meanwhile). */
+export interface MapHandle {
+  pause(): void;
+  resume(): void;
+}
+
+export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptions = {}): Promise<MapHandle | null> {
   const interactive = opts.interactive !== false;
   const cfg = await api.getConfig();
   const key = cfg.display?.googleMapsApiKey;
-  if (!key) return false;
+  if (!key) return null;
   const home = {
     lat: cfg.display?.weatherLat ?? 39.1,
     lng: cfg.display?.weatherLon ?? -94.58,
@@ -154,10 +162,9 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
     s.onload = () => resolve();
     document.head.appendChild(s);
   });
-  start(host, home, framing, cfg.display?.googleMapsMapId, interactive);
-  return true;
+  return start(host, home, framing, cfg.display?.googleMapsMapId, interactive);
 
-  function start(root: HTMLElement, home: { lat: number; lng: number }, framing: { center: { lat: number; lng: number }; zoom: number }, mapId?: string, interactive = true): void {
+  function start(root: HTMLElement, home: { lat: number; lng: number }, framing: { center: { lat: number; lng: number }; zoom: number }, mapId?: string, interactive = true): MapHandle {
     // With a cloud-console Map ID the map renders as VECTOR and fitBounds
     // can land on fractional zooms (z9.7) — an exact fit to the pin field.
     // Raster maps floor to integer zoom, showing up to double the area.
@@ -260,6 +267,7 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
       glass?.setWind(w && w.mph > 0 ? windDir(w.towardDeg) : null);
     });
     const poke = (): void => { if (glass && !glass.off) glass.poke(); };
+    let paused = false; // CB stage: hidden map — no draws, no polls
     // How often the wall really redraws (spec 2026-10-02 proof): one journal
     // line every PACING_REPORT_MS on the kiosk.
     const PACING_REPORT_MS = 5 * 60_000;
@@ -283,11 +291,11 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
       : null;
     // Polls stop feeding a layer that gave up (no WebGL2 / shader failure):
     // it is unmounted, so a 4.6 MB-scan download would be for nothing.
-    const pollRadar = (): void => { if (radarSync && glass && !glass.off) void radarSync.poll(); };
+    const pollRadar = (): void => { if (radarSync && glass && !glass.off && !paused) void radarSync.poll(); };
     if (radarSync) {
       pollRadar();
       setInterval(pollRadar, display.radar.refreshMs);
-      setInterval(() => { if (!glass?.off) radarSync.checkStale(); }, 30_000);
+      setInterval(() => { if (!glass?.off && !paused) radarSync.checkStale(); }, 30_000);
     }
 
     // Kiosk render diagnostic (one journal line per page load): which renderer
@@ -650,6 +658,15 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
       }
     }).connect();
 
+    return {
+      pause(): void { paused = true; glass?.setPaused(true); },
+      resume(): void {
+        if (!paused) return;
+        paused = false;
+        glass?.setPaused(false);
+        pollRadar(); // a scan may have landed while hidden
+      },
+    };
   }
 }
 

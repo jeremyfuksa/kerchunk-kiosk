@@ -148,3 +148,26 @@ describe("GlassLayer.redrawAt (review I2)", () => {
     expect(requestRedraw).toHaveBeenCalledTimes(1); // the kick, not pushed back
   });
 });
+
+describe("GlassLayer.setPaused (CB stage, spec 2026-10-14)", () => {
+  afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
+
+  it("paused: nothing redraws, pokes and redrawAt are ignored; resume redraws once", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(10_000);
+    const requestRedraw = vi.fn();
+    vi.stubGlobal("google", { maps: { WebGLOverlayView: class { requestRedraw = requestRedraw; setMap = vi.fn(); } } });
+    const knobs = { maxFps: 30, txFps: 60, hazeIntensity: 0, radarOpacity: 0.6, radarMinDbz: 15, radarFadeMs: 20_000, txGrowMs: 900, holdFps: 4, signalSteps: 8, smokeLifeMs: 600_000, smokeStepMs: 6000, smokePxPerMph: 60, smokeBody: 0.55, sparkDensity: 1, puffMergeMs: 60_000, smokeScale: 0.6 };
+    const layer = new GlassLayer({ map: {}, home: { lat: 39, lng: -94 }, knobs, getFrame: () => EMPTY_FRAME });
+    layer.setPaused(true);
+    expect(layer.isPaused).toBe(true);
+    requestRedraw.mockClear();
+    layer.poke();
+    layer.redrawAt(10_500);
+    vi.advanceTimersByTime(5_000);                 // the 1 s kick is gone too
+    expect(requestRedraw).not.toHaveBeenCalled();
+    layer.setPaused(false);
+    expect(layer.isPaused).toBe(false);
+    expect(requestRedraw).toHaveBeenCalledTimes(1);
+  });
+});
