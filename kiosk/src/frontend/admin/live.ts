@@ -9,7 +9,7 @@ import { fmtFreq } from "../lib/format.js";
 export interface Tuned { freq: number; alphaTag: string; mode?: Channel["mode"] }
 
 export interface LiveState {
-  mode: "scan" | "weather" | "monitor";
+  mode: "scan" | "weather" | "monitor" | "cb";
   breakIn: boolean;
   monitoring: Tuned | null;
   nowPlaying: Tuned | null;
@@ -94,6 +94,12 @@ export function lcdView(s: LiveState): LcdView {
       freq: wx ? fmtFreq(wx.freq) : "",
       silent, canLock: false,
     };
+  }
+  if (s.mode === "cb") {
+    // CB-only listening: no lockouts or pauses — the set is the CB band itself.
+    return s.nowPlaying
+      ? { state: "live", meta: `CB only${modeTag(s.nowPlaying)}`, name: label(s.nowPlaying), freq: fmtFreq(s.nowPlaying.freq), silent, canLock: false }
+      : { state: "scanning", meta: "CB only", name: "Listening to CB…", freq: "", silent, canLock: false };
   }
   if (s.nowPlaying) {
     return { state: "live", meta: `Live${modeTag(s.nowPlaying)}`, name: label(s.nowPlaying), freq: fmtFreq(s.nowPlaying.freq), silent, canLock: true };

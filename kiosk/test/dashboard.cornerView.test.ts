@@ -26,6 +26,7 @@ describe("cornerView — pill states", () => {
   });
   it("weather-only and monitor modes name themselves", () => {
     expect(cornerView({ ...base, mode: "weather" })).toMatchObject({ word: "Weather only" });
+    expect(cornerView({ ...base, mode: "cb", tunedHz: 27_185_000 })).toMatchObject({ word: "CB only", detail: "CB 27.2" });
     expect(cornerView({ ...base, mode: "monitor" })).toMatchObject({ word: "Listening to one channel" });
   });
   it("warming up fills the pill's segments by step", () => {

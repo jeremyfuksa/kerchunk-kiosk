@@ -502,6 +502,11 @@ export const configSchema = z.object({
     sameFips: z.array(z.string()).optional(),
     sameTests: z.boolean().optional(),
   }).optional(),
+  // CB mode (POST /api/mode {mode:"cb"}): which of the 40 CB channels the
+  // scanner listens to while in CB-only mode. Absent = all 40.
+  cb: z.object({
+    channels: z.array(z.number().int().min(1).max(40)).min(1).optional(),
+  }).optional(),
   // RepeaterBook lookup (Close Call enrichment). userAgent must be the
   // string REGISTERED with RepeaterBook; states are full names ("Missouri").
   lookup: z.object({

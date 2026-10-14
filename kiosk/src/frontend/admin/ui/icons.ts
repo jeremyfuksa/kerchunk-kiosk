@@ -7,6 +7,7 @@ import play from "lucide-static/icons/play.svg?raw";
 import stop from "lucide-static/icons/square.svg?raw";
 import skip from "lucide-static/icons/skip-forward.svg?raw";
 import weather from "lucide-static/icons/cloud-lightning.svg?raw";
+import cb from "lucide-static/icons/radio-receiver.svg?raw";
 import pause from "lucide-static/icons/timer.svg?raw";
 import lockout from "lucide-static/icons/ban.svg?raw";
 import volume from "lucide-static/icons/volume-2.svg?raw";
@@ -22,7 +23,7 @@ import refresh from "lucide-static/icons/refresh-cw.svg?raw";
 import bell from "lucide-static/icons/bell-ring.svg?raw";
 import map from "lucide-static/icons/map.svg?raw";
 // speaker reuses volume-2; speakerOff reuses volume-x
-const ICONS = { radio, tune, library, system, play, stop, skip, weather, pause, lockout, volume, volumeOff, close, external, chevron, trash, plus, check, power, refresh, bell, map, speaker: volume, speakerOff: volumeOff } as const;
+const ICONS = { radio, tune, library, system, play, stop, skip, weather, cb, pause, lockout, volume, volumeOff, close, external, chevron, trash, plus, check, power, refresh, bell, map, speaker: volume, speakerOff: volumeOff } as const;
 export type IconName = keyof typeof ICONS;
 
 export function ico(name: IconName, cls = "kc-ico"): string {

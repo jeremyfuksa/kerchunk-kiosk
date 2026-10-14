@@ -95,6 +95,7 @@ export function mountRadio(ctx: Ctx): void {
           ${key({ id: "kcListen", label: "Listen here", icon: "play", variant: "primary", wide: true })}
           ${key({ id: "kcSkip", label: "Skip", icon: "skip", title: "Force-close the current transmission" })}
           ${key({ id: "kcWeather", label: "Weather", icon: "weather", title: "Park the radio on the NOAA weather channel" })}
+          ${key({ id: "kcCb", label: "CB", icon: "cb", title: "Listen to CB only (the scan stops until you resume)" })}
           ${key({ id: "kcPause", label: `Pause ${durationLabel(PAUSE_S)}`, icon: "pause", title: `Suppress this channel for ${durationLabel(PAUSE_S)} (clears on restart)` })}
           ${key({ id: "kcLock", label: "Lock out", icon: "lockout", variant: "danger", title: "Stop scanning this frequency and never Close-Call it" })}
         </div>
@@ -123,6 +124,7 @@ export function mountRadio(ctx: Ctx): void {
   const lcdHost = $("#kcLcd");
   const listen = $<HTMLButtonElement>("#kcListen");
   const weather = $<HTMLButtonElement>("#kcWeather");
+  const cb = $<HTMLButtonElement>("#kcCb");
   const pause = $<HTMLButtonElement>("#kcPause");
   const lock = $<HTMLButtonElement>("#kcLock");
   const vol = $<HTMLInputElement>("#kcVol");
@@ -184,6 +186,7 @@ export function mountRadio(ctx: Ctx): void {
       face(weather, "weather", s.mode === "weather" ? "Resume scan" : "Weather");
       setDisabled(weather, s.mode !== "weather" && s.weatherChannel === null);
     }
+    if (s.mode === "cb") face(cb, "stop", "Resume scan"); else face(cb, "cb", "CB");
     setDisabled(pause, !v.canLock);
     setDisabled(lock, !v.canLock);
     // Never fight the operator's thumb: the slider and its readout follow the
@@ -214,6 +217,11 @@ export function mountRadio(ctx: Ctx): void {
     // The resync rides the Poller (never a direct /api/status fetch here).
     // Only the status resync: making every Radio poll due here refired all of
     // them right after an engine-restarting mode change.
+    live.requestResync();
+    void poller.tick("radio");
+  });
+  cb.addEventListener("click", async () => {
+    try { await poller.run(() => api.setMode(live.state.mode === "cb" ? "scan" : "cb")); } catch (e) { say(e); }
     live.requestResync();
     void poller.tick("radio");
   });

@@ -43,6 +43,7 @@ export function meterFill(db: number | null): number {
 const WINDOW_NAMES: Record<string, string> = {
   AIRBAND: "Airband", "2M": "2 m", "VHF-HI": "VHF high", "1.25M": "1.25 m", "70CM": "70 cm",
   "UHF-T": "UHF-T", "T-BAND": "T-band", "700": "700 MHz", "800": "800 MHz", "900": "900 MHz",
+  CB: "CB",
 };
 
 /** The tuned window, e.g. "VHF high 160.9" — the old bank rail's spectrum chip, in words. */
@@ -67,7 +68,7 @@ export interface CornerInput {
   error: string | null; engineState: string;
   nowPlaying: { freq: number; alphaTag: string; tags?: readonly string[] } | null;
   tunedHz: number | null; scanCount: number; muted: boolean;
-  mode: "scan" | "weather" | "monitor"; breakIn: boolean;
+  mode: "scan" | "weather" | "monitor" | "cb"; breakIn: boolean;
 }
 export interface PillView { show: "pill"; key: string; word: string; detail: string; tone: "plain" | "hay"; muted: boolean; sweep: boolean; warmLit: number | null }
 export interface GlassView { show: "glass"; key: string; lcd: LcdInput; head: ServiceHead | null; hint: string | null; meter: boolean }
@@ -92,7 +93,7 @@ function glass(g: Omit<GlassView, "show" | "key">): GlassView {
 }
 
 function modeWord(mode: CornerInput["mode"]): string {
-  return mode === "weather" ? "Weather only" : mode === "monitor" ? "Listening to one channel" : "Scanning";
+  return mode === "weather" ? "Weather only" : mode === "monitor" ? "Listening to one channel" : mode === "cb" ? "CB only" : "Scanning";
 }
 
 export function cornerView(i: CornerInput): CornerView {
@@ -116,7 +117,8 @@ export function cornerView(i: CornerInput): CornerView {
     const breakIn = i.breakIn && cat === "weather";
     const prefix = breakIn ? "Weather break-in"
       : i.mode === "weather" ? "Weather only"
-      : i.mode === "monitor" ? "Listening to one channel" : "Live";
+      : i.mode === "monitor" ? "Listening to one channel"
+      : i.mode === "cb" ? "CB only" : "Live";
     // A break-in is always NOAA weather radio — say so, not "· Weather".
     const svc = breakIn ? "NOAA" : serviceLabel(cat);
     return glass({

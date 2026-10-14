@@ -32,7 +32,7 @@ What the scanner is doing right now.
 ```jsonc
 {
   "state": "running",        // EngineState: "stopped" | "starting" | "running" | "error"
-  "mode": "scan",            // "scan" | "weather" | "monitor"
+  "mode": "scan",            // "scan" | "weather" | "monitor" | "cb"
   "monitor": null,           // Channel object when mode is "monitor", else null
   "scanCount": 42,           // channels the current mode actually scans (0 = standby)
   "muted": false,            // speaker mute (doesn't restart the engine, so it's polled)
@@ -121,7 +121,7 @@ these appear under `GET /api/config`):
 | --- | --- | --- |
 | POST | `/api/scan/start` / `/api/scan/stop` | Start/stop the engine → `{ state }`. |
 | POST | `/api/scan/skip` | Hop off the current channel (optional `{ holdoffSeconds }`). |
-| POST | `/api/mode` | `{ mode: "scan" \| "weather" }` (weather requires a configured weather channel). |
+| POST | `/api/mode` | `{ mode: "scan" \| "weather" \| "cb" }` (weather requires a configured weather channel). `cb` = CB-only listening: the scanner tunes just the CB channels in `config.cb.channels` (default all 40, AM, always audible, no Close Call); hits land in history tagged `cb` with no location. A SAME break-in preempts CB and returns to CB. |
 | POST | `/api/monitor` | Park on one frequency: `{ freq, mode?, alphaTag? }` → monitor mode. |
 | POST | `/api/monitor/stop` | Back to scanning. |
 | POST | `/api/audio/volume` | `{ percent: 0–100 }` → amixer + persisted config. |
