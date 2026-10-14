@@ -16,6 +16,8 @@ import type { RadarSource } from "./radar/RadarFeed.js";
 import { setVolume as amixerVolume, setMuted as amixerMuted, type AmixerOpts } from "./audio.js";
 import { isScannable, isAudible, profileFor } from "./config/banks.js";
 import { ccAudibleRanges } from "./config/family.js";
+import { cbChannels, cbDefaultChannels } from "./config/cb.js";
+import { DEFAULT_LANES_PER_GROUP } from "./config/engineDefaults.js";
 import { collides, findDuplicateSets } from "./config/channelDedup.js";
 import { solveK, estimateWatts, distKm, type Anchor } from "./powerEstimator.js";
 import { parseSame, fipsMatch, fipsNames, isTest, isEom } from "./same.js";
@@ -78,14 +80,19 @@ const STARTED_AT = Date.now();
 // Optional channel fields a PUT /api/channels/:id may clear by sending null.
 const CLEARABLE_CHANNEL_FIELDS = ["ctcssHz", "dcsCode"] as const;
 
+// "cb" = CB-only listening (config.cb.channels); never mixed into the scan.
+export type ScanMode = "scan" | "weather" | "monitor" | "cb";
+
 export function toScanConfig(
   cfg: Config,
-  mode: "scan" | "weather" | "monitor",
+  mode: ScanMode,
   monitorChannel: Channel | null = null,
 ): ScanConfig {
   const channels =
     mode === "weather"
       ? (cfg.weatherChannel ? [{ ...cfg.weatherChannel, enabled: true }] : [])
+      : mode === "cb"
+        ? cbChannels(cfg.cb?.channels ?? cbDefaultChannels(cfg.scan.lanesPerGroup ?? DEFAULT_LANES_PER_GROUP))
       : mode === "monitor"
         // Deliberate listening is never family-gated: resolve audible
         // explicitly so live events (and the wall map) report true.
@@ -154,7 +161,8 @@ export function toScanConfig(
       limiterCeiling: cfg.audio.limiterCeiling,
       limiterReleaseMs: cfg.audio.limiterReleaseMs,
     },
-    sweepRanges: cfg.scan.sweepRanges,
+    // CB mode listens to its own window only: no band sweep, no Close Call.
+    sweepRanges: mode === "cb" ? [] : cfg.scan.sweepRanges,
     // Weather-only AND direct-tune both hold the lone channel open/audible
     // with no squelch — the operator chose to listen to exactly this.
     monitor: mode === "weather" || mode === "monitor",
@@ -167,7 +175,7 @@ export function toScanConfig(
       ...(cfg.scan.lockoutHz ?? []),
     ],
     ...(mode === "scan" ? { ccAudibleHz: ccAudibleRanges(cfg.audio.audibleFamilies) } : {}),
-    closeCall: cfg.scan.closeCall,
+    closeCall: mode === "cb" ? false : cfg.scan.closeCall,
     closeCallDb: cfg.scan.closeCallDb,
     lockoutHz: cfg.scan.lockoutHz,
     // PCM tee gate: the helper builds --audio-fd when remote listening OR
@@ -230,7 +238,7 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
   // Runtime mode. Deliberately not read from or written to config: the kiosk
   // always boots into scan mode. "monitor" = direct tune (review a discovery
   // or any channel); its target lives only in memory.
-  let mode: "scan" | "weather" | "monitor" = "scan";
+  let mode: ScanMode = "scan";
   let monitorChannel: Channel | null = null;
 
   // One-time migration: earlier Close Call builds filed discoveries as
@@ -528,6 +536,8 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
   // 89°C resting peak pushed the sustained-monitor break-in past 90°C and the
   // restart-to-shed cut the audio with a cold-start chop.)
   let breakIn = false;
+  // The mode a break-in preempted, so the revert resumes it (CB stays CB).
+  let breakInFrom: "scan" | "cb" = "scan";
   const sysStats = new SystemStats({
     helperPid: () => (engine as { helperPid?: number | null }).helperPid ?? null,
     openCount: () => openIds.size,
@@ -581,15 +591,16 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
   const switchMode = (cfg: ScanConfig): Promise<void> =>
     engine.retune ? engine.retune(cfg) : engine.stop().then(() => engine.start(cfg));
   // Shared revert: clears both timers, lifts the break-in freeze, and (unless
-  // the operator changed mode in the meantime) hops back to the scan set.
+  // the operator changed mode in the meantime) hops back to the mode the
+  // break-in preempted — scan, or CB-only listening.
   const revertToScan = (): void => {
     if (sameRevertTimer) { clearTimeout(sameRevertTimer); sameRevertTimer = null; }
     if (sameEomTimer) { clearTimeout(sameEomTimer); sameEomTimer = null; }
     breakIn = false;                  // break-in over; thermal management resumes
     if (mode !== "weather") return;   // operator changed it; leave alone
-    mode = "scan";
-    void switchMode(scanConfigFor("scan", null))
-      .catch((e) => console.error(`[switchMode] revert-to-scan failed: ${(e as Error).message}`));
+    mode = breakInFrom;
+    void switchMode(scanConfigFor(mode, null))
+      .catch((e) => console.error(`[switchMode] revert-to-${mode} failed: ${(e as Error).message}`));
   };
   const onSameEvent = (ev: EngineEvent): void => {
     if (ev.type !== "same") return;
@@ -623,13 +634,14 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
     // pending EOM resume so a clustered follow-on alert holds straight through.
     if (sameEomTimer) { clearTimeout(sameEomTimer); sameEomTimer = null; }
     const holdSeconds = Math.min(300, Math.max(60, hdr.purgeMinutes * 60));
-    // Break-in (the Idea 11 pitch's second behavior): preempt the scan so the
-    // NWR voice message PLAYS, then revert — consumer weather-radio break-in.
+    // Break-in (the Idea 11 pitch's second behavior): preempt the scan (or CB
+    // listening) so the NWR voice message PLAYS, then revert — consumer weather-radio break-in.
     // The EOM resume (above) ends it early when the broadcast actually stops;
     // this timer is the safety net if no NNNN is decoded. Never preempts a
     // monitor. The helperless RtlFm path falls back to stop()+start() in
     // switchMode.
-    if (!test && mode === "scan" && config.weatherChannel) {
+    if (!test && (mode === "scan" || mode === "cb") && config.weatherChannel) {
+      breakInFrom = mode;
       mode = "weather";
       monitorChannel = null;
       breakIn = true;   // freeze safetyMode bounces until we revert
@@ -782,7 +794,7 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
   // otherwise silently bring Close Call back on a hot box while /api/system
   // still reports it paused. Identical to toScanConfig when not protecting.
   // (function declaration: hoisted so the onSample handler above can call it.)
-  function scanConfigFor(m: "scan" | "weather" | "monitor", mc: Channel | null): ScanConfig {
+  function scanConfigFor(m: ScanMode, mc: Channel | null): ScanConfig {
     const base = safetyMode
       ? { ...config, scan: { ...config.scan, closeCall: false, sweepRanges: [] } }
       : config;
@@ -1098,7 +1110,7 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
     if (method === "POST" && path === "/api/mode") {
       const body = await readBody(req);
       const next = body?.mode;
-      if (next !== "scan" && next !== "weather") return json(res, 400, { error: "invalid mode" });
+      if (next !== "scan" && next !== "weather" && next !== "cb") return json(res, 400, { error: "invalid mode" });
       if (next === "weather" && !config.weatherChannel) {
         return json(res, 400, { error: "no weather channel configured" });
       }

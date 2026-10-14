@@ -603,7 +603,7 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
           // real place); an audible one keeps the edge glow.
           const site = isSilentHit(ev.freq, ch.tags, ch.audible, audibleFamilies) ? scatterSite(ev.freq) : null;
           if (site) startTxAt(ch.id, site);
-          else nofix(ev.freq);
+          else if (!ch.tags?.includes("cb")) nofix(ev.freq); // CB mode stays off the map
         }
       } else if (ev.type === "release") {
         endTx(ev.channelId); // transmission closed — stop its ring

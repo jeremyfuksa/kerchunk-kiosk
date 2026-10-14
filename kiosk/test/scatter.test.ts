@@ -58,4 +58,8 @@ describe("isSilentHit", () => {
     expect(isSilentHit(162_550_000, undefined, undefined, [])).toBe(false);   // weather
     expect(isSilentHit(300_000_000, undefined, undefined, FAM)).toBe(true);   // unknown
   });
+  it("CB-mode hits are never scattered (they stay off the map)", () => {
+    expect(isSilentHit(27_185_000, ["cb"], undefined, FAM)).toBe(false);
+    expect(isSilentHit(27_185_000, ["cb"], false, FAM)).toBe(false);
+  });
 });

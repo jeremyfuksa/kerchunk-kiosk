@@ -88,7 +88,7 @@ export const api = {
     fetch("/api/audio/volume", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ percent }) }),
   setMuted: (muted: boolean) =>
     fetch("/api/audio/mute", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ muted }) }),
-  getStatus: (signal?: AbortSignal) => fetch("/api/status", { signal }).then(j<{ state: string; mode: "scan" | "weather" | "monitor"; monitor: Channel | null; scanCount: number; muted?: boolean; warmed?: boolean; breakIn?: boolean; startedAt?: number }>),
+  getStatus: (signal?: AbortSignal) => fetch("/api/status", { signal }).then(j<{ state: string; mode: "scan" | "weather" | "monitor" | "cb"; monitor: Channel | null; scanCount: number; muted?: boolean; warmed?: boolean; breakIn?: boolean; startedAt?: number }>),
   monitor: (freq: number, alphaTag?: string) =>
     fetch("/api/monitor", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ freq, alphaTag }) }).then(j<{ mode: string }>),
   monitorStop: () =>
@@ -101,8 +101,8 @@ export const api = {
   getWeatherChannel: () => fetch("/api/weather-channel").then(j<{ weatherChannel: Channel | null }>),
   setWeatherChannel: (c: Omit<Channel, "id">) =>
     fetch("/api/weather-channel", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(c) }).then(j<{ weatherChannel: Channel }>),
-  setMode: (mode: "scan" | "weather") =>
-    fetch("/api/mode", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ mode }) }).then(j<{ mode: "scan" | "weather"; state: string }>),
+  setMode: (mode: "scan" | "weather" | "cb") =>
+    fetch("/api/mode", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ mode }) }).then(j<{ mode: "scan" | "weather" | "cb"; state: string }>),
   skip: (holdoffSeconds?: number) =>
     fetch("/api/scan/skip", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(holdoffSeconds ? { holdoffSeconds } : {}) }).then(ok),
   testAlert: (opts?: { alphaTag?: string; clear?: boolean }) =>

@@ -203,7 +203,7 @@ export function renderDashboard(root: HTMLElement): void {
   }
   // Mode and break-in come from /api/status (mode flips restart the engine, so
   // the status event re-polls); they name the pill and the glass's meta line.
-  let mode: "scan" | "weather" | "monitor" = "scan";
+  let mode: "scan" | "weather" | "monitor" | "cb" = "scan";
   let breakIn = false;
   function paintStatus(): Promise<void> {
     return api.getStatus()
