@@ -503,7 +503,9 @@ export const configSchema = z.object({
     sameTests: z.boolean().optional(),
   }).optional(),
   // CB mode (POST /api/mode {mode:"cb"}): which of the 40 CB channels the
-  // scanner listens to while in CB-only mode. Absent = all 40.
+  // scanner listens to while in CB-only mode. Absent = channels 1…lanesPerGroup
+  // (one helper window, no hopping). A list longer than lanesPerGroup works
+  // but splits into windows the scanner alternates between.
   cb: z.object({
     channels: z.array(z.number().int().min(1).max(40)).min(1).optional(),
   }).optional(),

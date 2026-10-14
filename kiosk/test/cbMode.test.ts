@@ -8,7 +8,7 @@ import { ConfigStore } from "../src/backend/config/ConfigStore.js";
 import { ActivityLog } from "../src/backend/activityLog.js";
 import { WsHub } from "../src/backend/ws.js";
 import { FakeEngine } from "../src/backend/engine/FakeEngine.js";
-import { CB_FREQ_HZ, cbChannels } from "../src/backend/config/cb.js";
+import { CB_FREQ_HZ, cbChannels, cbDefaultChannels } from "../src/backend/config/cb.js";
 import { configSchema, defaultConfig } from "../src/backend/config/schema.js";
 
 const SCAN_FREQ = 145_130_000;
@@ -68,6 +68,15 @@ describe("CB channel table", () => {
   });
 });
 
+describe("cbDefaultChannels", () => {
+  it("fills one window: 6/9/19 always, then 1 upward", () => {
+    expect(cbDefaultChannels(32)).toEqual(Array.from({ length: 32 }, (_, i) => i + 1));
+    expect(cbDefaultChannels(12)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 19]);
+    expect(cbDefaultChannels(2)).toEqual([6, 9]);
+    expect(cbDefaultChannels(64)).toHaveLength(40);
+  });
+});
+
 describe("toScanConfig cb mode", () => {
   const cfg = () => ({
     ...defaultConfig(),
@@ -77,6 +86,7 @@ describe("toScanConfig cb mode", () => {
   it("tunes only the CB set, squelched, with no Close Call or sweep", () => {
     const c = cfg();
     c.scan.closeCall = true;
+    c.scan.lanesPerGroup = 64;
     const sc = toScanConfig(c, "cb");
     expect(sc.channels).toHaveLength(40);
     expect(freqs(sc)).not.toContain(SCAN_FREQ);
@@ -84,6 +94,13 @@ describe("toScanConfig cb mode", () => {
     expect(sc.closeCall).toBe(false);
     expect(sc.sweepRanges).toEqual([]);
     expect(sc.ccAudibleHz).toBeUndefined();
+  });
+
+  it("defaults to one window's worth of lanes", () => {
+    const c = cfg();
+    c.scan.lanesPerGroup = 12;
+    expect(freqs(toScanConfig(c, "cb"))).toHaveLength(12);
+    expect(freqs(toScanConfig(c, "cb"))).toContain(CB19);
   });
 
   it("honors config.cb.channels", () => {
@@ -108,7 +125,8 @@ describe("POST /api/mode cb", () => {
     expect(freqs(engine.tunes.at(-1))).toContain(CB19);
     expect(freqs(engine.tunes.at(-1))).not.toContain(SCAN_FREQ);
     const st = await request(server).get("/api/status");
-    expect(st.body).toMatchObject({ mode: "cb", scanCount: 40 });
+    expect(st.body.mode).toBe("cb");
+    expect(st.body.scanCount).toBeGreaterThan(0);
     await request(server).post("/api/mode").send({ mode: "scan" });
     expect(freqs(engine.tunes.at(-1))).toContain(SCAN_FREQ);
   });

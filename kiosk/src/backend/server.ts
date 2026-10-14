@@ -16,7 +16,8 @@ import type { RadarSource } from "./radar/RadarFeed.js";
 import { setVolume as amixerVolume, setMuted as amixerMuted, type AmixerOpts } from "./audio.js";
 import { isScannable, isAudible, profileFor } from "./config/banks.js";
 import { ccAudibleRanges } from "./config/family.js";
-import { cbChannels } from "./config/cb.js";
+import { cbChannels, cbDefaultChannels } from "./config/cb.js";
+import { DEFAULT_LANES_PER_GROUP } from "./config/engineDefaults.js";
 import { collides, findDuplicateSets } from "./config/channelDedup.js";
 import { solveK, estimateWatts, distKm, type Anchor } from "./powerEstimator.js";
 import { parseSame, fipsMatch, fipsNames, isTest, isEom } from "./same.js";
@@ -91,7 +92,7 @@ export function toScanConfig(
     mode === "weather"
       ? (cfg.weatherChannel ? [{ ...cfg.weatherChannel, enabled: true }] : [])
       : mode === "cb"
-        ? cbChannels(cfg.cb?.channels)
+        ? cbChannels(cfg.cb?.channels ?? cbDefaultChannels(cfg.scan.lanesPerGroup ?? DEFAULT_LANES_PER_GROUP))
       : mode === "monitor"
         // Deliberate listening is never family-gated: resolve audible
         // explicitly so live events (and the wall map) report true.

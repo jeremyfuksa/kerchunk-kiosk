@@ -20,6 +20,19 @@ export const CB_FREQ_HZ: Readonly<Record<number, number>> = {
 
 export const CB_ALL = Array.from({ length: 40 }, (_, i) => i + 1);
 
+/** The channels the operator actually listens for (9 = emergency, 19 =
+ *  highway). Always in the default set. */
+export const CB_CORE = [6, 9, 19] as const;
+
+/** Default set: as many channels as one helper window holds (the grouping cap
+ *  is the lane count — the whole band fits one 2 MHz window, so only the count
+ *  matters), so CB mode never hops. CB_CORE first, then the rest counting up
+ *  from 1; 36–40 (mostly SSB, which no lane demodulates) are the first cut. */
+export function cbDefaultChannels(lanesPerGroup: number): number[] {
+  const order = [...CB_CORE, ...CB_ALL.filter((n) => !(CB_CORE as readonly number[]).includes(n))];
+  return order.slice(0, Math.max(1, lanesPerGroup)).sort((a, b) => a - b);
+}
+
 /** The CB-mode channel set. Always audible: picking CB mode is deliberate
  *  listening, so the family speaker gate doesn't apply. No location — CB
  *  hits land in history but never on the map. */
