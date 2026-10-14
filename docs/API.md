@@ -99,6 +99,22 @@ at a time (mutation chain); GETs — including the long-lived `/api/stream.wav`
 | GET | `/api/weather-channel` | `{ weatherChannel: Channel \| null }`. |
 | PUT | `/api/weather-channel` | Set the NWR channel; re-points the engine so SAME decode starts now. |
 
+Config fields added by silent chatter (the response is the full config, so
+these appear under `GET /api/config`):
+
+- `audio.audibleFamilies` — families that may reach the speaker and earn scan
+  time (default `air`, `rail`, `marine`, `ham`, `gmrs`; weather is always
+  audible). Other families are silent: lane, history and map only. Changing
+  the list via `PUT /api/config` restarts the engine, like any per-channel
+  audible edit.
+- `display.glass.scatter` — `{ enabled: true, marginPx: 80 }`. Silent,
+  unlocated hits glow at a stable invented spot per frequency (glass only).
+- `display.glass.liveSparkStepMs` — `750` by default; `0` = off, otherwise
+  250–6000. Embers redraw only while a transmission is on the air.
+- `scan.visualHold` — retired; still parsed, ignored.
+- Close Call hits carry `ccAudibleHz` on the tune: inclusive Hz ranges of
+  audible families. If the field is absent, every Close Call hit is audible.
+
 ### Scan control & audio
 
 | Method | Path | Purpose |
