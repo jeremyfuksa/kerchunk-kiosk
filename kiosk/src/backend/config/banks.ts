@@ -73,7 +73,8 @@ export function profileFor(channel: Channel, banks: Bank[]): BankProfile {
 // not control (the operator killed the toggle-able spectrum masters: every
 // real toggle is by service; raw-spectrum kills were only ever a trap).
 const SPECTRUM: Array<{ lo: number; hi: number; name: string }> = [
-  { lo: 26_960_000, hi: 27_410_000, name: "CB" },
+  // CB mode tunes window CENTRES, which sit up to a window off the band edges.
+  { lo: 26_000_000, hi: 27_999_999, name: "CB" },
   { lo: 118_000_000, hi: 137_000_000, name: "AIRBAND" },
   { lo: 144_000_000, hi: 148_000_000, name: "2M" },
   { lo: 148_000_000, hi: 174_000_000, name: "VHF-HI" },
