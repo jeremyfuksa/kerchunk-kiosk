@@ -143,6 +143,17 @@ describe("LightningFeed", () => {
     expect(seen).toHaveLength(2);
   });
 
+  it("a throwing onFlashes subscriber can't break the poll", async () => {
+    const keys = [keyAt(T0 - 40_000)];
+    const { feed } = makeFeed({ keys: () => keys, now: () => T0, parse: () => [flashAt(T0 - 39_000)] });
+    feed.onFlashes(() => { throw new Error("ws down"); });
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await expect(feed.pollOnce()).resolves.toBeUndefined();
+      expect(feed.since(0)).toHaveLength(1);
+    } finally { err.mockRestore(); }
+  });
+
   it("is stale until a file lands, then fresh until staleMs past its end", async () => {
     let now = T0;
     const keys = [keyAt(T0 - 40_000)];

@@ -130,7 +130,9 @@ export class LightningFeed implements LightningSource {
     }
     const cut = now - this.o.bufferMs;
     this.buf = [...this.buf, ...fresh].filter((f) => f.t > cut).sort((a, b) => a.t - b.t);
-    if (fresh.length > 0) this.cb?.(fresh);
+    if (fresh.length > 0) {
+      try { this.cb?.(fresh); this.ok("announce"); } catch (err) { this.warn("announce", err); }
+    }
   }
 
   private async list(from: number, to: number, after: string): Promise<string[]> {
