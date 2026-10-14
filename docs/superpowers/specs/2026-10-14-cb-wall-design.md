@@ -1,6 +1,6 @@
 # CB wall: the dial
 
-Status: design approved in chat 2026-10-14; awaiting written-spec review.
+Status: implemented (PR pending).
 Depends on CB mode (PR #296: `POST /api/mode {mode:"cb"}`, `config.cb.channels`).
 
 ## Why
@@ -92,7 +92,7 @@ Mockups: `.superpowers/brainstorm/133633-1792018833/content/cb-layout.html`
 ### Data
 
 - **On entering CB (and on load in CB):** one
-  `GET /api/history?tag=cb&since=<now − max(fadeStepsMin)>&limit=200`,
+  `GET /api/history?tag=cb&since=<now − 24 h>&limit=200` (24 h, not the fade window: the log rows can predate it),
   through the dashboard's sequential poller (never parallel: the appliance
   deadlocks on concurrent requests). It seeds each channel's last-heard time,
   the readout's last-heard channel and the log. If it fails, the dial starts
