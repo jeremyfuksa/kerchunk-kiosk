@@ -27,6 +27,8 @@ export interface GlassTimings {
   smokeStepMs: number;
   /** Drift over a full life per mph, px at 1080 tall (display.glass.smokePxPerMph). */
   smokePxPerMph: number;
+  /** Live-spark tick while any front is unreleased (display.glass.liveSparkStepMs); 0 = off. */
+  liveSparkStepMs: number;
   /** A release within this of the site's newest puff's birth re-feeds it. */
   puffMergeMs: number;
 }
@@ -284,9 +286,15 @@ export class GlassState {
     for (const p of this.puffs) alive.add(p.site.key);
     for (const key of [...this.sites.keys()]) if (!alive.has(key)) this.sites.delete(key);   // window over: hits reset
     if (this.puffs.length) next = Math.min(next, nextTick(now, stepMs));
+    const liveMs = this.t.liveSparkStepMs;
+    let liveStep = 0;
+    if (liveMs > 0 && fronts.some((f) => f.releasing === 0)) {
+      liveStep = Math.floor(now / liveMs);
+      next = Math.min(next, nextTick(now, liveMs));
+    }
     puffs.sort((a, b) => b.strength - a.strength);
     return {
-      fronts, puffs, step: Math.round(tick / stepMs), growing, continuous,
+      fronts, puffs, step: Math.round(tick / stepMs), growing, continuous, liveStep,
       nextChangeAt: Number.isFinite(next) ? next : null,
     };
   }

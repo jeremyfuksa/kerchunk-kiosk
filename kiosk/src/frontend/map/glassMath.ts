@@ -46,9 +46,11 @@ export interface GlassFrame {
   /** Date.now() ms of the next VISIBLE change if no event arrives (a smoke
    *  tick, a rate-limited signal step, a ttl expiry); null = never. */
   nextChangeAt: number | null;
+  /** Live-spark grid tick (display.glass.liveSparkStepMs); 0 = none live / off. */
+  liveStep: number;
 }
 
-export const EMPTY_FRAME: GlassFrame = Object.freeze({ fronts: [], puffs: [], step: 0, growing: false, continuous: false, nextChangeAt: null }) as GlassFrame;
+export const EMPTY_FRAME: GlassFrame = Object.freeze({ fronts: [], puffs: [], step: 0, growing: false, continuous: false, nextChangeAt: null, liveStep: 0 }) as GlassFrame;
 
 // Uniform-array sizes compiled into glassShaders.ts — keep in sync.
 export const MAX_FRONTS = 8;

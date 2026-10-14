@@ -46,6 +46,7 @@ export class GlassLayer {
   private gl: Gl | null = null;
   private radarProg: Prog | null = null;
   private fxProg: Prog | null = null;
+  private windGl: [number, number] = [0, 0];   // downwind unit, gl px (+y north); calm = 0,0
   private smokeProg: Prog | null = null;
   private smokeFbo: WebGLFramebuffer | null = null;
   private smokeTex: WebGLTexture | null = null;
@@ -92,6 +93,11 @@ export class GlassLayer {
   }
 
   setRadar(f: RadarFrame): void { this.pending = f; this.poke(); }
+
+  /** Downwind unit [east, north] for the live embers; null = calm. */
+  setWind(dir: [number, number] | null): void {
+    this.windGl = dir ?? [0, 0];   // no poke: it shows on the next live tick (quiet band stays at zero redraws)
+  }
 
   setRadarStale(stale: boolean): void {
     this.fade.setStale(stale, performance.now());
@@ -179,7 +185,7 @@ export class GlassLayer {
     }
     const gl = raw;
     this.radarProg = link(gl, RADAR_VS, RADAR_FS, ["uMvp", "uPrev", "uNext", "uTexSize", "uMix", "uAlpha", "uMinDbz", "uOpacity"]);
-    this.fxProg = link(gl, FX_VS, FX_FS, ["uRes", "uTime", "uHaze", "uFrontA", "uFrontB", "uFrontC", "uNFronts", "uSmoke", "uHasSmoke"]);
+    this.fxProg = link(gl, FX_VS, FX_FS, ["uRes", "uTime", "uHaze", "uFrontA", "uFrontB", "uFrontC", "uNFronts", "uSmoke", "uHasSmoke", "uLiveStep", "uSparkDensity", "uWind"]);
     this.smokeProg = link(gl, FX_VS, SMOKE_FS, ["uScale", "uPuffA", "uPuffB", "uPuffC", "uNPuffs", "uStep", "uSmokeBody", "uSparkDensity", "uHueDominance"]);
     if (!this.radarProg || !this.fxProg || !this.smokeProg) { this.giveUp("off:shader"); return; }
     const saved = saveGl(gl);
@@ -357,6 +363,9 @@ export class GlassLayer {
       gl.bindTexture(gl.TEXTURE_2D, np > 0 ? this.smokeTex : null);
       gl.uniform1i(u.uSmoke!, 0);
       gl.uniform1f(u.uHasSmoke!, np > 0 ? 1 : 0);
+      gl.uniform1f(u.uLiveStep!, frame.liveStep % STEP_WRAP);
+      gl.uniform1f(u.uSparkDensity!, k.sparkDensity);
+      gl.uniform2f(u.uWind!, this.windGl[0], this.windGl[1]);
       gl.bindVertexArray(this.fxVao);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
     }

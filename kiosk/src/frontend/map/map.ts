@@ -6,7 +6,7 @@ import { coverageRadiusM } from "./blips.js";
 import { AircraftLayer } from "./aircraft.js";
 import { GlassLayer } from "./glassLayer.js";
 import { RadarSync, httpRadarFetchers } from "./radarSync.js";
-import { GlassState, RELEASE_MS, type GlassSite } from "./glassState.js";
+import { GlassState, RELEASE_MS, windDir, type GlassSite } from "./glassState.js";
 import { hexToGlowRgb } from "./glassMath.js";
 import { scatterSpot, isSilentHit, SCATTER_KEY, type ScatterStage } from "./scatter.js";
 import { padRect, outside, edgeExit, lngLatToViewPx, occluded, slideClear, BLOOM_PX, type Rect } from "./stage.js";
@@ -248,13 +248,17 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
       holdFps: display.glass.holdFps, signalSteps: display.glass.signalSteps,
       smokeLifeMs: display.glass.smokeLifeMs, smokeStepMs: display.glass.smokeStepMs,
       smokePxPerMph: display.glass.smokePxPerMph, puffMergeMs: display.glass.puffMergeMs,
+      liveSparkStepMs: display.glass.liveSparkStepMs,
     });
     // Smoke drifts with the dashboard's /api/weather wind (lib/wind.ts): no
     // poll of our own. A wind change turns live smoke where it is (a bend).
-    onWind((w) => glassState.setWind(w, Date.now()));
     const glass = mapId
       ? new GlassLayer({ map, home, knobs: display.glass, getFrame: (now) => glassState.frame(now) })
       : null;
+    onWind((w) => {
+      glassState.setWind(w, Date.now());
+      glass?.setWind(w && w.mph > 0 ? windDir(w.towardDeg) : null);
+    });
     const poke = (): void => { if (glass && !glass.off) glass.poke(); };
     // How often the wall really redraws (spec 2026-10-02 proof): one journal
     // line every PACING_REPORT_MS on the kiosk.
