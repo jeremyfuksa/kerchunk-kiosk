@@ -397,4 +397,12 @@ describe("live-spark tick (spec 2026-10-13)", () => {
     expect(f.nextChangeAt).not.toBe(10_500);
     expect(f.liveStep).toBe(0);
   });
+  it("a released front no longer schedules the live tick", () => {
+    const g = new GlassState(L);
+    g.keyUp("a", lsite, 5000, 0);
+    g.release("a", 9000);
+    const f = g.frame(10_000);
+    expect(f.liveStep).toBe(0);
+    expect(f.nextChangeAt).not.toBe(10_500);
+  });
 });

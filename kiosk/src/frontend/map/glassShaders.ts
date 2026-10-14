@@ -142,7 +142,7 @@ void main() {
     if (live > 0.0 && uSparkDensity > 0.0) {
       vec2 rel = (px - a.xy) / R;
       vec2 up = dot(uWind, uWind) > 0.5 ? uWind : vec2(0.0);
-      float reach = length(rel - up * 0.25 * dot(rel, up));
+      float reach = length(rel - up * 0.3);   // centre drifts a short way downwind
       float dens = exp(-reach * reach * 9.0);
       vec2 cell = floor(px * 0.5);
       float gen = uLiveStep + floor(h21(cell) * 3.0);

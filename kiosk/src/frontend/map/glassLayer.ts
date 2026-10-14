@@ -364,7 +364,7 @@ export class GlassLayer {
       gl.uniform1i(u.uSmoke!, 0);
       gl.uniform1f(u.uHasSmoke!, np > 0 ? 1 : 0);
       gl.uniform1f(u.uLiveStep!, frame.liveStep % STEP_WRAP);
-      gl.uniform1f(u.uSparkDensity!, k.sparkDensity);
+      gl.uniform1f(u.uSparkDensity!, frame.liveStep > 0 ? k.sparkDensity : 0);   // 0 = live sparks off
       gl.uniform2f(u.uWind!, this.windGl[0], this.windGl[1]);
       gl.bindVertexArray(this.fxVao);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
