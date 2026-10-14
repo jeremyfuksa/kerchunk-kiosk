@@ -533,6 +533,7 @@ describe("display.glass + radarProduct retirement", () => {
       smokeBody: 0.55, sparkDensity: 1, puffMergeMs: 60_000, smokeScale: 0.4,
       siteColor: "site", hueDominance: 4,
       scatter: { enabled: true, marginPx: 80 }, liveSparkStepMs: 750,
+      lightning: { enabled: true, stepMs: 3000, replayDelayMs: 75_000, bloomSteps: 2, bloomIntensity: 0.75, bloomScale: 1, maxBlooms: 32 },
     });
   });
   it("liveSparkStepMs accepts 0 and 250-6000 only", () => {
@@ -572,5 +573,26 @@ describe("display.camera", () => {
   });
   it("accepts follow: true", () => {
     expect(configSchema.parse({ ...base(), display: { ...base().display, camera: { follow: true } } }).display!.camera.follow).toBe(true);
+  });
+});
+
+describe("display.lightning (spec 2026-10-13 glass lightning)", () => {
+  const base = () => ({ ...defaultConfig(), display: { weatherLat: 39.1, weatherLon: -94.58 } });
+  it("fills the feed defaults", () => {
+    expect(configSchema.parse(base()).display!.lightning).toEqual({
+      enabled: true, satellite: "goes19", pollMs: 20_000, bufferMs: 300_000, staleMs: 180_000,
+      fetchTimeoutMs: 30_000, maxCatchupFiles: 6, spanDeg: { w: 4, h: 3 },
+    });
+  });
+  it("rejects a poll faster than GLM's 20-s files can justify", () => {
+    expect(configSchema.safeParse({ ...base(), display: { ...base().display, lightning: { pollMs: 5_000 } } }).success).toBe(false);
+  });
+  it("replayDelayMs has a 30 s floor (late flashes drop: below GLM latency nothing would bloom)", () => {
+    const ok = (v: number) => configSchema.safeParse({ ...base(), display: { ...base().display, glass: { lightning: { replayDelayMs: v } } } }).success;
+    expect([ok(29_999), ok(30_000), ok(300_000), ok(300_001)]).toEqual([false, true, true, false]);
+  });
+  it("maxBlooms is capped at the shader's 64 slots", () => {
+    const ok = (v: number) => configSchema.safeParse({ ...base(), display: { ...base().display, glass: { lightning: { maxBlooms: v } } } }).success;
+    expect([ok(64), ok(65)]).toEqual([true, false]);
   });
 });
