@@ -442,6 +442,17 @@ export const configSchema = z.object({
     camera: z.object({
       follow: z.boolean().default(false),
     }).default({}),
+    // CB wall (spec 2026-10-14 "the dial"). A heard channel's dial tick drops
+    // one level at each fadeStepsMin minute mark (4 ascending), recomputed every
+    // stepTickMs — the heat knob: the CB wall paints only on CB events and this
+    // tick. logRows = "Heard on CB" rows. Applies on kiosk/reload.
+    cb: z.object({
+      fadeStepsMin: z.array(z.number().positive()).length(4)
+        .refine((a) => a.every((v, i) => i === 0 || v > (a[i - 1] ?? 0)), { message: "fadeStepsMin must ascend" })
+        .default([2, 10, 20, 30]),
+      stepTickMs: z.number().int().min(5_000).default(60_000),
+      logRows: z.number().int().min(1).max(12).default(5),
+    }).default({}),
   }).optional(),
   // Aircraft overlay (network ADS-B): plots airborne targets near the QTH on
   // the kiosk map from the airplanes.live public feed (no SDR, no DSP). Off by
@@ -508,6 +519,9 @@ export const configSchema = z.object({
   // but splits into windows the scanner alternates between.
   cb: z.object({
     channels: z.array(z.number().int().min(1).max(40)).min(1).optional(),
+    // Channel number ("19") → name shown on the wall, admin and history
+    // ("CB 19 · Highway"). Absent = CB_NAMES_DEFAULT (6/9/19).
+    names: z.record(z.string().regex(/^([1-9]|[1-3]\d|40)$/), z.string().min(1).max(40)).optional(),
   }).optional(),
   // RepeaterBook lookup (Close Call enrichment). userAgent must be the
   // string REGISTERED with RepeaterBook; states are full names ("Missouri").

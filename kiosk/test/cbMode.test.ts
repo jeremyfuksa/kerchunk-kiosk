@@ -8,7 +8,7 @@ import { ConfigStore } from "../src/backend/config/ConfigStore.js";
 import { ActivityLog } from "../src/backend/activityLog.js";
 import { WsHub } from "../src/backend/ws.js";
 import { FakeEngine } from "../src/backend/engine/FakeEngine.js";
-import { CB_FREQ_HZ, cbChannels, cbDefaultChannels } from "../src/backend/config/cb.js";
+import { CB_FREQ_HZ, cbChannels, cbDefaultChannels, cbNumberForFreq, cbLabel, CB_NAMES_DEFAULT } from "../src/backend/config/cb.js";
 import { configSchema, defaultConfig } from "../src/backend/config/schema.js";
 
 const SCAN_FREQ = 145_130_000;
@@ -57,7 +57,8 @@ describe("CB channel table", () => {
       expect(c).toMatchObject({ mode: "am", enabled: true, audible: true, tags: ["cb"] });
       expect(c.location).toBeUndefined();
     }
-    expect(cbChannels([19, 9, 19]).map((c) => c.alphaTag)).toEqual(["CB 9", "CB 19"]);
+    expect(cbChannels([19, 9, 19]).map((c) => c.alphaTag)).toEqual(["CB 9 · Emergency", "CB 19 · Highway"]);
+    expect(cbChannels([14], {}).map((c) => c.alphaTag)).toEqual(["CB 14"]);
   });
 
   it("config.cb.channels validates 1–40", () => {
@@ -173,5 +174,49 @@ describe("SAME break-in from CB mode", () => {
     e2.emitSame(EOM);
     vi.advanceTimersByTime(9_000);
     expect(freqs(e2.retunes.at(-1))).toContain(SCAN_FREQ);
+  });
+});
+
+describe("CB names and lookups", () => {
+  it("default names, labels, and freq → channel number", () => {
+    expect(CB_NAMES_DEFAULT).toEqual({ "6": "Super Bowl", "9": "Emergency", "19": "Highway" });
+    expect(cbLabel(19)).toBe("CB 19 · Highway");
+    expect(cbLabel(14)).toBe("CB 14");
+    expect(cbLabel(19, { "19": "Trucks" })).toBe("CB 19 · Trucks");
+    expect(cbNumberForFreq(27_185_000)).toBe(19);
+    expect(cbNumberForFreq(27_255_000)).toBe(23);
+    expect(cbNumberForFreq(146_790_000)).toBeNull();
+  });
+
+  it("config.cb.names validates channel-number keys; toScanConfig uses them", () => {
+    const base = defaultConfig();
+    expect(configSchema.safeParse({ ...base, cb: { names: { "19": "Trucks" } } }).success).toBe(true);
+    expect(configSchema.safeParse({ ...base, cb: { names: { "41": "x" } } }).success).toBe(false);
+    expect(configSchema.safeParse({ ...base, cb: { names: { "19": "" } } }).success).toBe(false);
+    const sc = toScanConfig({ ...base, cb: { channels: [19], names: { "19": "Trucks" } } }, "cb");
+    expect(sc.channels[0]?.alphaTag).toBe("CB 19 · Trucks");
+  });
+
+  it("display.cb defaults and bounds", () => {
+    // defaultConfig() has no display block; give it the two required fields.
+    const display = { weatherLat: 39.1, weatherLon: -94.58 };
+    const parsed = configSchema.parse({ ...defaultConfig(), display });
+    expect(parsed.display?.cb).toEqual({ fadeStepsMin: [2, 10, 20, 30], stepTickMs: 60_000, logRows: 5 });
+    const withCb = (cb: unknown) => configSchema.safeParse({ ...defaultConfig(), display: { ...display, cb } }).success;
+    expect(withCb({ fadeStepsMin: [1, 5, 9, 12] })).toBe(true);
+    expect(withCb({ fadeStepsMin: [5, 2, 9, 12] })).toBe(false);   // must ascend
+    expect(withCb({ fadeStepsMin: [2, 10, 20] })).toBe(false);      // exactly 4
+    expect(withCb({ stepTickMs: 1000 })).toBe(false);               // ≥ 5 s
+    expect(withCb({ logRows: 0 })).toBe(false);
+  });
+});
+
+describe("POST /api/test/tx cb_<n>", () => {
+  it("plays a synthetic CB transmission with the CB label", async () => {
+    const { server } = makeApp();
+    const res = await request(server).post("/api/test/tx").send({ channelId: "cb_19", holdMs: 1000 });
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ ok: true, channelId: "cb_19", holdMs: 1000 });
+    expect((await request(server).post("/api/test/tx").send({ channelId: "cb_41" })).status).toBe(404);
   });
 });

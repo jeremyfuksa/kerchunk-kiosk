@@ -33,15 +33,32 @@ export function cbDefaultChannels(lanesPerGroup: number): number[] {
   return order.slice(0, Math.max(1, lanesPerGroup)).sort((a, b) => a - b);
 }
 
+/** Built-in channel names (operator: 6 "Super Bowl", 9 "Emergency",
+ *  19 "Highway"). config.cb.names replaces the whole map. */
+export const CB_NAMES_DEFAULT: Readonly<Record<string, string>> = { "6": "Super Bowl", "9": "Emergency", "19": "Highway" };
+
+/** The CB channel number at exactly this frequency, or null (history rows
+ *  carry only freq). */
+export function cbNumberForFreq(freqHz: number): number | null {
+  for (const n of CB_ALL) if (CB_FREQ_HZ[n] === freqHz) return n;
+  return null;
+}
+
+/** "CB 19 · Highway", or "CB 14" for an unnamed channel. */
+export function cbLabel(n: number, names: Readonly<Record<string, string>> = CB_NAMES_DEFAULT): string {
+  const name = names[String(n)];
+  return name ? `CB ${n} · ${name}` : `CB ${n}`;
+}
+
 /** The CB-mode channel set. Always audible: picking CB mode is deliberate
  *  listening, so the family speaker gate doesn't apply. No location — CB
  *  hits land in history but never on the map. */
-export function cbChannels(numbers: readonly number[] = CB_ALL): Channel[] {
+export function cbChannels(numbers: readonly number[] = CB_ALL, names: Readonly<Record<string, string>> = CB_NAMES_DEFAULT): Channel[] {
   const out: Channel[] = [];
   for (const n of [...new Set(numbers)].sort((a, b) => a - b)) {
     const freq = CB_FREQ_HZ[n];
     if (freq === undefined) continue;
-    out.push({ id: `cb_${n}`, freq, alphaTag: `CB ${n}`, mode: "am", enabled: true, audible: true, tags: ["cb"] });
+    out.push({ id: `cb_${n}`, freq, alphaTag: cbLabel(n, names), mode: "am", enabled: true, audible: true, tags: ["cb"] });
   }
   return out;
 }
