@@ -1,4 +1,5 @@
 import type { Channel } from "../config/schema.js";
+import type { Flash } from "../lightning/types.js";
 import type { CoverageKind } from "./coverage.js";
 import type { AutoDwellConfig, PriorityRevisitConfig } from "./scanSchedule.js";
 
@@ -155,6 +156,9 @@ export type EngineEvent =
   // A new radar scan landed in RadarFeed (Weather Glass): the page fetches
   // /api/radar/frame once. Synthesized by the server, like "aircraft".
   | { type: "radar"; scanTime: number; ts: number }
+  // New GLM flashes landed in LightningFeed (Weather Glass blooms). clear:true
+  // (test route only) drops the wall's pending flashes. Synthesized by the server.
+  | { type: "lightning"; flashes: Flash[]; clear?: boolean; ts: number }
   | { type: "status"; state: EngineState; ts: number }
   // Cold-start warm-up progress (drives the kiosk "WARMING UP" overlay). A
   // distinct type — NOT a status substate — so it never trips the WS replay

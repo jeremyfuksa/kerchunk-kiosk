@@ -171,6 +171,7 @@ additionally removes orphans (recorded on a hit that never filed) and enforces
 | POST | `/api/power/estimate` | Run the CPU-budget estimator. |
 | GET | `/api/radar` | Latest NEXRAD crop for the Weather Glass layer: `{ scanTime, fetchedAt, bounds:{n,s,e,w}, width, height, stale }` (`404` when `display.radar.enabled` is false, `503` before the first scan). Source: `display.radar.source` — `mrms` (default; IEM's MRMS SeamlessHSR `lcref`, NOAA-QC'd so clear-air insect/bird return is removed) or `n0q` (raw NEXRAD base reflectivity) — cropped to `display.radar.spanDeg` around the QTH. |
 | GET | `/api/radar/frame` | The crop's raw reflectivity indices (`width·height` bytes, row-major, north row first; index 0 = no echo, else dBZ = −32 + 0.5·index, for either source), gzip'd, `ETag: "<scanTime>-<w>x<h>-<west>,<north>"` (`304` on `If-None-Match`). |
+| GET | `/api/lightning?since=<epoch ms>` | GOES-19 GLM flashes inside `display.lightning.spanDeg` around the QTH, buffered for `display.lightning.bufferMs` (5 min): `{ flashes: [{ t, lat, lon, energyFj, areaKm2 }], stale, latestEnd }`. `t` = epoch ms of the flash's first event; `latestEnd` = scan end of the newest processed 20-s file (null before the first); `stale` = no file for `display.lightning.staleMs`. `since` omitted or invalid → the whole buffer. `404` when `display.lightning.enabled` is false. Source: NOAA `noaa-goes19` S3, `GLM-L2-LCFA`. |
 
 `/api/system` `scanCoverage`:
 
@@ -198,7 +199,7 @@ additionally removes orphans (recorded on a hit that never filed) and enforces
 One JSON message per event, `EngineEvent` union
 (`kiosk/src/backend/engine/ScannerEngine.ts`): `active`, `audible`,
 `release`, `idle`, `closecall`, `rf`, `tone`, `same`, `signal`, `tuned`,
-`alert`, `aircraft`, `radar`, `status`, `warmup`, `reload`, `error`. `tone`
+`alert`, `aircraft`, `radar`, `lightning`, `status`, `warmup`, `reload`, `error`. `tone`
 (`{ channelId, ctcssHz?, dcs? }`) is the CTCSS tone and/or DCS code heard on
 an open FM channel, once per transmission; `dcs` is in its on-air normal form
 (`"047N"` for a `023I` transmitter — the two are identical on air). The server
@@ -207,6 +208,10 @@ the last now-playing event and last non-empty aircraft snapshot replayed;
 stuck clients (>512 KB buffered) get events dropped, not queued.
 `radar` (`{ scanTime }`) fires once per new NEXRAD scan; pages then fetch
 `/api/radar/frame`.
+`lightning` (`{ flashes, clear? }`) carries each batch of fresh GLM flashes
+(one per 20-s file with any in-box flash). Pages schedule them locally
+(`display.glass.lightning`); `clear: true` comes only from
+`POST /api/test/lightning`.
 
 ### Static routes
 

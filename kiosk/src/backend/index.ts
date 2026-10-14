@@ -18,6 +18,7 @@ import { FccProx } from "./fccprox.js";
 import { BusinessGuess } from "./businessGuess.js";
 import { AircraftFeed } from "./aircraft.js";
 import { RadarFeed } from "./radar/RadarFeed.js";
+import { LightningFeed } from "./lightning/LightningFeed.js";
 import { composeLookups, type LookupProvider } from "./lookup.js";
 import { NwsWeather } from "./weather.js";
 import { HistoryStore } from "./history.js";
@@ -284,12 +285,30 @@ const radar = config.display && radarCfg?.enabled
     })
   : undefined;
 
+// GOES-19 GLM lightning for the Weather Glass blooms (spec 2026-10-13). On by
+// default with a QTH; display.lightning.enabled=false opts out. The poll
+// window follows the wall's replay delay so boot fills it and nothing older.
+const lightningCfg = config.display?.lightning;
+const lightning = config.display && lightningCfg?.enabled
+  ? new LightningFeed({
+      center: { lat: config.display.weatherLat, lon: config.display.weatherLon },
+      span: lightningCfg.spanDeg,
+      satellite: lightningCfg.satellite,
+      pollMs: lightningCfg.pollMs,
+      bufferMs: lightningCfg.bufferMs,
+      staleMs: lightningCfg.staleMs,
+      fetchTimeoutMs: lightningCfg.fetchTimeoutMs,
+      maxCatchupFiles: lightningCfg.maxCatchupFiles,
+      windowMs: config.display.glass.lightning.replayDelayMs + 45_000,
+    })
+  : undefined;
+
 // Bound after createServer (it needs getConfig); beats before then are dropped.
 let wallWatchdog: WallWatchdog | undefined;
 
 const { server, getConfig } = createServer({
   configStore, engine, weatherEngine, activityLog, wsHub, staticDir: STATIC_DIR,
-  lookup, weather, history, aircraftFeed, radar,
+  lookup, weather, history, aircraftFeed, radar, lightning,
   ccSampleDir: join(dirname(CONFIG_PATH), "cc-samples"),
   selfProtect: true,
   wallHeartbeat: () => wallWatchdog?.beat(),
@@ -382,6 +401,7 @@ server.listen(PORT, () => {
 const shutdown = async (): Promise<void> => {
   aircraftFeed?.stop();
   radar?.stop();
+  lightning?.stop();
   await Promise.all([engine.stop(), weatherEngine?.stop() ?? Promise.resolve()]);
   server.close();
   process.exit(0);
