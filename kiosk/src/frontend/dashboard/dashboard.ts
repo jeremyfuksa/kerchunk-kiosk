@@ -19,6 +19,11 @@ import icoSnow from "lucide-static/icons/cloud-snow.svg?raw";
 import icoFog from "lucide-static/icons/cloud-fog.svg?raw";
 import icoWind from "lucide-static/icons/wind.svg?raw";
 import icoArrow from "lucide-static/icons/navigation-2.svg?raw";
+import { CB_EMPTY, cbReduce, cbSeed, type CbState, type CbHistoryRow } from "./cbDial.js";
+import { cbView, cbHtml, CB_VIEW_DEFAULTS } from "./cbView.js";
+import { CB_NAMES_DEFAULT, cbDefaultChannels } from "../../backend/config/cb.js";
+import { DEFAULT_LANES_PER_GROUP } from "../../backend/config/engineDefaults.js";
+import type { MapHandle } from "../map/map.js";
 import "./dashboard.css";
 
 export interface NowPlaying { freq: number; alphaTag: string; tags?: readonly string[]; }
@@ -159,6 +164,7 @@ export function renderDashboard(root: HTMLElement): void {
         </div>
         <aside class="kc-recent"><h2>Recently heard</h2><ul id="logList"></ul></aside>
       </div>
+      <div id="cbStage" class="kc-cb" aria-hidden="true"></div>
     </div>`;
   // ── Poll budget ─────────────────────────────────────────────────────────
   // Three independent timers (status 5 s, system 10 s, weather 10 min) used to
@@ -174,8 +180,15 @@ export function renderDashboard(root: HTMLElement): void {
   // True once the WebGL map mounts (the .mapStage layout). Under it, the Recent
   // log is display:none, so paint() skips rebuilding it.
   let mapMounted = false;
+  let mapHandle: MapHandle | null = null;
   void mountActivityMap(root.querySelector<HTMLElement>("#mapBase")!, { interactive: false })
-    .then((mounted) => { if (mounted) { mapMounted = true; dashEl.classList.add("mapStage"); } })
+    .then((h) => {
+      if (!h) return;
+      mapMounted = true;
+      mapHandle = h;
+      dashEl.classList.add("mapStage");
+      if (cbOn) h.pause(); // the page loaded in CB mode before the map mounted
+    })
     .catch(() => { /* no map = classic dashboard, nothing lost */ });
   let lastRiskSig = "";
   function paintRisk(): Promise<void> {
@@ -191,6 +204,59 @@ export function renderDashboard(root: HTMLElement): void {
     }).catch(() => {});
   }
   poller.poll("risk", paintRisk, POLL_MS.risk);
+
+  // ── CB stage (spec 2026-10-14 "the dial"): in mode cb the map is hidden and
+  // paused and the dial takes the screen. The model folds every WS event in
+  // (cheap; non-CB events are ignored); the DOM is touched only while on.
+  let cb: CbState = CB_EMPTY;
+  let cbOn = false;
+  let cbTimer: ReturnType<typeof setInterval> | null = null;
+  let cbKey = "";
+  let cbSegEls: HTMLElement[] = [];
+  let cbDbEl: HTMLElement | null = null;
+  const cbEl = root.querySelector<HTMLElement>("#cbStage")!;
+  // How far back the entry backfill reaches (log rows can predate the fade).
+  const CB_HISTORY_MS = 24 * 60 * 60_000;
+  let cbOpts = {
+    names: CB_NAMES_DEFAULT as Readonly<Record<string, string>>,
+    monitored: cbDefaultChannels(DEFAULT_LANES_PER_GROUP) as readonly number[],
+    ...CB_VIEW_DEFAULTS,
+  };
+  // Same shared request the map's mount makes (api.getConfig dedupes it).
+  void api.getConfig().then((cfg) => {
+    cbOpts = {
+      names: cfg.cb?.names ?? CB_NAMES_DEFAULT,
+      monitored: cfg.cb?.channels ?? cbDefaultChannels(cfg.scan.lanesPerGroup ?? DEFAULT_LANES_PER_GROUP),
+      ...CB_VIEW_DEFAULTS,
+      ...cfg.display?.cb,
+    };
+  }).catch(() => { /* defaults stand */ });
+
+  function setCbStage(on: boolean): void {
+    if (on === cbOn) return;        // idempotent: a break-in round trip can't stack timers
+    cbOn = on;
+    dashEl.classList.toggle("cbStage", on);
+    cbEl.setAttribute("aria-hidden", String(!on));
+    if (on) {
+      mapHandle?.pause();
+      poller.request("cbHistory");
+      cbTimer = setInterval(schedule, cbOpts.stepTickMs); // fade steps; paint skips if nothing moved
+    } else {
+      mapHandle?.resume();
+      if (cbTimer) { clearInterval(cbTimer); cbTimer = null; }
+      cbKey = "";
+      cbEl.innerHTML = "";
+    }
+    schedule();
+  }
+
+  // Runs once per CB entry (request()), through the sequential lane.
+  poller.poll("cbHistory", () => {
+    if (!cbOn) return Promise.resolve();
+    return api.getHistory<CbHistoryRow[]>({ tag: "cb", since: Date.now() - CB_HISTORY_MS, limit: 200 })
+      .then((rows) => { cb = cbSeed(cb, rows); schedule(); })
+      .catch(() => { /* the dial fills from live events */ });
+  }, Number.POSITIVE_INFINITY);
 
   const logEl = root.querySelector<HTMLElement>("#logList")!;
   // Coalesce repaints to one per animation frame: a burst of WS events in a
@@ -220,6 +286,7 @@ export function renderDashboard(root: HTMLElement): void {
         // The 5s poll usually reads identical values — only repaint on a change.
         const changed = s.mode !== mode || sc !== scanCount || mu !== muted || bi !== breakIn || wm !== state.warmed;
         mode = s.mode; scanCount = sc; muted = mu; breakIn = bi;
+        setCbStage(s.mode === "cb");
         if (wm !== state.warmed) state = { ...state, warmed: wm };
         if (changed) schedule();
       })
@@ -336,6 +403,7 @@ export function renderDashboard(root: HTMLElement): void {
     pillHost.setAttribute("aria-hidden", String(v.show === "glass"));
     glassHost.setAttribute("aria-hidden", String(v.show === "pill"));
     paintLog();
+    if (cbOn) paintCb();
   }
 
   // Under the full-screen map layout the Recent log is display:none — skip the
@@ -345,6 +413,21 @@ export function renderDashboard(root: HTMLElement): void {
     logEl.innerHTML = state.log
       .map((r) => `<li><span class="t">${fmtTime(r.ts)}</span> ${fmtFreq(r.freq)} ${esc(r.alphaTag)}</li>`)
       .join("");
+  }
+
+  function paintCb(): void {
+    const v = cbView({ cb, now: Date.now(), liveFreq: state.nowPlaying?.freq ?? null, error: state.error, muted, ...cbOpts });
+    if (v.key !== cbKey) {
+      cbKey = v.key;
+      cbEl.innerHTML = cbHtml(v, state.signalDb);
+      cbSegEls = Array.from(cbEl.querySelectorAll<HTMLElement>(".kc-cb__seg i"));
+      cbDbEl = cbEl.querySelector<HTMLElement>(".kc-cb__db");
+    } else if (v.readout.state === "live") {
+      // Signal ticks on the same channel only move the meter and the dB text.
+      const lit = segmentsLit(meterFill(state.signalDb), METER_SEGMENTS);
+      cbSegEls.forEach((el, k) => el.classList.toggle("on", k < lit));
+      if (cbDbEl) cbDbEl.textContent = dbText(state.signalDb);
+    }
   }
 
   // Clock: tick on the minute boundary (kiosk readout, no seconds noise).
@@ -414,6 +497,7 @@ export function renderDashboard(root: HTMLElement): void {
     if (ev.type === "reload") { location.reload(); return; }
     if (ev.type === "warmup") sawWarmupEvent = true; // WS now owns `warmed`
     state = reduce(state, ev);
+    cb = cbReduce(cb, ev);
     // Mode, mute and break-in can change on these: re-poll status through the
     // lane (a break-in is a retune, so only the alert announces it).
     if (ev.type === "status" || ev.type === "alert") poller.request("status");
