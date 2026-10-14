@@ -446,7 +446,9 @@ export const configSchema = z.object({
       // ticks — redraws/min ≈ 60000 / stepMs while a storm is on screen, 0
       // otherwise. Keep stepMs a divisor of smokeStepMs so ticks coincide.
       // replayDelayMs floor 30 s: GLM files arrive 20–50 s late and a flash
-      // more than one tick late is dropped.
+      // more than one tick late is dropped. The backend also reads replayDelayMs
+      // at boot to size its poll window (replayDelayMs + 45 s), so changing it
+      // fully needs a kerchunk-kiosk restart, not just kiosk/reload.
       lightning: z.object({
         enabled: z.boolean().default(true),
         stepMs: z.number().int().min(1_000).max(60_000).default(3_000),

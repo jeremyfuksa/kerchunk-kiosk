@@ -61,8 +61,8 @@ export class LightningFeed implements LightningSource {
   private timer: ReturnType<typeof setTimeout> | null = null;
   private stopped = true;
   private readonly failing = new Set<string>();
-  private readonly totals = { files: 0, bytes: 0, flashes: 0 };
-  private hourMark = { at: 0, files: 0, bytes: 0, flashes: 0 };
+  private readonly totals = { files: 0, bytes: 0, flashes: 0, parseFailures: 0 };
+  private hourMark = { at: 0, files: 0, bytes: 0, flashes: 0, parseFailures: 0 };
 
   constructor(private readonly o: LightningFeedOpts) {
     const { lat, lon } = o.center;
@@ -78,13 +78,13 @@ export class LightningFeed implements LightningSource {
   latestEnd(): number | null { return this.end; }
   isStale(now = this.now()): boolean { return this.end === null || now - this.end > this.o.staleMs; }
   onFlashes(cb: (flashes: Flash[]) => void): void { this.cb = cb; }
-  stats(): { files: number; bytes: number; flashes: number } { return { ...this.totals }; }
+  stats(): { files: number; bytes: number; flashes: number; parseFailures: number } { return { ...this.totals }; }
 
   start(): void {
     if (!this.stopped) return;
     this.stopped = false;
     this.hourMark = { at: this.now(), ...this.totals };
-    void this.loop();
+    void this.loop().catch((err) => this.warn("loop", err));
   }
 
   stop(): void {
@@ -122,6 +122,7 @@ export class LightningFeed implements LightningSource {
           if (end !== undefined) this.end = Math.max(this.end ?? end, end);
           this.ok("parse");
         } catch (err) {
+          this.totals.parseFailures++;
           this.warn("parse", err, key); // a bad file never heals: lastKey already moved past it
         }
       }
@@ -143,7 +144,7 @@ export class LightningFeed implements LightningSource {
         const q = new URLSearchParams({ "list-type": "2", prefix, "start-after": after });
         if (token) q.set("continuation-token", token);
         const res = await this.fetcher(`${this.base}/?${q.toString()}`);
-        if (!res.ok) throw new Error(`list HTTP ${res.status}`);
+        if (!res.ok) { await res.arrayBuffer().catch(() => {}); throw new Error(`list HTTP ${res.status}`); }
         const page = parseListing(await res.text());
         keys.push(...page.keys);
         token = page.next;
@@ -154,7 +155,7 @@ export class LightningFeed implements LightningSource {
 
   private async download(key: string): Promise<Uint8Array> {
     const res = await this.fetcher(`${this.base}/${key}`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) { await res.arrayBuffer().catch(() => {}); throw new Error(`HTTP ${res.status}`); }
     return new Uint8Array(await res.arrayBuffer());
   }
 
@@ -173,7 +174,7 @@ export class LightningFeed implements LightningSource {
     if (now - this.hourMark.at < HOUR_MS) return;
     const t = this.totals, m = this.hourMark;
     const mb = (t.bytes - m.bytes) / 1e6;
-    console.log(`[lightning] last hour: ${t.files - m.files} files, ${mb.toFixed(1)} MB (${(mb * 1e3 / ((now - m.at) / 1000)).toFixed(1)} KB/s), ${t.flashes - m.flashes} flashes in box`);
+    console.log(`[lightning] last hour: ${t.files - m.files} files, ${mb.toFixed(1)} MB (${(mb * 1e3 / ((now - m.at) / 1000)).toFixed(1)} KB/s), ${t.flashes - m.flashes} flashes in box, ${t.parseFailures - m.parseFailures} parse failures`);
     this.hourMark = { at: now, ...t };
   }
 
@@ -182,7 +183,7 @@ export class LightningFeed implements LightningSource {
     await this.pollOnce();
     this.logHour();
     if (this.stopped) return;
-    this.timer = setTimeout(() => void this.loop(), this.o.pollMs);
+    this.timer = setTimeout(() => void this.loop().catch((err) => this.warn("loop", err)), this.o.pollMs);
     this.timer.unref?.();
   }
 }

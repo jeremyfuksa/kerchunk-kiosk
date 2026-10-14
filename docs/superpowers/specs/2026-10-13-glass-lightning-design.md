@@ -158,7 +158,7 @@ Wall, applied on `kiosk/reload`:
 ```
 display.glass.lightning.enabled         true
 display.glass.lightning.stepMs          3000    // 1000…60000; redraws/min ≈ 60000/stepMs while storming
-display.glass.lightning.replayDelayMs   75000   // 0…300000
+display.glass.lightning.replayDelayMs   75000   // 30000…300000 (GLM files arrive 20–50 s late; a flash more than one tick late is dropped)
 display.glass.lightning.bloomSteps      2       // 1…6
 display.glass.lightning.bloomIntensity  0.75    // 0…1.5
 display.glass.lightning.bloomScale      1.0     // 0.2…3, × flash radius

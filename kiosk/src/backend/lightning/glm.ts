@@ -6,7 +6,7 @@
 import { writeFile, unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import * as h5wasm from "h5wasm/node";
+import type * as H5Wasm from "h5wasm/node";
 import type { Box, Flash } from "./types.js";
 
 /** GOES-R epoch: product_time is seconds since 2000-01-01 12:00:00 UTC. */
@@ -57,18 +57,21 @@ const first = (v: unknown, dflt: number): number => {
   return typeof x === "number" ? x : dflt;
 };
 
-let ready: Promise<unknown> | null = null;
+// Lazy: importing h5wasm/node instantiates its ~4 MB WASM module, which a
+// backend with lightning disabled should never pay for.
+let h5: Promise<typeof H5Wasm> | null = null;
+const loadH5 = (): Promise<typeof H5Wasm> =>
+  (h5 ??= import("h5wasm/node").then(async (m) => { await m.ready; return m; }).catch((err) => { h5 = null; throw err; }));
 let seq = 0;
 
 export async function readGlm(bytes: Uint8Array): Promise<RawGlm> {
-  ready ??= h5wasm.ready;
-  await ready;
+  const h5wasm = await loadH5();
   const path = join(tmpdir(), `kerchunk-glm-${process.pid}-${seq++}.nc`);
   await writeFile(path, bytes);
   try {
     const f = new h5wasm.File(path, "r");
     try {
-      const ds = (name: string): h5wasm.Dataset => {
+      const ds = (name: string): H5Wasm.Dataset => {
         const d = f.get(name);
         if (!(d instanceof h5wasm.Dataset)) throw new Error(`GLM file has no ${name}`);
         return d;

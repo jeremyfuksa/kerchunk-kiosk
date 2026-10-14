@@ -8,11 +8,12 @@ const keyAt = (ms: number) => `${keyFloor(ms, 19)}_e${stamp(ms + 20_000)}_c${sta
 const flashAt = (t: number): Flash => ({ t, lat: 39.3, lon: -94.5, energyFj: 50, areaKm2: 200 });
 
 /** A fake S3: prefix + start-after + paging (pageSize keys per page). */
-function fakeS3(keys: () => string[], opts: { pageSize?: number; failGet?: Set<string> } = {}) {
+function fakeS3(keys: () => string[], opts: { pageSize?: number; failGet?: Set<string>; failList?: { on: boolean } } = {}) {
   const pageSize = opts.pageSize ?? 1000;
   const fetcher = vi.fn(async (url: string): Promise<LightningFetchResponse> => {
     const u = new URL(url);
     if (u.searchParams.get("list-type") === "2") {
+      if (opts.failList?.on) return { ok: false, status: 503, text: async () => "", arrayBuffer: async () => new ArrayBuffer(0) };
       const prefix = u.searchParams.get("prefix") ?? "";
       const after = u.searchParams.get("start-after") ?? "";
       const token = Number(u.searchParams.get("continuation-token") ?? "0");
@@ -32,10 +33,10 @@ function fakeS3(keys: () => string[], opts: { pageSize?: number; failGet?: Set<s
 }
 
 function makeFeed(o: {
-  keys: () => string[]; now: () => number; pageSize?: number; failGet?: Set<string>;
+  keys: () => string[]; now: () => number; pageSize?: number; failGet?: Set<string>; failList?: { on: boolean };
   parse?: (key: string, box: Box) => Flash[]; windowMs?: number; maxCatchupFiles?: number;
 }) {
-  const fetcher = fakeS3(o.keys, { pageSize: o.pageSize, failGet: o.failGet });
+  const fetcher = fakeS3(o.keys, { pageSize: o.pageSize, failGet: o.failGet, failList: o.failList });
   const parsed: string[] = [];
   const parse = vi.fn(async (bytes: Uint8Array, box: Box) => {
     const key = new TextDecoder().decode(bytes);
@@ -101,6 +102,41 @@ describe("LightningFeed", () => {
     const { feed, parsed } = makeFeed({ keys: () => keys, now: () => T0, windowMs: 600_000, maxCatchupFiles: 6 });
     await feed.pollOnce();
     expect(parsed).toEqual(keys.slice(-6));
+  });
+
+  it("resuming after an outage longer than the window skips anything older than the floor", async () => {
+    let now = T0;
+    const keys = filesBetween(T0 - 60_000, T0 - 20_000);
+    const { feed, parsed } = makeFeed({ keys: () => keys, now: () => now, windowMs: 120_000, maxCatchupFiles: 6 });
+    await feed.pollOnce();
+    const before = parsed.length;
+    now = T0 + 600_000;                                      // 10 min dark; files kept arriving
+    keys.push(...filesBetween(T0, now));
+    await feed.pollOnce();
+    const floor = keyFloor(now - 120_000, 19);
+    const got = parsed.slice(before);
+    expect(got.length).toBeGreaterThan(0);
+    expect(got.length).toBeLessThanOrEqual(6);
+    expect(got.every((k) => k >= floor)).toBe(true);
+  });
+
+  it("a list failure logs once, doesn't throw, and heals on the next good poll", async () => {
+    const keys = filesBetween(T0 - 60_000, T0 - 20_000);
+    const failList = { on: true };
+    const { feed, parsed } = makeFeed({ keys: () => keys, now: () => T0, failList });
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await expect(feed.pollOnce()).resolves.toBeUndefined();
+      await feed.pollOnce();
+      expect(err).toHaveBeenCalledTimes(1);                  // warn-once
+      expect(parsed).toEqual([]);
+      failList.on = false;
+      await feed.pollOnce();
+      expect(parsed).toEqual(keys);
+      failList.on = true;
+      await feed.pollOnce();
+      expect(err).toHaveBeenCalledTimes(2);                  // healed, so it logs again
+    } finally { err.mockRestore(); }
   });
 
   it("a failed download is retried on the next poll", async () => {
@@ -174,6 +210,7 @@ describe("LightningFeed", () => {
     const s = feed.stats();
     expect(s.files).toBe(2);
     expect(s.flashes).toBe(2);
+    expect(s.parseFailures).toBe(0);
     expect(s.bytes).toBe(keys.reduce((n, k) => n + new TextEncoder().encode(k).length, 0));
   });
 

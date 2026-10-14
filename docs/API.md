@@ -209,7 +209,7 @@ stuck clients (>512 KB buffered) get events dropped, not queued.
 `radar` (`{ scanTime }`) fires once per new NEXRAD scan; pages then fetch
 `/api/radar/frame`.
 `lightning` (`{ flashes, clear? }`) carries each batch of fresh GLM flashes
-(one per 20-s file with any in-box flash). Pages schedule them locally
+(one per poll that found in-box flashes; a catch-up poll can merge several 20-s files). Pages schedule them locally
 (`display.glass.lightning`); `clear: true` comes only from
 `POST /api/test/lightning`.
 
