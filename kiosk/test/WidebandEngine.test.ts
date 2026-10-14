@@ -208,6 +208,28 @@ describe("WidebandEngine", () => {
     expect(hopped).toBe(true);
   });
 
+  it("an alert pull-in on a SILENT channel holds the window for the alert hold", async () => {
+    // alertUnmute opens the speaker in the helper; the engine must treat the
+    // channel as audible for that hold or the scanner hops mid-alert.
+    const run = async (unmute: boolean): Promise<boolean> => {
+      const tunes = tmpFile("tunes");
+      const muted = ch(146_790_000, { audible: false });
+      const { engine, events } = makeEngine({
+        FAKE_WB_TUNES_FILE: tunes,
+        FAKE_WB_SCRIPT: `{"ev":"open","id":"${muted.id}","db":-10}`,
+      }, { groupDwellMs: 1000 });
+      await engine.start(cfg([muted, VHF_B, UHF]));
+      await waitFor(() => events.some((e) => e.type === "active" && e.channel.id === muted.id), 1000);
+      if (unmute) engine.alertUnmute(muted.id, 5);
+      const tunesAtOpen = lines(tunes).length;
+      const hopped = await waitFor(() => lines(tunes).length > tunesAtOpen, 2500);
+      await engine.stop();
+      return hopped;
+    };
+    expect(await run(false)).toBe(true);
+    expect(await run(true)).toBe(false);
+  });
+
   it("scanCoverage: a muted open records quiet, never silent", async () => {
     const tunes = tmpFile("tunes");
     const muted = ch(146_790_000, { audible: false });

@@ -177,7 +177,9 @@ additionally removes orphans (recorded on a hit that never filed) and enforces
 - `scanCoverage` — `{ audible, silent, quiet, sweep, windowMs }` or `null`.
   Fractions (0–1) of the scanner's wall time over the last `windowMs`
   (10 min): holding for an audible open, holding for a silent one, plain
-  quiet dwell, sweep stops. Wideband engine only.
+  quiet dwell, sweep stops. Wideband engine only. `silent` is always 0 since
+  visual hold was retired (silent opens no longer hold); the field is kept for
+  shape stability.
 
 ### Appliance plumbing
 

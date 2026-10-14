@@ -930,7 +930,21 @@ describe("review fixes: engine lifecycle", () => {
     expect(sc.channels.find((c) => c.id === "biz")?.audible).toBe(false);
     // Monitor = the operator's direct tune: deliberate listening, never gated.
     const mon = toScanConfig(cfg, "monitor", cfg.channels[1]);
-    expect(mon.channels[0]?.audible).not.toBe(false);
+    expect(mon.channels[0]?.audible).toBe(true);
+  });
+
+  it("PUT /api/config broadcasts a kiosk reload only when audibleFamilies changed", async () => {
+    const { server, wsHub } = makeApp();
+    const sent: Array<{ type?: string }> = [];
+    const realBroadcast = wsHub.broadcast.bind(wsHub);
+    wsHub.broadcast = (m: never) => { sent.push(m); return realBroadcast(m); };
+    const cfg = (await request(server).get("/api/config")).body;
+    cfg.discoveries = [];
+    await request(server).put("/api/config").send(cfg).expect(200);
+    expect(sent.filter((m) => m.type === "reload")).toHaveLength(0);
+    cfg.audio = { ...cfg.audio, audibleFamilies: ["ham"] };
+    await request(server).put("/api/config").send(cfg).expect(200);
+    expect(sent.filter((m) => m.type === "reload")).toHaveLength(1);
   });
 
   it("PUT /api/config with only metadata changes does NOT restart the engine", async () => {

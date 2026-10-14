@@ -191,6 +191,9 @@ export class WidebandEngine implements ScannerEngine {
 
   private openIds = new Set<string>();
   private audibleId: string | null = null;
+  // Silent channels the alert pull-in has unmuted, id -> hold deadline (ms).
+  // While unexpired the channel counts as audible for hold/dwell purposes.
+  private alertUntil = new Map<string, number>();
   private lastSignalTs = 0;
 
   private groupStartedAt = 0;
@@ -401,7 +404,7 @@ export class WidebandEngine implements ScannerEngine {
     const channel = group?.channels.find((c) => c.id === id);
     if (!group || !channel || channel.background) return;
     // Silent carriers earn no dwell (spec 2026-10-13): the scan is for listening.
-    if (channel.audible === false) return;
+    if (!this.isAudibleNow(channel)) return;
     this.activity.record(WidebandEngine.groupKey(group), this.now(), this.autoDwell().halfLifeMin * 60_000);
   }
 
@@ -676,7 +679,8 @@ export class WidebandEngine implements ScannerEngine {
           // Idle again: dwell restarts from now so a long AUDIBLE hold doesn't
           // cause an instant hop when it closes. A silent close never re-arms
           // (spec 2026-10-13): silent traffic takes no scan time.
-          if (this.findChannel(ev.id)?.audible !== false) this.groupStartedAt = this.now();
+          const closed = this.findChannel(ev.id);
+          if (!closed || this.isAudibleNow(closed)) this.groupStartedAt = this.now();
         }
         break;
       }
@@ -741,8 +745,19 @@ export class WidebandEngine implements ScannerEngine {
   private hasAudibleOpen(): boolean {
     for (const id of this.openIds) {
       const channel = this.findChannel(id);
-      if (!channel || channel.audible !== false) return true;
+      if (!channel || this.isAudibleNow(channel)) return true;
     }
+    return false;
+  }
+
+  // Audible per config, or temporarily so via an unexpired alert pull-in.
+  // Expired entries are dropped here.
+  private isAudibleNow(channel: ScanChannel): boolean {
+    if (channel.audible !== false) return true;
+    const until = this.alertUntil.get(channel.id);
+    if (until === undefined) return false;
+    if (this.now() < until) return true;
+    this.alertUntil.delete(channel.id);
     return false;
   }
 
@@ -1162,6 +1177,10 @@ export class WidebandEngine implements ScannerEngine {
     // the hold. If the channel's window isn't tuned right now the command
     // finds no chain and is a no-op — the kiosk banner still fires; only the
     // audio break-in is best-effort (same coverage truth as detection).
+    const hold = Math.max(1, holdSeconds);
+    // The helper speaks for the hold; mirror it so a silent channel holds the
+    // window too (maxHoldMs still caps it).
+    this.alertUntil.set(channelId, this.now() + hold * 1000);
     if (this.child?.stdin?.writable) {
       this.child.stdin.write(JSON.stringify(
         { cmd: "alert_unmute", id: channelId, holdS: Math.max(1, holdSeconds) }) + "\n");
@@ -1187,6 +1206,7 @@ export class WidebandEngine implements ScannerEngine {
     this.clearWarmupReadyTimer();
     this.killChild();
     this.openIds.clear();
+    this.alertUntil.clear();
     this.audibleId = null;
     this.holdStartedAt = 0;
     this.setState("stopped");

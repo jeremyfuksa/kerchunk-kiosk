@@ -87,7 +87,9 @@ export function toScanConfig(
     mode === "weather"
       ? (cfg.weatherChannel ? [{ ...cfg.weatherChannel, enabled: true }] : [])
       : mode === "monitor"
-        ? (monitorChannel ? [{ ...monitorChannel, enabled: true }] : [])
+        // Deliberate listening is never family-gated: resolve audible
+        // explicitly so live events (and the wall map) report true.
+        ? (monitorChannel ? [{ ...monitorChannel, enabled: true, audible: monitorChannel.audible !== false }] : [])
         // Individual channel state is authoritative. Banks are collections
         // whose admin controls apply explicit bulk edits, never hidden runtime
         // overrides. knownHz below intentionally still covers EVERY configured
@@ -884,6 +886,10 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
       // state: stripped here too and applied live, so tuning them never
       // bounces audio.
       const strip = (s: ScanConfig) => ({ ...s, knownHz: [], lockoutHz: [], autoDwell: undefined, priorityRevisit: undefined });
+      // The wall map reads audibleFamilies at load (silent/scatter decisions):
+      // reload it when the list actually changed.
+      const familiesChanged = JSON.stringify(prev.audio.audibleFamilies)
+        !== JSON.stringify(config.audio.audibleFamilies);
       const scanChanged = JSON.stringify(strip(before)) !== JSON.stringify(strip(after));
       if (scanChanged) {
         await engine.stop();
@@ -897,6 +903,7 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
           engine.updateScheduling?.({ autoDwell: after.autoDwell, priorityRevisit: after.priorityRevisit });
         }
       }
+      if (familiesChanged) deps.wsHub.broadcast({ type: "reload", ts: Date.now() });
       return json(res, 200, config);
     }
 
