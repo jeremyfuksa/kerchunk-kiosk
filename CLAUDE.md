@@ -134,7 +134,10 @@ replays the warm-up overlay on the wall.
   knobs are `config.scan.nativeQuietDb` (`--quiet-db`) and
   `config.scan.nativeAmGainDb` (`--am-gain-db`, the AM pre-gain into the AGC),
   `config.scan.fmAudioLpfHz` (`--audio-lpf-hz`, FM weak-signal hiss),
-  `config.scan.fmAudioHpfHz` (`--audio-hpf-hz`, CTCSS hum; 0 = off).
+  `config.scan.fmAudioHpfHz` (`--audio-hpf-hz`, CTCSS hum; 0 = off),
+  `config.scan.nativeSsbGainDb` (`--ssb-gain-db`, the LSB pre-gain into the AGC).
+  Tuner correction: `config.radios[].ppm` (`--ppm`; boot-read, restart
+  `kerchunk-kiosk`).
   Group shape: `config.scan.lanesPerGroup` (`--lanes`, 12, 1…64) and
   `config.scan.sampleRateHz` (`--rate`, 2 400 000, 900k…3.2M in 50 kHz steps)
   with `windowBandwidthHz` (2 MHz, ≤ rate − 50 kHz — schema-enforced).
@@ -244,6 +247,9 @@ even with green checks.
   map. The kiosk swaps to the CB stage (`dashboard/cbDial.ts` model, `cbView.ts` view,
   `.cbStage`), pausing the map via `MapHandle.pause()`. Knobs:
   `display.cb.fadeStepsMin` / `stepTickMs` / `logRows`.
+  LSB channels: `config.cb.modes` (default `{"38":"lsb"}`, which takes channel 32's lane in
+  the default set); SSB squelch `cb.ssbOpenDb` / `cb.ssbHangMs` (1500). LSB lanes squelch on
+  sideband energy against their own floor, never the shared one (spec 2026-10-15).
 - **Engine abstraction.** Everything runs behind the `ScannerEngine` interface
   (`src/backend/engine/`), with three implementations: `WidebandEngine`
   (default; spawns the `kerchunk-dsp` C++ helper), `RtlFmEngine` (sequential

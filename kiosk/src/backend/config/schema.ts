@@ -41,7 +41,8 @@ export const channelObjectSchema = z.object({
   id: z.string().min(1),
   freq: z.number().int().positive(),
   alphaTag: z.string(),
-  mode: z.enum(["fm", "nfm", "am"]),
+  // lsb: CB-generated channels only (config/cb.ts); the admin editor doesn't offer it.
+  mode: z.enum(["fm", "nfm", "am", "lsb"]),
   enabled: z.boolean(),
   // Audibility: an enabled channel with audible:false gets
   // a DSP lane (hits land in history/Recent/map) but never owns the speaker.
@@ -197,6 +198,9 @@ export const configSchema = z.object({
     // ear (normalized AM audio vs de-emphasized FM don't naturally match).
     // Passed as --am-gain-db. Omitted = 0 dB (the helper's AM_GAIN).
     nativeAmGainDb: z.number().min(-30).max(20).optional(),
+    // LSB speaker gain offset (dB): the by-ear balance of CB SSB against AM.
+    // Passed as --ssb-gain-db. Omitted = 0 dB (the helper's SSB_GAIN).
+    nativeSsbGainDb: z.number().min(-30).max(20).optional(),
     // FM speaker audio low-pass cutoff (Hz). FM hiss rises with frequency, so
     // this is the weak-signal hiss knob: lower = less hiss, duller voice.
     // Passed as --audio-lpf-hz. Omitted = 2700 (GR nbfm_rx parity).
@@ -495,6 +499,7 @@ export const configSchema = z.object({
     port: z.string().min(1).optional(),            // e.g. "1-1.2" (fallback)
     role: z.enum(["scan", "weather", "adsb"]),
     label: z.string().optional(),
+    ppm: z.number().int().min(-200).max(200).optional(),   // tuner correction (--ppm); boot-read: restart to apply
   }).refine((r) => r.serial !== undefined || r.port !== undefined, {
     message: "radio needs a serial or a port",
   })).optional(),
@@ -522,6 +527,13 @@ export const configSchema = z.object({
     // Channel number ("19") → name shown on the wall, admin and history
     // ("CB 19 · Highway"). Absent = CB_NAMES_DEFAULT (6/9/19).
     names: z.record(z.string().regex(/^([1-9]|[1-3]\d|40)$/), z.string().min(1).max(40)).optional(),
+    // Channel number → demod. Absent = CB_MODES_DEFAULT ({"38":"lsb"}); an
+    // explicit map replaces it (unlisted channels are AM). LSB channels get the
+    // SSB squelch below: open dB above the lane's own floor (absent = the
+    // scanner's --open-db) and hang (absent = CB_SSB_HANG_MS 1500).
+    modes: z.record(z.string().regex(/^([1-9]|[1-3]\d|40)$/), z.enum(["am", "lsb"])).optional(),
+    ssbOpenDb: z.number().positive().max(40).optional(),
+    ssbHangMs: z.number().int().min(0).max(10_000).optional(),
   }).optional(),
   // RepeaterBook lookup (Close Call enrichment). userAgent must be the
   // string REGISTERED with RepeaterBook; states are full names ("Missouri").

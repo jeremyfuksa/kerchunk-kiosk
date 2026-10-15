@@ -949,6 +949,8 @@ throttling, which a bare CPU% gauge would hide.
   (magnitude → DC-block → audio) alongside the NBFM demod, keyed off
   channel.mode in the tune command. Airband (118–137 MHz AM) falls out of the
   same work and is the more rewarding listen.
+  **38 LSB — SHIPPED** (spec 2026-10-15-cb-lsb-design): a per-lane LSB demod +
+  energy-only squelch; `cb.modes` picks LSB channels (38 by default); `radios[].ppm`.
 - **Polyphase filter-bank channelizer.** Replace the per-channel
   freq-xlating FIRs with a PFB (the sdrtrunk model): one shared filter + FFT
   produces ALL channels in the window, so channel count becomes ~free

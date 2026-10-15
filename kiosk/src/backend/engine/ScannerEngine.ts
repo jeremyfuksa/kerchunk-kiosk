@@ -53,6 +53,8 @@ export interface ScanConfig {
   nativeQuietDb?: number;
   // AM speaker gain offset in dB (see schema) — the AM pre-gain into the AGC.
   nativeAmGainDb?: number;
+  // LSB speaker gain offset in dB (see schema) — the SSB pre-gain into the AGC.
+  nativeSsbGainDb?: number;
   // FM speaker audio low-pass cutoff in Hz (see schema).
   fmAudioLpfHz?: number;
   // FM speaker high-pass cutoff in Hz, 0 = off (see schema).

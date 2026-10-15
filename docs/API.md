@@ -121,7 +121,7 @@ these appear under `GET /api/config`):
 | --- | --- | --- |
 | POST | `/api/scan/start` / `/api/scan/stop` | Start/stop the engine → `{ state }`. |
 | POST | `/api/scan/skip` | Hop off the current channel (optional `{ holdoffSeconds }`). |
-| POST | `/api/mode` | `{ mode: "scan" \| "weather" \| "cb" }` (weather requires a configured weather channel). `cb` = CB-only listening: the scanner tunes just the CB channels in `config.cb.channels` (default: as many as one window holds — `scan.lanesPerGroup` — with channels 6, 9 and 19 always in; AM, always audible, no Close Call); hits land in history tagged `cb` with no location. A SAME break-in preempts CB and returns to CB. |
+| POST | `/api/mode` | `{ mode: "scan" \| "weather" \| "cb" }` (weather requires a configured weather channel). `cb` = CB-only listening: the scanner tunes just the CB channels in `config.cb.channels` (default: as many as one window holds — `scan.lanesPerGroup` — with channels 6, 9 and 19 and every LSB channel of `config.cb.modes` — 38 by default — always in; AM except those LSB channels, always audible, no Close Call); hits land in history tagged `cb` with no location. A SAME break-in preempts CB and returns to CB. |
 | POST | `/api/monitor` | Park on one frequency: `{ freq, mode?, alphaTag? }` → monitor mode. |
 | POST | `/api/monitor/stop` | Back to scanning. |
 | POST | `/api/audio/volume` | `{ percent: 0–100 }` → amixer + persisted config. |

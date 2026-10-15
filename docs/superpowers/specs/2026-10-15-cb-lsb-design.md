@@ -1,6 +1,6 @@
 # CB 38 LSB: an SSB lane
 
-Status: spec — awaiting operator review.
+Status: implemented (PRs pending); plan `docs/superpowers/plans/2026-10-15-cb-lsb.md`.
 Depends on CB mode (PR #296) and the CB wall (PR #297).
 
 ## Why

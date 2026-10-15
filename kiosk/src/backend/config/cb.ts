@@ -2,8 +2,9 @@
 // channels, AM. They are never configured channels — CB is mostly silent, so
 // it stays out of the scan rotation and off the map; the operator switches the
 // whole scanner to CB-only listening instead. config.cb.channels narrows the
-// set by channel number.
-import type { Channel } from "./schema.js";
+// set by channel number; config.cb.modes makes a channel LSB (38 by default,
+// spec 2026-10-15).
+import type { ScanChannel } from "../engine/ScannerEngine.js";
 
 // Channel number → Hz. Not monotonic: 23 sits above 24 and 25 (historic
 // allocation), and 3→4, 7→8, 11→12, 15→16, 19→20 skip a 10 kHz slot.
@@ -24,12 +25,30 @@ export const CB_ALL = Array.from({ length: 40 }, (_, i) => i + 1);
  *  highway). Always in the default set. */
 export const CB_CORE = [6, 9, 19] as const;
 
+export type CbMode = "am" | "lsb";
+
+/** 38 LSB is the US SSB calling channel (operator, 2026-10-15). config.cb.modes
+ *  replaces the whole map. */
+export const CB_MODES_DEFAULT: Readonly<Record<string, CbMode>> = { "38": "lsb" };
+
+/** SSB speech pauses between syllables; a short hang chops it. */
+export const CB_SSB_HANG_MS = 1500;
+
+/** config.cb satisfies this structurally. */
+export interface CbChannelOpts {
+  modes?: Readonly<Record<string, CbMode>>;
+  ssbOpenDb?: number;
+  ssbHangMs?: number;
+}
+
 /** Default set: as many channels as one helper window holds (the grouping cap
  *  is the lane count — the whole band fits one 2 MHz window, so only the count
- *  matters), so CB mode never hops. CB_CORE first, then the rest counting up
- *  from 1; 36–40 (mostly SSB, which no lane demodulates) are the first cut. */
-export function cbDefaultChannels(lanesPerGroup: number): number[] {
-  const order = [...CB_CORE, ...CB_ALL.filter((n) => !(CB_CORE as readonly number[]).includes(n))];
+ *  matters), so CB mode never hops. CB_CORE and every non-AM channel in `modes`
+ *  first (the LSB channels are why the operator turned the mode on), then the
+ *  rest counting up from 1; the top of the band is the first cut. */
+export function cbDefaultChannels(lanesPerGroup: number, modes: Readonly<Record<string, CbMode>> = CB_MODES_DEFAULT): number[] {
+  const always = [...new Set([...CB_CORE, ...Object.keys(modes).filter((k) => modes[k] !== "am").map(Number)])];
+  const order = [...always, ...CB_ALL.filter((n) => !always.includes(n))];
   return order.slice(0, Math.max(1, lanesPerGroup)).sort((a, b) => a - b);
 }
 
@@ -50,15 +69,28 @@ export function cbLabel(n: number, names: Readonly<Record<string, string>> = CB_
   return name ? `CB ${n} · ${name}` : `CB ${n}`;
 }
 
-/** The CB-mode channel set. Always audible: picking CB mode is deliberate
- *  listening, so the family speaker gate doesn't apply. No location — CB
- *  hits land in history but never on the map. */
-export function cbChannels(numbers: readonly number[] = CB_ALL, names: Readonly<Record<string, string>> = CB_NAMES_DEFAULT): Channel[] {
-  const out: Channel[] = [];
+/** The CB-mode channel set: AM, or the mode from `opts.modes`. Always
+ *  audible: picking CB mode is deliberate listening, so the family speaker gate
+ *  doesn't apply. No location — CB hits land in history but never on the map.
+ *  LSB channels carry the SSB squelch (hang, optional open threshold). */
+export function cbChannels(
+  numbers: readonly number[] = CB_ALL,
+  names: Readonly<Record<string, string>> = CB_NAMES_DEFAULT,
+  opts: CbChannelOpts = {},
+): ScanChannel[] {
+  const modes = opts.modes ?? CB_MODES_DEFAULT;
+  const out: ScanChannel[] = [];
   for (const n of [...new Set(numbers)].sort((a, b) => a - b)) {
     const freq = CB_FREQ_HZ[n];
     if (freq === undefined) continue;
-    out.push({ id: `cb_${n}`, freq, alphaTag: cbLabel(n, names), mode: "am", enabled: true, audible: true, tags: ["cb"] });
+    const mode = modes[String(n)] ?? "am";
+    out.push({
+      id: `cb_${n}`, freq, alphaTag: cbLabel(n, names), mode, enabled: true, audible: true, tags: ["cb"],
+      ...(mode === "lsb" ? {
+        hangMs: opts.ssbHangMs ?? CB_SSB_HANG_MS,
+        ...(opts.ssbOpenDb !== undefined ? { openAboveFloorDb: opts.ssbOpenDb } : {}),
+      } : {}),
+    });
   }
   return out;
 }

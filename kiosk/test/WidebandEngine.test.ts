@@ -114,7 +114,7 @@ describe("WidebandEngine", () => {
     const path = tmpFile("txstats.jsonl");
     const { engine, events } = makeEngine({
       FAKE_WB_SCRIPT: [
-        `{"ev":"txstat","id":"${VHF_A.id}","mode":"fm","opened":true,"polls":57,"quietP10":-21.5,"quietP50":-18.2,"quietP90":-12.0,"aboveFloorP50":19.4}`,
+        `{"ev":"txstat","id":"${VHF_A.id}","mode":"fm","opened":true,"polls":57,"quietP10":-21.5,"quietP50":-18.2,"quietP90":-12.0,"aboveFloorP50":19.4,"offsetHz":-41.5}`,
         `{"ev":"txstat","id":"cc_463562500","mode":"fm","opened":false,"polls":12,"aboveFloorP50":11.1}`,
         `{"ev":"txstat","id":"nope","mode":"am","opened":false,"polls":30,"quietP50":-2.5,"quietP10":-3,"quietP90":-1,"aboveFloorP50":9.5}`,
       ].join("\n"),
@@ -127,7 +127,7 @@ describe("WidebandEngine", () => {
     expect(recs).toHaveLength(3);
     expect(recs[0]).toMatchObject({
       id: VHF_A.id, freqHz: VHF_A.freq, mode: "fm", opened: true, polls: 57,
-      quietP10: -21.5, quietP50: -18.2, quietP90: -12.0, aboveFloorP50: 19.4,
+      quietP10: -21.5, quietP50: -18.2, quietP90: -12.0, aboveFloorP50: 19.4, offsetHz: -41.5,
     });
     expect(Number.isNaN(Date.parse(recs[0]!.t as string))).toBe(false);
     expect(recs[1]).toMatchObject({ id: "cc_463562500", freqHz: 463_562_500, opened: false });
@@ -533,6 +533,36 @@ describe("WidebandEngine", () => {
       const narrow = await groupsSeen(12);
       expect(narrow.centers).toBe(3);
       expect(Math.max(...narrow.sizes)).toBe(12);
+    });
+
+    it("forwards nativeSsbGainDb as --ssb-gain-db; omits it when unset", async () => {
+      const args = tmpFile("args");
+      const { engine } = makeEngine({ FAKE_WB_ARGS_FILE: args });
+      await engine.start(cfg([VHF_A], { nativeSsbGainDb: -6 }));
+      await waitFor(() => lines(args).length >= 1, 1000);
+      await engine.stop();
+      expect(lines(args)[0] ?? "").toContain("--ssb-gain-db -6");
+      const plainArgs = tmpFile("args");
+      const plain = makeEngine({ FAKE_WB_ARGS_FILE: plainArgs });
+      await plain.engine.start(cfg([VHF_A]));
+      await waitFor(() => lines(plainArgs).length >= 1, 1000);
+      await plain.engine.stop();
+      expect(lines(plainArgs)[0] ?? "").not.toContain("--ssb-gain-db");
+    });
+
+    it("passes the radio's ppm as --ppm; omits it when 0 or unset", async () => {
+      const args = tmpFile("args");
+      const { engine } = makeEngine({ FAKE_WB_ARGS_FILE: args }, { ppm: -12 });
+      await engine.start(cfg([VHF_A]));
+      await waitFor(() => lines(args).length >= 1, 1000);
+      await engine.stop();
+      expect(lines(args)[0] ?? "").toContain("--ppm -12");
+      const zeroArgs = tmpFile("args");
+      const zero = makeEngine({ FAKE_WB_ARGS_FILE: zeroArgs }, { ppm: 0 });
+      await zero.engine.start(cfg([VHF_A]));
+      await waitFor(() => lines(zeroArgs).length >= 1, 1000);
+      await zero.engine.stop();
+      expect(lines(zeroArgs)[0] ?? "").not.toContain("--ppm");
     });
 
     it("forwards nativeAmGainDb as --am-gain-db; omits it when unset", async () => {

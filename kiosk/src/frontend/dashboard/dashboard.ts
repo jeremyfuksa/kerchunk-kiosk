@@ -226,7 +226,7 @@ export function renderDashboard(root: HTMLElement): void {
   void api.getConfig().then((cfg) => {
     cbOpts = {
       names: cfg.cb?.names ?? CB_NAMES_DEFAULT,
-      monitored: cfg.cb?.channels ?? cbDefaultChannels(cfg.scan.lanesPerGroup ?? DEFAULT_LANES_PER_GROUP),
+      monitored: cfg.cb?.channels ?? cbDefaultChannels(cfg.scan.lanesPerGroup ?? DEFAULT_LANES_PER_GROUP, cfg.cb?.modes),
       ...CB_VIEW_DEFAULTS,
       ...cfg.display?.cb,
     };

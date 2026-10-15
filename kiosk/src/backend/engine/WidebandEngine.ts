@@ -52,6 +52,9 @@ export interface WidebandEngineOptions {
   /** RTL-SDR EEPROM serial (multi-SDR). Preferred over rtlIndex: the helper
    *  resolves it to the exact dongle regardless of enumeration order. */
   rtlSerial?: string;
+  /** Tuner frequency correction in ppm (config.radios[].ppm → --ppm). 0 or
+   *  absent sends nothing. */
+  ppm?: number;
   /** Front-end sample rate (Hz). Overrides config.sampleRateHz (the scanner's
    *  knob). A narrow rate (e.g. 250 kHz) makes a single-channel radio cheap —
    *  the front-end is the dominant cost. Must be a multiple of 50 kHz. */
@@ -162,6 +165,8 @@ interface HelperEvent {
 // Fields of a helper txstat event copied verbatim into the JSONL record.
 const TXSTAT_FIELDS = [
   "mode", "opened", "polls", "quietP10", "quietP50", "quietP90", "aboveFloorP50",
+  // Carrier offset from the tuned frequency (Hz): the ppm calibration probe.
+  "offsetHz",
 ] as const;
 
 export class WidebandEngine implements ScannerEngine {
@@ -234,6 +239,7 @@ export class WidebandEngine implements ScannerEngine {
 
   private readonly rtlIndexResolver: (() => number | null) | undefined;
   private readonly rtlSerial: string | undefined;
+  private readonly ppm: number | undefined;
   private readonly sampleRateHz: number | undefined;
   private readonly lanesOverride: number | undefined;
   // Lane count + rate the LIVE helper was spawned with: a retune whose config
@@ -255,6 +261,7 @@ export class WidebandEngine implements ScannerEngine {
   constructor(opts: WidebandEngineOptions = {}) {
     this.rtlIndexResolver = opts.rtlIndex;
     this.rtlSerial = opts.rtlSerial;
+    this.ppm = opts.ppm;
     this.sampleRateHz = opts.sampleRateHz;
     this.lanesOverride = opts.lanes;
     this.centerOffsetHz = opts.centerOffsetHz ?? 0;
@@ -547,6 +554,8 @@ export class WidebandEngine implements ScannerEngine {
     if (cfg.nativeQuietDb !== undefined) args.push("--quiet-db", String(cfg.nativeQuietDb));
     // AM vs FM loudness balance (airband ran hot vs FM, 2026-09-26).
     if (cfg.nativeAmGainDb !== undefined) args.push("--am-gain-db", String(cfg.nativeAmGainDb));
+    if (cfg.nativeSsbGainDb !== undefined) args.push("--ssb-gain-db", String(cfg.nativeSsbGainDb));
+    if (this.ppm) args.push("--ppm", String(this.ppm));
     // FM speaker audio low-pass (weak-signal hiss vs voice brightness).
     if (cfg.fmAudioLpfHz !== undefined) args.push("--audio-lpf-hz", String(cfg.fmAudioLpfHz));
     // FM speaker high-pass (CTCSS hum), 0 = off.
