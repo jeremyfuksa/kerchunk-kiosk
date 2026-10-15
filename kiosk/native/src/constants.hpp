@@ -1,5 +1,6 @@
 // Every DSP knob for kerchunk-dsp. Spec: docs/superpowers/specs/2026-09-25-native-dsp-engine-design.md §2.
 #pragma once
+#include <cstddef>
 
 namespace kc {
 inline constexpr int LANE_RATE = 50000;            // every lane is decimated to this
@@ -194,4 +195,11 @@ inline constexpr int SAME_RING = 44100;            // multimon ring (2 s at 22.0
 inline constexpr double DROP_LOG_EVERY_S = 10.0;   // rate limit for the IQ-drop log line
 inline constexpr double AUDIO_STATS_EVERY_S = 60.0; // speaker-output loss summary cadence (logged only if nonzero)
 inline constexpr int CMD_QUEUE = 256;
+// ---- PCM-in (CB via FernSDR, spec docs/superpowers/specs/2026-10-15-cb-fernsdr-design.md).
+// Node writes s16le mono at LANE_RATE to --pcm-in-fd; the speaker plays it while a tune has
+// pcmIn. The ring absorbs the clock difference between the SDR (which paces the speaker) and the
+// network receiver (which paces the PCM).
+inline constexpr double PCM_TARGET_MS = 120;   // prime to this much before playing (--pcm-target-ms)
+inline constexpr double PCM_MAX_MS = 400;      // above this, drop the oldest back to target (--pcm-max-ms)
+inline constexpr size_t PCM_IN_RING = 1 << 16; // samples (~1.3 s at LANE_RATE)
 }  // namespace kc
