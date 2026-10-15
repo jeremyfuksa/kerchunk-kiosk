@@ -48,6 +48,10 @@ bool RtlSource::open(std::string& err, const std::function<bool()>& should_stop)
     dev_ = nullptr;
     return false;
   }
+  // librtlsdr returns -2 for "already that value", so only correct a non-zero ppm. A failure is
+  // logged, not fatal: the radio still works, just off-frequency (SSB pitch suffers first).
+  if (o_.ppm != 0 && (rc = rtlsdr_set_freq_correction(dev_, o_.ppm)) < 0)
+    log_("rtlsdr_set_freq_correction(" + std::to_string(o_.ppm) + " ppm) failed: rc=" + std::to_string(rc));
   if (o_.gain == "auto") {
     if ((rc = rtlsdr_set_tuner_gain_mode(dev_, 0)) < 0) log_("rtlsdr_set_tuner_gain_mode(auto) failed: rc=" + std::to_string(rc));
   } else {

@@ -133,3 +133,13 @@ TEST(cli_ssb_gain_db_range) {
   CHECK(!parse({"--ssb-gain-db", "25"}, c, err));
   CHECK(!parse({"--ssb-gain-db", "x"}, c, err));
 }
+
+TEST(cli_ppm_integer_range) {
+  kc::Cli c;
+  std::string err;
+  CHECK(parse({"--ppm", "-12"}, c, err));
+  CHECK(c.ppm == -12);
+  CHECK(!parse({"--ppm", "201"}, c, err));
+  CHECK(!parse({"--ppm", "1.5"}, c, err));
+  CHECK(!parse({"--ppm"}, c, err));
+}

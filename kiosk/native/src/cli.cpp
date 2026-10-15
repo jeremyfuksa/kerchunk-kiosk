@@ -62,6 +62,10 @@ bool parse_cli(int argc, const char* const* argv, Cli& c, std::string& err) {
       c.eng.lanes = n;
     }
     else if (k == "--rtl-index") { if (!val(v) || !to_int(v, c.rtl_index) || c.rtl_index < 0) { err = "--rtl-index must be a non-negative integer"; return false; } }
+    else if (k == "--ppm") {
+      if (!val(v) || !to_int(v, n) || n < -200 || n > 200) { err = "--ppm must be an integer in [-200, 200]"; return false; }
+      c.ppm = n;
+    }
     else if (k == "--audio-fd") { if (!val(v) || !to_int(v, c.audio_fd)) { err = "--audio-fd must be an integer"; return false; } }
     else if (k == "--rate") {
       if (!val(v) || !to_int(v, n) || n <= 0 || n % LANE_RATE != 0) { err = "--rate must be a positive multiple of 50000"; return false; }

@@ -11,6 +11,7 @@ struct Cli {
   std::string gain = "auto";
   std::string rtl_serial;
   int rtl_index = -1;
+  int ppm = 0;   // tuner frequency correction (--ppm, rtlsdr_set_freq_correction)
   int audio_fd = -1;
   std::string iq_file, tune_json, audio_out, same_out;
   bool realtime = false;

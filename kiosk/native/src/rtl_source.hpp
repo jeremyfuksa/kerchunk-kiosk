@@ -13,7 +13,7 @@
 namespace kc {
 class RtlSource : public IqSource {
  public:
-  struct Options { std::string serial; int index = -1; int rate = 2'400'000; std::string gain = "auto"; };
+  struct Options { std::string serial; int index = -1; int rate = 2'400'000; std::string gain = "auto"; int ppm = 0; };
   RtlSource(Options o, LogFn log);
   ~RtlSource() override;
   // Opens the dongle (by serial, else index), retrying for BUSY_RETRY_S while a previous helper
