@@ -199,7 +199,10 @@ html[data-page="dashboard"] .kc-recent .t { color: var(--kc-mute); margin-right:
    purpose: same specificity, later wins. */
 html[data-page="dashboard"] .kc-cb { display: none; }
 html[data-page="dashboard"] .dash.cbStage .kc-cb { display: block; position: absolute; inset: 0; z-index: 2; }
-html[data-page="dashboard"] .dash.cbStage .mapBase,
+/* The map keeps its layout size (visibility, not display): a page loaded in
+   CB mode still fits and captures its stage, so leaving CB shows it framed.
+   It is paused meanwhile (MapHandle.pause), so hidden costs no draws. */
+html[data-page="dashboard"] .dash.cbStage .mapBase { visibility: hidden; }
 html[data-page="dashboard"] .dash.cbStage .kc-corner__slot,
 html[data-page="dashboard"] .dash.cbStage .kc-recent { display: none; }
 html[data-page="dashboard"] .dash.cbStage .kc-corner { bottom: calc(var(--kc-k-cb-dial-h) + 3.6rem); }

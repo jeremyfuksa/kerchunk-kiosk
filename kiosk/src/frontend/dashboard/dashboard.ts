@@ -230,6 +230,10 @@ export function renderDashboard(root: HTMLElement): void {
       ...CB_VIEW_DEFAULTS,
       ...cfg.display?.cb,
     };
+    // The stage may already be up on the defaults: re-arm the fade tick at the
+    // configured cadence and repaint with the real names/channels/rows.
+    if (cbTimer) { clearInterval(cbTimer); cbTimer = setInterval(schedule, cbOpts.stepTickMs); }
+    if (cbOn) { cbKey = ""; schedule(); }
   }).catch(() => { /* defaults stand */ });
 
   function setCbStage(on: boolean): void {
