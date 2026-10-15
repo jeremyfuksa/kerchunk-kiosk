@@ -377,6 +377,23 @@ export const configSchema = z.object({
         h: z.number().positive().max(15).default(3),
       }).default({}),
     }).default({}),
+    // GLM lightning feed for the Weather Glass (backend/lightning/, spec
+    // 2026-10-13 glass lightning). NOAA GOES-19 on public S3: one ~400 KB
+    // file per 20 s, the whole hemisphere every time (~1–2.5 GB/day). Read at
+    // boot like radar.*: changing it needs a kerchunk-kiosk restart.
+    lightning: z.object({
+      enabled: z.boolean().default(true),
+      satellite: z.enum(["goes19", "goes18", "goes16"]).default("goes19"),   // bucket noaa-<satellite>
+      pollMs: z.number().int().min(10_000).max(120_000).default(20_000),
+      bufferMs: z.number().int().min(60_000).max(1_800_000).default(300_000),  // served by /api/lightning
+      staleMs: z.number().int().min(60_000).max(3_600_000).default(180_000),
+      fetchTimeoutMs: z.number().int().min(5_000).max(120_000).default(30_000),
+      maxCatchupFiles: z.number().int().min(1).max(30).default(6),             // never a backlog after an outage
+      spanDeg: z.object({
+        w: z.number().positive().max(20).default(4),
+        h: z.number().positive().max(15).default(3),
+      }).default({}),
+    }).default({}),
     // Weather Glass layer (frontend/map/glassLayer.ts). Reaches the wall on
     // its next load: PUT /api/config, then POST /api/kiosk/reload.
     glass: z.object({
@@ -424,6 +441,23 @@ export const configSchema = z.object({
       // throws embers that reshuffle every liveSparkStepMs — a redraw per step,
       // ONLY while a front is live (quiet band = zero redraws). 0 = off.
       liveSparkStepMs: z.union([z.literal(0), z.number().int().min(250).max(6000)]).default(750),
+      // Lightning blooms (spec 2026-10-13): each GLM flash blooms on the first
+      // stepMs tick at/after its strike time + replayDelayMs, for bloomSteps
+      // ticks — redraws/min ≈ 60000 / stepMs while a storm is on screen, 0
+      // otherwise. Keep stepMs a divisor of smokeStepMs so ticks coincide.
+      // replayDelayMs floor 30 s: GLM files arrive 20–50 s late and a flash
+      // more than one tick late is dropped. The backend also reads replayDelayMs
+      // at boot to size its poll window (replayDelayMs + 45 s), so changing it
+      // fully needs a kerchunk-kiosk restart, not just kiosk/reload.
+      lightning: z.object({
+        enabled: z.boolean().default(true),
+        stepMs: z.number().int().min(1_000).max(60_000).default(3_000),
+        replayDelayMs: z.number().int().min(30_000).max(300_000).default(75_000),
+        bloomSteps: z.number().int().min(1).max(6).default(2),
+        bloomIntensity: z.number().min(0).max(1.5).default(0.75),
+        bloomScale: z.number().min(0.2).max(3).default(1),
+        maxBlooms: z.number().int().min(1).max(64).default(32),
+      }).default({}),
     }).default({}),
     // Persistent site markers. With the glass carrying colour and motion, the
     // marker only has to say "a transmitter lives here": "pin" = the service

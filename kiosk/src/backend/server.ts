@@ -13,6 +13,7 @@ import { WsHub } from "./ws.js";
 import type { EngineEvent, ScannerEngine, ScanConfig } from "./engine/ScannerEngine.js";
 import type { AircraftSource } from "./aircraft.js";
 import type { RadarSource } from "./radar/RadarFeed.js";
+import type { LightningSource } from "./lightning/LightningFeed.js";
 import { setVolume as amixerVolume, setMuted as amixerMuted, type AmixerOpts } from "./audio.js";
 import { isScannable, isAudible, profileFor } from "./config/banks.js";
 import { ccAudibleRanges } from "./config/family.js";
@@ -62,6 +63,8 @@ export interface ServerDeps {
   aircraftFeed?: AircraftSource;
   /** Live NEXRAD crop for the Weather Glass layer (off when display.radar.enabled is false). */
   radar?: RadarSource;
+  /** GOES GLM lightning for the Weather Glass blooms (off when display.lightning.enabled is false). */
+  lightning?: LightningSource;
   /** Directory for Close Call audio clips (#222). Absent (tests that don't
    *  exercise it, non-appliance hosts) disables recording and 404s the sample
    *  routes rather than writing anywhere unexpected. */
@@ -1392,6 +1395,17 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
       return json(res, 200, stats);
     }
 
+    if (method === "GET" && path === "/api/lightning") {
+      if (!deps.lightning) return json(res, 404, { error: "lightning disabled" });
+      const lsp = new URL(req.url ?? "/", "http://localhost").searchParams;
+      const since = Number(lsp.get("since"));
+      return json(res, 200, {
+        flashes: deps.lightning.since(lsp.has("since") && Number.isFinite(since) ? since : -Infinity),
+        stale: deps.lightning.isStale(),
+        latestEnd: deps.lightning.latestEnd(),
+      });
+    }
+
     if (method === "GET" && (path === "/api/radar" || path === "/api/radar/frame")) {
       if (!deps.radar) return json(res, 404, { error: "radar disabled" });
       const scan = deps.radar.latest();
@@ -1479,6 +1493,15 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
     });
     deps.radar.start();
     server.on("close", () => deps.radar?.stop());
+  }
+
+  // Lightning: push each batch of fresh flashes; pages schedule them locally.
+  if (deps.lightning) {
+    deps.lightning.onFlashes((flashes) => {
+      deps.wsHub.broadcast({ type: "lightning", flashes, ts: Date.now() });
+    });
+    deps.lightning.start();
+    server.on("close", () => deps.lightning?.stop());
   }
 
   // Expose the server's (migrated) config so the boot path in index.ts starts
