@@ -93,6 +93,8 @@
   --kc-k-alert-title: 3.1rem;  /* weather alert card title */
   --kc-k-weather: 2.25rem;     /* current conditions under the clock: icon + temperature */
   --kc-k-glass-error: 2.6rem;  /* the error text on the wall glass (smaller than a channel name) */
+  --kc-k-cb-num: 15rem;        /* CB wall: the channel number, read from across the room */
+  --kc-k-cb-dial-h: 13rem;     /* CB wall: the band dial's height */
   --kc-grow-ms: 420ms;         /* pill → glass on a hit */
   --kc-release-ms: 360ms;      /* glass → pill on release */
   --kc-sweep-ms: 4500ms;       /* one pass of the idle sweep tick */

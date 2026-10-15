@@ -239,6 +239,11 @@ even with green checks.
 
 ## Architecture notes
 
+- **CB mode** (`POST /api/mode {mode:"cb"}`, PR #296): the scanner listens to CB only
+  (`config.cb.channels`, names `config.cb.names`), never in the scan rotation or on the
+  map. The kiosk swaps to the CB stage (`dashboard/cbDial.ts` model, `cbView.ts` view,
+  `.cbStage`), pausing the map via `MapHandle.pause()`. Knobs:
+  `display.cb.fadeStepsMin` / `stepTickMs` / `logRows`.
 - **Engine abstraction.** Everything runs behind the `ScannerEngine` interface
   (`src/backend/engine/`), with three implementations: `WidebandEngine`
   (default; spawns the `kerchunk-dsp` C++ helper), `RtlFmEngine` (sequential

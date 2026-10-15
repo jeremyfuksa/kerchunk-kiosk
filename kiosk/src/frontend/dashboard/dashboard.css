@@ -191,3 +191,93 @@ html[data-page="dashboard"] .kc-recent .t { color: var(--kc-mute); margin-right:
   /* The sweep holds still where it can be seen, not parked off-track. */
   html[data-page="dashboard"] .kc-pill__tick::after { transform: translateX(230%); }
 }
+
+/* ── CB stage (spec 2026-10-14 "the dial") ───────────────────────────────────
+   Mode cb: the map is hidden (and paused), the corner keeps only its alert
+   card, and the dial takes the screen. Static between events — no transition,
+   no animation, no backdrop-filter (thermal). After the .mapStage rules on
+   purpose: same specificity, later wins. */
+html[data-page="dashboard"] .kc-cb { display: none; }
+html[data-page="dashboard"] .dash.cbStage .kc-cb { display: block; position: absolute; inset: 0; z-index: 2; }
+/* The map keeps its layout size (visibility, not display): a page loaded in
+   CB mode still fits and captures its stage, so leaving CB shows it framed.
+   It is paused meanwhile (MapHandle.pause), so hidden costs no draws. */
+html[data-page="dashboard"] .dash.cbStage .mapBase { visibility: hidden; }
+html[data-page="dashboard"] .dash.cbStage .kc-corner__slot,
+html[data-page="dashboard"] .dash.cbStage .kc-recent { display: none; }
+html[data-page="dashboard"] .dash.cbStage .kc-corner { bottom: calc(var(--kc-k-cb-dial-h) + 3.6rem); }
+
+html[data-page="dashboard"] .kc-cb__tag {
+  position: absolute; top: 2.4rem; left: 2.2rem;
+  color: var(--kc-mute); font-size: var(--kc-k-glass-meta); font-weight: 600;
+  letter-spacing: 0.08em; text-transform: uppercase;
+}
+html[data-page="dashboard"] .kc-cb__readout {
+  position: absolute; left: 2.2rem; top: 6.6rem; width: min(52vw, 62rem); box-sizing: border-box;
+  padding: 2rem 2.6rem 2.2rem; border-radius: var(--kc-r-sheet);
+  background: var(--kc-well); box-shadow: var(--kc-well-shadow);
+}
+html[data-page="dashboard"] .kc-cb__meta {
+  display: flex; justify-content: space-between; gap: 2rem;
+  color: var(--kc-glass); opacity: 0.75; font-size: var(--kc-k-glass-meta); font-weight: 600;
+}
+html[data-page="dashboard"] .kc-cb__num {
+  margin-top: 0.6rem; font-size: var(--kc-k-cb-num); font-weight: 800; line-height: 0.9;
+  letter-spacing: -0.04em; font-variant-numeric: tabular-nums; color: var(--kc-glass);
+  text-shadow: 0 0 24px color-mix(in srgb, var(--kc-glass) 35%, transparent);
+}
+html[data-page="dashboard"] .kc-cb__sub { display: flex; justify-content: space-between; align-items: baseline; gap: 2rem; margin-top: 0.6rem; }
+html[data-page="dashboard"] .kc-cb__sub b { font-size: var(--kc-k-glass-name); font-weight: 700; color: var(--kc-glass-text); }
+html[data-page="dashboard"] .kc-cb__sub span { font-size: var(--kc-k-weather); color: var(--kc-glass); font-variant-numeric: tabular-nums; }
+html[data-page="dashboard"] .kc-cb__seg { display: flex; gap: 5px; height: 12px; margin-top: 1.6rem; }
+html[data-page="dashboard"] .kc-cb__seg i { flex: 1; border-radius: 2px; background: var(--kc-glass); opacity: 0.14; }
+html[data-page="dashboard"] .kc-cb__seg i.on { opacity: 1; }
+/* Idle: the last-heard channel stays up, dimmed — no glow. */
+html[data-page="dashboard"] .kc-cb__readout[data-state="idle"] .kc-cb__meta,
+html[data-page="dashboard"] .kc-cb__readout[data-state="never"] .kc-cb__meta { color: var(--kc-mute); opacity: 1; }
+html[data-page="dashboard"] .kc-cb__readout[data-state="idle"] .kc-cb__num { color: var(--kc-dim); opacity: 0.55; text-shadow: none; }
+html[data-page="dashboard"] .kc-cb__readout[data-state="idle"] .kc-cb__sub b,
+html[data-page="dashboard"] .kc-cb__readout[data-state="idle"] .kc-cb__sub span { color: var(--kc-dim); }
+html[data-page="dashboard"] .kc-cb__readout[data-state="idle"] .kc-cb__seg i,
+html[data-page="dashboard"] .kc-cb__readout[data-state="never"] .kc-cb__seg i,
+html[data-page="dashboard"] .kc-cb__readout[data-state="error"] .kc-cb__seg i { background: var(--kc-mute); opacity: 0.12; }
+html[data-page="dashboard"] .kc-cb__readout[data-state="error"] .kc-cb__meta { color: var(--kc-coral); opacity: 1; }
+html[data-page="dashboard"] .kc-cb__readout[data-state="error"] .kc-cb__sub b { color: var(--kc-ink); font-size: var(--kc-k-glass-error); }
+
+html[data-page="dashboard"] .kc-cb__log { position: absolute; right: 2.2rem; top: 17rem; width: min(30vw, 34rem); }
+html[data-page="dashboard"] .kc-cb__log h2 {
+  margin: 0 0 0.6rem; color: var(--kc-mute); font-size: var(--kc-k-date); font-weight: 600;
+  letter-spacing: 0.06em; text-transform: uppercase;
+}
+html[data-page="dashboard"] .kc-cb__row {
+  display: flex; justify-content: space-between; gap: 1.5rem; padding: 0.55rem 0;
+  border-top: 1px solid var(--kc-line); font-size: var(--kc-k-glass-meta);
+}
+html[data-page="dashboard"] .kc-cb__row i { font-style: normal; color: var(--kc-dim); font-variant-numeric: tabular-nums; }
+html[data-page="dashboard"] .kc-cb__row.is-live span { color: var(--kc-glass); font-weight: 700; }
+
+html[data-page="dashboard"] .kc-cb__dial {
+  position: absolute; left: 2.2rem; right: 2.2rem; bottom: 2.2rem; height: var(--kc-k-cb-dial-h);
+  box-sizing: border-box; padding: 1.6rem 2.4rem 3rem; border-radius: var(--kc-r-sheet);
+  background: var(--kc-well); box-shadow: var(--kc-well-shadow);
+}
+html[data-page="dashboard"] .kc-cb__scale { position: relative; height: 100%; border-bottom: 1px solid var(--kc-well-edge); }
+html[data-page="dashboard"] .kc-cb__tick {
+  position: absolute; bottom: 0; width: 4px; height: 22%; transform: translateX(-50%);
+  border-radius: 2px; background: var(--kc-mute); opacity: 0.45;
+}
+html[data-page="dashboard"] .kc-cb__tick.is-core { height: 46%; opacity: 0.9; background: var(--kc-ink); }
+html[data-page="dashboard"] .kc-cb__tick.is-off { background: transparent; box-shadow: inset 0 0 0 1px var(--kc-mute); opacity: 0.35; }
+html[data-page="dashboard"] .kc-cb__tick[data-step="1"] { background: var(--kc-glass); opacity: 0.3; height: 42%; }
+html[data-page="dashboard"] .kc-cb__tick[data-step="2"] { background: var(--kc-glass); opacity: 0.55; height: 56%; }
+html[data-page="dashboard"] .kc-cb__tick[data-step="3"] { background: var(--kc-glass); opacity: 0.8; height: 70%; }
+html[data-page="dashboard"] .kc-cb__tick[data-step="4"] { background: var(--kc-glass); opacity: 1; height: 88%; box-shadow: 0 0 16px var(--kc-glass); }
+html[data-page="dashboard"] .kc-cb__lab {
+  position: absolute; bottom: -2.2rem; transform: translateX(-50%);
+  font-size: var(--kc-k-date); font-weight: 500; color: var(--kc-mute); font-variant-numeric: tabular-nums;
+}
+html[data-page="dashboard"] .kc-cb__lab.is-core { color: var(--kc-ink); font-weight: 700; }
+html[data-page="dashboard"] .kc-cb__lab.is-hot { color: var(--kc-glass); font-weight: 800; }
+html[data-page="dashboard"] .kc-cb__needle {
+  position: absolute; top: -8%; bottom: -6%; width: 3px; transform: translateX(-50%); background: var(--kc-hay);
+}
