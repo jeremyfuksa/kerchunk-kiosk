@@ -145,6 +145,7 @@ export function toScanConfig(
     openAboveFloorDb: cfg.scan.openAboveFloorDb,
     nativeQuietDb: cfg.scan.nativeQuietDb,
     nativeAmGainDb: cfg.scan.nativeAmGainDb,
+    nativeSsbGainDb: cfg.scan.nativeSsbGainDb,
     fmAudioLpfHz: cfg.scan.fmAudioLpfHz,
     fmAudioHpfHz: cfg.scan.fmAudioHpfHz,
     // Speaker AGC + limiter knobs (config.audio). In the scan config so the

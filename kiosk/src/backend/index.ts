@@ -68,11 +68,13 @@ const wsHub = new WsHub();
 // PORT->index map for dongles without a usable serial. {} = first device found.
 const scanRadio = config.radios?.find((r) => r.role === "scan");
 const weatherRadio = config.radios?.find((r) => r.role === "weather");
-function deviceOpts(radio: { serial?: string; port?: string } | undefined): {
-  rtlSerial?: string; rtlIndex?: () => number | null;
+function deviceOpts(radio: { serial?: string; port?: string; ppm?: number } | undefined): {
+  rtlSerial?: string; rtlIndex?: () => number | null; ppm?: number;
 } {
-  if (radio?.serial) return { rtlSerial: radio.serial };
-  if (radio?.port) { const port = radio.port; return { rtlIndex: () => rtlIndexForPort(port) }; }
+  // Tuner frequency correction (config.radios[].ppm → --ppm), boot-read like the rest of radios.
+  const ppm = radio?.ppm ? { ppm: radio.ppm } : {};
+  if (radio?.serial) return { rtlSerial: radio.serial, ...ppm };
+  if (radio?.port) { const port = radio.port; return { rtlIndex: () => rtlIndexForPort(port), ...ppm }; }
   return {};
 }
 // Respawn-backoff ceiling, shared by BOTH helpers. The weather lane is the one
