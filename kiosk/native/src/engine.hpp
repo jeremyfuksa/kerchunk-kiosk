@@ -81,6 +81,10 @@ class Engine {
   std::vector<double> dcs_seen_;   // now() of the lane's last decoded DCS code (-1 = none since reset)
   std::vector<float> sub_buf_;   // one hop of SUBAUDIO_RATE samples (reused per lane)
   std::vector<std::vector<float>> disc_buf_;
+  std::vector<SsbDemod> ssb_;                 // LSB lanes only (stepped only while the lane is LSB)
+  std::vector<std::vector<cf>> ssb_buf_;      // one hop of sideband signal per lane
+  std::vector<double> disc_acc_;              // discriminator sum since the last poll -> LaneReading.disc_mean
+  std::vector<int> disc_n_;
   std::vector<LaneReading> readings_;
   std::vector<float> out48_;
   std::vector<int16_t> s16_, same16_;

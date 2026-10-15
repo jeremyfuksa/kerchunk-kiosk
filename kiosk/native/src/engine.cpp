@@ -14,7 +14,9 @@ Engine::Engine(const EngineOptions& o, Emit emit, Pcm speaker, Pcm tee, Pcm same
            o.limiter_release_ms, o.speaker_hpf_hz, (float)(SSB_GAIN * std::pow(10.0, o.ssb_gain_db / 20.0))),
       power_(o.lanes), disc_(o.lanes), quiet_(o.lanes), sub_(o.lanes), ctcss_(o.lanes), dcs_(o.lanes), dcs_seen_(o.lanes, -1.0),
       sub_buf_(SubaudioDecimator::max_out(Channelizer::kLaneSamplesPerHop)),
-      disc_buf_(o.lanes, std::vector<float>(Channelizer::kLaneSamplesPerHop)), readings_(o.lanes) {
+      disc_buf_(o.lanes, std::vector<float>(Channelizer::kLaneSamplesPerHop)),
+      ssb_(o.lanes), ssb_buf_(o.lanes, std::vector<cf>(Channelizer::kLaneSamplesPerHop)),
+      disc_acc_(o.lanes, 0.0), disc_n_(o.lanes, 0), readings_(o.lanes) {
   if (o.close_call) cc_ = std::make_unique<CloseCall>(o.rate);   // FFTW planning on this (the DSP) thread
   ch_.set_lanes(std::vector<double>(opt_.lanes, 0.0));
   out48_.reserve(256);
@@ -24,6 +26,9 @@ void Engine::reset_lane(int i) {
   power_[i].reset();
   disc_[i].reset();
   quiet_[i].reset();
+  ssb_[i].reset();
+  disc_acc_[i] = 0;
+  disc_n_[i] = 0;
   reset_subaudio(i);
 }
 
@@ -154,12 +159,22 @@ void Engine::on_hop(const cf* lanes, int per, const cf* raw, int raw_n) {
     const LaneState& L = sc_.lane(i);
     if (L.parked()) continue;
     const cf* y = lanes + i * per;
-    power_[i].push(y, per);
+    if (L.demod == Demod::Lsb) {
+      cf* s = ssb_buf_[i].data();
+      for (int d = 0; d < per; d++) s[d] = ssb_[i].step(y[d]);
+      power_[i].push(s, per);   // the squelch meters the sideband, not the 16 kHz lane
+    } else {
+      power_[i].push(y, per);
+    }
     float* db = disc_buf_[i].data();
+    double acc = 0;
     for (int d = 0; d < per; d++) {
       db[d] = disc_[i].step(y[d]);
       quiet_[i].push(db[d]);
+      acc += db[d];
     }
+    disc_acc_[i] += acc;
+    disc_n_[i] += per;
     if (sc_.wants_tone(i)) {
       const int ns = sub_[i].push(db, per, sub_buf_.data());
       ctcss_[i].push(sub_buf_.data(), ns);
@@ -183,9 +198,17 @@ void Engine::on_hop(const cf* lanes, int per, const cf* raw, int raw_n) {
     const cf* y = lanes + f * per;
     float* db = disc_buf_[f].data();
     for (int d = 0; d < per; d++) db[d] = disc_[f].step(y[d]);
+    if (spk_.feeding_demod() == Demod::Lsb) {
+      cf* s = ssb_buf_[f].data();
+      for (int d = 0; d < per; d++) s[d] = ssb_[f].step(y[d]);
+    }
   }
-  if (f >= 0) spk_.process(lanes + f * per, disc_buf_[f].data(), per, out48_);
-  else spk_.process(nullptr, nullptr, per, out48_);
+  if (f >= 0) {
+    const cf* src = spk_.feeding_demod() == Demod::Lsb ? ssb_buf_[f].data() : lanes + f * per;
+    spk_.process(src, disc_buf_[f].data(), per, out48_);
+  } else {
+    spk_.process(nullptr, nullptr, per, out48_);
+  }
   flush_audio();
   if (cc_on_) cc_->push_raw(raw, raw_n);
   lane_samples_ += per;
@@ -205,7 +228,10 @@ void Engine::poll() {
     if (dcs) dcs_seen_[i] = now();
     const bool dcs_lane = dcs_seen_[i] >= 0 && now() - dcs_seen_[i] <= DCS_LOSS_MS / 1000.0;
     readings_[i] = {power_[i].fast_db(), power_[i].slow_db(), quiet_[i].db(), quiet_[i].ready(),
-                    dcs_lane ? std::nullopt : ctcss_[i].tone(), dcs};
+                    dcs_lane ? std::nullopt : ctcss_[i].tone(), dcs,
+                    disc_n_[i] ? (float)(disc_acc_[i] / disc_n_[i]) : 0.f};
+    disc_acc_[i] = 0;
+    disc_n_[i] = 0;
   }
   sc_.poll(now(), readings_);
   sync_speaker();
