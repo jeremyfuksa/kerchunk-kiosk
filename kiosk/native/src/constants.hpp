@@ -164,6 +164,10 @@ inline constexpr double SSB_AA_TRANSITION_HZ = 9000;
 inline constexpr double SSB_ENV_ATTACK_MS = 5;
 inline constexpr double SSB_ENV_RELEASE_MS = 1000;
 inline constexpr float SSB_GAIN = 0.5f;               // x --ssb-gain-db, into the AGC
+// Speaker gate hold on LSB lanes: SSB has no carrier, so the 10 ms energy gate would chop every
+// syllable gap (and re-prime the level tracker + AGC each word). The gate stays open this long past
+// the last above-threshold poll; the lane's own hang (cb.ssbHangMs) still decides the close.
+inline constexpr double SSB_GATE_HOLD_MS = 400;
 inline constexpr float SPEAKER_S16_SCALE = 32767.f;
 inline constexpr float TEE_S16_SCALE = 28000.f;
 inline constexpr float SAME_S16_SCALE = 16384.f;

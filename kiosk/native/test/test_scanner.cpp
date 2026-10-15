@@ -971,3 +971,24 @@ TEST(scanner_txstat_reports_carrier_offset) {
   CHECK(tx.size() == 1);
   if (!tx.empty()) CHECK_NEAR(tx[0]["offsetHz"].get<double>(), 300, 0.5);
 }
+
+TEST(scanner_lsb_gate_rides_syllable_gaps_then_mutes_within_the_hang) {
+  // SSB has no carrier: a pause between words drops the energy, but the speaker must not chop.
+  // The gate holds SSB_GATE_HOLD_MS past the last above-threshold poll, then mutes while the lane
+  // is still open on its (longer) hang -- no noise tail for the whole hang.
+  Sim m;
+  auto s = lsb("s");
+  s.hang_ms = 1500;
+  m.s.tune(27e6, {s}, false);
+  m.set(0, FLOOR, false);
+  m.run(1.0);
+  m.set(0, KEYED, false);
+  m.run(0.3);
+  CHECK(m.s.gate() == 1.f);
+  m.set(0, FLOOR, false);                        // a syllable gap shorter than the hold
+  m.run(kc::SSB_GATE_HOLD_MS / 2000.0);
+  CHECK(m.s.gate() == 1.f);
+  m.run(kc::SSB_GATE_HOLD_MS / 1000.0);          // now past the hold, still inside the hang
+  CHECK(m.s.gate() == 0.f);
+  CHECK(m.of("close").empty());
+}

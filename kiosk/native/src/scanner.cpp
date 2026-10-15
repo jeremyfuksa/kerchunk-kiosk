@@ -224,6 +224,12 @@ void Scanner::poll(double now, const std::vector<LaneReading>& r) {
     const double gate_thresh = *base + open_db - CLOSE_HYST_DB;
     const double fast = r[i].fast_db;
     L.carrier = L.carrier ? fast > gate_thresh - GATE_HYST_DB / 2 : fast > gate_thresh + GATE_HYST_DB / 2;
+    // SSB has no carrier to hold the gate through a syllable gap: hold it SSB_GATE_HOLD_MS past the
+    // last poll that was really above threshold (the lane's hang still decides the close).
+    if (lsb) {
+      if (L.carrier) L.carrier_seen = now;
+      else if (L.carrier_seen >= 0 && now - L.carrier_seen <= SSB_GATE_HOLD_MS / 1000.0) L.carrier = true;
+    }
     if (lsb) L.quiet = true;   // SSB has no carrier to quiet the discriminator: energy-only squelch
     else if (!r[i].quiet_ready) L.quiet = false;
     else L.quiet = L.quiet ? r[i].quiet_db < quiet_db + QUIET_HYST_DB / 2 : r[i].quiet_db < quiet_db - QUIET_HYST_DB / 2;

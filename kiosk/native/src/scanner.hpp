@@ -39,6 +39,7 @@ struct LaneState {
   double alert_until = -1;
   std::optional<double> floor_db;
   bool open = false, carrier = false, quiet = false;
+  double carrier_seen = -1;         // LSB: last poll the energy gate was really above threshold
   int above = 0;
   int warmup_polls = 0;   // GR-style integer poll countdown, not a wall-clock timer
   double below_since = -1, skip_until = 0;
