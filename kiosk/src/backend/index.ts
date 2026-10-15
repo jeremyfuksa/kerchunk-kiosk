@@ -101,6 +101,7 @@ const engine =
       ...restartBackoffOpts,
       ...watchdogOpts,
       ...maxHold,
+      pcmIn: true, // CB via FernSDR: scanner-only fd-4 PCM pipe
       // Squelch-calibration data (per-episode quieting stats), next to config.json.
       txStatsPath: join(dirname(CONFIG_PATH), "txstats.jsonl"),
     })

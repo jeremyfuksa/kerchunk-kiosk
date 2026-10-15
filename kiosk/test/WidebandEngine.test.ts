@@ -1481,4 +1481,69 @@ describe("priority revisit (scan.priorityRevisit)", () => {
     await engine.stop();
   });
 
+  describe("PCM-in (CB via FernSDR)", () => {
+    it("pcmIn engines spawn with --pcm-in-fd 4 and the buffer knobs; others don't", async () => {
+      const args = tmpFile("args");
+      const { engine } = makeEngine({ FAKE_WB_ARGS_FILE: args }, { pcmIn: true });
+      await engine.start(cfg([VHF_A], { pcmBufferMs: 150, pcmMaxBufferMs: 500 }));
+      await waitFor(() => lines(args).length >= 1, 1000);
+      await engine.stop();
+      expect(lines(args)[0]).toContain("--pcm-in-fd 4 --pcm-target-ms 150 --pcm-max-ms 500");
+      const plainArgs = tmpFile("args");
+      const plain = makeEngine({ FAKE_WB_ARGS_FILE: plainArgs });
+      await plain.engine.start(cfg([VHF_A]));
+      await waitFor(() => lines(plainArgs).length >= 1, 1000);
+      await plain.engine.stop();
+      expect(lines(plainArgs)[0]).not.toContain("--pcm-in-fd");
+    });
+
+    it("retune to pcmIn parks the LIVE helper (no respawn, no warm-up replay)", async () => {
+      const args = tmpFile("args");
+      const tunes = tmpFile("tunes");
+      const { engine, events } = makeEngine({ FAKE_WB_ARGS_FILE: args, FAKE_WB_TUNES_FILE: tunes }, { pcmIn: true });
+      await engine.start(cfg([VHF_A]));
+      await waitFor(() => lines(tunes).length >= 1, 1000);
+      events.length = 0;
+      await engine.retune(cfg([], { pcmIn: true }));
+      await waitFor(() => lines(tunes).length >= 2, 1000);
+      await engine.stop();
+      expect(lines(args)).toHaveLength(1);
+      const parked = JSON.parse(lines(tunes)[1]!);
+      expect(parked).toMatchObject({ cmd: "tune", channels: [], pcmIn: true, closeCall: false });
+      expect(events.some((e) => e.type === "tuned" && e.channelIds.length === 0)).toBe(true);
+      // A live retune must not replay the warm-up overlay.
+      expect(events.some((e) => e.type === "warmup" && e.phase === "booting")).toBe(false);
+    });
+
+    it("start() straight into pcmIn spawns a helper, sends the parked tune and marks warm", async () => {
+      const tunes = tmpFile("tunes");
+      const { engine, events } = makeEngine({ FAKE_WB_TUNES_FILE: tunes }, { pcmIn: true });
+      await engine.start(cfg([], { pcmIn: true }));
+      await waitFor(() => lines(tunes).length >= 1, 1000);
+      await engine.stop();
+      expect(JSON.parse(lines(tunes)[0]!)).toMatchObject({ channels: [], pcmIn: true });
+      expect(events.some((e) => e.type === "warmup" && e.phase === "ready")).toBe(true);
+    });
+
+    it("an empty channel set WITHOUT pcmIn still releases the SDR (helperless)", async () => {
+      const args = tmpFile("args");
+      const { engine } = makeEngine({ FAKE_WB_ARGS_FILE: args }, { pcmIn: true });
+      await engine.start(cfg([]));
+      await new Promise((r) => setTimeout(r, 200));
+      await engine.stop();
+      expect(lines(args)).toHaveLength(0);
+    });
+
+    it("writePcm reaches the helper's fd 4", async () => {
+      const pcm = tmpFile("pcm");
+      const tunes = tmpFile("tunes");
+      const { engine } = makeEngine({ FAKE_WB_PCM_FILE: pcm, FAKE_WB_TUNES_FILE: tunes }, { pcmIn: true });
+      await engine.start(cfg([], { pcmIn: true }));
+      await waitFor(() => lines(tunes).length >= 1, 1000);
+      engine.writePcm(Buffer.from([1, 0, 2, 0]));
+      await waitFor(() => existsSync(pcm) && readFileSync(pcm).length >= 4, 1000);
+      await engine.stop();
+      expect([...readFileSync(pcm)]).toEqual([1, 0, 2, 0]);
+    });
+  });
 });

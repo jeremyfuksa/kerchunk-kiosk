@@ -196,6 +196,9 @@ export interface ScannerEngine {
    * (RtlFm) omit it and callers fall back to stop()+start().
    */
   retune?(config: ScanConfig): Promise<void>;
+  /** CB via FernSDR: s16le mono 50 kHz PCM for a helper parked on pcmIn.
+   *  Best-effort (dropped while backpressured). Optional. */
+  writePcm?(chunk: Buffer): void;
   /** Apply Node-side scan-scheduling knobs live (no tune, no respawn).
    *  Optional — engines that don't group-hop ignore scheduling. */
   updateScheduling?(s: Pick<ScanConfig, "autoDwell" | "priorityRevisit">): void;

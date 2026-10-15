@@ -66,6 +66,8 @@ export interface WidebandEngineOptions {
    *  channel doesn't sit on the RTL DC spike (the channel filter then scrubs
    *  the spike). Needed for a dedicated single-channel radio at a narrow rate. */
   centerOffsetHz?: number;
+  /** Build the --pcm-in-fd pipe (the scanner only — CB via FernSDR). */
+  pcmIn?: boolean;
   /** Spawn the helper at this `nice` value (CPU scheduling priority). The
    *  weather radio (decode-only, latency-tolerant) runs LOW priority so it
    *  keeps the scanner's real-time audio thread first — equal priority caused
@@ -119,6 +121,7 @@ export interface WidebandEngineOptions {
 // --lanes, and grouping splits oversized clusters at the same count so the
 // helper never truncates.
 const DEFAULT_WINDOW_HZ = DEFAULT_WINDOW_BANDWIDTH_HZ;
+const PARK_CENTER_HZ = 27_185_000; // first-ever parked tune; any tunable center works
 // Hop-timer tick ceiling while activity-weighted dwell or priority revisit is
 // on: scaled dwells and 700 ms priority looks
 // aren't multiples of dwell/3, so the old dwell/3 tick (1 s at the 3 s
@@ -246,6 +249,9 @@ export class WidebandEngine implements ScannerEngine {
   // needs different ones must respawn (both are spawn-time helper args).
   private spawnedShape: { lanes: number; rate: number } | null = null;
   private readonly centerOffsetHz: number;
+  private readonly pcmIn: boolean;
+  private pcmBlocked = false;
+  private lastCenterHz: number | null = null;
   private readonly niceness: number | undefined;
   private readonly maxHoldMs: number;
   private readonly log: (msg: string) => void;
@@ -265,6 +271,7 @@ export class WidebandEngine implements ScannerEngine {
     this.sampleRateHz = opts.sampleRateHz;
     this.lanesOverride = opts.lanes;
     this.centerOffsetHz = opts.centerOffsetHz ?? 0;
+    this.pcmIn = opts.pcmIn === true;
     this.niceness = opts.niceness;
     this.readyTimeoutMs = opts.readyTimeoutMs ?? DEFAULT_READY_TIMEOUT_MS;
     this.silenceTimeoutMs = opts.silenceTimeoutMs ?? DEFAULT_SILENCE_TIMEOUT_MS;
@@ -447,7 +454,7 @@ export class WidebandEngine implements ScannerEngine {
     this.setState("starting");
     this.emitWarmup("booting", 1);
 
-    if (this.groups.length === 0) {
+    if (this.groups.length === 0 && !(config.pcmIn && this.pcmIn)) {
       // Nothing to scan; running with no helper (parity with RtlFmEngine).
       this.setState("running");
       this.markWarmReady(); // no DSP to warm — ready at once
@@ -500,7 +507,7 @@ export class WidebandEngine implements ScannerEngine {
     );
     // Slots fit every group: only an emptied channel set (release the SDR)
     // takes the full start() path.
-    if (newGroups.length === 0) return this.start(config);
+    if (newGroups.length === 0 && !(config.pcmIn && this.pcmIn)) return this.start(config);
     this.config = config;
     this.groups = newGroups;
     this.groupIndex = 0;
@@ -545,6 +552,13 @@ export class WidebandEngine implements ScannerEngine {
     // /api/stream.wav, Close Call recording drains it into clips. One tee
     // serves both — the helper has no notion of who is listening.
     if (cfg.remoteListening || cfg.recordCloseCalls) args.push("--audio-fd", "3");
+    // CB via FernSDR: the scanner always gets the PCM-in pipe so entering CB
+    // is a retune, never a respawn. The weather helper never does.
+    if (this.pcmIn) {
+      args.push("--pcm-in-fd", "4",
+        "--pcm-target-ms", String(cfg.pcmBufferMs ?? 120),
+        "--pcm-max-ms", String(cfg.pcmMaxBufferMs ?? 400));
+    }
     // SAME decoder: spawn it only on a helper that carries NWR (derived in
     // toScanConfig; set true on the dedicated weather engine). Off => no
     // multimon-ng process and no last-lane tap.
@@ -587,7 +601,7 @@ export class WidebandEngine implements ScannerEngine {
       // fd 3: the helper tees the speaker feed (s16 PCM) for remote
       // listening. The engine ALWAYS drains it — an unread pipe would
       // stall the helper's audio thread.
-      stdio: ["pipe", "pipe", "pipe", "pipe"],
+      stdio: this.pcmIn ? ["pipe", "pipe", "pipe", "pipe", "pipe"] : ["pipe", "pipe", "pipe", "pipe"],
       env: { ...process.env, ...this.helperEnv },
     });
     child.stdio[3]?.on("data", (chunk: Buffer) => {
@@ -595,6 +609,8 @@ export class WidebandEngine implements ScannerEngine {
       for (const l of this.audioListeners) l(chunk);
     });
     child.stdio[3]?.on("error", () => { /* tee is best-effort */ });
+    this.pcmBlocked = false;
+    child.stdio[4]?.on("error", () => { /* helper gone; the exit path restarts it */ });
     this.child = child;
     this.openIds.clear();
     this.audibleId = null;
@@ -837,13 +853,42 @@ export class WidebandEngine implements ScannerEngine {
     this.emit({ type: "tuned", freqHz: centerHz, channelIds: [], ts: this.now() });
   }
 
+  // CB via FernSDR: no lanes, the speaker plays fd 4. Keep the SDR where it
+  // was (no needless retune); nothing to warm, so ready at once.
+  private sendParkedTune(): void {
+    if (!this.child?.stdin?.writable) return;
+    this.releaseOpenOnHop();
+    this.audibleId = null;
+    this.holdStartedAt = 0;
+    this.groupStartedAt = this.now();
+    const centerHz = this.lastCenterHz ?? PARK_CENTER_HZ;
+    this.child.stdin.write(JSON.stringify({
+      cmd: "tune", centerHz, channels: [], pcmIn: true,
+      monitor: false, closeCall: false, closeCallDb: this.config?.closeCallDb ?? 15, knownHz: [],
+    }) + "\n");
+    this.emit({ type: "tuned", freqHz: centerHz, channelIds: [], ts: this.now() });
+    this.markFirstTune();
+    this.markWarmReady();
+  }
+
+  writePcm(chunk: Buffer): void {
+    const pipe = this.child?.stdio[4] as import("node:stream").Writable | null | undefined;
+    if (!pipe || !pipe.writable || this.pcmBlocked) return;
+    if (!pipe.write(chunk)) {
+      this.pcmBlocked = true;
+      pipe.once("drain", () => { this.pcmBlocked = false; });
+    }
+  }
+
   private sendTune(): void {
+    if (this.config?.pcmIn && this.pcmIn && this.groups.length === 0) { this.sendParkedTune(); return; }
     const group = this.groups[this.groupIndex];
     if (!group || !this.child?.stdin?.writable) return;
     this.releaseOpenOnHop();
     this.audibleId = null;
     this.holdStartedAt = 0;
     this.groupStartedAt = this.now();
+    this.lastCenterHz = group.centerHz + this.centerOffsetHz;
     const cmd = {
       cmd: "tune",
       // Offset the RTL tune off the cluster center so a lone channel isn't on
