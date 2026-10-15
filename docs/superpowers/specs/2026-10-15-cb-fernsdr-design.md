@@ -149,6 +149,7 @@ live LCD shows the same.
 | `fernsdr.openDb` | 10 | dB over baseline to open |
 | `fernsdr.openRows` | 2 | consecutive rows to open |
 | `fernsdr.hangMs` | 2000 | AM hang |
+| `fernsdr.maxOpenMs` | 180000 | a channel open this long is a carrier: close it and absorb it into the baseline (the wideband max-hold idea) |
 | `fernsdr.bufferMs` | 120 | helper `--pcm-target-ms` |
 | `fernsdr.maxBufferMs` | 400 | helper `--pcm-max-ms` |
 | `fernsdr.backoffMaxMs` | 60000 | reconnect cap |
