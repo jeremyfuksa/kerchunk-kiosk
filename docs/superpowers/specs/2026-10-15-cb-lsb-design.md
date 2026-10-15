@@ -75,21 +75,32 @@ shut on an empty channel. Judged by ear on the wall speaker.
     SSB speech has gaps between syllables, so the defaults below are a longer
     hang than FM's.
   - Floor adapts only while closed, as today; the per-lane warm-up seeds it.
-- **Speaker: a third source.** `set_source(lane, Demod)`; an LSB source feeds
-  `Re(ssb)` × `SSB_GAIN` (constant, like `AM_GAIN`) straight into the existing
-  AGC + limiter — no de-emphasis, no FM LPF, no CTCSS HPF (the band-pass already
-  bounds it). The fade-on-park path keeps running the LSB demod like it does the
-  discriminator.
+- **Speaker: a third source.** `set_source(lane, Demod)`. FM audio is
+  normalized by deviation and AM by its carrier; SSB has neither, so its audio
+  amplitude follows RF level (~30 dB between stations) — more than the speaker
+  AGC's 15 dB max gain can absorb. An LSB source therefore goes through
+  `SsbLevel` (new): `Re(ssb)` divided by a peak-tracking envelope of `|ssb|`
+  (fast attack `SSB_ENV_ATTACK_MS` 5, slow release `SSB_ENV_RELEASE_MS` 1000,
+  re-primed on gate open like the AM carrier tracker), × `SSB_GAIN` 0.5 ×
+  `--ssb-gain-db`, then the existing AGC + limiter — no de-emphasis, no FM LPF,
+  no CTCSS HPF (the band-pass already bounds it). The fade-on-park path keeps
+  running the LSB demod like it does the discriminator.
+- **`--ssb-gain-db`** ([−30, 20], default 0): the LSB pre-gain into the AGC,
+  the by-ear balance against AM — mirrors `--am-gain-db`.
 - **`--ppm <int>`** → `rtlsdr_set_freq_correction` at open (`rtl_source.cpp`),
   range ±200, default 0. Ignored for `--iq-file`.
-- **`txstat.offsetHz`** (FM and AM lanes): the episode's mean discriminator
-  output × `FM_MAX_DEV_HZ` — the carrier's offset from the tuned frequency,
+- **`txstat.offsetHz`** (FM and AM lanes): the mean discriminator output over
+  the episode's open, quieted polls × `FM_MAX_DEV_HZ` — the carrier's offset from the tuned frequency,
   i.e. receiver error plus transmitter error. This is the calibration probe.
 
 ### Node / config — PR 2
 
 - `config.radios[].ppm` (int, −200…200, optional = 0) → `--ppm` on that
-  radio's helper. Changing it respawns that helper (like a rate change).
+  radio's helper. `radios` is read once at boot (`index.ts`), so a change takes
+  a `kerchunk-kiosk` restart — like every other `radios` field.
+- `config.scan.nativeSsbGainDb` ([−30, 20], optional) → `--ssb-gain-db`,
+  plumbed exactly like `nativeAmGainDb` (ScanConfig field, spawn arg, respawn
+  on change via the existing scan diff).
 - `config.cb.modes`: record of channel number → `"am" | "lsb"`. Absent =
   `CB_MODES_DEFAULT` = `{"38": "lsb"}`; an explicit value replaces the map
   (like `cb.names`).
@@ -117,8 +128,9 @@ shut on an empty channel. Judged by ear on the wall speaker.
 2. Median `offsetHz / freqMHz` across FM channels = KIOSK01's ppm error
    (transmitter errors average out; NWR, if a break-in happens, is a clean
    cross-check). Target: ±1 ppm (±27 Hz at CB).
-3. Set `radios[KIOSK01].ppm`, confirm the median moves to ~0 (this also fixes
-   the sign convention empirically).
+3. Set `radios[KIOSK01].ppm` to −median(offsetHz/freqMHz) (a fast crystal
+   tunes high, so carriers read low → negative offset → positive ppm), restart,
+   and confirm the median moves to ~0 — that settles the sign empirically.
 
 ## Testing
 
@@ -144,8 +156,9 @@ shut on an empty channel. Judged by ear on the wall speaker.
 
 | Knob | Where | Default |
 |---|---|---|
-| ppm correction | `config.radios[].ppm` → `--ppm` | 0 (set after calibration) |
+| ppm correction | `config.radios[].ppm` → `--ppm` | 0 (set after calibration; restart) |
+| LSB loudness vs AM | `config.scan.nativeSsbGainDb` → `--ssb-gain-db` | 0 dB |
 | which channels are LSB | `config.cb.modes` | `{"38":"lsb"}` |
 | LSB open threshold | `config.cb.ssbOpenDb` | scanner `--open-db` |
 | LSB hang | `config.cb.ssbHangMs` | 1500 ms |
-| sideband edges, gain | `native/src/constants.hpp` `SSB_*` | 300 / 2850 Hz |
+| sideband edges, normalizer | `native/src/constants.hpp` `SSB_*` | 300 / 2850 Hz, 5 / 1000 ms, ×0.5 |
