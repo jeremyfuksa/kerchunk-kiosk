@@ -92,7 +92,7 @@ export function toScanConfig(
     mode === "weather"
       ? (cfg.weatherChannel ? [{ ...cfg.weatherChannel, enabled: true }] : [])
       : mode === "cb"
-        ? cbChannels(cfg.cb?.channels ?? cbDefaultChannels(cfg.scan.lanesPerGroup ?? DEFAULT_LANES_PER_GROUP), cfg.cb?.names)
+        ? cbChannels(cfg.cb?.channels ?? cbDefaultChannels(cfg.scan.lanesPerGroup ?? DEFAULT_LANES_PER_GROUP, cfg.cb?.modes), cfg.cb?.names, cfg.cb)
       : mode === "monitor"
         // Deliberate listening is never family-gated: resolve audible
         // explicitly so live events (and the wall map) report true.
@@ -1040,7 +1040,7 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
       // A cb_<n> id previews a CB transmission (spec 2026-10-14): CB channels
       // aren't configured channels and have no location.
       const cbN = typeof body?.channelId === "string" ? /^cb_(\d{1,2})$/.exec(body.channelId)?.[1] : undefined;
-      const cbCh = cbN !== undefined ? cbChannels([Number(cbN)], config.cb?.names)[0] : undefined;
+      const cbCh = cbN !== undefined ? cbChannels([Number(cbN)], config.cb?.names, config.cb)[0] : undefined;
       const found = cbCh ?? (typeof body?.channelId === "string"
         ? located.find((c) => c.id === body.channelId)
         : located[Math.floor(Math.random() * located.length)]);

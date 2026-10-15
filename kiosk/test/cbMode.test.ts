@@ -50,15 +50,40 @@ describe("CB channel table", () => {
     expect(Math.max(...all) - Math.min(...all)).toBeLessThan(2_000_000);
   });
 
-  it("cbChannels: AM, audible, cb-tagged, no location; narrows + dedupes by number", () => {
+  it("cbChannels: AM except the LSB default (38), audible, cb-tagged, no location; narrows + dedupes", () => {
     const all = cbChannels();
     expect(all).toHaveLength(40);
     for (const c of all) {
-      expect(c).toMatchObject({ mode: "am", enabled: true, audible: true, tags: ["cb"] });
+      expect(c).toMatchObject({ mode: c.id === "cb_38" ? "lsb" : "am", enabled: true, audible: true, tags: ["cb"] });
       expect(c.location).toBeUndefined();
     }
     expect(cbChannels([19, 9, 19]).map((c) => c.alphaTag)).toEqual(["CB 9 · Emergency", "CB 19 · Highway"]);
     expect(cbChannels([14], {}).map((c) => c.alphaTag)).toEqual(["CB 14"]);
+  });
+
+  it("cbChannels: LSB channels carry the SSB squelch (hang default 1500, open override when set)", () => {
+    const [ch38] = cbChannels([38]);
+    expect(ch38).toMatchObject({ mode: "lsb", hangMs: 1500 });
+    expect(ch38).not.toHaveProperty("openAboveFloorDb");
+    const [tuned] = cbChannels([38], undefined, { ssbOpenDb: 6, ssbHangMs: 2500 });
+    expect(tuned).toMatchObject({ mode: "lsb", openAboveFloorDb: 6, hangMs: 2500 });
+    const [am19] = cbChannels([19], undefined, { ssbOpenDb: 6 });
+    expect(am19).not.toHaveProperty("openAboveFloorDb");
+    expect(am19).not.toHaveProperty("hangMs");
+    expect(cbChannels([38], undefined, { modes: {} })[0]).toMatchObject({ mode: "am" });   // explicit map replaces the default
+  });
+
+  it("config.cb SSB knobs and radios[].ppm validate", () => {
+    const base = defaultConfig();
+    const ok = (v: unknown) => configSchema.safeParse(v).success;
+    const parsed = configSchema.parse({ ...base, cb: { modes: { "38": "lsb", "36": "am" }, ssbOpenDb: 6, ssbHangMs: 1500 } });
+    expect(parsed.cb).toEqual({ modes: { "38": "lsb", "36": "am" }, ssbOpenDb: 6, ssbHangMs: 1500 });
+    expect(ok({ ...base, cb: { modes: { "38": "usb" } } })).toBe(false);
+    expect(ok({ ...base, cb: { modes: { "41": "lsb" } } })).toBe(false);
+    const radio = (ppm: number) => ({ ...base, radios: [{ serial: "KIOSK01", role: "scan", ppm }] });
+    expect(configSchema.parse(radio(-12)).radios?.[0]?.ppm).toBe(-12);
+    expect(ok(radio(1.5))).toBe(false);
+    expect(ok(radio(201))).toBe(false);
   });
 
   it("config.cb.channels validates 1–40", () => {
@@ -70,11 +95,12 @@ describe("CB channel table", () => {
 });
 
 describe("cbDefaultChannels", () => {
-  it("fills one window: 6/9/19 always, then 1 upward", () => {
-    expect(cbDefaultChannels(32)).toEqual(Array.from({ length: 32 }, (_, i) => i + 1));
-    expect(cbDefaultChannels(12)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 19]);
+  it("fills one window: 6/9/19 and the LSB channels always, then 1 upward", () => {
+    expect(cbDefaultChannels(32)).toEqual([...Array.from({ length: 31 }, (_, i) => i + 1), 38]);
+    expect(cbDefaultChannels(12)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 19, 38]);
     expect(cbDefaultChannels(2)).toEqual([6, 9]);
     expect(cbDefaultChannels(64)).toHaveLength(40);
+    expect(cbDefaultChannels(32, {})).toEqual(Array.from({ length: 32 }, (_, i) => i + 1));
   });
 });
 
