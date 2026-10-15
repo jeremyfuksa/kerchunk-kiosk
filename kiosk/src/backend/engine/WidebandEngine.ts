@@ -554,7 +554,6 @@ export class WidebandEngine implements ScannerEngine {
     if (cfg.nativeQuietDb !== undefined) args.push("--quiet-db", String(cfg.nativeQuietDb));
     // AM vs FM loudness balance (airband ran hot vs FM, 2026-09-26).
     if (cfg.nativeAmGainDb !== undefined) args.push("--am-gain-db", String(cfg.nativeAmGainDb));
-    if (cfg.nativeSsbGainDb !== undefined) args.push("--ssb-gain-db", String(cfg.nativeSsbGainDb));
     if (this.ppm) args.push("--ppm", String(this.ppm));
     // FM speaker audio low-pass (weak-signal hiss vs voice brightness).
     if (cfg.fmAudioLpfHz !== undefined) args.push("--audio-lpf-hz", String(cfg.fmAudioLpfHz));

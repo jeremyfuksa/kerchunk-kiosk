@@ -16,8 +16,7 @@ import type { RadarSource } from "./radar/RadarFeed.js";
 import { setVolume as amixerVolume, setMuted as amixerMuted, type AmixerOpts } from "./audio.js";
 import { isScannable, isAudible, profileFor } from "./config/banks.js";
 import { ccAudibleRanges } from "./config/family.js";
-import { cbChannels, cbDefaultChannels } from "./config/cb.js";
-import { DEFAULT_LANES_PER_GROUP } from "./config/engineDefaults.js";
+import { cbChannels, CB_FERNSDR_DEFAULTS } from "./config/cb.js";
 import { collides, findDuplicateSets } from "./config/channelDedup.js";
 import { solveK, estimateWatts, distKm, type Anchor } from "./powerEstimator.js";
 import { parseSame, fipsMatch, fipsNames, isTest, isEom } from "./same.js";
@@ -92,7 +91,7 @@ export function toScanConfig(
     mode === "weather"
       ? (cfg.weatherChannel ? [{ ...cfg.weatherChannel, enabled: true }] : [])
       : mode === "cb"
-        ? cbChannels(cfg.cb?.channels ?? cbDefaultChannels(cfg.scan.lanesPerGroup ?? DEFAULT_LANES_PER_GROUP, cfg.cb?.modes), cfg.cb?.names, cfg.cb)
+        ? []
       : mode === "monitor"
         // Deliberate listening is never family-gated: resolve audible
         // explicitly so live events (and the wall map) report true.
@@ -145,7 +144,6 @@ export function toScanConfig(
     openAboveFloorDb: cfg.scan.openAboveFloorDb,
     nativeQuietDb: cfg.scan.nativeQuietDb,
     nativeAmGainDb: cfg.scan.nativeAmGainDb,
-    nativeSsbGainDb: cfg.scan.nativeSsbGainDb,
     fmAudioLpfHz: cfg.scan.fmAudioLpfHz,
     fmAudioHpfHz: cfg.scan.fmAudioHpfHz,
     // Speaker AGC + limiter knobs (config.audio). In the scan config so the
@@ -162,6 +160,11 @@ export function toScanConfig(
       limiterCeiling: cfg.audio.limiterCeiling,
       limiterReleaseMs: cfg.audio.limiterReleaseMs,
     },
+    // CB via FernSDR: park the helper on PCM-in (no channels). The jitter
+    // buffer knobs are spawn args for every mode (config.cb.fernsdr).
+    pcmIn: mode === "cb",
+    pcmBufferMs: cfg.cb?.fernsdr?.bufferMs ?? CB_FERNSDR_DEFAULTS.bufferMs,
+    pcmMaxBufferMs: cfg.cb?.fernsdr?.maxBufferMs ?? CB_FERNSDR_DEFAULTS.maxBufferMs,
     // CB mode listens to its own window only: no band sweep, no Close Call.
     sweepRanges: mode === "cb" ? [] : cfg.scan.sweepRanges,
     // Weather-only AND direct-tune both hold the lone channel open/audible
@@ -1041,7 +1044,7 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
       // A cb_<n> id previews a CB transmission (spec 2026-10-14): CB channels
       // aren't configured channels and have no location.
       const cbN = typeof body?.channelId === "string" ? /^cb_(\d{1,2})$/.exec(body.channelId)?.[1] : undefined;
-      const cbCh = cbN !== undefined ? cbChannels([Number(cbN)], config.cb?.names, config.cb)[0] : undefined;
+      const cbCh = cbN !== undefined ? cbChannels([Number(cbN)], config.cb?.names, config.cb?.modes)[0] : undefined;
       const found = cbCh ?? (typeof body?.channelId === "string"
         ? located.find((c) => c.id === body.channelId)
         : located[Math.floor(Math.random() * located.length)]);

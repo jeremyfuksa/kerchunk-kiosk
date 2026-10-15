@@ -1,10 +1,11 @@
-// CB mode (spec: in-chat design 2026-10-14): the 40 FCC Citizens Band
-// channels, AM. They are never configured channels — CB is mostly silent, so
-// it stays out of the scan rotation and off the map; the operator switches the
-// whole scanner to CB-only listening instead. config.cb.channels narrows the
-// set by channel number; config.cb.modes makes a channel LSB (38 by default,
-// spec 2026-10-15).
+// CB mode: the 40 FCC Citizens Band channels, heard through the FernSDR
+// network receiver (spec 2026-10-15-cb-fernsdr). They are never configured
+// channels — CB is mostly silent, so it stays out of the scan rotation and off
+// the map; the operator switches the whole scanner to CB-only listening
+// instead. config.cb.channels narrows the set by channel number;
+// config.cb.modes makes a channel LSB (38 by default).
 import type { ScanChannel } from "../engine/ScannerEngine.js";
+import type { Config } from "./schema.js";
 
 // Channel number → Hz. Not monotonic: 23 sits above 24 and 25 (historic
 // allocation), and 3→4, 7→8, 11→12, 15→16, 19→20 skip a 10 kHz slot.
@@ -34,24 +35,6 @@ export const CB_MODES_DEFAULT: Readonly<Record<string, CbMode>> = { "38": "lsb" 
 /** SSB speech pauses between syllables; a short hang chops it. */
 export const CB_SSB_HANG_MS = 1500;
 
-/** config.cb satisfies this structurally. */
-export interface CbChannelOpts {
-  modes?: Readonly<Record<string, CbMode>>;
-  ssbOpenDb?: number;
-  ssbHangMs?: number;
-}
-
-/** Default set: as many channels as one helper window holds (the grouping cap
- *  is the lane count — the whole band fits one 2 MHz window, so only the count
- *  matters), so CB mode never hops. CB_CORE and every non-AM channel in `modes`
- *  first (the LSB channels are why the operator turned the mode on), then the
- *  rest counting up from 1; the top of the band is the first cut. */
-export function cbDefaultChannels(lanesPerGroup: number, modes: Readonly<Record<string, CbMode>> = CB_MODES_DEFAULT): number[] {
-  const always = [...new Set([...CB_CORE, ...Object.keys(modes).filter((k) => modes[k] !== "am").map(Number)])];
-  const order = [...always, ...CB_ALL.filter((n) => !always.includes(n))];
-  return order.slice(0, Math.max(1, lanesPerGroup)).sort((a, b) => a - b);
-}
-
 /** Built-in channel names (operator: 6 "Super Bowl", 9 "Emergency",
  *  19 "Highway"). config.cb.names replaces the whole map. */
 export const CB_NAMES_DEFAULT: Readonly<Record<string, string>> = { "6": "Super Bowl", "9": "Emergency", "19": "Highway" };
@@ -69,28 +52,62 @@ export function cbLabel(n: number, names: Readonly<Record<string, string>> = CB_
   return name ? `CB ${n} · ${name}` : `CB ${n}`;
 }
 
-/** The CB-mode channel set: AM, or the mode from `opts.modes`. Always
- *  audible: picking CB mode is deliberate listening, so the family speaker gate
- *  doesn't apply. No location — CB hits land in history but never on the map.
- *  LSB channels carry the SSB squelch (hang, optional open threshold). */
+/** Channels that pre-empt the audible one (operator: 6/9/19 matter most). */
+export const CB_PRIORITY_DEFAULT = [6, 9, 19] as const;
+
+/** config.cb.fernsdr defaults (spec 2026-10-15-cb-fernsdr). */
+export const CB_FERNSDR_DEFAULTS = {
+  url: "ws://192.168.1.30:8073/ws",
+  band: "cb-radio",
+  openDb: 10,
+  openRows: 2,
+  hangMs: 2000,
+  maxOpenMs: 180_000,
+  bufferMs: 120,
+  maxBufferMs: 400,
+  backoffMaxMs: 60_000,
+} as const;
+
+/** The CB channel set as events carry it: `cb_N` ids, labels, AM or the
+ *  mode from `modes`. Always audible — picking CB mode is deliberate
+ *  listening. No location: CB lands in history, never on the map. */
 export function cbChannels(
   numbers: readonly number[] = CB_ALL,
   names: Readonly<Record<string, string>> = CB_NAMES_DEFAULT,
-  opts: CbChannelOpts = {},
+  modes: Readonly<Record<string, CbMode>> = CB_MODES_DEFAULT,
 ): ScanChannel[] {
-  const modes = opts.modes ?? CB_MODES_DEFAULT;
   const out: ScanChannel[] = [];
   for (const n of [...new Set(numbers)].sort((a, b) => a - b)) {
     const freq = CB_FREQ_HZ[n];
     if (freq === undefined) continue;
-    const mode = modes[String(n)] ?? "am";
-    out.push({
-      id: `cb_${n}`, freq, alphaTag: cbLabel(n, names), mode, enabled: true, audible: true, tags: ["cb"],
-      ...(mode === "lsb" ? {
-        hangMs: opts.ssbHangMs ?? CB_SSB_HANG_MS,
-        ...(opts.ssbOpenDb !== undefined ? { openAboveFloorDb: opts.ssbOpenDb } : {}),
-      } : {}),
-    });
+    out.push({ id: `cb_${n}`, freq, alphaTag: cbLabel(n, names), mode: modes[String(n)] ?? "am", enabled: true, audible: true, tags: ["cb"] });
   }
   return out;
+}
+
+export interface CbNetConfig {
+  url: string;
+  band: string;
+  channels: ScanChannel[];
+  priority: number[];
+  openDb: number;
+  openRows: number;
+  hangMs: number;
+  ssbHangMs: number;
+  maxOpenMs: number;
+  backoffMaxMs: number;
+}
+
+/** Everything CbNet needs, resolved from config.cb with defaults. */
+export function cbNetConfig(cfg: Pick<Config, "cb">): CbNetConfig {
+  const cb = cfg.cb;
+  const f = { ...CB_FERNSDR_DEFAULTS, ...(cb?.fernsdr ?? {}) };
+  return {
+    url: f.url, band: f.band,
+    channels: cbChannels(cb?.channels ?? CB_ALL, cb?.names, cb?.modes),
+    priority: [...(cb?.priority ?? CB_PRIORITY_DEFAULT)],
+    openDb: f.openDb, openRows: f.openRows, hangMs: f.hangMs,
+    ssbHangMs: cb?.ssbHangMs ?? CB_SSB_HANG_MS,
+    maxOpenMs: f.maxOpenMs, backoffMaxMs: f.backoffMaxMs,
+  };
 }

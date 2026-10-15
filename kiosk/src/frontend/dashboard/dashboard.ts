@@ -21,8 +21,7 @@ import icoWind from "lucide-static/icons/wind.svg?raw";
 import icoArrow from "lucide-static/icons/navigation-2.svg?raw";
 import { CB_EMPTY, cbReduce, cbSeed, type CbState, type CbHistoryRow } from "./cbDial.js";
 import { cbView, cbHtml, CB_VIEW_DEFAULTS } from "./cbView.js";
-import { CB_NAMES_DEFAULT, cbDefaultChannels } from "../../backend/config/cb.js";
-import { DEFAULT_LANES_PER_GROUP } from "../../backend/config/engineDefaults.js";
+import { CB_NAMES_DEFAULT, CB_ALL } from "../../backend/config/cb.js";
 import type { MapHandle } from "../map/map.js";
 import "./dashboard.css";
 
@@ -219,14 +218,14 @@ export function renderDashboard(root: HTMLElement): void {
   const CB_HISTORY_MS = 24 * 60 * 60_000;
   let cbOpts = {
     names: CB_NAMES_DEFAULT as Readonly<Record<string, string>>,
-    monitored: cbDefaultChannels(DEFAULT_LANES_PER_GROUP) as readonly number[],
+    monitored: CB_ALL as readonly number[],
     ...CB_VIEW_DEFAULTS,
   };
   // Same shared request the map's mount makes (api.getConfig dedupes it).
   void api.getConfig().then((cfg) => {
     cbOpts = {
       names: cfg.cb?.names ?? CB_NAMES_DEFAULT,
-      monitored: cfg.cb?.channels ?? cbDefaultChannels(cfg.scan.lanesPerGroup ?? DEFAULT_LANES_PER_GROUP, cfg.cb?.modes),
+      monitored: cfg.cb?.channels ?? CB_ALL,
       ...CB_VIEW_DEFAULTS,
       ...cfg.display?.cb,
     };

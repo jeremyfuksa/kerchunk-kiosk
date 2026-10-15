@@ -535,21 +535,6 @@ describe("WidebandEngine", () => {
       expect(Math.max(...narrow.sizes)).toBe(12);
     });
 
-    it("forwards nativeSsbGainDb as --ssb-gain-db; omits it when unset", async () => {
-      const args = tmpFile("args");
-      const { engine } = makeEngine({ FAKE_WB_ARGS_FILE: args });
-      await engine.start(cfg([VHF_A], { nativeSsbGainDb: -6 }));
-      await waitFor(() => lines(args).length >= 1, 1000);
-      await engine.stop();
-      expect(lines(args)[0] ?? "").toContain("--ssb-gain-db -6");
-      const plainArgs = tmpFile("args");
-      const plain = makeEngine({ FAKE_WB_ARGS_FILE: plainArgs });
-      await plain.engine.start(cfg([VHF_A]));
-      await waitFor(() => lines(plainArgs).length >= 1, 1000);
-      await plain.engine.stop();
-      expect(lines(plainArgs)[0] ?? "").not.toContain("--ssb-gain-db");
-    });
-
     it("passes the radio's ppm as --ppm; omits it when 0 or unset", async () => {
       const args = tmpFile("args");
       const { engine } = makeEngine({ FAKE_WB_ARGS_FILE: args }, { ppm: -12 });

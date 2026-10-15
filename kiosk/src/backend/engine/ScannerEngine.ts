@@ -53,8 +53,14 @@ export interface ScanConfig {
   nativeQuietDb?: number;
   // AM speaker gain offset in dB (see schema) — the AM pre-gain into the AGC.
   nativeAmGainDb?: number;
-  // LSB speaker gain offset in dB (see schema) — the SSB pre-gain into the AGC.
-  nativeSsbGainDb?: number;
+  // CB via FernSDR (spec 2026-10-15-cb-fernsdr): park the helper with no
+  // lanes and play the --pcm-in-fd audio Node writes. Only the scanner
+  // helper is built with the pipe.
+  pcmIn?: boolean;
+  // Helper PCM jitter buffer (--pcm-target-ms / --pcm-max-ms): spawn args,
+  // so a change respawns through the PUT handler's scanChanged diff.
+  pcmBufferMs?: number;
+  pcmMaxBufferMs?: number;
   // FM speaker audio low-pass cutoff in Hz (see schema).
   fmAudioLpfHz?: number;
   // FM speaker high-pass cutoff in Hz, 0 = off (see schema).
