@@ -82,6 +82,10 @@ bool parse_cli(int argc, const char* const* argv, Cli& c, std::string& err) {
       if (!val(v) || !to_double(v, d) || !(d >= -30 && d <= 20)) { err = "--am-gain-db must be a number in [-30, 20]"; return false; }
       c.eng.am_gain_db = d;
     }
+    else if (k == "--ssb-gain-db") {
+      if (!val(v) || !to_double(v, d) || !(d >= -30 && d <= 20)) { err = "--ssb-gain-db must be a number in [-30, 20]"; return false; }
+      c.eng.ssb_gain_db = d;
+    }
     else if (k == "--agc-target-db") { if (!ranged(v, -40, -3, c.eng.agc.target_db)) return false; }
     else if (k == "--agc-max-gain-db") { if (!ranged(v, 0, 30, c.eng.agc.max_gain_db)) return false; }
     else if (k == "--agc-min-gain-db") { if (!ranged(v, -40, 0, c.eng.agc.min_gain_db)) return false; }

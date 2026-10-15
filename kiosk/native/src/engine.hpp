@@ -29,6 +29,8 @@ struct EngineOptions {
   double am_gain_db = 0.0;                   // AM speaker gain offset vs AM_GAIN, dB (CLI --am-gain-db;
                                              // balances airband loudness against FM by ear;
                                              // it is the AM pre-gain INTO the speaker AGC)
+  double ssb_gain_db = 0.0;                  // LSB speaker gain offset vs SSB_GAIN, dB (CLI --ssb-gain-db;
+                                             // the by-ear balance against AM, into the AGC)
   AgcParams agc{};                           // speaker AGC (CLI --agc-*)
   double limiter_ceiling = LIMITER_CEILING;        // speaker peak limiter (CLI --limiter-ceiling)
   double limiter_release_ms = LIMITER_RELEASE_MS;  // (CLI --limiter-release-ms)
