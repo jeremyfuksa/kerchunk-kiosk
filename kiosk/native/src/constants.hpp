@@ -145,6 +145,29 @@ inline constexpr int AGC_BLOCK = 32;               // gain decision every 32 sam
 inline constexpr double LIMITER_CEILING = 0.7;     // linear; must be <= RAIL
 inline constexpr double LIMITER_RELEASE_MS = 50;
 inline constexpr float AM_GAIN = 0.7f;
+// ---- SSB (LSB) lanes: CB 38 (spec docs/superpowers/specs/2026-10-15-cb-lsb-design.md).
+// The lower sideband sits SSB_LO_HZ..SSB_HI_HZ below the dial. SsbDemod shifts its centre to DC,
+// decimates by SSB_DECIM so the sharp channel filter is cheap, low-passes to half the sideband
+// width, interpolates back to LANE_RATE and shifts back.
+inline constexpr double SSB_LO_HZ = 300;
+inline constexpr double SSB_HI_HZ = 2850;
+inline constexpr double SSB_TRANSITION_HZ = 300;      // channel filter edge width, at SSB_RATE
+inline constexpr int SSB_DECIM = 4;
+inline constexpr int SSB_RATE = LANE_RATE / SSB_DECIM;   // 12.5 kHz
+// Decimate/interpolate low-pass. After the shift the band is +-1275 Hz, and only content within
+// 1275 Hz of a multiple of SSB_RATE (12.5 kHz) folds into it -- so the stopband need only start
+// ~10.7 kHz: a shallow 19-tap filter (the sharp edges are the channel filter's job at 12.5 kHz).
+inline constexpr double SSB_AA_CUTOFF_HZ = 6250;
+inline constexpr double SSB_AA_TRANSITION_HZ = 9000;
+// Speaker level: SSB has no carrier or deviation to normalize against, so its audio follows RF
+// level (~30 dB between stations, past the AGC's 15 dB). SsbLevel divides by a peak envelope.
+inline constexpr double SSB_ENV_ATTACK_MS = 5;
+inline constexpr double SSB_ENV_RELEASE_MS = 1000;
+inline constexpr float SSB_GAIN = 0.5f;               // x --ssb-gain-db, into the AGC
+// Speaker gate hold on LSB lanes: SSB has no carrier, so the 10 ms energy gate would chop every
+// syllable gap (and re-prime the level tracker + AGC each word). The gate stays open this long past
+// the last above-threshold poll; the lane's own hang (cb.ssbHangMs) still decides the close.
+inline constexpr double SSB_GATE_HOLD_MS = 400;
 inline constexpr float SPEAKER_S16_SCALE = 32767.f;
 inline constexpr float TEE_S16_SCALE = 28000.f;
 inline constexpr float SAME_S16_SCALE = 16384.f;

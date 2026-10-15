@@ -125,7 +125,7 @@ TEST(limiter_holds_burst_under_ceiling) {
 TEST(speaker_agc_evens_out_talkers) {
   auto out_db = [](double dev_hz) {
     kc::SpeakerPath sp;
-    sp.set_source(0, false);
+    sp.set_source(0, kc::Demod::Fm);
     sp.set_gain(1.0f);
     auto x = sig::fm_tone(kc::LANE_RATE, 2 * kc::LANE_RATE, 0, dev_hz, 1000, 0.3);
     kc::FmDiscriminator d;
@@ -144,7 +144,7 @@ TEST(speaker_agc_evens_out_talkers) {
 
 TEST(speaker_agc_resets_on_new_transmission_and_freezes_while_closed) {
   kc::SpeakerPath sp;
-  sp.set_source(0, false);
+  sp.set_source(0, kc::Demod::Fm);
   sp.set_gain(1.0f);
   auto x = sig::fm_tone(kc::LANE_RATE, kc::LANE_RATE, 0, 4500, 1000, 0.3);
   kc::FmDiscriminator d;

@@ -124,3 +124,22 @@ TEST(cli_lanes_range) {
     CHECK(err.find("--lanes") != std::string::npos);
   }
 }
+
+TEST(cli_ssb_gain_db_range) {
+  kc::Cli c;
+  std::string err;
+  CHECK(parse({"--ssb-gain-db", "-6"}, c, err));
+  CHECK_NEAR(c.eng.ssb_gain_db, -6, 0);
+  CHECK(!parse({"--ssb-gain-db", "25"}, c, err));
+  CHECK(!parse({"--ssb-gain-db", "x"}, c, err));
+}
+
+TEST(cli_ppm_integer_range) {
+  kc::Cli c;
+  std::string err;
+  CHECK(parse({"--ppm", "-12"}, c, err));
+  CHECK(c.ppm == -12);
+  CHECK(!parse({"--ppm", "201"}, c, err));
+  CHECK(!parse({"--ppm", "1.5"}, c, err));
+  CHECK(!parse({"--ppm"}, c, err));
+}

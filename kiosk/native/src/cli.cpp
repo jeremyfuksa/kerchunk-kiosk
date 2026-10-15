@@ -62,6 +62,10 @@ bool parse_cli(int argc, const char* const* argv, Cli& c, std::string& err) {
       c.eng.lanes = n;
     }
     else if (k == "--rtl-index") { if (!val(v) || !to_int(v, c.rtl_index) || c.rtl_index < 0) { err = "--rtl-index must be a non-negative integer"; return false; } }
+    else if (k == "--ppm") {
+      if (!val(v) || !to_int(v, n) || n < -200 || n > 200) { err = "--ppm must be an integer in [-200, 200]"; return false; }
+      c.ppm = n;
+    }
     else if (k == "--audio-fd") { if (!val(v) || !to_int(v, c.audio_fd)) { err = "--audio-fd must be an integer"; return false; } }
     else if (k == "--rate") {
       if (!val(v) || !to_int(v, n) || n <= 0 || n % LANE_RATE != 0) { err = "--rate must be a positive multiple of 50000"; return false; }
@@ -81,6 +85,10 @@ bool parse_cli(int argc, const char* const* argv, Cli& c, std::string& err) {
     else if (k == "--am-gain-db") {
       if (!val(v) || !to_double(v, d) || !(d >= -30 && d <= 20)) { err = "--am-gain-db must be a number in [-30, 20]"; return false; }
       c.eng.am_gain_db = d;
+    }
+    else if (k == "--ssb-gain-db") {
+      if (!val(v) || !to_double(v, d) || !(d >= -30 && d <= 20)) { err = "--ssb-gain-db must be a number in [-30, 20]"; return false; }
+      c.eng.ssb_gain_db = d;
     }
     else if (k == "--agc-target-db") { if (!ranged(v, -40, -3, c.eng.agc.target_db)) return false; }
     else if (k == "--agc-max-gain-db") { if (!ranged(v, 0, 30, c.eng.agc.max_gain_db)) return false; }

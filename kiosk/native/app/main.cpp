@@ -145,7 +145,7 @@ static int run_live(const kc::Cli& c) {
     g_stop = true;   // EOF = parent went away (a flag, not a queued quit: can't be dropped)
   });
   in.detach();   // blocked in getline; process exit ends it
-  kc::RtlSource src({c.rtl_serial, c.rtl_index, c.eng.rate, c.gain}, log);
+  kc::RtlSource src({c.rtl_serial, c.rtl_index, c.eng.rate, c.gain, c.ppm}, log);
   std::string err;
   if (!src.open(err, [] { return g_stop.load(); })) {
     if (g_stop) return 0;   // asked to stop while waiting for the dongle: a clean exit, not an error
