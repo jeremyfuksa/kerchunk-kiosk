@@ -106,14 +106,16 @@ void SpeakerPath::cut() {
   hold_left_ = held != 0.f ? FADE_SAMPLES : 0;
 }
 
-void SpeakerPath::process(const cf* x, const float* disc, int n, std::vector<float>& out48) {
+void SpeakerPath::process(const cf* x, const float* disc, int n, std::vector<float>& out48, const float* ext) {
   if ((int)a50_.size() < n) a50_.resize(n);
   // AGC freezes while the gate is closed or any fade is running: squelch-closed noise and the
   // edges of a transmission must not move the envelope.
   const bool agc_frozen = target_ == 0.f || ramp_left_ > 0 || switching_;
   for (int i = 0; i < n; i++) {
     float a = 0.f;
-    if (cur_lane_ >= 0 && x && disc) {
+    if (cur_ == Demod::Ext) {
+      if (ext) a = agc_.step(ext[i], agc_frozen);   // already demodulated by the receiver
+    } else if (cur_lane_ >= 0 && x && disc) {
       if (cur_ == Demod::Am) a = am_.step(x[i]) * am_gain_;
       else a = hpf_.step(lpf_.step(de_.step(disc[i])));
       a = agc_.step(a, agc_frozen);

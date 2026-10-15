@@ -30,6 +30,7 @@ struct TuneCmd {
   bool monitor = false;
   bool close_call = false;
   double close_call_db = CC_DB_DEFAULT;
+  bool pcm_in = false;   // speaker plays --pcm-in-fd audio (CB via FernSDR)
   std::vector<double> known_hz;
   // Close Call speaker gate (spec 2026-10-13): inclusive [lo, hi] Hz ranges whose CC hits may
   // speak. nullopt (field absent) = every CC hit audible, as before.

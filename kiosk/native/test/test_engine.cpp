@@ -535,3 +535,42 @@ TEST(engine_txstat_offset_hz_reads_a_carrier_offset) {
     if (e["id"] == "a" && e.contains("offsetHz")) { seen = true; CHECK_NEAR(e["offsetHz"].get<double>(), 300, 30); }
   CHECK(seen);
 }
+
+#include "pcm_in.hpp"
+
+TEST(engine_pcm_in_plays_external_audio_through_the_speaker_chain) {
+  kc::EngineOptions o;
+  o.rate = RATE;
+  Rig r(o);
+  kc::PcmIn pcm(20, 1000);   // max above the 0.5 s burst, or the ring trims it to the 20 ms target
+  r.e.set_pcm_in(&pcm);
+  r.tune(R"({"cmd":"tune","centerHz":146000000,"channels":[],"pcmIn":true})");
+  std::vector<int16_t> tone(kc::LANE_RATE / 2);   // 0.5 s of 1 kHz at 0.25 FS
+  for (size_t i = 0; i < tone.size(); i++) tone[i] = (int16_t)(8192 * std::sin(2 * M_PI * 1000 * i / kc::LANE_RATE));
+  pcm.write(tone.data(), tone.size());
+  r.feed(scene(0.6, 7));
+  CHECK(r.pcm_rms(0.15, 0.4) > 0.05);   // audible (AGC/limiter applied)
+  CHECK(r.of("open").empty());          // the scanner had no channels
+}
+
+TEST(engine_pcm_in_off_without_the_tune_flag) {
+  kc::EngineOptions o;
+  o.rate = RATE;
+  Rig r(o);
+  kc::PcmIn pcm(20, 400);
+  r.e.set_pcm_in(&pcm);
+  r.tune(R"({"cmd":"tune","centerHz":146000000,"channels":[]})");
+  std::vector<int16_t> tone(kc::LANE_RATE / 2, 8192);
+  pcm.write(tone.data(), tone.size());
+  r.feed(scene(0.6, 8));
+  CHECK(r.pcm_rms(0.15, 0.4) < 0.001);
+}
+
+TEST(engine_pcm_in_flag_without_a_ring_is_silent_and_safe) {
+  kc::EngineOptions o;
+  o.rate = RATE;
+  Rig r(o);
+  r.tune(R"({"cmd":"tune","centerHz":146000000,"channels":[],"pcmIn":true})");
+  r.feed(scene(0.3, 9));
+  CHECK(r.pcm_rms(0.05, 0.3) < 0.001);
+}

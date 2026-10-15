@@ -38,10 +38,22 @@ void Engine::reset_subaudio(int i) {
 }
 
 void Engine::sync_speaker() {
+  if (pcm_on_) {   // external audio owns the speaker; pcm_step drives the gate
+    spk_.set_source(-1, Demod::Ext);
+    sync_active();
+    return;
+  }
   const int a = sc_.audible();
   spk_.set_source(a, a >= 0 ? sc_.lane(a).demod : Demod::Fm);
   spk_.set_gain(sc_.gate());
   sync_active();
+}
+
+void Engine::pcm_step(int n) {
+  if ((int)ext_.size() < n) ext_.resize(n);
+  pcm_->pull(ext_.data(), n);
+  spk_.set_gain(pcm_->playing() ? 1.f : 0.f);
+  spk_.process(nullptr, nullptr, n, out48_, ext_.data());
 }
 
 void Engine::sync_active() {
@@ -82,6 +94,8 @@ void Engine::tune(const TuneCmd& t) {
     }
     ok.push_back(c);
   }
+  pcm_on_ = t.pcm_in && pcm_ != nullptr;
+  if (pcm_on_) pcm_->reset();   // never play audio queued before this tune
   sc_.set_cc_audible(t.cc_audible_hz);
   sc_.tune(center_, ok, t.monitor);
   std::vector<double> offsets(opt_.lanes, 0.0);
@@ -122,7 +136,7 @@ void Engine::speak_silence(long long n) {
   while (lane_n > 0) {
     const int k = (int)std::min<long long>(lane_n, Channelizer::kLaneSamplesPerHop);
     out48_.clear();
-    spk_.process(nullptr, nullptr, k, out48_);
+    if (pcm_on_) pcm_step(k); else spk_.process(nullptr, nullptr, k, out48_);
     flush_audio();
     lane_n -= k;
   }
@@ -181,18 +195,22 @@ void Engine::on_hop(const cf* lanes, int per, const cf* raw, int raw_n) {
     }
   }
   out48_.clear();
-  const int f = spk_.feeding_lane();
-  if (f >= 0 && sc_.lane(f).parked()) {
-    // Scanner::skip parks an audible Close Call slot at once, but the speaker is still fading it
-    // out. Parking doesn't move the channelizer offset, so the slot's samples are still the old
-    // channel: keep its discriminator running (no meters) so the fade runs on real audio, not
-    // zeros -- a fade over zeros is a hard cut, an audible click.
-    const cf* y = lanes + f * per;
-    float* db = disc_buf_[f].data();
-    for (int d = 0; d < per; d++) db[d] = disc_[f].step(y[d]);
+  if (pcm_on_) {
+    pcm_step(per);
+  } else {
+    const int f = spk_.feeding_lane();
+    if (f >= 0 && sc_.lane(f).parked()) {
+      // Scanner::skip parks an audible Close Call slot at once, but the speaker is still fading it
+      // out. Parking doesn't move the channelizer offset, so the slot's samples are still the old
+      // channel: keep its discriminator running (no meters) so the fade runs on real audio, not
+      // zeros -- a fade over zeros is a hard cut, an audible click.
+      const cf* y = lanes + f * per;
+      float* db = disc_buf_[f].data();
+      for (int d = 0; d < per; d++) db[d] = disc_[f].step(y[d]);
+    }
+    if (f >= 0) spk_.process(lanes + f * per, disc_buf_[f].data(), per, out48_);
+    else spk_.process(nullptr, nullptr, per, out48_);
   }
-  if (f >= 0) spk_.process(lanes + f * per, disc_buf_[f].data(), per, out48_);
-  else spk_.process(nullptr, nullptr, per, out48_);
   flush_audio();
   if (cc_on_) cc_->push_raw(raw, raw_n);
   lane_samples_ += per;

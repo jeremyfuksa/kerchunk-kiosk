@@ -201,5 +201,5 @@ inline constexpr int CMD_QUEUE = 256;
 // network receiver (which paces the PCM).
 inline constexpr double PCM_TARGET_MS = 120;   // prime to this much before playing (--pcm-target-ms)
 inline constexpr double PCM_MAX_MS = 400;      // above this, drop the oldest back to target (--pcm-max-ms)
-inline constexpr size_t PCM_IN_RING = 1 << 16; // samples (~1.3 s at LANE_RATE)
+inline constexpr size_t PCM_IN_RING = 1 << 17; // samples (~2.6 s at LANE_RATE): holds the --pcm-max-ms ceiling (2000 ms)
 }  // namespace kc

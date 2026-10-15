@@ -11,9 +11,10 @@ namespace kc {
 using cf = std::complex<float>;
 
 // Lane demodulator kind, from the tune channel's "mode" ("am"; anything else is FM).
-enum class Demod { Fm, Am };
+// Ext is the speaker's external PCM source (pcmIn tunes) -- never a lane, never from a tune's mode.
+enum class Demod { Fm, Am, Ext };
 inline Demod demod_for(const std::string& mode) { return mode == "am" ? Demod::Am : Demod::Fm; }
-inline const char* demod_name(Demod d) { return d == Demod::Am ? "am" : "fm"; }
+inline const char* demod_name(Demod d) { return d == Demod::Am ? "am" : d == Demod::Ext ? "ext" : "fm"; }
 
 // FM discriminator: arg(x[n] * conj(x[n-1])), scaled so +-1.0 == +-FM_MAX_DEV_HZ.
 // The first sample after reset only primes the history and outputs 0, so an arbitrary

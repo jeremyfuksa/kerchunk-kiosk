@@ -30,7 +30,7 @@ class SpeakerPath {
   void cut();
   int feeding_lane() const { return cur_lane_; }
   Demod feeding_demod() const { return cur_; }
-  void process(const cf* x, const float* disc, int n, std::vector<float>& out48);
+  void process(const cf* x, const float* disc, int n, std::vector<float>& out48, const float* ext = nullptr);
   const Agc& agc() const { return agc_; }
 
  private:

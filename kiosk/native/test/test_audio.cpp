@@ -211,3 +211,14 @@ TEST(speaker_hpf_removes_sub_audible_tone) {
   kc::SpeakerPath off0(kc::SPEAKER_LPF_HZ, kc::AM_GAIN, flat_agc(), kc::LIMITER_CEILING, kc::LIMITER_RELEASE_MS, 0);
   CHECK(rms_at(on, 100) < 0.02 * rms_at(off0, 100));   // >= 34 dB down with the default HPF
 }
+
+TEST(speaker_ext_source_feeds_the_agc_and_ignores_lanes) {
+  auto sp = flat_path();
+  sp.set_source(-1, kc::Demod::Ext);
+  sp.set_gain(1.f);
+  std::vector<float> ext(64, 0.25f), out;
+  for (int k = 0; k < 50; k++) sp.process(nullptr, nullptr, 64, out, ext.data());
+  CHECK(sp.feeding_lane() == -1);
+  CHECK(sp.feeding_demod() == kc::Demod::Ext);
+  CHECK(std::fabs(out.back()) > 0.2f);   // DC-ish 0.25 through a flat AGC, resampled
+}

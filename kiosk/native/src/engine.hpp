@@ -13,6 +13,7 @@
 #include "dcs.hpp"
 #include "demod.hpp"
 #include "meters.hpp"
+#include "pcm_in.hpp"
 #include "protocol.hpp"
 #include "scanner.hpp"
 #include "subaudio.hpp"
@@ -48,8 +49,14 @@ class Engine {
   // if a window is live, restart the channelizer stream so the gap can't smear across hops.
   // dropped=true counts toward power.drops and the rate-limited overrun log.
   void note_gap(long long nsamples, bool dropped);
+  // External speaker audio (pcmIn tunes). Call before the engine starts stepping; p must outlive it.
+  void set_pcm_in(PcmIn* p) { pcm_ = p; }
 
  private:
+  void pcm_step(int n);
+  PcmIn* pcm_ = nullptr;
+  bool pcm_on_ = false;
+  std::vector<float> ext_;
   void tune(const TuneCmd& t);
   void on_hop(const cf* lanes, int per, const cf* raw, int raw_n);
   void poll();

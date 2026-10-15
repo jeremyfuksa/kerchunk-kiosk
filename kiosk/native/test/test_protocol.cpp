@@ -81,3 +81,12 @@ TEST(protocol_parses_cc_audible_ranges) {
   auto absent = kc::parse_command(R"({"cmd":"tune","centerHz":1})", err);
   CHECK(!std::get<kc::TuneCmd>(*absent).cc_audible_hz.has_value());   // absent = all CC audible
 }
+
+TEST(protocol_tune_pcm_in_flag) {
+  std::string err;
+  auto on = kc::parse_command(R"({"cmd":"tune","centerHz":1,"channels":[],"pcmIn":true})", err);
+  CHECK(on.has_value());
+  CHECK(std::get<kc::TuneCmd>(*on).pcm_in);
+  auto off = kc::parse_command(R"({"cmd":"tune","centerHz":1,"channels":[]})", err);
+  CHECK(!std::get<kc::TuneCmd>(*off).pcm_in);
+}

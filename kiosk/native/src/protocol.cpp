@@ -41,6 +41,7 @@ std::optional<Command> parse_command(const std::string& line, std::string& err) 
       t.monitor = get_or<bool>(j, "monitor", false);
       t.close_call = get_or<bool>(j, "closeCall", false);
       t.close_call_db = get_or<double>(j, "closeCallDb", CC_DB_DEFAULT);
+      t.pcm_in = get_or<bool>(j, "pcmIn", false);
       t.known_hz = num_list(j, "knownHz");
       if (auto it = j.find("ccAudibleHz"); it != j.end() && !it->is_null()) {
         std::vector<std::pair<double, double>> r;

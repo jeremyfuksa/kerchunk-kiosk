@@ -15,6 +15,8 @@ struct Cli {
   int audio_fd = -1;
   std::string iq_file, tune_json, audio_out, same_out;
   bool realtime = false;
+  int pcm_in_fd = -1;   // --pcm-in-fd: s16le mono 50 kHz external speaker audio
+  double pcm_target_ms = PCM_TARGET_MS, pcm_max_ms = PCM_MAX_MS;
 };
 bool parse_cli(int argc, const char* const* argv, Cli& out, std::string& err);
 }  // namespace kc
