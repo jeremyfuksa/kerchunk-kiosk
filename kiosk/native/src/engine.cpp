@@ -36,7 +36,7 @@ void Engine::reset_subaudio(int i) {
 
 void Engine::sync_speaker() {
   const int a = sc_.audible();
-  spk_.set_source(a, a >= 0 && sc_.lane(a).am);
+  spk_.set_source(a, a >= 0 && sc_.lane(a).demod == Demod::Am);
   spk_.set_gain(sc_.gate());
   sync_active();
 }

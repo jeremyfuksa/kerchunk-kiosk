@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "constants.hpp"
+#include "demod.hpp"
 #include "protocol.hpp"
 
 namespace kc {
@@ -18,12 +19,14 @@ struct LaneReading {
   bool quiet_ready = false;
   std::optional<float> tone;     // CtcssDetector::tone() -- only fed on lanes Scanner::wants_tone()
   std::optional<DcsCode> dcs;    // DcsDetector::code() (canonical form) -- same lanes
+  float disc_mean = 0;           // mean discriminator output over this poll's chunk (offset / FM_MAX_DEV_HZ)
 };
 
 struct LaneState {
   std::string id;  // empty = parked
   double freq_hz = 0;
-  bool priority = false, am = false, allow_audio = true, audible_cfg = true, background = false;
+  bool priority = false, allow_audio = true, audible_cfg = true, background = false;
+  Demod demod = Demod::Fm;
   std::optional<double> open_db, hang_ms;
   // Sub-audible squelch (never set on AM / background lanes; at most one of the two): CTCSS tone,
   // or DCS code (stored canonical, so an inverted code matches its on-air identical normal code).
@@ -54,6 +57,8 @@ struct TxEpisode {
   int polls = 0;
   std::vector<float> quiet;   // quiet_db, only on quiet_ready polls
   std::vector<float> above;   // slow power minus the shared floor, every poll
+  double disc_sum = 0;        // disc_mean over the episode's open, quieted polls (FM/AM) -> txstat offsetHz
+  int disc_n = 0;
 };
 
 class Scanner {

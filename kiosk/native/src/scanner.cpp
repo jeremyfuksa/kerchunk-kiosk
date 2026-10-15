@@ -29,7 +29,7 @@ void Scanner::end_tx(int i) {
   if (!T.active) return;
   const LaneState& L = lanes_[i];
   if (!L.parked() && (T.opened || T.polls >= OPEN_POLLS)) {
-    json e = {{"ev", "txstat"}, {"id", L.id}, {"mode", L.am ? "am" : "fm"}, {"opened", T.opened}, {"polls", T.polls}};
+    json e = {{"ev", "txstat"}, {"id", L.id}, {"mode", demod_name(L.demod)}, {"opened", T.opened}, {"polls", T.polls}};
     if (!T.quiet.empty()) {
       std::sort(T.quiet.begin(), T.quiet.end());
       e["quietP10"] = round1(quantile(T.quiet, 0.1));
@@ -40,12 +40,15 @@ void Scanner::end_tx(int i) {
       std::sort(T.above.begin(), T.above.end());
       e["aboveFloorP50"] = round1(quantile(T.above, 0.5));
     }
+    if (T.disc_n > 0) e["offsetHz"] = round1(T.disc_sum / T.disc_n * FM_MAX_DEV_HZ);
     emit_(e);
   }
   T.active = T.opened = false;
   T.polls = 0;
   T.quiet.clear();   // clear() keeps the reserved capacity
   T.above.clear();
+  T.disc_sum = 0;
+  T.disc_n = 0;
 }
 
 void Scanner::assign(int i, const ChannelCmd& c) {
@@ -53,12 +56,12 @@ void Scanner::assign(int i, const ChannelCmd& c) {
   L.id = c.id;
   L.freq_hz = c.freq_hz;
   L.priority = c.priority;
-  L.am = c.mode == "am";
+  L.demod = demod_for(c.mode);
   L.allow_audio = L.audible_cfg = c.audible;
   L.background = c.background;
   L.open_db = c.open_db;
   L.hang_ms = c.hang_ms;
-  if (!L.am && !L.background) {   // sub-audible squelch is an FM thing; SAME never gates
+  if (L.demod == Demod::Fm && !L.background) {   // sub-audible squelch is an FM thing; SAME never gates
     if (c.dcs) L.dcs = dcs_canonical(*c.dcs);
     else L.ctcss_hz = c.ctcss_hz;
   }
@@ -71,6 +74,8 @@ void Scanner::assign(int i, const ChannelCmd& c) {
   T.polls = 0;
   T.quiet.clear();
   T.above.clear();
+  T.disc_sum = 0;
+  T.disc_n = 0;
   lanes_[i] = std::move(L);
 }
 
@@ -163,14 +168,19 @@ void Scanner::poll(double now, const std::vector<LaneReading>& r) {
     if (!L.floor_db) L.floor_db = db;
     else if (!L.open) *L.floor_db += (db > *L.floor_db ? FLOOR_ALPHA_UP : FLOOR_ALPHA_DOWN) * (db - *L.floor_db);
   }
+  // Shared floor: the quietest wide lane. An LSB lane meters a ~2.5 kHz sideband (~8 dB under a
+  // 16 kHz lane's noise), so it uses only its own floor and stays out of this minimum -- or every
+  // AM/FM lane's threshold would drop with it.
   std::optional<double> floor;
   for (const auto& L : lanes_)
-    if (!L.parked() && L.floor_db) floor = floor ? std::min(*floor, *L.floor_db) : *L.floor_db;
-  if (!floor) return;
+    if (!L.parked() && L.floor_db && L.demod != Demod::Lsb) floor = floor ? std::min(*floor, *L.floor_db) : *L.floor_db;
 
   for (int i = 0; i < n; i++) {
     LaneState& L = lanes_[i];
     if (L.parked() || !rd[i] || L.background) continue;
+    const bool lsb = L.demod == Demod::Lsb;
+    const std::optional<double> base = lsb ? L.floor_db : floor;
+    if (!base) continue;
     const double open_db = L.open_db.value_or(p_.open_db);
     const double quiet_db = p_.quiet_db;   // decision C: per-channel (GR-scale) quietDb ignored
     const double hang_s = L.hang_ms.value_or(p_.hang_ms) / 1000.0;
@@ -189,14 +199,15 @@ void Scanner::poll(double now, const std::vector<LaneReading>& r) {
     {
       TxEpisode& T = tx_[i];
       if (!T.active) {
-        if (db > *floor + open_db && now >= L.skip_until) { T.active = true; T.opened = L.open; }
-      } else if (db < *floor + open_db - CLOSE_HYST_DB) {
+        if (db > *base + open_db && now >= L.skip_until) { T.active = true; T.opened = L.open; }
+      } else if (db < *base + open_db - CLOSE_HYST_DB) {
         end_tx(i);
       }
       if (T.active) {
         T.polls++;
-        if ((int)T.above.size() < TX_MAX_SAMPLES) T.above.push_back((float)(db - *floor));
+        if ((int)T.above.size() < TX_MAX_SAMPLES) T.above.push_back((float)(db - *base));
         if (r[i].quiet_ready && (int)T.quiet.size() < TX_MAX_SAMPLES) T.quiet.push_back(r[i].quiet_db);
+        if (L.open && L.quiet && !lsb) { T.disc_sum += r[i].disc_mean; T.disc_n++; }
       }
     }
 
@@ -210,15 +221,16 @@ void Scanner::poll(double now, const std::vector<LaneReading>& r) {
       L.tone_ok = L.tone_seen >= 0 && now - L.tone_seen <= loss_ms / 1000.0;
     }
 
-    const double gate_thresh = *floor + open_db - CLOSE_HYST_DB;
+    const double gate_thresh = *base + open_db - CLOSE_HYST_DB;
     const double fast = r[i].fast_db;
     L.carrier = L.carrier ? fast > gate_thresh - GATE_HYST_DB / 2 : fast > gate_thresh + GATE_HYST_DB / 2;
-    if (!r[i].quiet_ready) L.quiet = false;
+    if (lsb) L.quiet = true;   // SSB has no carrier to quiet the discriminator: energy-only squelch
+    else if (!r[i].quiet_ready) L.quiet = false;
     else L.quiet = L.quiet ? r[i].quiet_db < quiet_db + QUIET_HYST_DB / 2 : r[i].quiet_db < quiet_db - QUIET_HYST_DB / 2;
     if (audible_ == i) gate_ = L.carrier && L.quiet && L.tone_ok ? 1.f : 0.f;
 
     if (!L.open) {
-      if (db > *floor + open_db && L.quiet && L.tone_ok && now >= L.skip_until) {
+      if (db > *base + open_db && L.quiet && L.tone_ok && now >= L.skip_until) {
         if (++L.above >= OPEN_POLLS) {
           L.open = true;
           L.below_since = -1;
@@ -236,7 +248,7 @@ void Scanner::poll(double now, const std::vector<LaneReading>& r) {
       } else {
         L.above = 0;
       }
-    } else if (db < *floor + open_db - CLOSE_HYST_DB || !L.quiet) {
+    } else if (db < *base + open_db - CLOSE_HYST_DB || !L.quiet) {
       // Close on carrier drop OR lost quieting: a carrier with no quieting (an AM signal on an FM
       // lane, data, a stuck carrier) is not a transmission to hold for -- it parked the scanner
       // until the max-hold cap (txstats, 2026-09-26). A fade shorter than the hang doesn't close.
@@ -273,7 +285,7 @@ bool Scanner::sub_match(const LaneState& L, const LaneReading& r) {
 
 bool Scanner::wants_tone(int i) const {
   const LaneState& L = lanes_[i];
-  return !monitor_ && !L.parked() && !L.am && !L.background && L.id.rfind("cc_", 0) != 0 &&
+  return !monitor_ && !L.parked() && L.demod == Demod::Fm && !L.background && L.id.rfind("cc_", 0) != 0 &&
          (L.open || tx_[i].active);
 }
 

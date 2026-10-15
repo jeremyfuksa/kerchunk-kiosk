@@ -851,8 +851,8 @@ TEST(scanner_cc_lane_in_airband_demodulates_am) {
   m.s.tune(146e6, {ch("a")}, false);
   const int air = m.s.assign_cc(133800000);
   const int vhf = m.s.assign_cc(146012500);
-  CHECK(air >= 0 && m.s.lane(air).am);
-  CHECK(vhf >= 0 && !m.s.lane(vhf).am);
+  CHECK(air >= 0 && m.s.lane(air).demod == kc::Demod::Am);
+  CHECK(vhf >= 0 && m.s.lane(vhf).demod == kc::Demod::Fm);
 }
 
 TEST(scanner_silent_cc_lane_never_takes_the_speaker) {
@@ -889,4 +889,85 @@ TEST(scanner_cc_audible_absent_means_all_audible) {
   m.s.set_cc_audible(std::nullopt);
   const int slot = m.s.assign_cc(146012500);
   CHECK(slot >= 0 && m.s.lane(slot).priority);
+}
+
+namespace {
+kc::ChannelCmd lsb(const std::string& id) { auto c = ch(id); c.freq_hz = 27'385'000; c.mode = "lsb"; return c; }
+}  // namespace
+
+TEST(scanner_lsb_lane_opens_on_energy_without_quieting) {
+  Sim m;
+  m.s.tune(27e6, {lsb("s")}, false);   // the only lane: no shared floor exists at all
+  m.set(0, FLOOR, false);
+  m.run(1.0);                           // warm-up seeds the lane's own floor
+  m.set(0, KEYED, false);               // NOISY quieting: an FM lane would never open on this
+  m.run(0.3);
+  CHECK(opens_of(m, "s") == 1);
+  CHECK(m.s.audible() == 0);
+  CHECK(m.s.gate() == 1.f);
+}
+
+TEST(scanner_lsb_lane_stays_shut_on_its_floor) {
+  Sim m;
+  m.s.tune(27e6, {lsb("s")}, false);
+  m.set(0, FLOOR, false);
+  m.run(3.0);
+  CHECK(opens_of(m, "s") == 0);
+}
+
+TEST(scanner_lsb_floor_stays_out_of_the_shared_floor) {
+  Sim m;
+  m.s.tune(27e6, {ch("a"), lsb("s")}, false);
+  m.set(0, FLOOR, true);
+  m.set(1, FLOOR - 10, false);   // a narrow sideband reads ~8-10 dB under a wide lane
+  m.run(1.0);
+  m.set(0, FLOOR + 6, true);     // 6 dB over its own floor (< open_db 9) but 16 over the LSB floor
+  m.run(0.5);
+  CHECK(opens_of(m, "a") == 0);
+}
+
+TEST(scanner_lsb_honours_hang_ms) {
+  Sim m;
+  auto s = lsb("s");
+  s.hang_ms = 1500;
+  m.s.tune(27e6, {s}, false);
+  m.set(0, FLOOR, false);
+  m.run(1.0);
+  m.set(0, KEYED, false);
+  m.run(0.3);
+  m.set(0, FLOOR, false);        // a pause between words
+  m.run(1.0);
+  CHECK(m.of("close").empty());
+  m.run(0.7);
+  CHECK(m.of("close").size() == 1);
+}
+
+TEST(scanner_lsb_never_wants_tone_and_reports_mode) {
+  Sim m;
+  m.s.tune(27e6, {lsb("s")}, false);
+  m.set(0, FLOOR, false);
+  m.run(1.0);
+  m.set(0, KEYED, false);
+  m.run(0.3);
+  CHECK(!m.s.wants_tone(0));
+  m.set(0, FLOOR, false);
+  m.run(3.0);
+  auto tx = m.of("txstat");
+  CHECK(tx.size() == 1);
+  if (!tx.empty()) CHECK(tx[0]["mode"] == "lsb" && !tx[0].contains("offsetHz"));
+}
+
+TEST(scanner_txstat_reports_carrier_offset) {
+  Sim m;
+  m.s.tune(146e6, {ch("a")}, false);
+  m.set(0, FLOOR, true);
+  m.run(1.0);
+  m.set(0, KEYED, true);
+  m.r[0].disc_mean = 0.06f;      // 0.06 x FM_MAX_DEV_HZ (5 kHz) = 300 Hz high
+  m.run(1.0);
+  m.set(0, FLOOR, true);
+  m.run(3.0);
+  auto tx = m.of("txstat");
+  CHECK(tx.size() == 1);
+  if (!tx.empty()) CHECK_NEAR(tx[0]["offsetHz"].get<double>(), 300, 0.5);
 }
