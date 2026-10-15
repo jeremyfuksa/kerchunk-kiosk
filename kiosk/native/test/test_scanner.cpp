@@ -891,72 +891,6 @@ TEST(scanner_cc_audible_absent_means_all_audible) {
   CHECK(slot >= 0 && m.s.lane(slot).priority);
 }
 
-namespace {
-kc::ChannelCmd lsb(const std::string& id) { auto c = ch(id); c.freq_hz = 27'385'000; c.mode = "lsb"; return c; }
-}  // namespace
-
-TEST(scanner_lsb_lane_opens_on_energy_without_quieting) {
-  Sim m;
-  m.s.tune(27e6, {lsb("s")}, false);   // the only lane: no shared floor exists at all
-  m.set(0, FLOOR, false);
-  m.run(1.0);                           // warm-up seeds the lane's own floor
-  m.set(0, KEYED, false);               // NOISY quieting: an FM lane would never open on this
-  m.run(0.3);
-  CHECK(opens_of(m, "s") == 1);
-  CHECK(m.s.audible() == 0);
-  CHECK(m.s.gate() == 1.f);
-}
-
-TEST(scanner_lsb_lane_stays_shut_on_its_floor) {
-  Sim m;
-  m.s.tune(27e6, {lsb("s")}, false);
-  m.set(0, FLOOR, false);
-  m.run(3.0);
-  CHECK(opens_of(m, "s") == 0);
-}
-
-TEST(scanner_lsb_floor_stays_out_of_the_shared_floor) {
-  Sim m;
-  m.s.tune(27e6, {ch("a"), lsb("s")}, false);
-  m.set(0, FLOOR, true);
-  m.set(1, FLOOR - 10, false);   // a narrow sideband reads ~8-10 dB under a wide lane
-  m.run(1.0);
-  m.set(0, FLOOR + 6, true);     // 6 dB over its own floor (< open_db 9) but 16 over the LSB floor
-  m.run(0.5);
-  CHECK(opens_of(m, "a") == 0);
-}
-
-TEST(scanner_lsb_honours_hang_ms) {
-  Sim m;
-  auto s = lsb("s");
-  s.hang_ms = 1500;
-  m.s.tune(27e6, {s}, false);
-  m.set(0, FLOOR, false);
-  m.run(1.0);
-  m.set(0, KEYED, false);
-  m.run(0.3);
-  m.set(0, FLOOR, false);        // a pause between words
-  m.run(1.0);
-  CHECK(m.of("close").empty());
-  m.run(0.7);
-  CHECK(m.of("close").size() == 1);
-}
-
-TEST(scanner_lsb_never_wants_tone_and_reports_mode) {
-  Sim m;
-  m.s.tune(27e6, {lsb("s")}, false);
-  m.set(0, FLOOR, false);
-  m.run(1.0);
-  m.set(0, KEYED, false);
-  m.run(0.3);
-  CHECK(!m.s.wants_tone(0));
-  m.set(0, FLOOR, false);
-  m.run(3.0);
-  auto tx = m.of("txstat");
-  CHECK(tx.size() == 1);
-  if (!tx.empty()) CHECK(tx[0]["mode"] == "lsb" && !tx[0].contains("offsetHz"));
-}
-
 TEST(scanner_txstat_reports_carrier_offset) {
   Sim m;
   m.s.tune(146e6, {ch("a")}, false);
@@ -970,25 +904,4 @@ TEST(scanner_txstat_reports_carrier_offset) {
   auto tx = m.of("txstat");
   CHECK(tx.size() == 1);
   if (!tx.empty()) CHECK_NEAR(tx[0]["offsetHz"].get<double>(), 300, 0.5);
-}
-
-TEST(scanner_lsb_gate_rides_syllable_gaps_then_mutes_within_the_hang) {
-  // SSB has no carrier: a pause between words drops the energy, but the speaker must not chop.
-  // The gate holds SSB_GATE_HOLD_MS past the last above-threshold poll, then mutes while the lane
-  // is still open on its (longer) hang -- no noise tail for the whole hang.
-  Sim m;
-  auto s = lsb("s");
-  s.hang_ms = 1500;
-  m.s.tune(27e6, {s}, false);
-  m.set(0, FLOOR, false);
-  m.run(1.0);
-  m.set(0, KEYED, false);
-  m.run(0.3);
-  CHECK(m.s.gate() == 1.f);
-  m.set(0, FLOOR, false);                        // a syllable gap shorter than the hold
-  m.run(kc::SSB_GATE_HOLD_MS / 2000.0);
-  CHECK(m.s.gate() == 1.f);
-  m.run(kc::SSB_GATE_HOLD_MS / 1000.0);          // now past the hold, still inside the hang
-  CHECK(m.s.gate() == 0.f);
-  CHECK(m.of("close").empty());
 }

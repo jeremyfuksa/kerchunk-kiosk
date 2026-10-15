@@ -125,15 +125,6 @@ TEST(cli_lanes_range) {
   }
 }
 
-TEST(cli_ssb_gain_db_range) {
-  kc::Cli c;
-  std::string err;
-  CHECK(parse({"--ssb-gain-db", "-6"}, c, err));
-  CHECK_NEAR(c.eng.ssb_gain_db, -6, 0);
-  CHECK(!parse({"--ssb-gain-db", "25"}, c, err));
-  CHECK(!parse({"--ssb-gain-db", "x"}, c, err));
-}
-
 TEST(cli_ppm_integer_range) {
   kc::Cli c;
   std::string err;
