@@ -12,11 +12,14 @@ export type FernEvent =
   | { type: "row"; lowHz: number; highHz: number; levels: number[] }
   | { type: "audio"; samples: Float32Array; rate: number }
   | { type: "meter"; dbfs: number };
-export interface FernClientOpts { url: string; band: string; backoffMaxMs: number; backoffBaseMs?: number; random?: () => number; log?: (m: string) => void }
+export interface FernClientOpts { url: string; band: string; backoffMaxMs: number; backoffBaseMs?: number; staleMs?: number; random?: () => number; log?: (m: string) => void }
 
 const CAPABILITIES = ["audio-discontinuity"];
 const VIEW_WIDTH = 456;   // ~1 kHz bins over the 456 kHz CB band
 const VIEW_FPS = 10;
+const DEFAULT_STALE_MS = 8000;   // cb.fernsdr.staleMs overrides (via CbNet)
+const ACK_WARN_MS = 2000;        // a tune un-acked this long is logged once (audio stays gated)
+const MAX_CONCEAL = 8;           // frames concealed for a gap; bigger = discontinuity
 const NO_RETRY: Record<number, string> = { 4001: "receiver listener timeout", 4002: "disconnected by the receiver operator" };
 
 export class FernClient {
@@ -28,6 +31,8 @@ export class FernClient {
   private _error: string | null = null;
   private band: FernBand | null = null;
   private target: { freq: number; mode: "am" | "lsb" } | null = null;
+  private staleTimer: NodeJS.Timeout | null = null;
+  private ackTimer: NodeJS.Timeout | null = null;
   private requestId = 0;
   private ackedTune = 0;
   private rates = new Map<number, number>();
@@ -39,6 +44,8 @@ export class FernClient {
 
   get connected(): boolean { return this._connected; }
   get error(): string | null { return this._error; }
+  /** Still trying: connecting, connected, or backing off (false once stopped or after 4001/4002/bad URL). */
+  get retrying(): boolean { return this.running; }
 
   start(): void {
     if (this.running) return;
@@ -49,6 +56,8 @@ export class FernClient {
   stop(): void {
     this.running = false;
     if (this.retryTimer) { clearTimeout(this.retryTimer); this.retryTimer = null; }
+    this.clearStale();
+    this.clearAckWatch();
     const ws = this.ws;
     this.ws = null;
     this._connected = false;
@@ -61,6 +70,35 @@ export class FernClient {
     this.target = { freq, mode };
     this.requestId++;
     this.sendTune();
+    this.armAckWatch();
+  }
+
+  private clearStale(): void { if (this.staleTimer) { clearTimeout(this.staleTimer); this.staleTimer = null; } }
+  private clearAckWatch(): void { if (this.ackTimer) { clearTimeout(this.ackTimer); this.ackTimer = null; } }
+
+  /** Rows arrive ~10/s, so silence means a half-open socket (power or network
+   *  loss never sends a FIN): terminate it and let close → backoff reconnect run. */
+  private armStale(ws: WebSocket): void {
+    this.clearStale();
+    this.staleTimer = setTimeout(() => {
+      this.staleTimer = null;
+      if (this.ws !== ws) return;
+      this.opts.log?.(`[fernsdr] no data for ${this.opts.staleMs ?? DEFAULT_STALE_MS} ms; reconnecting`);
+      this._error = "receiver stopped sending";
+      ws.terminate();
+    }, this.opts.staleMs ?? DEFAULT_STALE_MS);
+  }
+
+  /** Audio stays gated until the receiver acks the tune; say so if it never does. */
+  private armAckWatch(): void {
+    this.clearAckWatch();
+    if (!this.target || this.ackedTune >= this.requestId) return;
+    const { freq } = this.target;
+    const id = this.requestId;
+    this.ackTimer = setTimeout(() => {
+      this.ackTimer = null;
+      if (this.running && this._connected && this.ackedTune < id) this.opts.log?.(`[fernsdr] tune ${freq} not acknowledged after 2 s`);
+    }, ACK_WARN_MS);
   }
 
   private sendTune(): void {
@@ -86,8 +124,10 @@ export class FernClient {
       return;
     }
     this.ws = ws;
+    this.armStale(ws);
     ws.on("message", (data, isBinary) => {
       if (this.ws !== ws) return;
+      this.armStale(ws);
       try {
         if (isBinary) this.onBinary(data as Buffer);
         else this.onText(String(data));
@@ -100,6 +140,8 @@ export class FernClient {
       if (this.ws !== ws) return;
       this.ws = null;
       this._connected = false;
+      this.clearStale();
+      this.clearAckWatch();
       const reason = NO_RETRY[code] ?? (this._error || String(reasonBuf) || `closed (${code})`);
       this._error = reason;
       const retrying = this.running && !(code in NO_RETRY);
@@ -125,7 +167,7 @@ export class FernClient {
         if (typeof m.ack?.tune === "number" && m.ack.tune > this.ackedTune) {
           const caughtUp = m.ack.tune >= this.requestId && this.ackedTune < this.requestId;
           this.ackedTune = m.ack.tune;
-          if (caughtUp) { this.nac.reset(); this.lastSeq = null; }
+          if (caughtUp) { this.nac.reset(); this.lastSeq = null; this.clearAckWatch(); }
         }
         return;
       case "audio-config":
@@ -163,7 +205,7 @@ export class FernClient {
     this.send({ type: "dsp", squelch: -200, agc: "auto" });
     this.send({ type: "viewport", enabled: true, low: band.low, high: band.high, width: VIEW_WIDTH, fps: VIEW_FPS });
     // request_ids restart per connection: re-send the current tune as id 1+.
-    if (this.target) { this.requestId = Math.max(1, this.requestId); this.sendTune(); }
+    if (this.target) { this.requestId = Math.max(1, this.requestId); this.sendTune(); this.armAckWatch(); }
     this.onEvent({ type: "connected", band: this.band });
   }
 
@@ -191,7 +233,8 @@ export class FernClient {
     } else if (this.lastSeq !== null) {
       const gap = (seq - this.lastSeq - 1) & 0xffff;
       if (gap >= 0x8000) return;   // duplicate or late
-      if (gap > 0 && gap < 1000) for (let i = 0; i < gap; i++) this.onEvent({ type: "audio", samples: this.nac.conceal(), rate });
+      if (gap > MAX_CONCEAL) this.nac.reset();   // a long hole is a discontinuity, not worth faking
+      else for (let i = 0; i < gap; i++) this.onEvent({ type: "audio", samples: this.nac.conceal(), rate });
     }
     this.lastSeq = seq;
     const out = this.nac.decode(buf.subarray(4)) ?? this.nac.conceal();

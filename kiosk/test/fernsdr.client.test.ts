@@ -83,6 +83,49 @@ describe("FernClient", () => {
     expect(events.filter((e) => e.type === "audio")).toHaveLength(5);
   });
 
+  it("caps concealment at 8 frames; a bigger gap is a discontinuity", async () => {
+    let sock: WsSocket | null = null;
+    const { msgs, events } = await setup((s) => { sock = s; });
+    await until(() => msgs.length >= 4);
+    client!.tune(27_185_000, "am");
+    sock!.send(JSON.stringify({ type: "audio-config", generation: 1, rate: 14250, frame_samples: 128, bitrate: 48000 }));
+    sock!.send(JSON.stringify({ type: "state", ack: { tune: 1 } }));
+    sock!.send(frame(0, 100));
+    sock!.send(frame(1, 151));          // 50 lost -> no concealment, just this frame
+    await until(() => events.filter((e) => e.type === "audio").length >= 2);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(events.filter((e) => e.type === "audio")).toHaveLength(2);
+  });
+
+  it("a receiver that goes silent is dropped and reconnected within staleMs", async () => {
+    const logs: string[] = [];
+    const { events, conns } = await setup(() => {}, { staleMs: 150, log: (m) => logs.push(m) });
+    await until(() => client!.connected);
+    expect(await until(() => events.some((e) => e.type === "disconnected" && e.retrying), 1500)).toBe(true);
+    expect(client!.retrying).toBe(true);
+    expect(await until(() => conns() >= 2, 1500)).toBe(true);
+    expect(logs.some((m) => m.includes("no data"))).toBe(true);
+  });
+
+  it("traffic keeps the session alive past staleMs", async () => {
+    let sock: WsSocket | null = null;
+    const { events } = await setup((s) => { sock = s; }, { staleMs: 200 });
+    await until(() => client!.connected);
+    const iv = setInterval(() => sock?.send(JSON.stringify({ type: "meter", dbfs: -50 })), 50);
+    await new Promise((r) => setTimeout(r, 600));
+    clearInterval(iv);
+    expect(events.some((e) => e.type === "disconnected")).toBe(false);
+  });
+
+  it("logs once when a tune is never acknowledged", async () => {
+    const logs: string[] = [];
+    const { msgs } = await setup(() => {}, { log: (m) => logs.push(m) });
+    await until(() => msgs.length >= 4);
+    client!.tune(27_185_000, "am");
+    expect(await until(() => logs.some((m) => m.includes("not acknowledged")), 3500)).toBe(true);
+    expect(logs.filter((m) => m.includes("not acknowledged"))).toEqual(["[fernsdr] tune 27185000 not acknowledged after 2 s"]);
+  }, 8000);
+
   it("emits decoded waterfall rows and meters; answers inactivity", async () => {
     let sock: WsSocket | null = null;
     const { msgs, events } = await setup((s) => { sock = s; });
