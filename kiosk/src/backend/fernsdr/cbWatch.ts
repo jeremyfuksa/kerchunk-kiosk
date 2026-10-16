@@ -49,19 +49,26 @@ export class CbWatch {
     let preempt: number | null = null;
     for (const s of this.st) {
       const level = channelLevel(r, s.ch.freq, HALF_WIDTH_HZ, med);
-      if (level === null) continue;
-      if (s.baseline === null) { s.baseline = level; continue; }
-      const over = level - s.baseline;
       if (s.open) {
-        if (over >= this.opts.openDb - this.hyst) s.lastHot = ts;
+        // An open channel still runs its close checks when it drops out of the
+        // row span (level null): that row is simply not hot, and the baseline
+        // is left alone since there is no level to absorb.
+        const base = s.baseline ?? 0;   // always set once open
+        if (level !== null && level - base >= this.opts.openDb - this.hyst) s.lastHot = ts;
         if (ts - s.openedAt >= this.opts.maxOpenMs) {
-          s.open = false; s.above = 0; s.baseline = level;   // a carrier: absorb it
+          s.open = false; s.above = 0;
+          if (level !== null) s.baseline = level;   // a carrier: absorb it
           closes.push({ kind: "close", n: s.ch.n, ts });
         } else if (ts - s.lastHot >= s.ch.hangMs) {
           s.open = false; s.above = 0;
           closes.push({ kind: "close", n: s.ch.n, ts });
         }
-      } else if (over >= this.opts.openDb) {
+        continue;
+      }
+      if (level === null) continue;
+      if (s.baseline === null) { s.baseline = level; continue; }
+      const over = level - s.baseline;
+      if (over >= this.opts.openDb) {
         if (++s.above >= this.opts.openRows) {
           s.open = true; s.openedAt = ts; s.lastHot = ts;
           opens.push({ kind: "open", n: s.ch.n, ts });

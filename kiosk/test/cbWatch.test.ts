@@ -90,6 +90,19 @@ describe("CbWatch", () => {
     expect(w.openChannels()).toEqual([]);
   });
 
+  it("an open channel that leaves the row span still closes at its hang", () => {
+    const w = new CbWatch(CH, opts);
+    feed(w, row(), 0, 10);
+    feed(w, row({ 27_125_000: -80 }), 1000, 2);   // 14 opens at 1100, lastHot 1100
+    // Span now starts above 27_125 kHz, so ch 14 has no level in these rows.
+    const span: WatchRow = { lowHz: 27_200_000, highHz: 27_413_000, levels: new Array<number>(213).fill(-100) };
+    const t: ReturnType<CbWatch["row"]> = [];
+    for (let ts = 1200; ts <= 3200; ts += 100) t.push(...w.row(span, ts));
+    expect(t).toContainEqual({ kind: "close", n: 14, ts: 3100 });   // lastHot 1100 + 2000
+    expect(t).toContainEqual({ kind: "audible", n: null, ts: 3100 });
+    expect(w.openChannels()).toEqual([]);
+  });
+
   it("closeAll releases everything (pause/stop)", () => {
     const w = new CbWatch(CH, opts);
     feed(w, row(), 0, 10);
