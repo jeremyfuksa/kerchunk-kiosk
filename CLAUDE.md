@@ -134,8 +134,7 @@ replays the warm-up overlay on the wall.
   knobs are `config.scan.nativeQuietDb` (`--quiet-db`) and
   `config.scan.nativeAmGainDb` (`--am-gain-db`, the AM pre-gain into the AGC),
   `config.scan.fmAudioLpfHz` (`--audio-lpf-hz`, FM weak-signal hiss),
-  `config.scan.fmAudioHpfHz` (`--audio-hpf-hz`, CTCSS hum; 0 = off),
-  `config.scan.nativeSsbGainDb` (`--ssb-gain-db`, the LSB pre-gain into the AGC).
+  `config.scan.fmAudioHpfHz` (`--audio-hpf-hz`, CTCSS hum; 0 = off).
   Tuner correction: `config.radios[].ppm` (`--ppm`; boot-read, restart
   `kerchunk-kiosk`).
   Group shape: `config.scan.lanesPerGroup` (`--lanes`, 12, 1…64) and
@@ -242,14 +241,18 @@ even with green checks.
 
 ## Architecture notes
 
-- **CB mode** (`POST /api/mode {mode:"cb"}`, PR #296): the scanner listens to CB only
-  (`config.cb.channels`, names `config.cb.names`), never in the scan rotation or on the
-  map. The kiosk swaps to the CB stage (`dashboard/cbDial.ts` model, `cbView.ts` view,
-  `.cbStage`), pausing the map via `MapHandle.pause()`. Knobs:
-  `display.cb.fadeStepsMin` / `stepTickMs` / `logRows`.
-  LSB channels: `config.cb.modes` (default `{"38":"lsb"}`, which takes channel 32's lane in
-  the default set); SSB squelch `cb.ssbOpenDb` / `cb.ssbHangMs` (1500). LSB lanes squelch on
-  sideband energy against their own floor, never the shared one (spec 2026-10-15).
+- **CB mode** (`POST /api/mode {mode:"cb"}`, spec 2026-10-15-cb-fernsdr): listens through
+  the operator's FernSDR receiver (Airspy HF+ on the LAN, `config.cb.fernsdr.url`, band
+  `cb-radio`) — never the RTL-SDRs, never in the scan rotation or on the map. Node
+  (`src/backend/fernsdr/`) decodes plain NAC audio + WFC waterfall rows, `cbWatch` picks the
+  channel (all 40 at once; `cb.priority` 6/9/19 pre-empt; `cb.fernsdr.openDb` / `openRows` /
+  `hangMs` / `maxOpenMs`, LSB hang `cb.ssbHangMs`), and the scanner helper — retuned to
+  `{channels:[], pcmIn:true}`, never respawned — plays it from `--pcm-in-fd 4` through the
+  usual AGC/limiter (`cb.fernsdr.bufferMs` / `maxBufferMs` = `--pcm-target-ms` / `--pcm-max-ms`).
+  A break-in from CB pauses the session (socket kept) and retunes the helper to NWR as usual.
+  Receiver down → `/api/status.cb.connected:false`, "Receiver offline" on the wall; never
+  reconnects after close 4001/4002. LSB channels: `config.cb.modes` (default `{"38":"lsb"}`).
+  Kiosk knobs: `display.cb.fadeStepsMin` / `stepTickMs` / `logRows`.
 - **Engine abstraction.** Everything runs behind the `ScannerEngine` interface
   (`src/backend/engine/`), with three implementations: `WidebandEngine`
   (default; spawns the `kerchunk-dsp` C++ helper), `RtlFmEngine` (sequential
