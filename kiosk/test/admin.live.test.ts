@@ -47,6 +47,10 @@ describe("lcdView", () => {
     const s = reduceEvent(idle, { type: "audible", channel: cb19, ts: 1 }).state;
     expect(lcdView(s)).toMatchObject({ state: "live", meta: "CB only · AM", name: "CB 19", canLock: false });
   });
+  it("CB mode with the receiver offline says so", () => {
+    const s = initialLive;
+    expect(lcdView({ ...s, mode: "cb", nowPlaying: null, cbOffline: "connect ECONNREFUSED" })).toMatchObject({ meta: "CB only", name: "Receiver offline" });
+  });
   it("scanning when nothing is open", () => {
     const v = lcdView(initialLive);
     expect(v.state).toBe("scanning");

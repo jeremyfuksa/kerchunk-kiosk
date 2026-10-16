@@ -19,6 +19,8 @@ export interface LiveState {
   volume: number;
   remoteListening: boolean;
   dbfs: number | null;
+  /** CB receiver session down (status.cb.error), else null. */
+  cbOffline: string | null;
   /** Backend process start (from /api/status) — uptime, and the
    *  system-action watcher's baseline. */
   startedAt: number | null;
@@ -26,7 +28,7 @@ export interface LiveState {
 
 export const initialLive: LiveState = {
   mode: "scan", breakIn: false, monitoring: null, nowPlaying: null, audibleDriven: false,
-  weatherChannel: null, muted: false, volume: 100, remoteListening: false, dbfs: null,
+  weatherChannel: null, muted: false, volume: 100, remoteListening: false, dbfs: null, cbOffline: null,
   startedAt: null,
 };
 
@@ -53,12 +55,13 @@ export function reduceEvent(s: LiveState, ev: EngineEvent): { state: LiveState; 
   }
 }
 
-export function withStatus(s: LiveState, st: { mode: LiveState["mode"]; monitor: Channel | null; breakIn?: boolean; startedAt?: number }): LiveState {
+export function withStatus(s: LiveState, st: { mode: LiveState["mode"]; monitor: Channel | null; breakIn?: boolean; startedAt?: number; cb?: { connected: boolean; error: string | null } | null }): LiveState {
   return {
     ...s,
     mode: st.mode,
     breakIn: st.breakIn === true,
     monitoring: st.mode === "monitor" && st.monitor ? tuned(st.monitor) : null,
+    cbOffline: st.cb && !st.cb.connected ? (st.cb.error ?? "offline") : null,
     startedAt: typeof st.startedAt === "number" ? st.startedAt : s.startedAt,
   };
 }
@@ -99,7 +102,7 @@ export function lcdView(s: LiveState): LcdView {
     // CB-only listening: no lockouts or pauses — the set is the CB band itself.
     return s.nowPlaying
       ? { state: "live", meta: `CB only${modeTag(s.nowPlaying)}`, name: label(s.nowPlaying), freq: fmtFreq(s.nowPlaying.freq), silent, canLock: false }
-      : { state: "scanning", meta: "CB only", name: "Listening to CB…", freq: "", silent, canLock: false };
+      : { state: "scanning", meta: "CB only", name: s.cbOffline ? "Receiver offline" : "Listening to CB…", freq: "", silent, canLock: false };
   }
   if (s.nowPlaying) {
     return { state: "live", meta: `Live${modeTag(s.nowPlaying)}`, name: label(s.nowPlaying), freq: fmtFreq(s.nowPlaying.freq), silent, canLock: true };

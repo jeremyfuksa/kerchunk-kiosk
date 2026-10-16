@@ -32,7 +32,7 @@ describe("cbView readout", () => {
   it("live: number, name, frequency, needle at the channel", () => {
     const cb = cbReduce(CB_EMPTY, active(19, NOW));
     const v = cbView({ ...base, cb, liveFreq: F(19) });
-    expect(v.readout).toMatchObject({ state: "live", meta: "CB only · AM · Live", metaRight: "", num: "19", name: "Highway", freq: "27.1850" });
+    expect(v.readout).toMatchObject({ state: "live", meta: "CB · AM · Live", metaRight: "", num: "19", name: "Highway", freq: "27.1850" });
     expect(v.needleX).not.toBeNull();
     expect(cbView({ ...base, cb, liveFreq: F(19), muted: true }).readout.metaRight).toBe("Muted");
   });
@@ -122,5 +122,15 @@ describe("cbHtml", () => {
     const h = cbHtml(cbView({ ...base, cb, liveFreq: F(19), names: { "19": "<b>x</b>" } }), null);
     expect(h).not.toContain("<b>x</b>");
     expect(h).toContain("&lt;b&gt;x&lt;/b&gt;");
+  });
+  it("receiver offline shows in the readout (engine errors still win)", () => {
+    const v = cbView({ ...base, offline: "connect ECONNREFUSED 192.168.1.30:8073" });
+    expect(v.readout).toMatchObject({ state: "error", meta: "Receiver offline" });
+    expect(cbView({ ...base, offline: "x", error: "kerchunk-dsp: boom" }).readout.meta).toBe("Radio error");
+  });
+  it("the live meta names the channel's mode", () => {
+    const v = cbView({ ...base, liveFreq: 27_385_000, liveMode: "lsb" });
+    expect(v.readout.meta).toBe("CB · LSB · Live");
+    expect(cbView({ ...base, liveFreq: 27_185_000 }).readout.meta).toBe("CB · AM · Live");
   });
 });

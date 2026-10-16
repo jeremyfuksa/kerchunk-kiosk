@@ -25,7 +25,7 @@ import { CB_NAMES_DEFAULT, CB_ALL } from "../../backend/config/cb.js";
 import type { MapHandle } from "../map/map.js";
 import "./dashboard.css";
 
-export interface NowPlaying { freq: number; alphaTag: string; tags?: readonly string[]; }
+export interface NowPlaying { freq: number; alphaTag: string; tags?: readonly string[]; mode?: string; }
 export interface LogRow { freq: number; alphaTag: string; ts: number; }
 export interface AlertBanner { freq: number; alphaTag: string; until: number; counties?: string; }
 export interface DashState {
@@ -81,7 +81,7 @@ export function reduce(s: DashState, ev: EngineEvent): DashState {
         error: null,
         // The Recent log records every opening; nowPlaying only follows when
         // the engine doesn't report audibility explicitly.
-        nowPlaying: s.audibleDriven ? s.nowPlaying : { freq: ev.freq, alphaTag: ev.channel.alphaTag, ...(ev.channel.tags ? { tags: ev.channel.tags } : {}) },
+        nowPlaying: s.audibleDriven ? s.nowPlaying : { freq: ev.freq, alphaTag: ev.channel.alphaTag, ...(ev.channel.tags ? { tags: ev.channel.tags } : {}), ...(ev.channel.mode ? { mode: ev.channel.mode } : {}) },
         log: [{ freq: ev.freq, alphaTag: ev.channel.alphaTag, ts: ev.ts }, ...s.log].slice(0, 100),
       };
     case "audible":
@@ -89,7 +89,7 @@ export function reduce(s: DashState, ev: EngineEvent): DashState {
         ...s,
         error: null,
         audibleDriven: true,
-        nowPlaying: ev.channel ? { freq: ev.channel.freq, alphaTag: ev.channel.alphaTag, ...(ev.channel.tags ? { tags: ev.channel.tags } : {}) } : null,
+        nowPlaying: ev.channel ? { freq: ev.channel.freq, alphaTag: ev.channel.alphaTag, ...(ev.channel.tags ? { tags: ev.channel.tags } : {}), ...(ev.channel.mode ? { mode: ev.channel.mode } : {}) } : null,
         signalDb: ev.channel ? s.signalDb : null,
       };
     case "signal":
@@ -286,9 +286,10 @@ export function renderDashboard(root: HTMLElement): void {
         // poll (snapshotted warmed=true) could land after a fresh "booting" and
         // wrongly end the warm-up pill mid-restart.
         const wm = (!sawWarmupEvent && typeof s.warmed === "boolean") ? s.warmed : state.warmed;
+        const co = s.cb && !s.cb.connected ? (s.cb.error ?? "offline") : null;
         // The 5s poll usually reads identical values — only repaint on a change.
-        const changed = s.mode !== mode || sc !== scanCount || mu !== muted || bi !== breakIn || wm !== state.warmed;
-        mode = s.mode; scanCount = sc; muted = mu; breakIn = bi;
+        const changed = s.mode !== mode || sc !== scanCount || mu !== muted || bi !== breakIn || wm !== state.warmed || co !== cbOffline;
+        mode = s.mode; cbOffline = co; scanCount = sc; muted = mu; breakIn = bi;
         setCbStage(s.mode === "cb");
         if (wm !== state.warmed) state = { ...state, warmed: wm };
         if (changed) schedule();
@@ -305,6 +306,7 @@ export function renderDashboard(root: HTMLElement): void {
   // a fresh booting/ready during a restart.
   let sawWarmupEvent = false;
   let muted = false;
+  let cbOffline: string | null = null;
 
 
 
@@ -419,7 +421,7 @@ export function renderDashboard(root: HTMLElement): void {
   }
 
   function paintCb(): void {
-    const v = cbView({ cb, now: Date.now(), liveFreq: state.nowPlaying?.freq ?? null, error: state.error, muted, ...cbOpts });
+    const v = cbView({ cb, now: Date.now(), liveFreq: state.nowPlaying?.freq ?? null, liveMode: state.nowPlaying?.mode ?? null, offline: cbOffline, error: state.error, muted, ...cbOpts });
     if (v.key !== cbKey) {
       cbKey = v.key;
       cbEl.innerHTML = cbHtml(v, state.signalDb);
