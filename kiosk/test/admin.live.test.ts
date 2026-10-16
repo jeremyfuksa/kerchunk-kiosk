@@ -54,6 +54,17 @@ describe("lcdView", () => {
     expect(withStatus(initialLive, { ...base, cb: { connected: false, error: null, retrying: false } }).cbOffline).toBe("offline");
   });
 
+  it("CB off the air names the return time; offline wins", () => {
+    const st = withStatus(initialLive, { mode: "cb", monitor: null, cb: { connected: true, error: null, retrying: true, offAir: true, offAirUntil: null } });
+    expect(st.cbOffAir).toEqual({ until: null });
+    expect(lcdView(st)).toMatchObject({ meta: "CB only", name: "CB off the air until sunrise" });
+    const t = Date.UTC(2026, 9, 16, 13, 45);
+    const timed = lcdView({ ...st, cbOffAir: { until: t } });
+    expect(timed.name).toBe(`CB off the air until ${new Date(t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`);
+    expect(lcdView({ ...st, cbOffline: "x" }).name).toBe("Receiver offline");
+    expect(withStatus(initialLive, { mode: "cb", monitor: null, cb: { connected: true, error: null, offAir: false } }).cbOffAir).toBeNull();
+  });
+
   it("CB mode with the receiver offline says so", () => {
     const s = initialLive;
     expect(lcdView({ ...s, mode: "cb", nowPlaying: null, cbOffline: "connect ECONNREFUSED" })).toMatchObject({ meta: "CB only", name: "Receiver offline" });

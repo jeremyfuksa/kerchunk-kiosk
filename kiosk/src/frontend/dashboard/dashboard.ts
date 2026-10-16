@@ -289,9 +289,10 @@ export function renderDashboard(root: HTMLElement): void {
         // Still connecting (no error yet, client retrying) is not "offline".
         const co = s.cb && !s.cb.connected && !(s.cb.error === null && s.cb.retrying) ? (s.cb.error ?? "offline") : null;
         cbRetrying = s.cb?.retrying !== false;
+        const oa = s.cb?.offAir === true, ou = s.cb?.offAirUntil ?? null;
         // The 5s poll usually reads identical values — only repaint on a change.
-        const changed = s.mode !== mode || sc !== scanCount || mu !== muted || bi !== breakIn || wm !== state.warmed || co !== cbOffline;
-        mode = s.mode; cbOffline = co; scanCount = sc; muted = mu; breakIn = bi;
+        const changed = s.mode !== mode || sc !== scanCount || mu !== muted || bi !== breakIn || wm !== state.warmed || co !== cbOffline || oa !== cbOffAir || ou !== cbOffAirUntil;
+        mode = s.mode; cbOffline = co; cbOffAir = oa; cbOffAirUntil = ou; scanCount = sc; muted = mu; breakIn = bi;
         setCbStage(s.mode === "cb");
         if (wm !== state.warmed) state = { ...state, warmed: wm };
         if (changed) schedule();
@@ -310,6 +311,8 @@ export function renderDashboard(root: HTMLElement): void {
   let muted = false;
   let cbOffline: string | null = null;
   let cbRetrying = true;
+  let cbOffAir = false;
+  let cbOffAirUntil: number | null = null;
 
 
 
@@ -424,7 +427,7 @@ export function renderDashboard(root: HTMLElement): void {
   }
 
   function paintCb(): void {
-    const v = cbView({ cb, now: Date.now(), liveFreq: state.nowPlaying?.freq ?? null, liveMode: state.nowPlaying?.mode ?? null, offline: cbOffline, retrying: cbRetrying, error: state.error, muted, ...cbOpts });
+    const v = cbView({ cb, now: Date.now(), liveFreq: state.nowPlaying?.freq ?? null, liveMode: state.nowPlaying?.mode ?? null, offline: cbOffline, retrying: cbRetrying, offAir: cbOffAir, offAirUntil: cbOffAirUntil, error: state.error, muted, ...cbOpts });
     if (v.key !== cbKey) {
       cbKey = v.key;
       cbEl.innerHTML = cbHtml(v, state.signalDb);

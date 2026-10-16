@@ -12,11 +12,11 @@ export interface CbSource {
   start(cfg: CbNetConfig): void;
   pause(): void;
   stop(): void;
-  status(): { connected: boolean; error: string | null; retrying: boolean };
+  status(): { connected: boolean; error: string | null; retrying: boolean; offAir?: boolean; offAirUntil?: number | null };
   on(l: EngineListener): void;
   off(l: EngineListener): void;
 }
-export interface FernClientLike { start(): void; stop(): void; tune(freq: number, mode: "am" | "lsb"): void; readonly connected: boolean; readonly error: string | null; readonly retrying: boolean }
+export interface FernClientLike { start(): void; stop(): void; tune(freq: number, mode: "am" | "lsb"): void; readonly connected: boolean; readonly error: string | null; readonly retrying: boolean; readonly offAir: { note: string | null; untilMs: number | null } | null }
 interface CbNetDeps {
   writePcm: (chunk: Buffer) => void;
   now?: () => number;
@@ -36,6 +36,7 @@ export class CbNet implements CbSource {
   private client: FernClientLike | null = null;
   private watch: CbWatch | null = null;
   private resampler: Resampler | null = null;
+  private offAir = false;   // receiver left our band: ignore rows/audio until "onair"
   private lastSignalAt = -Infinity;
   private lastTune: { freq: number; mode: string } | null = null;
   private held: Buffer = Buffer.alloc(0);   // newest FADE_OUT_MS of PCM, written only once more follows
@@ -49,9 +50,10 @@ export class CbNet implements CbSource {
   on(l: EngineListener): void { this.listeners.add(l); }
   off(l: EngineListener): void { this.listeners.delete(l); }
 
-  status(): { connected: boolean; error: string | null; retrying: boolean } {
-    if (this.state === "stopped" || !this.client) return { connected: false, error: null, retrying: false };
-    return { connected: this.client.connected, error: this.client.connected ? null : this.client.error, retrying: this.client.retrying };
+  status(): { connected: boolean; error: string | null; retrying: boolean; offAir: boolean; offAirUntil: number | null } {
+    if (this.state === "stopped" || !this.client) return { connected: false, error: null, retrying: false, offAir: false, offAirUntil: null };
+    const off = this.client.connected ? this.client.offAir : null;
+    return { connected: this.client.connected, error: this.client.connected ? null : this.client.error, retrying: this.client.retrying, offAir: off !== null, offAirUntil: off?.untilMs ?? null };
   }
 
   start(cfg: CbNetConfig): void {
@@ -91,6 +93,7 @@ export class CbNet implements CbSource {
         this.watch = null;
         this.resampler = null;
         this.lastTune = null;
+        this.offAir = false;
         this.held = Buffer.alloc(0);
         this.state = "stopped";
       }
@@ -114,7 +117,17 @@ export class CbNet implements CbSource {
 
   private onFern(e: FernEvent): void {
     if (this.state !== "running" || !this.watch) return;
-    if (e.type === "disconnected") {
+    if (e.type === "offair") {
+      // The receiver left our band: nothing real is audible; the client drops its frames.
+      this.offAir = true;
+      this.apply(this.watch.closeAll(this.now()));
+      this.flushHeld();
+    } else if (e.type === "onair") {
+      this.offAir = false;   // rows resume and reopen channels by themselves
+    } else if (this.offAir && e.type !== "disconnected") {
+      return;
+    } else if (e.type === "disconnected") {
+      this.offAir = false;
       // Rows stop during an outage; don't leave a channel stuck open/audible.
       this.apply(this.watch.closeAll(this.now()));
     } else if (e.type === "row") {

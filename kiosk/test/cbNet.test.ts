@@ -16,7 +16,7 @@ function rig() {
   const clients: Array<{ opts: FernClientOpts; emit: (e: FernEvent) => void; tunes: [number, string][]; started: number; stopped: number }> = [];
   const pcm: Buffer[] = [];
   let t = 0;
-  const state = { retrying: true };
+  const state = { retrying: true, offAir: null as { note: string | null; untilMs: number | null } | null };
   const net = new CbNet({
     writePcm: (b) => pcm.push(b),
     now: () => t,
@@ -26,7 +26,7 @@ function rig() {
       const like: FernClientLike = {
         start: () => { c.started++; }, stop: () => { c.stopped++; },
         tune: (f, m) => { c.tunes.push([f, m]); },
-        get connected() { return true; }, get error() { return null; }, get retrying() { return state.retrying; },
+        get connected() { return true; }, get error() { return null; }, get retrying() { return state.retrying; }, get offAir() { return state.offAir; },
       };
       return like;
     },
@@ -162,7 +162,7 @@ describe("CbNet", () => {
     const before = r.pcm.length;
     r.clients[0]!.emit({ type: "audio", samples: new Float32Array(128), rate: 14_250 });
     expect(r.pcm.length).toBe(before);
-    expect(r.net.status()).toEqual({ connected: false, error: null, retrying: false });
+    expect(r.net.status()).toEqual({ connected: false, error: null, retrying: false, offAir: false, offAirUntil: null });
   });
 
   it("start() rebuilds a client that gave up (4001/4002, bad URL) instead of staying idempotent", () => {
@@ -236,5 +236,27 @@ describe("CbNet", () => {
     r.net.stop();
     expect(r.clients[0]!.stopped).toBe(1);
     expect(seen).toContain("release");
+  });
+
+  it("receiver off the air: releases + audible null + idle, no PCM, status carries offAir; onair resumes", () => {
+    const r = rig();
+    r.net.start(cfg);
+    r.rows([], 10);
+    r.rows([CB19], 2);
+    expect(r.events.some((e) => e.type === "audible" && e.channel)).toBe(true);
+    r.events.length = 0;
+    r.state.offAir = { note: "now on 20 m", untilMs: 123_456 };
+    r.clients[0]!.emit({ type: "offair", note: "now on 20 m", untilMs: 123_456 });
+    expect(r.events.map((e) => e.type)).toEqual(expect.arrayContaining(["release", "audible", "idle"]));
+    expect(r.events.find((e) => e.type === "audible")).toMatchObject({ channel: null });
+    expect(r.net.status()).toMatchObject({ connected: true, offAir: true, offAirUntil: 123_456 });
+    r.pcm.length = 0;
+    const audio: FernEvent = { type: "audio", samples: new Float32Array(128).fill(0.1), rate: 14_250 };
+    r.rows([CB19], 3);
+    for (let i = 0; i < 4; i++) r.clients[0]!.emit(audio);
+    expect(r.pcm).toHaveLength(0);
+    r.state.offAir = null;
+    r.clients[0]!.emit({ type: "onair" });
+    expect(r.net.status()).toMatchObject({ offAir: false, offAirUntil: null });
   });
 });

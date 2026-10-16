@@ -11,7 +11,10 @@ export type FernEvent =
   | { type: "disconnected"; reason: string; retrying: boolean }
   | { type: "row"; lowHz: number; highHz: number; levels: number[] }
   | { type: "audio"; samples: Float32Array; rate: number }
-  | { type: "meter"; dbfs: number };
+  | { type: "meter"; dbfs: number }
+  | { type: "offair"; note: string | null; untilMs: number | null }
+  | { type: "onair" };
+export interface OffAir { note: string | null; untilMs: number | null }
 export interface FernClientOpts { url: string; band: string; backoffMaxMs: number; backoffBaseMs?: number; staleMs?: number; random?: () => number; log?: (m: string) => void }
 
 const CAPABILITIES = ["audio-discontinuity"];
@@ -37,6 +40,12 @@ export class FernClient {
   private ackedTune = 0;
   private rates = new Map<number, number>();
   private lastSeq: number | null = null;
+  // Schedule: the receiver moves every listener to another band when ours is off the air.
+  private serverBand: string | null = null;
+  private bandInfo: { running?: boolean; on_air?: boolean; next_change?: number } = {};
+  private note: string | null = null;
+  private _offAir: OffAir | null = null;
+  private wasOnAir = true;
   private readonly nac = new NacDecoder();
   private readonly wfc = new WfcDecoder();
 
@@ -46,6 +55,8 @@ export class FernClient {
   get error(): string | null { return this._error; }
   /** Still trying: connecting, connected, or backing off (false once stopped or after 4001/4002/bad URL). */
   get retrying(): boolean { return this.running; }
+  /** Connected but not hearing our band (night schedule): the note and when it returns. */
+  get offAir(): OffAir | null { return this._offAir; }
 
   start(): void {
     if (this.running) return;
@@ -143,6 +154,7 @@ export class FernClient {
       this._connected = false;
       this.clearStale();
       this.clearAckWatch();
+      this._offAir = null;   // CbNet clears its own flag on "disconnected"; a welcome recomputes
       const reason = NO_RETRY[code] ?? (this._error || String(reasonBuf) || `closed (${code})`);
       this._error = reason;
       const retrying = this.running && !(code in NO_RETRY);
@@ -165,12 +177,18 @@ export class FernClient {
     switch (m?.type) {
       case "welcome": return this.onWelcome(m);
       case "state":
+        if (typeof m.band === "string") this.serverBand = m.band;
+        if (typeof m.note === "string") this.note = m.note;
+        else if (this.serverBand === this.opts.band) this.note = null;
         if (typeof m.ack?.tune === "number" && m.ack.tune > this.ackedTune) {
           const caughtUp = m.ack.tune >= this.requestId && this.ackedTune < this.requestId;
           this.ackedTune = m.ack.tune;
           if (caughtUp) { this.nac.reset(); this.lastSeq = null; this.clearAckWatch(); }
         }
-        return;
+        return this.updateOffAir();
+      case "band-status":
+        this.mergeBands(m.bands);
+        return this.updateOffAir(true);
       case "audio-config":
         if (typeof m.generation === "number" && typeof m.rate === "number") this.rates.set(m.generation & 0xf, m.rate);
         return;
@@ -191,6 +209,10 @@ export class FernClient {
       this.ws?.close(1000);
       return;
     }
+    this.serverBand = null;
+    this.note = null;
+    this.bandInfo = {};
+    this.mergeBands(bands);
     this.band = { id: band.id, low: band.low, high: band.high, center: band.center };
     const caps = CAPABILITIES.filter((c) => (Array.isArray(m.capabilities) ? m.capabilities : []).includes(c));
     this.rates.clear();
@@ -208,10 +230,44 @@ export class FernClient {
     // request_ids restart per connection: re-send the current tune as id 1+.
     if (this.target) { this.requestId = Math.max(1, this.requestId); this.sendTune(); this.armAckWatch(); }
     this.onEvent({ type: "connected", band: this.band });
+    this.wasOnAir = this.ourBandOnAir();
+    this.updateOffAir();
+  }
+
+  private mergeBands(bands: unknown): void {
+    const b = Array.isArray(bands) ? bands.find((x: any) => x?.id === this.opts.band) : undefined;
+    if (!b) return;
+    if (typeof b.running === "boolean") this.bandInfo.running = b.running;
+    if (typeof b.on_air === "boolean") this.bandInfo.on_air = b.on_air;
+    if (typeof b.next_change === "number") this.bandInfo.next_change = b.next_change;
+  }
+
+  private ourBandOnAir(): boolean { return this.bandInfo.running !== false && this.bandInfo.on_air !== false; }
+
+  /** Recompute off-air from the server's actual band + our band's schedule; emit on change.
+   *  `bandStatus`: a schedule update, where a return to air re-sends our tune (once per transition). */
+  private updateOffAir(bandStatus = false): void {
+    if (!this._connected) return;
+    const onAir = this.ourBandOnAir();
+    const elsewhere = this.serverBand !== null && this.serverBand !== this.opts.band;
+    if (bandStatus && onAir && !this.wasOnAir && elsewhere && this.band) {
+      if (!this.target) this.target = { freq: this.band.center, mode: "am" };
+      this.requestId++;
+      this.sendTune();
+      this.armAckWatch();
+    }
+    if (bandStatus) this.wasOnAir = onAir;
+    const off = elsewhere || !onAir;
+    const nc = this.bandInfo.next_change;
+    const next: OffAir | null = off ? { note: this.note, untilMs: typeof nc === "number" && Number.isFinite(nc) && nc > Date.now() ? nc : null } : null;
+    const prev = this._offAir;
+    this._offAir = next;
+    if (next && (!prev || prev.note !== next.note || prev.untilMs !== next.untilMs)) this.onEvent({ type: "offair", note: next.note, untilMs: next.untilMs });
+    else if (!next && prev) this.onEvent({ type: "onair" });
   }
 
   private onBinary(buf: Buffer): void {
-    if (buf.length < 2) return;
+    if (buf.length < 2 || this._offAir) return;   // off the air: whatever arrives is another band
     if (buf[0] === 0x01) return this.onAudio(buf);
     if (buf[0] === 0x02) {
       const f = parseWaterfallFrame(buf);

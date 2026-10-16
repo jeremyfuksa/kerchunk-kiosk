@@ -20,6 +20,10 @@ export interface CbViewInput {
   offline?: string | null;
   /** status.cb.retrying: the client is still trying (false = it gave up). Absent = true. */
   retrying?: boolean;
+  /** status.cb.offAir: the receiver is connected but its schedule moved us off CB (night). */
+  offAir?: boolean;
+  /** status.cb.offAirUntil (ms): when CB returns; null/absent = "sunrise". */
+  offAirUntil?: number | null;
   /** The live channel's mode ("am" | "lsb"); AM when absent. */
   liveMode?: string | null;
   muted: boolean;
@@ -66,6 +70,8 @@ export function cbView(i: CbViewInput): CbView {
     readout = { state: "error", meta: "Radio error", metaRight: "", num: "", name: friendlyError(i.error), freq: "" };
   } else if (i.offline) {
     readout = { state: "error", meta: "Receiver offline", metaRight: "", num: "", name: i.retrying === false ? "CB receiver stopped — re-enter CB mode" : "Retrying the CB receiver", freq: "" };
+  } else if (i.offAir) {
+    readout = { state: "never", meta: "CB receiver off the air", metaRight: "", num: "", name: `Back at ${i.offAirUntil ? t(i.offAirUntil) : "sunrise"}`, freq: "" };
   } else if (liveN !== null) {
     readout = { state: "live", meta: `CB · ${(i.liveMode ?? "am").toUpperCase()} · Live`, metaRight: i.muted ? "Muted" : "", num: String(liveN), name: name(liveN), freq: fmtFreq(freqOf(liveN)) };
   } else if (last) {

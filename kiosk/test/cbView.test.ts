@@ -50,6 +50,14 @@ describe("cbView readout", () => {
     expect(v.readout.meta).toBe("Radio error");
   });
 
+  it("off the air: calm readout with the return time; error and offline win", () => {
+    const v = cbView({ ...base, offAir: true, offAirUntil: 1200 * MIN });
+    expect(v.readout).toEqual({ state: "never", meta: "CB receiver off the air", metaRight: "", num: "", name: "Back at T1200", freq: "" });
+    expect(cbView({ ...base, offAir: true, offAirUntil: null }).readout.name).toBe("Back at sunrise");
+    expect(cbView({ ...base, offAir: true, offline: "x" }).readout.state).toBe("error");
+    expect(cbView({ ...base, offAir: true, error: "NO_DEVICE" }).readout.meta).toBe("Radio error");
+  });
+
   it("a live freq that isn't a CB channel counts as not live", () => {
     expect(cbView({ ...base, liveFreq: 146_790_000 }).readout.state).toBe("never");
   });

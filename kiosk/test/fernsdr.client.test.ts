@@ -17,7 +17,7 @@ let wss: WebSocketServer | null = null;
 let client: FernClient | null = null;
 afterEach(() => { client?.stop(); wss?.close(); wss = null; client = null; });
 
-async function setup(onConn: (s: WsSocket, msgs: any[]) => void, over: Partial<ConstructorParameters<typeof FernClient>[0]> = {}) {
+async function setup(onConn: (s: WsSocket, msgs: any[]) => void, over: Partial<ConstructorParameters<typeof FernClient>[0]> = {}, welcome: object = WELCOME) {
   wss = new WebSocketServer({ port: 0 });
   await new Promise((r) => wss!.once("listening", r));
   const port = (wss.address() as { port: number }).port;
@@ -26,7 +26,7 @@ async function setup(onConn: (s: WsSocket, msgs: any[]) => void, over: Partial<C
   wss.on("connection", (s) => {
     conns++;
     s.on("message", (d, bin) => { if (!bin) msgs.push(JSON.parse(String(d))); });
-    s.send(JSON.stringify(WELCOME));
+    s.send(JSON.stringify(welcome));
     onConn(s, msgs);
   });
   const events: FernEvent[] = [];
@@ -226,5 +226,65 @@ describe("FernClient", () => {
     sock!.send("{not json");
     await new Promise((r) => setTimeout(r, 100));
     expect(client!.connected || client!.error !== null).toBe(true);
+  });
+
+  describe("off-air band schedule", () => {
+    const NIGHT = { ...WELCOME, bands: [{ ...WELCOME.bands[0], running: false, on_air: false, next_change: Date.now() + 3_600_000 }, { id: "20m", center: 14175000, low: 14000000, high: 14350000, running: true, on_air: true }] };
+    const NOTE = "CB radio is off the air until 13:45 UTC; now on 20 m";
+    const audioCfg = { type: "audio-config", generation: 1, rate: 14250, frame_samples: 128, bitrate: 48000 };
+
+    it("a tune that lands on another band is off-air: event, no audio/rows, socket kept; band-status on_air re-tunes and state ends it", async () => {
+      let sock: WsSocket | null = null;
+      const { msgs, events } = await setup((s) => { sock = s; }, {}, NIGHT);
+      await until(() => msgs.length >= 4);
+      expect(client!.offAir).toEqual({ note: null, untilMs: NIGHT.bands[0]!.next_change });
+      client!.tune(27_185_000, "am");
+      await until(() => msgs.some((m) => m.type === "tune"));
+      sock!.send(JSON.stringify(audioCfg));
+      sock!.send(JSON.stringify({ type: "state", band: "20m", freq: 14175000, ack: { tune: 1 }, note: NOTE }));
+      await until(() => events.some((e) => e.type === "offair" && e.note === NOTE));
+      const off = events.filter((e) => e.type === "offair");
+      expect(off.at(-1)).toEqual({ type: "offair", note: NOTE, untilMs: NIGHT.bands[0]!.next_change });
+      const n = events.length;
+      sock!.send(frame(0, 10));
+      sock!.send(Buffer.from([0x02, 0x00, 0, 0, 0, 0]));
+      await new Promise((r) => setTimeout(r, 60));
+      expect(events.slice(n).filter((e) => e.type === "audio" || e.type === "row")).toHaveLength(0);
+      expect(client!.connected).toBe(true);
+      // our band comes on air: one re-tune, ack gate applies
+      sock!.send(JSON.stringify({ type: "band-status", bands: [{ id: "cb-radio", running: true, on_air: true, next_change: Date.now() + 9e6 }, { id: "20m", running: false, on_air: false }] }));
+      await until(() => msgs.filter((m) => m.type === "tune").length >= 2);
+      sock!.send(JSON.stringify({ type: "band-status", bands: [{ id: "cb-radio", running: true, on_air: true, next_change: Date.now() + 9e6 }] }));
+      await new Promise((r) => setTimeout(r, 60));
+      const tunes = msgs.filter((m) => m.type === "tune");
+      expect(tunes).toHaveLength(2);
+      expect(tunes[1]).toMatchObject({ band: "cb-radio", freq: 27185000, mode: "am", request_id: 2 });
+      expect(events.some((e) => e.type === "onair")).toBe(false);   // still on 20m until the server says so
+      sock!.send(JSON.stringify({ type: "state", band: "cb-radio", ack: { tune: 2 } }));
+      await until(() => events.some((e) => e.type === "onair"));
+      expect(events.filter((e) => e.type === "onair")).toHaveLength(1);
+      expect(client!.offAir).toBeNull();
+    });
+
+    it("re-tunes to the band centre when nothing was ever tuned", async () => {
+      let sock: WsSocket | null = null;
+      const { msgs } = await setup((s) => { sock = s; }, {}, NIGHT);
+      await until(() => msgs.length >= 4);
+      sock!.send(JSON.stringify({ type: "state", band: "20m", note: NOTE }));
+      sock!.send(JSON.stringify({ type: "band-status", bands: [{ id: "cb-radio", running: true, on_air: true }] }));
+      await until(() => msgs.some((m) => m.type === "tune"));
+      expect(msgs.find((m) => m.type === "tune")).toMatchObject({ band: "cb-radio", freq: 27185000, mode: "am" });
+    });
+
+    it("an on-air welcome is not off-air; a state on another band flips it", async () => {
+      let sock: WsSocket | null = null;
+      const { msgs, events } = await setup((s) => { sock = s; });
+      await until(() => msgs.length >= 4);
+      expect(client!.offAir).toBeNull();
+      sock!.send(JSON.stringify({ type: "state", band: "cb-radio" }));
+      sock!.send(JSON.stringify({ type: "state", band: "20m" }));
+      await until(() => client!.offAir !== null);
+      expect(events.filter((e) => e.type === "offair")).toEqual([{ type: "offair", note: null, untilMs: null }]);
+    });
   });
 });
