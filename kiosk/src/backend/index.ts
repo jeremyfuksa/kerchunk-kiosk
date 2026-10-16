@@ -9,6 +9,7 @@ import { WsHub } from "./ws.js";
 import { RtlFmEngine } from "./engine/RtlFmEngine.js";
 import { FakeEngine } from "./engine/FakeEngine.js";
 import { WidebandEngine } from "./engine/WidebandEngine.js";
+import { CbNet } from "./fernsdr/cbNet.js";
 import { rtlIndexForPort } from "./radios.js";
 import { setVolume, setMuted, watchOutput } from "./audio.js";
 import { RepeaterBook } from "./repeaterbook.js";
@@ -109,6 +110,12 @@ const engine =
       openThreshold: config.scan.squelchLevel,
       hangMs: config.scan.dwellMs,
     });
+
+// CB via FernSDR (spec 2026-10-15-cb-fernsdr): the receiver's audio plays
+// through the parked scanner helper's PCM-in pipe.
+const cb = engine instanceof WidebandEngine
+  ? new CbNet({ writePcm: (chunk) => engine.writePcm(chunk), log: (m) => console.log(m) })
+  : undefined;
 
 // Dedicated weather radio: parked on NWR 24/7, decode-only (null audio
 // sink — no speaker claim until the cross-device arbiter exists). SAME
@@ -291,7 +298,7 @@ const radar = config.display && radarCfg?.enabled
 let wallWatchdog: WallWatchdog | undefined;
 
 const { server, getConfig } = createServer({
-  configStore, engine, weatherEngine, activityLog, wsHub, staticDir: STATIC_DIR,
+  configStore, engine, cb, weatherEngine, activityLog, wsHub, staticDir: STATIC_DIR,
   lookup, weather, history, aircraftFeed, radar,
   ccSampleDir: join(dirname(CONFIG_PATH), "cc-samples"),
   selfProtect: true,

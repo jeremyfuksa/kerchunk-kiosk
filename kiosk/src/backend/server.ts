@@ -16,7 +16,9 @@ import type { RadarSource } from "./radar/RadarFeed.js";
 import { setVolume as amixerVolume, setMuted as amixerMuted, type AmixerOpts } from "./audio.js";
 import { isScannable, isAudible, profileFor } from "./config/banks.js";
 import { ccAudibleRanges } from "./config/family.js";
-import { cbChannels, CB_FERNSDR_DEFAULTS } from "./config/cb.js";
+import { cbChannels, cbNetConfig, CB_FERNSDR_DEFAULTS } from "./config/cb.js";
+import type { CbSource } from "./fernsdr/cbNet.js";
+import { withEventSource } from "./fernsdr/withEventSource.js";
 import { collides, findDuplicateSets } from "./config/channelDedup.js";
 import { solveK, estimateWatts, distKm, type Anchor } from "./powerEstimator.js";
 import { parseSame, fipsMatch, fipsNames, isTest, isEom } from "./same.js";
@@ -27,6 +29,8 @@ import { CcRecorder } from "./ccRecorder.js";
 import { isLoopback } from "./wallWatchdog.js";
 
 export interface ServerDeps {
+  /** CB via FernSDR (spec 2026-10-15-cb-fernsdr). Absent = CB mode parks silent. */
+  cb?: CbSource;
   /** Optional identification chain — enriches Close Call channel names. */
   lookup?: LookupProvider;
   /** Boot enrichment pass pacing (tests shrink these). */
@@ -213,7 +217,8 @@ function json(res: ServerResponse, status: number, body: unknown, headers: Recor
 }
 
 export function createServer(deps: ServerDeps): { server: Server; getConfig: () => Config } {
-  const { configStore, engine, activityLog, staticDir } = deps;
+  const { configStore, activityLog, staticDir } = deps;
+  const engine = withEventSource(deps.engine, deps.cb);
   let config = configStore.load();
   // Config revision. PUT /api/config replaces the document wholesale, and
   // thirteen other code paths in this file also write it — a discovery
@@ -592,8 +597,20 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
   // the new config can't fit the live channelizer (see WidebandEngine.retune).
   // Returns the promise so callers that must finish before responding can await
   // it; the helperless RtlFm fallback always cold-starts.
-  const switchMode = (cfg: ScanConfig): Promise<void> =>
-    engine.retune ? engine.retune(cfg) : engine.stop().then(() => engine.start(cfg));
+  const switchMode = (cfg: ScanConfig): Promise<void> => {
+    const p = engine.retune ? engine.retune(cfg) : engine.stop().then(() => engine.start(cfg));
+    syncCb();
+    return p;
+  };
+  // CB via FernSDR follows the mode: listening in CB, held open (paused)
+  // only while a SAME break-in that interrupted CB is playing, otherwise off.
+  // Reads mode/breakIn/breakInFrom at call time.
+  function syncCb(): void {
+    if (!deps.cb) return;
+    if (mode === "cb") deps.cb.start(cbNetConfig(config));
+    else if (mode === "weather" && breakIn && breakInFrom === "cb") deps.cb.pause();
+    else deps.cb.stop();
+  }
   // Shared revert: clears both timers, lifts the break-in freeze, and (unless
   // the operator changed mode in the meantime) hops back to the mode the
   // break-in preempted — scan, or CB-only listening.
@@ -919,6 +936,7 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
           engine.updateScheduling?.({ autoDwell: after.autoDwell, priorityRevisit: after.priorityRevisit });
         }
       }
+      syncCb(); // cb.* edits apply on the live session (start() is idempotent)
       if (familiesChanged) deps.wsHub.broadcast({ type: "reload", ts: Date.now() });
       return json(res, 200, config);
     }
@@ -1428,7 +1446,9 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
         state: engine.state, mode, monitor: monitorChannel,
         // How many channels the current mode actually scans — 0 with every
         // bank muted, where the kiosk should say "standby", not "scanning".
-        scanCount: toScanConfig(config, mode, monitorChannel).channels.length,
+        scanCount: mode === "cb"
+          ? cbNetConfig(config).channels.length
+          : toScanConfig(config, mode, monitorChannel).channels.length,
         // The kiosk shows a MUTED badge — mute doesn't restart the engine,
         // so the dashboard polls this instead of waiting for a WS event.
         muted: config.audio.muted,
@@ -1439,6 +1459,8 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
         // warns before a reboot. `mode === "weather"` can't tell a break-in
         // from an operator-selected weather mode.
         breakIn,
+        // CB via FernSDR: is the receiver session up? null when not wired.
+        cb: deps.cb ? deps.cb.status() : null,
         // When this backend process started. The admin's system-action watcher
         // compares it across a restart/reboot to know a *new* process is up.
         startedAt: STARTED_AT,

@@ -34,10 +34,11 @@ What the scanner is doing right now.
   "state": "running",        // EngineState: "stopped" | "starting" | "running" | "error"
   "mode": "scan",            // "scan" | "weather" | "monitor" | "cb"
   "monitor": null,           // Channel object when mode is "monitor", else null
-  "scanCount": 42,           // channels the current mode actually scans (0 = standby)
+  "scanCount": 42,           // channels the current mode actually scans (0 = standby); in CB mode, the watched CB channel count
   "muted": false,            // speaker mute (doesn't restart the engine, so it's polled)
   "warmed": true,            // false until the engine's first warm sweep completes
   "breakIn": false,          // true only while a SAME break-in holds the scanner on NWR
+  "cb": { "connected": true, "error": null }, // CB via FernSDR receiver session; null when the backend has no CB source
   "startedAt": 1753480000000 // epoch ms this backend *process* started
 }
 ```
