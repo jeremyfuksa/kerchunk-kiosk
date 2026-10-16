@@ -25,7 +25,7 @@ function rig() {
       const like: FernClientLike = {
         start: () => { c.started++; }, stop: () => { c.stopped++; },
         tune: (f, m) => { c.tunes.push([f, m]); },
-        get connected() { return true; }, get error() { return null; },
+        get connected() { return true; }, get error() { return null; }, get retrying() { return true; },
       };
       return like;
     },
@@ -69,7 +69,8 @@ describe("CbNet", () => {
     for (let i = 0; i < 4; i++) r.clients[0]!.emit(audio);
     expect(r.pcm.length).toBeGreaterThan(0);
     const bytes = r.pcm.reduce((s, b) => s + b.length, 0);
-    expect(Math.abs(bytes / 2 - (512 * 50_000) / 14_250)).toBeLessThan(6);
+    // (the newest 30 ms / 1500 samples are held back for the close fade)
+    expect(Math.abs(bytes / 2 + 1500 - (512 * 50_000) / 14_250)).toBeLessThan(6);
   });
 
   it("meter → signal only while audible", () => {
@@ -82,6 +83,61 @@ describe("CbNet", () => {
     r.tick(300);
     r.clients[0]!.emit({ type: "meter", dbfs: -60 });
     expect(r.events.find((e) => e.type === "signal")).toMatchObject({ dbfs: -60 });
+  });
+
+  const audio = (v = 0.5): FernEvent => ({ type: "audio", samples: new Float32Array(128).fill(v), rate: 14_250 });
+  const samples = (bufs: Buffer[]) => { const b = Buffer.concat(bufs); return Array.from({ length: b.length >> 1 }, (_, i) => b.readInt16LE(i * 2) / 32767); };
+
+  it("AM audio stops audioTailMs after the last hot row though the channel is still open, ending in a fade to zero", () => {
+    const r = rig();
+    r.net.start(cfg);
+    r.rows([], 10);
+    r.rows([CB19], 3);
+    for (let i = 0; i < 20; i++) r.clients[0]!.emit(audio());
+    const flowing = r.pcm.length;
+    expect(flowing).toBeGreaterThan(0);
+    r.rows([], 2);                       // 200 ms after the last hot row: inside the 300 ms tail
+    r.clients[0]!.emit(audio());
+    expect(r.pcm.length).toBeGreaterThan(flowing);
+    r.rows([], 2);                       // 400 ms: past it, but the 2 s hang hasn't released
+    expect(r.events.some((e) => e.type === "release")).toBe(false);
+    const after = r.pcm.length;
+    const last = r.pcm.at(-1)!;
+    expect(Math.abs(last.readInt16LE(last.length - 2)) / 32767).toBeLessThan(0.01);
+    for (let i = 0; i < 20; i++) r.clients[0]!.emit(audio());
+    expect(r.pcm.length).toBe(after);    // nothing more written
+    const s = samples(r.pcm);
+    expect(Math.max(...s)).toBeGreaterThan(0.45);   // full level before the fade
+  });
+
+  it("LSB keeps writing through its hang", () => {
+    const r = rig();
+    r.net.start(cfg);
+    r.rows([], 10);
+    r.rows([CB38], 3);
+    r.rows([], 8);                       // 800 ms of silence, well past audioTailMs, inside ssbHangMs
+    expect(r.events.some((e) => e.type === "release")).toBe(false);
+    const before = r.pcm.length;
+    for (let i = 0; i < 20; i++) r.clients[0]!.emit(audio());
+    expect(r.pcm.length).toBeGreaterThan(before);
+  });
+
+  it("reopening the same channel does not re-tune the receiver", () => {
+    const r = rig();
+    r.net.start(cfg);
+    r.rows([], 10);
+    r.rows([CB19], 2);
+    r.rows([], 30);                      // closes
+    expect(r.events.some((e) => e.type === "release")).toBe(true);
+    r.rows([CB19], 2);
+    expect(r.events.filter((e) => e.type === "audible" && e.channel !== null)).toHaveLength(2);
+    expect(r.clients[0]!.tunes).toEqual([[CB19, "am"]]);
+  });
+
+  it("passes staleMs to the client", () => {
+    const r = rig();
+    r.net.start({ ...cfg, staleMs: 4321 });
+    expect(r.clients[0]!.opts.staleMs).toBe(4321);
   });
 
   it("close emits release then idle and audible null", () => {
@@ -105,7 +161,7 @@ describe("CbNet", () => {
     const before = r.pcm.length;
     r.clients[0]!.emit({ type: "audio", samples: new Float32Array(128), rate: 14_250 });
     expect(r.pcm.length).toBe(before);
-    expect(r.net.status()).toEqual({ connected: false, error: null });
+    expect(r.net.status()).toEqual({ connected: false, error: null, retrying: false });
   });
 
   it("pause keeps the client, releases, ignores rows; start resumes on the same client", () => {

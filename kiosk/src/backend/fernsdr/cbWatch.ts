@@ -41,6 +41,11 @@ export class CbWatch {
   }
 
   get audible(): number | null { return this._audible; }
+  /** When channel n last had signal over its close threshold (open channels only). */
+  lastHotAt(n: number): number | null {
+    const s = this.st.find((x) => x.ch.n === n);
+    return s?.open ? s.lastHot : null;
+  }
   openChannels(): number[] { return this.st.filter((s) => s.open).map((s) => s.ch.n); }
 
   row(r: WatchRow, ts: number): CbTransition[] {
