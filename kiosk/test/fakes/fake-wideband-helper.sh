@@ -17,6 +17,7 @@
 #                                       device/ALSA open)
 #                         "silent"   -> says ready, then emits nothing ever
 #                                       again (hung DSP thread)
+#   FAKE_WB_PCM_FILE    - copy everything written to fd 4 (PCM-in) into this file
 #   FAKE_WB_STDERR      - printed to stderr before any mode-specific behavior
 #                         (e.g. pair with FAKE_WB_MODE=noready to simulate a
 #                         helper that logs a real device error, then wedges
@@ -24,6 +25,7 @@
 [ -n "${FAKE_WB_ARGS_FILE:-}" ] && echo "$@" >> "$FAKE_WB_ARGS_FILE"
 [ -n "${FAKE_WB_PID_FILE:-}" ] && echo "$$" >> "$FAKE_WB_PID_FILE"
 [ -n "${FAKE_WB_STDERR:-}" ] && echo "$FAKE_WB_STDERR" >&2
+[ -n "${FAKE_WB_PCM_FILE:-}" ] && { cat <&4 > "$FAKE_WB_PCM_FILE" & }
 if [ "${FAKE_WB_MODE:-}" = "nodevice" ]; then
   echo "failed to open RTL-SDR device" >&2
   exit 1

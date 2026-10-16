@@ -24,6 +24,7 @@
 #include "live.hpp"
 #include "multimon.hpp"
 #include "outputs.hpp"
+#include "pcm_in.hpp"
 #include "rt.hpp"
 #include "rtl_source.hpp"
 
@@ -145,6 +146,12 @@ static int run_live(const kc::Cli& c) {
     g_stop = true;   // EOF = parent went away (a flag, not a queued quit: can't be dropped)
   });
   in.detach();   // blocked in getline; process exit ends it
+  if (c.pcm_in_fd >= 0) {
+    // Deliberately leaked like events/cmds: its detached reader can outlive run_live.
+    auto* pcm = new kc::PcmIn(c.pcm_target_ms, c.pcm_max_ms);
+    pcm->start_reader(c.pcm_in_fd, log);
+    eng->set_pcm_in(pcm);
+  }
   kc::RtlSource src({c.rtl_serial, c.rtl_index, c.eng.rate, c.gain, c.ppm}, log);
   std::string err;
   if (!src.open(err, [] { return g_stop.load(); })) {

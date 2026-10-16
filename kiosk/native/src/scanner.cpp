@@ -168,19 +168,14 @@ void Scanner::poll(double now, const std::vector<LaneReading>& r) {
     if (!L.floor_db) L.floor_db = db;
     else if (!L.open) *L.floor_db += (db > *L.floor_db ? FLOOR_ALPHA_UP : FLOOR_ALPHA_DOWN) * (db - *L.floor_db);
   }
-  // Shared floor: the quietest wide lane. An LSB lane meters a ~2.5 kHz sideband (~8 dB under a
-  // 16 kHz lane's noise), so it uses only its own floor and stays out of this minimum -- or every
-  // AM/FM lane's threshold would drop with it.
   std::optional<double> floor;
   for (const auto& L : lanes_)
-    if (!L.parked() && L.floor_db && L.demod != Demod::Lsb) floor = floor ? std::min(*floor, *L.floor_db) : *L.floor_db;
+    if (!L.parked() && L.floor_db) floor = floor ? std::min(*floor, *L.floor_db) : *L.floor_db;
+  if (!floor) return;
 
   for (int i = 0; i < n; i++) {
     LaneState& L = lanes_[i];
     if (L.parked() || !rd[i] || L.background) continue;
-    const bool lsb = L.demod == Demod::Lsb;
-    const std::optional<double> base = lsb ? L.floor_db : floor;
-    if (!base) continue;
     const double open_db = L.open_db.value_or(p_.open_db);
     const double quiet_db = p_.quiet_db;   // decision C: per-channel (GR-scale) quietDb ignored
     const double hang_s = L.hang_ms.value_or(p_.hang_ms) / 1000.0;
@@ -199,15 +194,15 @@ void Scanner::poll(double now, const std::vector<LaneReading>& r) {
     {
       TxEpisode& T = tx_[i];
       if (!T.active) {
-        if (db > *base + open_db && now >= L.skip_until) { T.active = true; T.opened = L.open; }
-      } else if (db < *base + open_db - CLOSE_HYST_DB) {
+        if (db > *floor + open_db && now >= L.skip_until) { T.active = true; T.opened = L.open; }
+      } else if (db < *floor + open_db - CLOSE_HYST_DB) {
         end_tx(i);
       }
       if (T.active) {
         T.polls++;
-        if ((int)T.above.size() < TX_MAX_SAMPLES) T.above.push_back((float)(db - *base));
+        if ((int)T.above.size() < TX_MAX_SAMPLES) T.above.push_back((float)(db - *floor));
         if (r[i].quiet_ready && (int)T.quiet.size() < TX_MAX_SAMPLES) T.quiet.push_back(r[i].quiet_db);
-        if (L.open && L.quiet && !lsb) { T.disc_sum += r[i].disc_mean; T.disc_n++; }
+        if (L.open && L.quiet) { T.disc_sum += r[i].disc_mean; T.disc_n++; }
       }
     }
 
@@ -221,22 +216,15 @@ void Scanner::poll(double now, const std::vector<LaneReading>& r) {
       L.tone_ok = L.tone_seen >= 0 && now - L.tone_seen <= loss_ms / 1000.0;
     }
 
-    const double gate_thresh = *base + open_db - CLOSE_HYST_DB;
+    const double gate_thresh = *floor + open_db - CLOSE_HYST_DB;
     const double fast = r[i].fast_db;
     L.carrier = L.carrier ? fast > gate_thresh - GATE_HYST_DB / 2 : fast > gate_thresh + GATE_HYST_DB / 2;
-    // SSB has no carrier to hold the gate through a syllable gap: hold it SSB_GATE_HOLD_MS past the
-    // last poll that was really above threshold (the lane's hang still decides the close).
-    if (lsb) {
-      if (L.carrier) L.carrier_seen = now;
-      else if (L.carrier_seen >= 0 && now - L.carrier_seen <= SSB_GATE_HOLD_MS / 1000.0) L.carrier = true;
-    }
-    if (lsb) L.quiet = true;   // SSB has no carrier to quiet the discriminator: energy-only squelch
-    else if (!r[i].quiet_ready) L.quiet = false;
+    if (!r[i].quiet_ready) L.quiet = false;
     else L.quiet = L.quiet ? r[i].quiet_db < quiet_db + QUIET_HYST_DB / 2 : r[i].quiet_db < quiet_db - QUIET_HYST_DB / 2;
     if (audible_ == i) gate_ = L.carrier && L.quiet && L.tone_ok ? 1.f : 0.f;
 
     if (!L.open) {
-      if (db > *base + open_db && L.quiet && L.tone_ok && now >= L.skip_until) {
+      if (db > *floor + open_db && L.quiet && L.tone_ok && now >= L.skip_until) {
         if (++L.above >= OPEN_POLLS) {
           L.open = true;
           L.below_since = -1;
@@ -254,7 +242,7 @@ void Scanner::poll(double now, const std::vector<LaneReading>& r) {
       } else {
         L.above = 0;
       }
-    } else if (db < *base + open_db - CLOSE_HYST_DB || !L.quiet) {
+    } else if (db < *floor + open_db - CLOSE_HYST_DB || !L.quiet) {
       // Close on carrier drop OR lost quieting: a carrier with no quieting (an AM signal on an FM
       // lane, data, a stuck carrier) is not a transmission to hold for -- it parked the scanner
       // until the max-hold cap (txstats, 2026-09-26). A fade shorter than the hang doesn't close.

@@ -32,7 +32,7 @@ describe("cbView readout", () => {
   it("live: number, name, frequency, needle at the channel", () => {
     const cb = cbReduce(CB_EMPTY, active(19, NOW));
     const v = cbView({ ...base, cb, liveFreq: F(19) });
-    expect(v.readout).toMatchObject({ state: "live", meta: "CB only · AM · Live", metaRight: "", num: "19", name: "Highway", freq: "27.1850" });
+    expect(v.readout).toMatchObject({ state: "live", meta: "CB · AM · Live", metaRight: "", num: "19", name: "Highway", freq: "27.1850" });
     expect(v.needleX).not.toBeNull();
     expect(cbView({ ...base, cb, liveFreq: F(19), muted: true }).readout.metaRight).toBe("Muted");
   });
@@ -48,6 +48,14 @@ describe("cbView readout", () => {
     const v = cbView({ ...base, liveFreq: F(19), error: "NO_DEVICE" });
     expect(v.readout.state).toBe("error");
     expect(v.readout.meta).toBe("Radio error");
+  });
+
+  it("off the air: calm readout with the return time; error and offline win", () => {
+    const v = cbView({ ...base, offAir: true, offAirUntil: 1200 * MIN });
+    expect(v.readout).toEqual({ state: "never", meta: "CB receiver off the air", metaRight: "", num: "", name: "Back at T1200", freq: "" });
+    expect(cbView({ ...base, offAir: true, offAirUntil: null }).readout.name).toBe("Back at sunrise");
+    expect(cbView({ ...base, offAir: true, offline: "x" }).readout.state).toBe("error");
+    expect(cbView({ ...base, offAir: true, error: "NO_DEVICE" }).readout.meta).toBe("Radio error");
   });
 
   it("a live freq that isn't a CB channel counts as not live", () => {
@@ -122,5 +130,20 @@ describe("cbHtml", () => {
     const h = cbHtml(cbView({ ...base, cb, liveFreq: F(19), names: { "19": "<b>x</b>" } }), null);
     expect(h).not.toContain("<b>x</b>");
     expect(h).toContain("&lt;b&gt;x&lt;/b&gt;");
+  });
+  it("receiver offline shows in the readout (engine errors still win)", () => {
+    const v = cbView({ ...base, offline: "connect ECONNREFUSED 192.168.1.30:8073" });
+    expect(v.readout).toMatchObject({ state: "error", meta: "Receiver offline" });
+    expect(cbView({ ...base, offline: "x", error: "kerchunk-dsp: boom" }).readout.meta).toBe("Radio error");
+  });
+  it("offline readout says retrying only while the client still is", () => {
+    expect(cbView({ ...base, offline: "x" }).readout.name).toBe("Retrying the CB receiver");
+    expect(cbView({ ...base, offline: "x", retrying: true }).readout.name).toBe("Retrying the CB receiver");
+    expect(cbView({ ...base, offline: "x", retrying: false }).readout.name).toBe("CB receiver stopped — re-enter CB mode");
+  });
+  it("the live meta names the channel's mode", () => {
+    const v = cbView({ ...base, liveFreq: 27_385_000, liveMode: "lsb" });
+    expect(v.readout.meta).toBe("CB · LSB · Live");
+    expect(cbView({ ...base, liveFreq: 27_185_000 }).readout.meta).toBe("CB · AM · Live");
   });
 });

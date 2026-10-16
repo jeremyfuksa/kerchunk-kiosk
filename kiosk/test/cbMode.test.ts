@@ -8,7 +8,7 @@ import { ConfigStore } from "../src/backend/config/ConfigStore.js";
 import { ActivityLog } from "../src/backend/activityLog.js";
 import { WsHub } from "../src/backend/ws.js";
 import { FakeEngine } from "../src/backend/engine/FakeEngine.js";
-import { CB_FREQ_HZ, cbChannels, cbDefaultChannels, cbNumberForFreq, cbLabel, CB_NAMES_DEFAULT } from "../src/backend/config/cb.js";
+import { CB_FREQ_HZ, CB_ALL, cbChannels, cbNetConfig, cbNumberForFreq, cbLabel, CB_NAMES_DEFAULT } from "../src/backend/config/cb.js";
 import { configSchema, defaultConfig } from "../src/backend/config/schema.js";
 
 const SCAN_FREQ = 145_130_000;
@@ -61,23 +61,16 @@ describe("CB channel table", () => {
     expect(cbChannels([14], {}).map((c) => c.alphaTag)).toEqual(["CB 14"]);
   });
 
-  it("cbChannels: LSB channels carry the SSB squelch (hang default 1500, open override when set)", () => {
-    const [ch38] = cbChannels([38]);
-    expect(ch38).toMatchObject({ mode: "lsb", hangMs: 1500 });
-    expect(ch38).not.toHaveProperty("openAboveFloorDb");
-    const [tuned] = cbChannels([38], undefined, { ssbOpenDb: 6, ssbHangMs: 2500 });
-    expect(tuned).toMatchObject({ mode: "lsb", openAboveFloorDb: 6, hangMs: 2500 });
-    const [am19] = cbChannels([19], undefined, { ssbOpenDb: 6 });
-    expect(am19).not.toHaveProperty("openAboveFloorDb");
-    expect(am19).not.toHaveProperty("hangMs");
-    expect(cbChannels([38], undefined, { modes: {} })[0]).toMatchObject({ mode: "am" });   // explicit map replaces the default
+  it("cbChannels: third arg is the modes map (explicit map replaces the default)", () => {
+    expect(cbChannels([38], undefined, {})[0]).toMatchObject({ mode: "am" });
+    expect(cbChannels([38])[0]).toMatchObject({ mode: "lsb" });
   });
 
   it("config.cb SSB knobs and radios[].ppm validate", () => {
     const base = defaultConfig();
     const ok = (v: unknown) => configSchema.safeParse(v).success;
-    const parsed = configSchema.parse({ ...base, cb: { modes: { "38": "lsb", "36": "am" }, ssbOpenDb: 6, ssbHangMs: 1500 } });
-    expect(parsed.cb).toEqual({ modes: { "38": "lsb", "36": "am" }, ssbOpenDb: 6, ssbHangMs: 1500 });
+    const parsed = configSchema.parse({ ...base, cb: { modes: { "38": "lsb", "36": "am" }, ssbHangMs: 1500 } });
+    expect(parsed.cb).toEqual({ modes: { "38": "lsb", "36": "am" }, ssbHangMs: 1500 });
     expect(ok({ ...base, cb: { modes: { "38": "usb" } } })).toBe(false);
     expect(ok({ ...base, cb: { modes: { "41": "lsb" } } })).toBe(false);
     const radio = (ppm: number) => ({ ...base, radios: [{ serial: "KIOSK01", role: "scan", ppm }] });
@@ -94,51 +87,48 @@ describe("CB channel table", () => {
   });
 });
 
-describe("cbDefaultChannels", () => {
-  it("fills one window: 6/9/19 and the LSB channels always, then 1 upward", () => {
-    expect(cbDefaultChannels(32)).toEqual([...Array.from({ length: 31 }, (_, i) => i + 1), 38]);
-    expect(cbDefaultChannels(12)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 19, 38]);
-    expect(cbDefaultChannels(2)).toEqual([6, 9]);
-    expect(cbDefaultChannels(64)).toHaveLength(40);
-    expect(cbDefaultChannels(32, {})).toEqual(Array.from({ length: 32 }, (_, i) => i + 1));
+describe("toScanConfig cb mode", () => {
+  const base = defaultConfig();
+  it("parks the helper on PCM-in: no channels, no Close Call, no sweep", () => {
+    const sc = toScanConfig(base, "cb");
+    expect(sc.channels).toEqual([]);
+    expect(sc.pcmIn).toBe(true);
+    expect(sc.closeCall).toBe(false);
+    expect(sc.sweepRanges).toEqual([]);
+  });
+  it("other modes never set pcmIn; every mode carries the PCM buffer knobs", () => {
+    const sc = toScanConfig(base, "scan");
+    expect(sc.pcmIn).toBe(false);
+    expect([sc.pcmBufferMs, sc.pcmMaxBufferMs]).toEqual([120, 400]);
+    const tuned = configSchema.parse({ ...base, cb: { fernsdr: { bufferMs: 150, maxBufferMs: 500 } } });
+    expect([toScanConfig(tuned, "cb").pcmBufferMs, toScanConfig(tuned, "cb").pcmMaxBufferMs]).toEqual([150, 500]);
+  });
+  it("CB never enters the scan rotation or knownHz", () => {
+    const sc = toScanConfig(base, "scan");
+    expect(freqs(sc)).not.toContain(CB19);
+    expect(sc.knownHz).not.toContain(CB19);
   });
 });
 
-describe("toScanConfig cb mode", () => {
-  const cfg = () => ({
-    ...defaultConfig(),
-    channels: [{ id: "ham", freq: SCAN_FREQ, alphaTag: "H", mode: "nfm" as const, enabled: true }],
+describe("cbNetConfig", () => {
+  it("defaults: all 40 channels, 38 LSB, priority 6/9/19, receiver knobs", () => {
+    const c = cbNetConfig(defaultConfig());
+    expect(c.channels.map((ch) => Number(ch.id.slice(3)))).toEqual(CB_ALL);
+    expect(c.channels.find((ch) => ch.id === "cb_38")?.mode).toBe("lsb");
+    expect(c.priority).toEqual([6, 9, 19]);
+    expect(c).toMatchObject({ url: "ws://192.168.1.30:8073/ws", band: "cb-radio", openDb: 10, openRows: 2, hangMs: 2000, ssbHangMs: 1500, maxOpenMs: 180_000, backoffMaxMs: 60_000 });
   });
-
-  it("tunes only the CB set, squelched, with no Close Call or sweep", () => {
-    const c = cfg();
-    c.scan.closeCall = true;
-    c.scan.lanesPerGroup = 64;
-    const sc = toScanConfig(c, "cb");
-    expect(sc.channels).toHaveLength(40);
-    expect(freqs(sc)).not.toContain(SCAN_FREQ);
-    expect(sc.monitor).toBe(false);
-    expect(sc.closeCall).toBe(false);
-    expect(sc.sweepRanges).toEqual([]);
-    expect(sc.ccAudibleHz).toBeUndefined();
+  it("honours config.cb", () => {
+    const cfg = configSchema.parse({ ...defaultConfig(), cb: { channels: [19, 9], priority: [9], ssbHangMs: 900, modes: {}, fernsdr: { url: "ws://x:1/ws", openDb: 8 } } });
+    const c = cbNetConfig(cfg);
+    expect(c.channels.map((ch) => ch.id)).toEqual(["cb_9", "cb_19"]);
+    expect(c.channels.every((ch) => ch.mode === "am")).toBe(true);
+    expect(c).toMatchObject({ priority: [9], ssbHangMs: 900, url: "ws://x:1/ws", openDb: 8 });
   });
-
-  it("defaults to one window's worth of lanes", () => {
-    const c = cfg();
-    c.scan.lanesPerGroup = 12;
-    expect(freqs(toScanConfig(c, "cb"))).toHaveLength(12);
-    expect(freqs(toScanConfig(c, "cb"))).toContain(CB19);
-  });
-
-  it("honors config.cb.channels", () => {
-    const c = { ...cfg(), cb: { channels: [19] } };
-    expect(freqs(toScanConfig(c, "cb"))).toEqual([CB19]);
-  });
-
-  it("CB never enters the scan rotation or knownHz", () => {
-    const sc = toScanConfig(cfg(), "scan");
-    expect(freqs(sc).some((f) => f >= 26_960_000 && f <= 27_410_000)).toBe(false);
-    expect(sc.knownHz).not.toContain(CB19);
+  it("rejects bad receiver knobs", () => {
+    expect(() => configSchema.parse({ ...defaultConfig(), cb: { fernsdr: { url: "http://x" } } })).toThrow();
+    expect(() => configSchema.parse({ ...defaultConfig(), cb: { fernsdr: { bufferMs: 300, maxBufferMs: 200 } } })).toThrow();
+    expect(() => configSchema.parse({ ...defaultConfig(), cb: { priority: [41] } })).toThrow();
   });
 });
 
@@ -149,11 +139,10 @@ describe("POST /api/mode cb", () => {
     const res = await request(server).post("/api/mode").send({ mode: "cb" });
     expect(res.status).toBe(200);
     expect(res.body.mode).toBe("cb");
-    expect(freqs(engine.tunes.at(-1))).toContain(CB19);
-    expect(freqs(engine.tunes.at(-1))).not.toContain(SCAN_FREQ);
+    expect(engine.tunes.at(-1)?.pcmIn).toBe(true);
+    expect(freqs(engine.tunes.at(-1))).toEqual([]);
     const st = await request(server).get("/api/status");
     expect(st.body.mode).toBe("cb");
-    expect(st.body.scanCount).toBeGreaterThan(0);
     await request(server).post("/api/mode").send({ mode: "scan" });
     expect(freqs(engine.tunes.at(-1))).toContain(SCAN_FREQ);
   });
@@ -181,9 +170,10 @@ describe("SAME break-in from CB mode", () => {
     expect(freqs(engine.retunes.at(-1))).toEqual([WX_FREQ]);
     engine.emitSame(EOM);
     vi.advanceTimersByTime(9_000);
-    const back = freqs(engine.retunes.at(-1));
-    expect(back).toContain(CB19);
-    expect(back).not.toContain(SCAN_FREQ);
+    // CB parks the helper on PCM-in: back to no channels, never the scan set
+    // (FakeEngine routes an empty channel set through start(), not retune()).
+    expect(engine.tunes.at(-1)?.pcmIn).toBe(true);
+    expect(freqs(engine.tunes.at(-1))).toEqual([]);
     vi.useRealTimers();
     expect((await request(server).get("/api/status")).body.mode).toBe("cb");
   });
@@ -219,8 +209,8 @@ describe("CB names and lookups", () => {
     expect(configSchema.safeParse({ ...base, cb: { names: { "19": "Trucks" } } }).success).toBe(true);
     expect(configSchema.safeParse({ ...base, cb: { names: { "41": "x" } } }).success).toBe(false);
     expect(configSchema.safeParse({ ...base, cb: { names: { "19": "" } } }).success).toBe(false);
-    const sc = toScanConfig({ ...base, cb: { channels: [19], names: { "19": "Trucks" } } }, "cb");
-    expect(sc.channels[0]?.alphaTag).toBe("CB 19 · Trucks");
+    const net = cbNetConfig({ ...base, cb: { channels: [19], names: { "19": "Trucks" } } });
+    expect(net.channels[0]?.alphaTag).toBe("CB 19 · Trucks");
   });
 
   it("display.cb defaults and bounds", () => {

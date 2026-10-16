@@ -523,48 +523,6 @@ TEST(engine_ctcss_lane_ignores_a_dcs_user) {
   }
 }
 
-namespace {
-const char* LSB_AND_FM =
-    R"({"cmd":"tune","centerHz":146000000,"channels":[{"id":"s","freqHz":146050000,"mode":"lsb","hangMs":500},)"
-    R"({"id":"f","freqHz":145940000,"hangMs":500}],"closeCall":false,"knownHz":[146050000,145940000]})";
-
-// Equal-amplitude two-tone SSB voice stand-in: no carrier, envelope through zero 1200x/s, so an FM
-// lane's discriminator never quiets on it.
-void burst_two_tone(std::vector<sig::cf>& x, double off, double t0, double t1) {
-  auto a = sig::tone(RATE, x.size(), off - 700, 0.1), b = sig::tone(RATE, x.size(), off - 1900, 0.1);
-  for (size_t i = (size_t)(t0 * RATE); i < (size_t)(t1 * RATE) && i < x.size(); i++) x[i] += a[i] + b[i];
-}
-
-bool opened(const Rig& r, const std::string& id) {
-  for (auto& e : r.of("open")) if (e["id"] == id) return true;
-  return false;
-}
-}  // namespace
-
-TEST(engine_lsb_lane_opens_on_carrierless_voice_and_speaks) {
-  kc::EngineOptions o; o.rate = RATE;
-  Rig r(o);
-  r.tune(LSB_AND_FM);
-  auto x = scene(3.2, 7);
-  burst_two_tone(x, 50'000, 1.0, 2.0);    // on the LSB lane
-  burst_two_tone(x, -60'000, 1.0, 2.0);   // the same signal on the FM lane: the control
-  r.feed(x);
-  CHECK(opened(r, "s"));
-  CHECK(!opened(r, "f"));                 // proves the test signal really fails the quieting gate
-  CHECK(r.pcm_rms(1.3, 1.9) > 0.02);
-  bool closed = false;
-  for (auto& e : r.of("close")) if (e["id"] == "s") closed = true;
-  CHECK(closed);
-}
-
-TEST(engine_lsb_lane_stays_shut_on_noise) {
-  kc::EngineOptions o; o.rate = RATE;
-  Rig r(o);
-  r.tune(LSB_AND_FM);
-  r.feed(scene(4.0, 9));
-  CHECK(!opened(r, "s"));
-}
-
 TEST(engine_txstat_offset_hz_reads_a_carrier_offset) {
   kc::EngineOptions o; o.rate = RATE;
   Rig r(o);
@@ -578,14 +536,41 @@ TEST(engine_txstat_offset_hz_reads_a_carrier_offset) {
   CHECK(seen);
 }
 
-TEST(engine_lsb_lane_ignores_energy_outside_its_sideband) {
-  // A strong signal in the lane but ABOVE the dial (USB / the next channel's sideband) is in the
-  // 16 kHz lane yet outside the lower sideband: metering the sideband keeps the lane shut.
-  kc::EngineOptions o; o.rate = RATE;
+#include "pcm_in.hpp"
+
+TEST(engine_pcm_in_plays_external_audio_through_the_speaker_chain) {
+  kc::EngineOptions o;
+  o.rate = RATE;
   Rig r(o);
-  r.tune(LSB_AND_FM);
-  auto x = scene(3.2, 11);
-  burst_two_tone(x, 50'000 + 2600, 1.0, 2.0);   // tones at +1900 / +700 Hz: the upper sideband
-  r.feed(x);
-  CHECK(!opened(r, "s"));
+  kc::PcmIn pcm(20, 1000);   // max above the 0.5 s burst, or the ring trims it to the 20 ms target
+  r.e.set_pcm_in(&pcm);
+  r.tune(R"({"cmd":"tune","centerHz":146000000,"channels":[],"pcmIn":true})");
+  std::vector<int16_t> tone(kc::LANE_RATE / 2);   // 0.5 s of 1 kHz at 0.25 FS
+  for (size_t i = 0; i < tone.size(); i++) tone[i] = (int16_t)(8192 * std::sin(2 * M_PI * 1000 * i / kc::LANE_RATE));
+  pcm.write(tone.data(), tone.size());
+  r.feed(scene(0.6, 7));
+  CHECK(r.pcm_rms(0.15, 0.4) > 0.05);   // audible (AGC/limiter applied)
+  CHECK(r.of("open").empty());          // the scanner had no channels
+}
+
+TEST(engine_pcm_in_off_without_the_tune_flag) {
+  kc::EngineOptions o;
+  o.rate = RATE;
+  Rig r(o);
+  kc::PcmIn pcm(20, 400);
+  r.e.set_pcm_in(&pcm);
+  r.tune(R"({"cmd":"tune","centerHz":146000000,"channels":[]})");
+  std::vector<int16_t> tone(kc::LANE_RATE / 2, 8192);
+  pcm.write(tone.data(), tone.size());
+  r.feed(scene(0.6, 8));
+  CHECK(r.pcm_rms(0.15, 0.4) < 0.001);
+}
+
+TEST(engine_pcm_in_flag_without_a_ring_is_silent_and_safe) {
+  kc::EngineOptions o;
+  o.rate = RATE;
+  Rig r(o);
+  r.tune(R"({"cmd":"tune","centerHz":146000000,"channels":[],"pcmIn":true})");
+  r.feed(scene(0.3, 9));
+  CHECK(r.pcm_rms(0.05, 0.3) < 0.001);
 }

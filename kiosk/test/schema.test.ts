@@ -128,10 +128,11 @@ describe("configSchema", () => {
     expect(() => configSchema.parse({ ...base, scan: { ...base.scan, nativeAmGainDb: -31 } })).toThrow();
   });
 
-  it("accepts scan.nativeSsbGainDb in [-30, 20] and rejects outside it", () => {
+  it("strips the retired scan.nativeSsbGainDb and cb.ssbOpenDb", () => {
     const base = defaultConfig();
-    expect(configSchema.parse({ ...base, scan: { ...base.scan, nativeSsbGainDb: -6 } }).scan.nativeSsbGainDb).toBe(-6);
-    expect(() => configSchema.parse({ ...base, scan: { ...base.scan, nativeSsbGainDb: 21 } })).toThrow();
+    const parsed = configSchema.parse({ ...base, scan: { ...base.scan, nativeSsbGainDb: -6 }, cb: { ssbOpenDb: 8 } });
+    expect("nativeSsbGainDb" in parsed.scan).toBe(false);
+    expect("ssbOpenDb" in (parsed.cb ?? {})).toBe(false);
   });
 
   it("accepts scan.nativeQuietDb (native engine's own dB scale, keeps the value)", () => {

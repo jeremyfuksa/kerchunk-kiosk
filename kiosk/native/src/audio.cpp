@@ -22,9 +22,8 @@ std::vector<float> speaker_lpf(double hz) {
 }  // namespace
 
 SpeakerPath::SpeakerPath(double lpf_hz, float am_gain, const AgcParams& agc, double limiter_ceiling,
-                         double limiter_release_ms, double hpf_hz, float ssb_gain)
+                         double limiter_release_ms, double hpf_hz)
     : am_gain_(am_gain),
-      ssb_gain_(ssb_gain),
       lpf_(speaker_lpf(lpf_hz)),
       hpf_(LANE_RATE, hpf_hz, SPEAKER_HPF_ORDER),
       agc_(agc, LANE_RATE),
@@ -42,10 +41,9 @@ static_assert((long long)FADE_SAMPLES * LANE_RATE < (long long)CHUNK_SAMPLES * A
 
 void SpeakerPath::apply_target(float t) {
   if (t == target_) return;
-  // Level-tracker re-prime on gate open (AM carrier, SSB envelope): after silence the tracker
+  // Level-tracker re-prime on gate open (AM carrier): after silence the tracker
   // followed the noise, so the first ~40-100 ms of a new transmission would be hugely over-gained.
   if (target_ == 0.f && t > 0.f && cur_ == Demod::Am) am_.reset();
-  if (target_ == 0.f && t > 0.f && cur_ == Demod::Lsb) ssb_.reset();
   // New transmission: the AGC starts at 0 dB, never with the last talker's gain.
   if (target_ == 0.f && t > 0.f) agc_.reset();
   const bool edge = (gain_ == 0.f && t > 0.f) || t == 0.f;
@@ -84,7 +82,6 @@ void SpeakerPath::switch_now() {
   lpf_.reset();
   hpf_.reset();
   am_.reset();
-  ssb_.reset();
   agc_.reset();
   lim_.reset();
   gain_ = target_ = 0.f;
@@ -109,16 +106,17 @@ void SpeakerPath::cut() {
   hold_left_ = held != 0.f ? FADE_SAMPLES : 0;
 }
 
-void SpeakerPath::process(const cf* x, const float* disc, int n, std::vector<float>& out48) {
+void SpeakerPath::process(const cf* x, const float* disc, int n, std::vector<float>& out48, const float* ext) {
   if ((int)a50_.size() < n) a50_.resize(n);
   // AGC freezes while the gate is closed or any fade is running: squelch-closed noise and the
   // edges of a transmission must not move the envelope.
   const bool agc_frozen = target_ == 0.f || ramp_left_ > 0 || switching_;
   for (int i = 0; i < n; i++) {
     float a = 0.f;
-    if (cur_lane_ >= 0 && x && disc) {
+    if (cur_ == Demod::Ext) {
+      if (ext) a = agc_.step(ext[i], agc_frozen);   // already demodulated by the receiver
+    } else if (cur_lane_ >= 0 && x && disc) {
       if (cur_ == Demod::Am) a = am_.step(x[i]) * am_gain_;
-      else if (cur_ == Demod::Lsb) a = ssb_.step(x[i]) * ssb_gain_;   // band-limited already: no FM filters
       else a = hpf_.step(lpf_.step(de_.step(disc[i])));
       a = agc_.step(a, agc_frozen);
     }

@@ -198,9 +198,6 @@ export const configSchema = z.object({
     // ear (normalized AM audio vs de-emphasized FM don't naturally match).
     // Passed as --am-gain-db. Omitted = 0 dB (the helper's AM_GAIN).
     nativeAmGainDb: z.number().min(-30).max(20).optional(),
-    // LSB speaker gain offset (dB): the by-ear balance of CB SSB against AM.
-    // Passed as --ssb-gain-db. Omitted = 0 dB (the helper's SSB_GAIN).
-    nativeSsbGainDb: z.number().min(-30).max(20).optional(),
     // FM speaker audio low-pass cutoff (Hz). FM hiss rises with frequency, so
     // this is the weak-signal hiss knob: lower = less hiss, duller voice.
     // Passed as --audio-lpf-hz. Omitted = 2700 (GR nbfm_rx parity).
@@ -518,22 +515,42 @@ export const configSchema = z.object({
     sameFips: z.array(z.string()).optional(),
     sameTests: z.boolean().optional(),
   }).optional(),
-  // CB mode (POST /api/mode {mode:"cb"}): which of the 40 CB channels the
-  // scanner listens to while in CB-only mode. Absent = channels 1…lanesPerGroup
-  // (one helper window, no hopping). A list longer than lanesPerGroup works
-  // but splits into windows the scanner alternates between.
+  // CB mode (POST /api/mode {mode:"cb"}): listening through the FernSDR
+  // receiver on the LAN (spec 2026-10-15-cb-fernsdr). The scanner helper parks
+  // and plays the receiver's audio; the waterfall watches every channel.
   cb: z.object({
+    // Watched channels. Absent = all 40.
     channels: z.array(z.number().int().min(1).max(40)).min(1).optional(),
-    // Channel number ("19") → name shown on the wall, admin and history
-    // ("CB 19 · Highway"). Absent = CB_NAMES_DEFAULT (6/9/19).
+    // Channel number ("19") → name ("CB 19 · Highway"). Absent = CB_NAMES_DEFAULT.
     names: z.record(z.string().regex(/^([1-9]|[1-3]\d|40)$/), z.string().min(1).max(40)).optional(),
-    // Channel number → demod. Absent = CB_MODES_DEFAULT ({"38":"lsb"}); an
-    // explicit map replaces it (unlisted channels are AM). LSB channels get the
-    // SSB squelch below: open dB above the lane's own floor (absent = the
-    // scanner's --open-db) and hang (absent = CB_SSB_HANG_MS 1500).
+    // Channel number → receiver mode. Absent = CB_MODES_DEFAULT ({"38":"lsb"});
+    // an explicit map replaces it (unlisted channels are AM).
     modes: z.record(z.string().regex(/^([1-9]|[1-3]\d|40)$/), z.enum(["am", "lsb"])).optional(),
-    ssbOpenDb: z.number().positive().max(40).optional(),
+    // Channels that pre-empt whatever is playing. Absent = 6/9/19.
+    priority: z.array(z.number().int().min(1).max(40)).optional(),
+    // Hang for LSB channels (SSB pauses between syllables). Absent = 1500.
     ssbHangMs: z.number().int().min(0).max(10_000).optional(),
+    fernsdr: z.object({
+      url: z.string().regex(/^wss?:\/\//).optional(),
+      band: z.string().min(1).optional(),
+      // dB over the channel's learned baseline, and consecutive waterfall
+      // rows (~10/s) over it, to open a channel.
+      openDb: z.number().min(3).max(40).optional(),
+      openRows: z.number().int().min(1).max(10).optional(),
+      hangMs: z.number().int().min(0).max(10_000).optional(),
+      // A channel open this long is a carrier: close it and absorb it.
+      maxOpenMs: z.number().int().min(10_000).max(3_600_000).optional(),
+      // Helper PCM jitter buffer (--pcm-target-ms / --pcm-max-ms; respawns).
+      bufferMs: z.number().int().min(20).max(1000).optional(),
+      maxBufferMs: z.number().int().min(50).max(2000).optional(),
+      backoffMaxMs: z.number().int().min(1000).max(600_000).optional(),
+      // No message from the receiver for this long = half-open socket: drop it
+      // and reconnect (rows arrive ~10/s).
+      staleMs: z.number().int().min(2000).max(120_000).optional(),
+      // AM channels: PCM keeps flowing this long after the last hot row (the
+      // 2 s hang still holds the channel open, but only signal is played).
+      audioTailMs: z.number().int().min(0).max(5000).optional(),
+    }).refine((f) => (f.maxBufferMs ?? 400) > (f.bufferMs ?? 120), { message: "maxBufferMs must exceed bufferMs" }).optional(),
   }).optional(),
   // RepeaterBook lookup (Close Call enrichment). userAgent must be the
   // string REGISTERED with RepeaterBook; states are full names ("Missouri").

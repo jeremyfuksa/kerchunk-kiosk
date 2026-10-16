@@ -951,6 +951,7 @@ throttling, which a bare CPU% gauge would hide.
   same work and is the more rewarding listen.
   **38 LSB — SHIPPED** (spec 2026-10-15-cb-lsb-design): a per-lane LSB demod +
   energy-only squelch; `cb.modes` picks LSB channels (38 by default); `radios[].ppm`.
+  CB moved to the FernSDR HF receiver (spec 2026-10-15-cb-fernsdr); SDR CB path and native LSB demod removed.
 - **Polyphase filter-bank channelizer.** Replace the per-channel
   freq-xlating FIRs with a PFB (the sdrtrunk model): one shared filter + FFT
   produces ALL channels in the window, so channel count becomes ~free

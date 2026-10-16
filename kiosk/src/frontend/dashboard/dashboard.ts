@@ -21,12 +21,11 @@ import icoWind from "lucide-static/icons/wind.svg?raw";
 import icoArrow from "lucide-static/icons/navigation-2.svg?raw";
 import { CB_EMPTY, cbReduce, cbSeed, type CbState, type CbHistoryRow } from "./cbDial.js";
 import { cbView, cbHtml, CB_VIEW_DEFAULTS } from "./cbView.js";
-import { CB_NAMES_DEFAULT, cbDefaultChannels } from "../../backend/config/cb.js";
-import { DEFAULT_LANES_PER_GROUP } from "../../backend/config/engineDefaults.js";
+import { CB_NAMES_DEFAULT, CB_ALL } from "../../backend/config/cb.js";
 import type { MapHandle } from "../map/map.js";
 import "./dashboard.css";
 
-export interface NowPlaying { freq: number; alphaTag: string; tags?: readonly string[]; }
+export interface NowPlaying { freq: number; alphaTag: string; tags?: readonly string[]; mode?: string; }
 export interface LogRow { freq: number; alphaTag: string; ts: number; }
 export interface AlertBanner { freq: number; alphaTag: string; until: number; counties?: string; }
 export interface DashState {
@@ -82,7 +81,7 @@ export function reduce(s: DashState, ev: EngineEvent): DashState {
         error: null,
         // The Recent log records every opening; nowPlaying only follows when
         // the engine doesn't report audibility explicitly.
-        nowPlaying: s.audibleDriven ? s.nowPlaying : { freq: ev.freq, alphaTag: ev.channel.alphaTag, ...(ev.channel.tags ? { tags: ev.channel.tags } : {}) },
+        nowPlaying: s.audibleDriven ? s.nowPlaying : { freq: ev.freq, alphaTag: ev.channel.alphaTag, ...(ev.channel.tags ? { tags: ev.channel.tags } : {}), ...(ev.channel.mode ? { mode: ev.channel.mode } : {}) },
         log: [{ freq: ev.freq, alphaTag: ev.channel.alphaTag, ts: ev.ts }, ...s.log].slice(0, 100),
       };
     case "audible":
@@ -90,7 +89,7 @@ export function reduce(s: DashState, ev: EngineEvent): DashState {
         ...s,
         error: null,
         audibleDriven: true,
-        nowPlaying: ev.channel ? { freq: ev.channel.freq, alphaTag: ev.channel.alphaTag, ...(ev.channel.tags ? { tags: ev.channel.tags } : {}) } : null,
+        nowPlaying: ev.channel ? { freq: ev.channel.freq, alphaTag: ev.channel.alphaTag, ...(ev.channel.tags ? { tags: ev.channel.tags } : {}), ...(ev.channel.mode ? { mode: ev.channel.mode } : {}) } : null,
         signalDb: ev.channel ? s.signalDb : null,
       };
     case "signal":
@@ -219,14 +218,14 @@ export function renderDashboard(root: HTMLElement): void {
   const CB_HISTORY_MS = 24 * 60 * 60_000;
   let cbOpts = {
     names: CB_NAMES_DEFAULT as Readonly<Record<string, string>>,
-    monitored: cbDefaultChannels(DEFAULT_LANES_PER_GROUP) as readonly number[],
+    monitored: CB_ALL as readonly number[],
     ...CB_VIEW_DEFAULTS,
   };
   // Same shared request the map's mount makes (api.getConfig dedupes it).
   void api.getConfig().then((cfg) => {
     cbOpts = {
       names: cfg.cb?.names ?? CB_NAMES_DEFAULT,
-      monitored: cfg.cb?.channels ?? cbDefaultChannels(cfg.scan.lanesPerGroup ?? DEFAULT_LANES_PER_GROUP, cfg.cb?.modes),
+      monitored: cfg.cb?.channels ?? CB_ALL,
       ...CB_VIEW_DEFAULTS,
       ...cfg.display?.cb,
     };
@@ -287,9 +286,13 @@ export function renderDashboard(root: HTMLElement): void {
         // poll (snapshotted warmed=true) could land after a fresh "booting" and
         // wrongly end the warm-up pill mid-restart.
         const wm = (!sawWarmupEvent && typeof s.warmed === "boolean") ? s.warmed : state.warmed;
+        // Still connecting (no error yet, client retrying) is not "offline".
+        const co = s.cb && !s.cb.connected && !(s.cb.error === null && s.cb.retrying) ? (s.cb.error ?? "offline") : null;
+        cbRetrying = s.cb?.retrying !== false;
+        const oa = s.cb?.offAir === true, ou = s.cb?.offAirUntil ?? null;
         // The 5s poll usually reads identical values — only repaint on a change.
-        const changed = s.mode !== mode || sc !== scanCount || mu !== muted || bi !== breakIn || wm !== state.warmed;
-        mode = s.mode; scanCount = sc; muted = mu; breakIn = bi;
+        const changed = s.mode !== mode || sc !== scanCount || mu !== muted || bi !== breakIn || wm !== state.warmed || co !== cbOffline || oa !== cbOffAir || ou !== cbOffAirUntil;
+        mode = s.mode; cbOffline = co; cbOffAir = oa; cbOffAirUntil = ou; scanCount = sc; muted = mu; breakIn = bi;
         setCbStage(s.mode === "cb");
         if (wm !== state.warmed) state = { ...state, warmed: wm };
         if (changed) schedule();
@@ -306,6 +309,10 @@ export function renderDashboard(root: HTMLElement): void {
   // a fresh booting/ready during a restart.
   let sawWarmupEvent = false;
   let muted = false;
+  let cbOffline: string | null = null;
+  let cbRetrying = true;
+  let cbOffAir = false;
+  let cbOffAirUntil: number | null = null;
 
 
 
@@ -420,7 +427,7 @@ export function renderDashboard(root: HTMLElement): void {
   }
 
   function paintCb(): void {
-    const v = cbView({ cb, now: Date.now(), liveFreq: state.nowPlaying?.freq ?? null, error: state.error, muted, ...cbOpts });
+    const v = cbView({ cb, now: Date.now(), liveFreq: state.nowPlaying?.freq ?? null, liveMode: state.nowPlaying?.mode ?? null, offline: cbOffline, retrying: cbRetrying, offAir: cbOffAir, offAirUntil: cbOffAirUntil, error: state.error, muted, ...cbOpts });
     if (v.key !== cbKey) {
       cbKey = v.key;
       cbEl.innerHTML = cbHtml(v, state.signalDb);

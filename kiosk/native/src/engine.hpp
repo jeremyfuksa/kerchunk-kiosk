@@ -13,6 +13,7 @@
 #include "dcs.hpp"
 #include "demod.hpp"
 #include "meters.hpp"
+#include "pcm_in.hpp"
 #include "protocol.hpp"
 #include "scanner.hpp"
 #include "subaudio.hpp"
@@ -29,8 +30,6 @@ struct EngineOptions {
   double am_gain_db = 0.0;                   // AM speaker gain offset vs AM_GAIN, dB (CLI --am-gain-db;
                                              // balances airband loudness against FM by ear;
                                              // it is the AM pre-gain INTO the speaker AGC)
-  double ssb_gain_db = 0.0;                  // LSB speaker gain offset vs SSB_GAIN, dB (CLI --ssb-gain-db;
-                                             // the by-ear balance against AM, into the AGC)
   AgcParams agc{};                           // speaker AGC (CLI --agc-*)
   double limiter_ceiling = LIMITER_CEILING;        // speaker peak limiter (CLI --limiter-ceiling)
   double limiter_release_ms = LIMITER_RELEASE_MS;  // (CLI --limiter-release-ms)
@@ -50,8 +49,14 @@ class Engine {
   // if a window is live, restart the channelizer stream so the gap can't smear across hops.
   // dropped=true counts toward power.drops and the rate-limited overrun log.
   void note_gap(long long nsamples, bool dropped);
+  // External speaker audio (pcmIn tunes). Call before the engine starts stepping; p must outlive it.
+  void set_pcm_in(PcmIn* p) { pcm_ = p; }
 
  private:
+  void pcm_step(int n);
+  PcmIn* pcm_ = nullptr;
+  bool pcm_on_ = false;
+  std::vector<float> ext_;
   void tune(const TuneCmd& t);
   void on_hop(const cf* lanes, int per, const cf* raw, int raw_n);
   void poll();
@@ -81,8 +86,6 @@ class Engine {
   std::vector<double> dcs_seen_;   // now() of the lane's last decoded DCS code (-1 = none since reset)
   std::vector<float> sub_buf_;   // one hop of SUBAUDIO_RATE samples (reused per lane)
   std::vector<std::vector<float>> disc_buf_;
-  std::vector<SsbDemod> ssb_;                 // LSB lanes only (stepped only while the lane is LSB)
-  std::vector<std::vector<cf>> ssb_buf_;      // one hop of sideband signal per lane
   std::vector<double> disc_acc_;              // discriminator sum since the last poll -> LaneReading.disc_mean
   std::vector<int> disc_n_;
   std::vector<LaneReading> readings_;

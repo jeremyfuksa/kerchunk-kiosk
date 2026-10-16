@@ -125,15 +125,6 @@ TEST(cli_lanes_range) {
   }
 }
 
-TEST(cli_ssb_gain_db_range) {
-  kc::Cli c;
-  std::string err;
-  CHECK(parse({"--ssb-gain-db", "-6"}, c, err));
-  CHECK_NEAR(c.eng.ssb_gain_db, -6, 0);
-  CHECK(!parse({"--ssb-gain-db", "25"}, c, err));
-  CHECK(!parse({"--ssb-gain-db", "x"}, c, err));
-}
-
 TEST(cli_ppm_integer_range) {
   kc::Cli c;
   std::string err;
@@ -142,4 +133,19 @@ TEST(cli_ppm_integer_range) {
   CHECK(!parse({"--ppm", "201"}, c, err));
   CHECK(!parse({"--ppm", "1.5"}, c, err));
   CHECK(!parse({"--ppm"}, c, err));
+}
+
+TEST(cli_pcm_in_flags) {
+  kc::Cli c;
+  std::string err;
+  CHECK(parse({"--pcm-in-fd", "4", "--pcm-target-ms", "100", "--pcm-max-ms", "300"}, c, err));
+  CHECK(c.pcm_in_fd == 4);
+  CHECK_NEAR(c.pcm_target_ms, 100, 0);
+  CHECK_NEAR(c.pcm_max_ms, 300, 0);
+  kc::Cli d;
+  CHECK(!parse({"--pcm-in-fd", "-1"}, d, err));
+  kc::Cli e;
+  CHECK(!parse({"--pcm-target-ms", "5"}, e, err));
+  kc::Cli f;
+  CHECK(!parse({"--pcm-target-ms", "300", "--pcm-max-ms", "200"}, f, err));   // max <= target
 }

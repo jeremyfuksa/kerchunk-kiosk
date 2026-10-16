@@ -66,6 +66,9 @@ bool parse_cli(int argc, const char* const* argv, Cli& c, std::string& err) {
       if (!val(v) || !to_int(v, n) || n < -200 || n > 200) { err = "--ppm must be an integer in [-200, 200]"; return false; }
       c.ppm = n;
     }
+    else if (k == "--pcm-in-fd") { if (!val(v) || !to_int(v, c.pcm_in_fd) || c.pcm_in_fd < 0) { err = "--pcm-in-fd must be a non-negative integer"; return false; } }
+    else if (k == "--pcm-target-ms") { if (!ranged(v, 20, 1000, c.pcm_target_ms)) return false; }
+    else if (k == "--pcm-max-ms") { if (!ranged(v, 50, 2000, c.pcm_max_ms)) return false; }
     else if (k == "--audio-fd") { if (!val(v) || !to_int(v, c.audio_fd)) { err = "--audio-fd must be an integer"; return false; } }
     else if (k == "--rate") {
       if (!val(v) || !to_int(v, n) || n <= 0 || n % LANE_RATE != 0) { err = "--rate must be a positive multiple of 50000"; return false; }
@@ -86,10 +89,6 @@ bool parse_cli(int argc, const char* const* argv, Cli& c, std::string& err) {
       if (!val(v) || !to_double(v, d) || !(d >= -30 && d <= 20)) { err = "--am-gain-db must be a number in [-30, 20]"; return false; }
       c.eng.am_gain_db = d;
     }
-    else if (k == "--ssb-gain-db") {
-      if (!val(v) || !to_double(v, d) || !(d >= -30 && d <= 20)) { err = "--ssb-gain-db must be a number in [-30, 20]"; return false; }
-      c.eng.ssb_gain_db = d;
-    }
     else if (k == "--agc-target-db") { if (!ranged(v, -40, -3, c.eng.agc.target_db)) return false; }
     else if (k == "--agc-max-gain-db") { if (!ranged(v, 0, 30, c.eng.agc.max_gain_db)) return false; }
     else if (k == "--agc-min-gain-db") { if (!ranged(v, -40, 0, c.eng.agc.min_gain_db)) return false; }
@@ -103,6 +102,7 @@ bool parse_cli(int argc, const char* const* argv, Cli& c, std::string& err) {
     else if (k == "--limiter-release-ms") { if (!ranged(v, 5, 1000, c.eng.limiter_release_ms)) return false; }
     else { err = "unknown arg " + k; return false; }
   }
+  if (c.pcm_max_ms <= c.pcm_target_ms) { err = "--pcm-max-ms must exceed --pcm-target-ms"; return false; }
   return true;
 }
 }  // namespace kc
