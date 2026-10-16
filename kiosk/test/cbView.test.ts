@@ -128,6 +128,11 @@ describe("cbHtml", () => {
     expect(v.readout).toMatchObject({ state: "error", meta: "Receiver offline" });
     expect(cbView({ ...base, offline: "x", error: "kerchunk-dsp: boom" }).readout.meta).toBe("Radio error");
   });
+  it("offline readout says retrying only while the client still is", () => {
+    expect(cbView({ ...base, offline: "x" }).readout.name).toBe("Retrying the CB receiver");
+    expect(cbView({ ...base, offline: "x", retrying: true }).readout.name).toBe("Retrying the CB receiver");
+    expect(cbView({ ...base, offline: "x", retrying: false }).readout.name).toBe("CB receiver stopped — re-enter CB mode");
+  });
   it("the live meta names the channel's mode", () => {
     const v = cbView({ ...base, liveFreq: 27_385_000, liveMode: "lsb" });
     expect(v.readout.meta).toBe("CB · LSB · Live");

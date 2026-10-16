@@ -544,6 +544,12 @@ export const configSchema = z.object({
       bufferMs: z.number().int().min(20).max(1000).optional(),
       maxBufferMs: z.number().int().min(50).max(2000).optional(),
       backoffMaxMs: z.number().int().min(1000).max(600_000).optional(),
+      // No message from the receiver for this long = half-open socket: drop it
+      // and reconnect (rows arrive ~10/s).
+      staleMs: z.number().int().min(2000).max(120_000).optional(),
+      // AM channels: PCM keeps flowing this long after the last hot row (the
+      // 2 s hang still holds the channel open, but only signal is played).
+      audioTailMs: z.number().int().min(0).max(5000).optional(),
     }).refine((f) => (f.maxBufferMs ?? 400) > (f.bufferMs ?? 120), { message: "maxBufferMs must exceed bufferMs" }).optional(),
   }).optional(),
   // RepeaterBook lookup (Close Call enrichment). userAgent must be the

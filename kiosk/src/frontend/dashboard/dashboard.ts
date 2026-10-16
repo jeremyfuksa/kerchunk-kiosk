@@ -286,7 +286,9 @@ export function renderDashboard(root: HTMLElement): void {
         // poll (snapshotted warmed=true) could land after a fresh "booting" and
         // wrongly end the warm-up pill mid-restart.
         const wm = (!sawWarmupEvent && typeof s.warmed === "boolean") ? s.warmed : state.warmed;
-        const co = s.cb && !s.cb.connected ? (s.cb.error ?? "offline") : null;
+        // Still connecting (no error yet, client retrying) is not "offline".
+        const co = s.cb && !s.cb.connected && !(s.cb.error === null && s.cb.retrying) ? (s.cb.error ?? "offline") : null;
+        cbRetrying = s.cb?.retrying !== false;
         // The 5s poll usually reads identical values — only repaint on a change.
         const changed = s.mode !== mode || sc !== scanCount || mu !== muted || bi !== breakIn || wm !== state.warmed || co !== cbOffline;
         mode = s.mode; cbOffline = co; scanCount = sc; muted = mu; breakIn = bi;
@@ -307,6 +309,7 @@ export function renderDashboard(root: HTMLElement): void {
   let sawWarmupEvent = false;
   let muted = false;
   let cbOffline: string | null = null;
+  let cbRetrying = true;
 
 
 
@@ -421,7 +424,7 @@ export function renderDashboard(root: HTMLElement): void {
   }
 
   function paintCb(): void {
-    const v = cbView({ cb, now: Date.now(), liveFreq: state.nowPlaying?.freq ?? null, liveMode: state.nowPlaying?.mode ?? null, offline: cbOffline, error: state.error, muted, ...cbOpts });
+    const v = cbView({ cb, now: Date.now(), liveFreq: state.nowPlaying?.freq ?? null, liveMode: state.nowPlaying?.mode ?? null, offline: cbOffline, retrying: cbRetrying, error: state.error, muted, ...cbOpts });
     if (v.key !== cbKey) {
       cbKey = v.key;
       cbEl.innerHTML = cbHtml(v, state.signalDb);

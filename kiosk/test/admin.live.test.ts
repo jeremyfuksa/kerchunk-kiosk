@@ -47,6 +47,13 @@ describe("lcdView", () => {
     const s = reduceEvent(idle, { type: "audible", channel: cb19, ts: 1 }).state;
     expect(lcdView(s)).toMatchObject({ state: "live", meta: "CB only · AM", name: "CB 19", canLock: false });
   });
+  it("a CB receiver that is still connecting is not offline", () => {
+    const base = { mode: "cb" as const, monitor: null };
+    expect(withStatus(initialLive, { ...base, cb: { connected: false, error: null, retrying: true } }).cbOffline).toBeNull();
+    expect(withStatus(initialLive, { ...base, cb: { connected: false, error: "x", retrying: true } }).cbOffline).toBe("x");
+    expect(withStatus(initialLive, { ...base, cb: { connected: false, error: null, retrying: false } }).cbOffline).toBe("offline");
+  });
+
   it("CB mode with the receiver offline says so", () => {
     const s = initialLive;
     expect(lcdView({ ...s, mode: "cb", nowPlaying: null, cbOffline: "connect ECONNREFUSED" })).toMatchObject({ meta: "CB only", name: "Receiver offline" });

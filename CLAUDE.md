@@ -249,8 +249,11 @@ even with green checks.
   `hangMs` / `maxOpenMs`, LSB hang `cb.ssbHangMs`), and the scanner helper — retuned to
   `{channels:[], pcmIn:true}`, never respawned — plays it from `--pcm-in-fd 4` through the
   usual AGC/limiter (`cb.fernsdr.bufferMs` / `maxBufferMs` = `--pcm-target-ms` / `--pcm-max-ms`).
+  Audio is gated on signal, not the hang: an AM channel plays only within `cb.fernsdr.audioTailMs`
+  (300) of its last hot row (30 ms faded tail on close; LSB plays through `ssbHangMs`). A silent
+  socket is dropped and reconnected after `cb.fernsdr.staleMs` (8000).
   A break-in from CB pauses the session (socket kept) and retunes the helper to NWR as usual.
-  Receiver down → `/api/status.cb.connected:false`, "Receiver offline" on the wall; never
+  Receiver down → `/api/status.cb.connected:false` (`retrying` = client still trying), "Receiver offline" on the wall; never
   reconnects after close 4001/4002. LSB channels: `config.cb.modes` (default `{"38":"lsb"}`).
   Kiosk knobs: `display.cb.fadeStepsMin` / `stepTickMs` / `logRows`.
 - **Engine abstraction.** Everything runs behind the `ScannerEngine` interface

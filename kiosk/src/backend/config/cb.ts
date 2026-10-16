@@ -66,6 +66,8 @@ export const CB_FERNSDR_DEFAULTS = {
   bufferMs: 120,
   maxBufferMs: 400,
   backoffMaxMs: 60_000,
+  staleMs: 8000,
+  audioTailMs: 300,
 } as const;
 
 /** The CB channel set as events carry it: `cb_N` ids, labels, AM or the
@@ -96,6 +98,8 @@ export interface CbNetConfig {
   ssbHangMs: number;
   maxOpenMs: number;
   backoffMaxMs: number;
+  staleMs: number;
+  audioTailMs: number;
 }
 
 /** Everything CbNet needs, resolved from config.cb with defaults. */
@@ -109,5 +113,6 @@ export function cbNetConfig(cfg: Pick<Config, "cb">): CbNetConfig {
     openDb: f.openDb, openRows: f.openRows, hangMs: f.hangMs,
     ssbHangMs: cb?.ssbHangMs ?? CB_SSB_HANG_MS,
     maxOpenMs: f.maxOpenMs, backoffMaxMs: f.backoffMaxMs,
+    staleMs: f.staleMs, audioTailMs: f.audioTailMs,
   };
 }

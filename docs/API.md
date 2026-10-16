@@ -38,7 +38,7 @@ What the scanner is doing right now.
   "muted": false,            // speaker mute (doesn't restart the engine, so it's polled)
   "warmed": true,            // false until the engine's first warm sweep completes
   "breakIn": false,          // true only while a SAME break-in holds the scanner on NWR
-  "cb": { "connected": true, "error": null }, // CB via FernSDR receiver session; null when the backend has no CB source
+  "cb": { "connected": true, "error": null, "retrying": true }, // CB via FernSDR receiver session; null when the backend has no CB source. retrying = client still connecting/backing off (false once stopped, or after close 4001/4002)
   "startedAt": 1753480000000 // epoch ms this backend *process* started
 }
 ```

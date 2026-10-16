@@ -23,7 +23,8 @@ class FakeCb implements CbSource {
   start() { this.calls.push("start"); }
   pause() { this.calls.push("pause"); }
   stop() { this.calls.push("stop"); }
-  status() { return { connected: this.connected, error: this.error }; }
+  retrying = true;
+  status() { return { connected: this.connected, error: this.error, retrying: this.retrying }; }
   on(l: EngineListener) { this.listeners.add(l); }
   off(l: EngineListener) { this.listeners.delete(l); }
   emit(e: Parameters<EngineListener>[0]) { for (const l of this.listeners) l(e); }
@@ -64,8 +65,17 @@ describe("CB via FernSDR — server", () => {
     const { server } = makeApp();
     await request(server).post("/api/mode").send({ mode: "cb" }).expect(200);
     const s = await request(server).get("/api/status").expect(200);
-    expect(s.body.cb).toEqual({ connected: false, error: "connect ECONNREFUSED" });
+    expect(s.body.cb).toEqual({ connected: false, error: "connect ECONNREFUSED", retrying: true });
     expect(s.body.scanCount).toBe(40);
+  });
+
+  it("scan/stop stops the CB source; scan/start syncs it again", async () => {
+    const { server, cb } = makeApp();
+    await request(server).post("/api/mode").send({ mode: "cb" }).expect(200);
+    await request(server).post("/api/scan/stop").expect(200);
+    expect(cb.calls.at(-1)).toBe("stop");
+    await request(server).post("/api/scan/start").expect(200);
+    expect(cb.calls.at(-1)).toBe("start");
   });
 
   it("CB events reach history like engine events", async () => {

@@ -55,13 +55,13 @@ export function reduceEvent(s: LiveState, ev: EngineEvent): { state: LiveState; 
   }
 }
 
-export function withStatus(s: LiveState, st: { mode: LiveState["mode"]; monitor: Channel | null; breakIn?: boolean; startedAt?: number; cb?: { connected: boolean; error: string | null } | null }): LiveState {
+export function withStatus(s: LiveState, st: { mode: LiveState["mode"]; monitor: Channel | null; breakIn?: boolean; startedAt?: number; cb?: { connected: boolean; error: string | null; retrying?: boolean } | null }): LiveState {
   return {
     ...s,
     mode: st.mode,
     breakIn: st.breakIn === true,
     monitoring: st.mode === "monitor" && st.monitor ? tuned(st.monitor) : null,
-    cbOffline: st.cb && !st.cb.connected ? (st.cb.error ?? "offline") : null,
+    cbOffline: st.cb && !st.cb.connected && !(st.cb.error === null && st.cb.retrying) ? (st.cb.error ?? "offline") : null,
     startedAt: typeof st.startedAt === "number" ? st.startedAt : s.startedAt,
   };
 }

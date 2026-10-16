@@ -1090,8 +1090,8 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
       return json(res, 200, { ok: true, channelId: ch.id, holdMs });
     }
 
-    if (method === "POST" && path === "/api/scan/start") { await engine.start(scanConfigFor(mode, monitorChannel)); return json(res, 200, { state: engine.state }); }
-    if (method === "POST" && path === "/api/scan/stop") { await engine.stop(); return json(res, 200, { state: engine.state }); }
+    if (method === "POST" && path === "/api/scan/start") { await engine.start(scanConfigFor(mode, monitorChannel)); syncCb(); return json(res, 200, { state: engine.state }); }
+    if (method === "POST" && path === "/api/scan/stop") { await engine.stop(); deps.cb?.stop(); return json(res, 200, { state: engine.state }); }
 
     if (method === "POST" && path === "/api/audio/volume") {
       const body = await readBody(req);
