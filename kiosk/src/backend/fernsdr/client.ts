@@ -111,7 +111,8 @@ export class FernClient {
   }
 
   private connect(): void {
-    this._error = null;
+    // _error is deliberately NOT cleared here: a reconnect that hangs never sets
+    // a new one, and the outage must keep reading as offline until a welcome.
     let ws: WebSocket;
     try {
       ws = new WebSocket(this.opts.url, { maxPayload: 1 << 20 });

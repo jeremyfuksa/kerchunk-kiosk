@@ -107,6 +107,28 @@ describe("FernClient", () => {
     expect(logs.some((m) => m.includes("no data"))).toBe(true);
   });
 
+  it("error stays set through a reconnect that hangs, until a welcome succeeds", async () => {
+    wss = new WebSocketServer({ port: 0 });
+    await new Promise((r) => wss!.once("listening", r));
+    const port = (wss.address() as { port: number }).port;
+    let conns = 0;
+    let hang = false;
+    wss.on("connection", (s) => { conns++; if (!hang) s.send(JSON.stringify(WELCOME)); });
+    client = new FernClient({ url: `ws://127.0.0.1:${port}/ws`, band: "cb-radio", backoffMaxMs: 200, backoffBaseMs: 20, random: () => 1, staleMs: 150 }, () => {});
+    client.start();
+    expect(await until(() => client!.connected)).toBe(true);
+    expect(client.error).toBeNull();
+    hang = true;   // later connects are accepted but never welcomed
+    expect(await until(() => conns >= 2 && !client!.connected, 1500)).toBe(true);
+    expect(client.error).not.toBeNull();
+    expect(client.retrying).toBe(true);
+    await new Promise((r) => setTimeout(r, 100));   // mid-hang: connect() has run, no new error yet
+    expect(client.error).not.toBeNull();
+    hang = false;
+    expect(await until(() => client!.connected, 2000)).toBe(true);
+    expect(client.error).toBeNull();
+  });
+
   it("traffic keeps the session alive past staleMs", async () => {
     let sock: WsSocket | null = null;
     const { events } = await setup((s) => { sock = s; }, { staleMs: 200 });

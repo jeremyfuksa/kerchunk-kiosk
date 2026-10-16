@@ -16,6 +16,7 @@ function rig() {
   const clients: Array<{ opts: FernClientOpts; emit: (e: FernEvent) => void; tunes: [number, string][]; started: number; stopped: number }> = [];
   const pcm: Buffer[] = [];
   let t = 0;
+  const state = { retrying: true };
   const net = new CbNet({
     writePcm: (b) => pcm.push(b),
     now: () => t,
@@ -25,7 +26,7 @@ function rig() {
       const like: FernClientLike = {
         start: () => { c.started++; }, stop: () => { c.stopped++; },
         tune: (f, m) => { c.tunes.push([f, m]); },
-        get connected() { return true; }, get error() { return null; }, get retrying() { return true; },
+        get connected() { return true; }, get error() { return null; }, get retrying() { return state.retrying; },
       };
       return like;
     },
@@ -33,7 +34,7 @@ function rig() {
   const events: EngineEvent[] = [];
   net.on((e) => events.push(e));
   const rows = (hot: number[], n: number) => { for (let i = 0; i < n; i++) { t += 100; clients.at(-1)!.emit(row(hot)); } };
-  return { net, clients, pcm, events, rows, tick: (ms: number) => { t += ms; } };
+  return { net, clients, pcm, events, rows, state, tick: (ms: number) => { t += ms; } };
 }
 const cfg = cbNetConfig(defaultConfig());
 const CB19 = 27_185_000, CB38 = 27_385_000;
@@ -162,6 +163,18 @@ describe("CbNet", () => {
     r.clients[0]!.emit({ type: "audio", samples: new Float32Array(128), rate: 14_250 });
     expect(r.pcm.length).toBe(before);
     expect(r.net.status()).toEqual({ connected: false, error: null, retrying: false });
+  });
+
+  it("start() rebuilds a client that gave up (4001/4002, bad URL) instead of staying idempotent", () => {
+    const r = rig();
+    r.net.start(cfg);
+    r.net.start(cfg);
+    expect(r.clients).toHaveLength(1);
+    r.state.retrying = false;
+    r.net.start(cfg);
+    expect(r.clients).toHaveLength(2);
+    expect(r.clients[0]!.stopped).toBe(1);
+    expect(r.clients[1]!.started).toBe(1);
   });
 
   it("pause keeps the client, releases, ignores rows; start resumes on the same client", () => {

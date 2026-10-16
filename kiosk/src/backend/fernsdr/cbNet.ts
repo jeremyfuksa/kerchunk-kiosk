@@ -55,6 +55,8 @@ export class CbNet implements CbSource {
   }
 
   start(cfg: CbNetConfig): void {
+    // A dead client (4001/4002, bad URL) is never revived by the same cfg: rebuild it.
+    if (this.state !== "stopped" && this.client && !this.client.retrying) this.stop();
     if (this.state !== "stopped" && this.cfg && (cfg.url !== this.cfg.url || cfg.band !== this.cfg.band)) this.stop();
     if (this.state === "stopped") {
       this.cfg = cfg;
