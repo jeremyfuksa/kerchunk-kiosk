@@ -75,12 +75,16 @@ export class CbNet implements CbSource {
 
   stop(): void {
     if (this.state === "stopped") return;
-    this.apply(this.watch?.closeAll(this.now()) ?? []);
-    this.client?.stop();
-    this.client = null;
-    this.watch = null;
-    this.resampler = null;
-    this.state = "stopped";
+    try {
+      this.apply(this.watch?.closeAll(this.now()) ?? []);
+    } finally {
+      try { this.client?.stop(); } finally {
+        this.client = null;
+        this.watch = null;
+        this.resampler = null;
+        this.state = "stopped";
+      }
+    }
   }
 
   private makeWatch(cfg: CbNetConfig): CbWatch {
@@ -100,7 +104,10 @@ export class CbNet implements CbSource {
 
   private onFern(e: FernEvent): void {
     if (this.state !== "running" || !this.watch) return;
-    if (e.type === "row") {
+    if (e.type === "disconnected") {
+      // Rows stop during an outage; don't leave a channel stuck open/audible.
+      this.apply(this.watch.closeAll(this.now()));
+    } else if (e.type === "row") {
       this.apply(this.watch.row(e, this.now()));
     } else if (e.type === "audio") {
       if (this.watch.audible === null) return;
@@ -116,13 +123,16 @@ export class CbNet implements CbSource {
   }
 
   private apply(ts: CbTransition[]): void {
+    let closed = false;
+    let lastTs = 0;
     for (const t of ts) {
+      lastTs = t.ts;
       if (t.kind === "open") {
         const ch = this.channel(t.n);
         if (ch) this.emit({ type: "active", channel: ch, freq: ch.freq, ts: t.ts });
       } else if (t.kind === "close") {
+        closed = true;
         this.emit({ type: "release", channelId: `cb_${t.n}`, ts: t.ts });
-        if ((this.watch?.openChannels().length ?? 0) === 0) this.emit({ type: "idle", ts: t.ts });
       } else {
         const ch = t.n === null ? null : this.channel(t.n) ?? null;
         if (ch) this.client?.tune(ch.freq, ch.mode === "lsb" ? "lsb" : "am");
@@ -130,10 +140,14 @@ export class CbNet implements CbSource {
         this.emit({ type: "audible", channel: ch, ts: t.ts });
       }
     }
+    // idle once, after the last release, only if nothing is open any more
+    if (closed && (this.watch?.openChannels().length ?? 0) === 0) this.emit({ type: "idle", ts: lastTs });
   }
 
   private emit(e: EngineEvent): void {
-    for (const l of this.listeners) l(e);
+    for (const l of this.listeners) {
+      try { l(e); } catch (err) { this.deps.log?.(`cbNet listener threw: ${String(err)}`); }
+    }
   }
 }
 

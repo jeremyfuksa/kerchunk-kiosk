@@ -132,4 +132,40 @@ describe("CbNet", () => {
     expect(r.clients).toHaveLength(2);
     expect(r.clients[0]!.stopped).toBe(1);
   });
+
+  it("stop with two channels open: one idle, after both releases", () => {
+    const r = rig();
+    r.net.start(cfg);
+    r.rows([], 10);
+    r.rows([CB19, 27_125_000], 2);
+    r.net.stop();
+    const types = r.events.map((e) => e.type);
+    expect(types.filter((x) => x === "idle")).toHaveLength(1);
+    expect(types.lastIndexOf("release")).toBeLessThan(types.indexOf("idle"));
+    expect(types.filter((x) => x === "release")).toHaveLength(2);
+  });
+
+  it("disconnect releases open channels", () => {
+    const r = rig();
+    r.net.start(cfg);
+    r.rows([], 10);
+    r.rows([CB19], 2);
+    r.clients[0]!.emit({ type: "disconnected", reason: "x", retrying: true } as FernEvent);
+    expect(r.events.some((e) => e.type === "release" && e.channelId === "cb_19")).toBe(true);
+    expect(r.events.some((e) => e.type === "audible" && e.channel === null)).toBe(true);
+    expect(r.events.at(-1)!.type).toBe("idle");
+  });
+
+  it("a throwing listener does not block stop() or other listeners", () => {
+    const r = rig();
+    r.net.on(() => { throw new Error("boom"); });
+    const seen: string[] = [];
+    r.net.on((e) => seen.push(e.type));
+    r.net.start(cfg);
+    r.rows([], 10);
+    r.rows([CB19], 2);
+    r.net.stop();
+    expect(r.clients[0]!.stopped).toBe(1);
+    expect(seen).toContain("release");
+  });
 });
