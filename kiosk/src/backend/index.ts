@@ -10,6 +10,8 @@ import { RtlFmEngine } from "./engine/RtlFmEngine.js";
 import { FakeEngine } from "./engine/FakeEngine.js";
 import { WidebandEngine } from "./engine/WidebandEngine.js";
 import { CbNet } from "./fernsdr/cbNet.js";
+import { withEventSource } from "./fernsdr/withEventSource.js";
+import { forwardEngineEvents } from "./fernsdr/forwardEngineEvents.js";
 import { rtlIndexForPort } from "./radios.js";
 import { setVolume, setMuted, watchOutput } from "./audio.js";
 import { RepeaterBook } from "./repeaterbook.js";
@@ -177,16 +179,14 @@ function startWeatherLane(): void {
   }).catch((e) => console.error("[weather-radio]", (e as Error).message));
 }
 
-engine.on((ev: EngineEvent) => {
-  if (ev.type === "active") {
-    activityLog.add({ freq: ev.freq, alphaTag: ev.channel.alphaTag, ts: ev.ts });
-  }
+// Through the merged source so CB events reach the WS hub and /api/logs too
+// (createServer wraps the raw engine itself — don't pass this one in).
+forwardEngineEvents(withEventSource(engine, cb), wsHub, activityLog, () => {
   // Bring weather up only after the main scanner helper is up and tuning.
-  if (!weatherStarted && ev.type === "tuned") {
+  if (!weatherStarted) {
     weatherStarted = true;
     startWeatherLane();
   }
-  wsHub.broadcast(ev);
 });
 
 // Close Call identification chain: RepeaterBook (ham/GMRS, registered UA)
