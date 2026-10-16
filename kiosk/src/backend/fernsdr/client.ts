@@ -73,19 +73,34 @@ export class FernClient {
   }
 
   private connect(): void {
-    const ws = new WebSocket(this.opts.url);
+    this._error = null;
+    let ws: WebSocket;
+    try {
+      ws = new WebSocket(this.opts.url, { maxPayload: 1 << 20 });
+    } catch (e) {
+      // A malformed URL won't fix itself: report it and stop retrying.
+      const reason = e instanceof Error ? e.message : String(e);
+      this._error = reason;
+      this.running = false;
+      this.onEvent({ type: "disconnected", reason, retrying: false });
+      return;
+    }
     this.ws = ws;
     ws.on("message", (data, isBinary) => {
       if (this.ws !== ws) return;
-      if (isBinary) this.onBinary(data as Buffer);
-      else this.onText(String(data));
+      try {
+        if (isBinary) this.onBinary(data as Buffer);
+        else this.onText(String(data));
+      } catch (e) {
+        this.opts.log?.(`[fernsdr] protocol error: ${e instanceof Error ? e.message : String(e)}`);
+      }
     });
     ws.on("error", (e) => { if (this.ws === ws) this._error = e.message; });
     ws.on("close", (code, reasonBuf) => {
       if (this.ws !== ws) return;
       this.ws = null;
       this._connected = false;
-      const reason = NO_RETRY[code] ?? (this._error ?? (String(reasonBuf) || `closed (${code})`));
+      const reason = NO_RETRY[code] ?? (this._error || String(reasonBuf) || `closed (${code})`);
       this._error = reason;
       const retrying = this.running && !(code in NO_RETRY);
       this.onEvent({ type: "disconnected", reason, retrying });
@@ -126,14 +141,15 @@ export class FernClient {
   }
 
   private onWelcome(m: any): void {
-    const band = (m.bands ?? []).find((b: any) => b?.id === this.opts.band);
-    if (!band) {
+    const bands: any[] = Array.isArray(m.bands) ? m.bands : [];
+    const band = bands.find((b: any) => b?.id === this.opts.band);
+    if (!band || !Number.isFinite(band.low) || !Number.isFinite(band.high) || !Number.isFinite(band.center)) {
       this._error = `band ${this.opts.band} not on the receiver`;
       this.ws?.close(1000);
       return;
     }
     this.band = { id: band.id, low: band.low, high: band.high, center: band.center };
-    const caps = CAPABILITIES.filter((c) => (m.capabilities ?? []).includes(c));
+    const caps = CAPABILITIES.filter((c) => (Array.isArray(m.capabilities) ? m.capabilities : []).includes(c));
     this.rates.clear();
     this.ackedTune = 0;
     this.lastSeq = null;

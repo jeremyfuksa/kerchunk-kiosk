@@ -126,4 +126,40 @@ describe("FernClient", () => {
     expect(client.error).toBeTruthy();
     expect(events.every((e) => e.type !== "disconnected" || e.retrying)).toBe(true);
   });
+
+  it("a malformed welcome is a band error, not a crash, and retries", async () => {
+    wss = new WebSocketServer({ port: 0 });
+    await new Promise((r) => wss!.once("listening", r));
+    const port = (wss.address() as { port: number }).port;
+    let conns = 0;
+    wss.on("connection", (s) => { conns++; s.send(JSON.stringify({ type: "welcome", bands: "nope" })); });
+    const events: FernEvent[] = [];
+    client = new FernClient({ url: `ws://127.0.0.1:${port}/ws`, band: "cb-radio", backoffMaxMs: 100, backoffBaseMs: 20, random: () => 1 }, (e) => events.push(e));
+    client.start();
+    await until(() => conns >= 2);
+    expect(events.find((e) => e.type === "disconnected")).toMatchObject({ retrying: true, reason: expect.stringContaining("band") });
+    expect(client.error).toMatch(/band/);
+  });
+
+  it("a bad URL does not throw and does not retry", () => {
+    const events: FernEvent[] = [];
+    client = new FernClient({ url: "not a url", band: "cb-radio", backoffMaxMs: 100 }, (e) => events.push(e));
+    expect(() => client!.start()).not.toThrow();
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ type: "disconnected", retrying: false });
+    expect(client.error).toBeTruthy();
+  });
+
+  it("garbage after a valid session does not crash or disconnect", async () => {
+    let sock: WsSocket | null = null;
+    const logs: string[] = [];
+    const { msgs } = await setup((s) => { sock = s; }, { log: (m) => logs.push(m) });
+    await until(() => msgs.length >= 4);
+    sock!.send(JSON.stringify({ type: "welcome", bands: null }));
+    sock!.send(JSON.stringify({ type: "welcome", bands: [{ id: "cb-radio", low: "x", high: 1, center: 2 }] }));
+    sock!.send(Buffer.from([0x02, 0xff, 0x00]));
+    sock!.send("{not json");
+    await new Promise((r) => setTimeout(r, 100));
+    expect(client!.connected || client!.error !== null).toBe(true);
+  });
 });
