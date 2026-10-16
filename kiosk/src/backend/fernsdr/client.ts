@@ -46,6 +46,8 @@ export class FernClient {
   private note: string | null = null;
   private _offAir: OffAir | null = null;
   private wasOnAir = true;
+  private awaitingReturn = false;   // our band is back on air; waiting for the receiver to confirm we are on it
+  private lastRetuneAt = -Infinity;
   private readonly nac = new NacDecoder();
   private readonly wfc = new WfcDecoder();
 
@@ -185,6 +187,8 @@ export class FernClient {
           this.ackedTune = m.ack.tune;
           if (caughtUp) { this.nac.reset(); this.lastSeq = null; this.clearAckWatch(); }
         }
+        if (this.awaitingReturn && this.serverBand === this.opts.band && this.ackedTune >= this.requestId) this.awaitingReturn = false;
+        this.retuneIfDrifted(m);
         return this.updateOffAir();
       case "band-status":
         this.mergeBands(m.bands);
@@ -212,6 +216,7 @@ export class FernClient {
     this.serverBand = null;
     this.note = null;
     this.bandInfo = {};
+    this.awaitingReturn = false;
     this.mergeBands(bands);
     this.band = { id: band.id, low: band.low, high: band.high, center: band.center };
     const caps = CAPABILITIES.filter((c) => (Array.isArray(m.capabilities) ? m.capabilities : []).includes(c));
@@ -234,6 +239,20 @@ export class FernClient {
     this.updateOffAir();
   }
 
+  private retune(): void {
+    this.lastRetuneAt = Date.now();
+    this.requestId++;
+    this.sendTune();
+    this.armAckWatch();
+  }
+
+  /** A state that puts us on our band at a different freq/mode than we want: re-tune (at most every 5 s). */
+  private retuneIfDrifted(m: any): void {
+    if (!this.target || this.serverBand !== this.opts.band || this.ackedTune < this.requestId) return;
+    if (typeof m.freq !== "number" || Date.now() - this.lastRetuneAt < 5000) return;
+    if (m.freq !== this.target.freq || (typeof m.mode === "string" && m.mode !== this.target.mode)) this.retune();
+  }
+
   private mergeBands(bands: unknown): void {
     const b = Array.isArray(bands) ? bands.find((x: any) => x?.id === this.opts.band) : undefined;
     if (!b) return;
@@ -250,18 +269,22 @@ export class FernClient {
     if (!this._connected) return;
     const onAir = this.ourBandOnAir();
     const elsewhere = this.serverBand !== null && this.serverBand !== this.opts.band;
-    if (bandStatus && onAir && !this.wasOnAir && elsewhere && this.band) {
+    if (bandStatus && onAir && !this.wasOnAir && this.band) {
+      // Whatever the receiver last told us, it may have parked us elsewhere: always re-tune,
+      // and stay off-air until a state on our band acks it (the ack gate also drops stale audio).
       if (!this.target) this.target = { freq: this.band.center, mode: "am" };
-      this.requestId++;
-      this.sendTune();
-      this.armAckWatch();
+      this.retune();
+      this.awaitingReturn = true;
     }
+    if (!onAir) this.awaitingReturn = false;
     if (bandStatus) this.wasOnAir = onAir;
-    const off = elsewhere || !onAir;
+    const off = elsewhere || !onAir || this.awaitingReturn;
     const nc = this.bandInfo.next_change;
-    const next: OffAir | null = off ? { note: this.note, untilMs: typeof nc === "number" && Number.isFinite(nc) && nc > Date.now() ? nc : null } : null;
+    // next_change is only "back at" while our band is off; on air it is the next sunset.
+    const next: OffAir | null = off ? { note: this.note, untilMs: !onAir && typeof nc === "number" && Number.isFinite(nc) && nc > Date.now() ? nc : null } : null;
     const prev = this._offAir;
     this._offAir = next;
+    if (!!prev !== !!next) this.wfc.reset();   // deltas must not decode against the other band's rows
     if (next && (!prev || prev.note !== next.note || prev.untilMs !== next.untilMs)) this.onEvent({ type: "offair", note: next.note, untilMs: next.untilMs });
     else if (!next && prev) this.onEvent({ type: "onair" });
   }

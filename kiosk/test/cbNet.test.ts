@@ -259,4 +259,32 @@ describe("CbNet", () => {
     r.clients[0]!.emit({ type: "onair" });
     expect(r.net.status()).toMatchObject({ offAir: false, offAirUntil: null });
   });
+
+  it("off-air is derived from the client: pause across sunrise (and across sunset) never leaves rows/audio stuck", () => {
+    const audio: FernEvent = { type: "audio", samples: new Float32Array(128).fill(0.1), rate: 14_250 };
+    const r = rig();
+    r.net.start(cfg);
+    r.rows([], 10);
+    r.state.offAir = { note: null, untilMs: 1 };
+    r.clients[0]!.emit({ type: "offair", note: null, untilMs: 1 });
+    r.net.pause();
+    r.state.offAir = null;          // sunrise while paused (onair event is ignored while paused)
+    r.clients[0]!.emit({ type: "onair" });
+    r.net.start(cfg);
+    expect(r.net.status().offAir).toBe(false);
+    r.rows([CB19], 2);
+    for (let i = 0; i < 4; i++) r.clients[0]!.emit(audio);
+    expect(r.pcm.length).toBeGreaterThan(0);
+    // reverse: sunset while paused
+    r.net.pause();
+    r.state.offAir = { note: null, untilMs: null };
+    r.net.start(cfg);
+    r.pcm.length = 0;
+    r.events.length = 0;
+    r.rows([CB19], 3);
+    for (let i = 0; i < 4; i++) r.clients[0]!.emit(audio);
+    expect(r.pcm).toHaveLength(0);
+    expect(r.events.some((e) => e.type === "active")).toBe(false);
+    expect(r.net.status().offAir).toBe(true);
+  });
 });

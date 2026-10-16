@@ -36,7 +36,6 @@ export class CbNet implements CbSource {
   private client: FernClientLike | null = null;
   private watch: CbWatch | null = null;
   private resampler: Resampler | null = null;
-  private offAir = false;   // receiver left our band: ignore rows/audio until "onair"
   private lastSignalAt = -Infinity;
   private lastTune: { freq: number; mode: string } | null = null;
   private held: Buffer = Buffer.alloc(0);   // newest FADE_OUT_MS of PCM, written only once more follows
@@ -93,7 +92,6 @@ export class CbNet implements CbSource {
         this.watch = null;
         this.resampler = null;
         this.lastTune = null;
-        this.offAir = false;
         this.held = Buffer.alloc(0);
         this.state = "stopped";
       }
@@ -119,15 +117,13 @@ export class CbNet implements CbSource {
     if (this.state !== "running" || !this.watch) return;
     if (e.type === "offair") {
       // The receiver left our band: nothing real is audible; the client drops its frames.
-      this.offAir = true;
       this.apply(this.watch.closeAll(this.now()));
       this.flushHeld();
     } else if (e.type === "onair") {
-      this.offAir = false;   // rows resume and reopen channels by themselves
-    } else if (this.offAir && e.type !== "disconnected") {
-      return;
+      // rows resume and reopen channels by themselves
+    } else if (e.type !== "disconnected" && this.client?.offAir) {
+      return;   // off the air is derived from the client, so pause/resume can't leave it stale
     } else if (e.type === "disconnected") {
-      this.offAir = false;
       // Rows stop during an outage; don't leave a channel stuck open/audible.
       this.apply(this.watch.closeAll(this.now()));
     } else if (e.type === "row") {
