@@ -15,13 +15,15 @@ export type FernEvent =
   | { type: "offair"; note: string | null; untilMs: number | null }
   | { type: "onair" };
 export interface OffAir { note: string | null; untilMs: number | null }
-export interface FernClientOpts { url: string; band: string; backoffMaxMs: number; backoffBaseMs?: number; staleMs?: number; random?: () => number; log?: (m: string) => void }
+export interface FernClientOpts { url: string; band: string; backoffMaxMs: number; backoffBaseMs?: number; staleMs?: number; retuneRetryMs?: number; random?: () => number; log?: (m: string) => void }
 
 const CAPABILITIES = ["audio-discontinuity"];
 const VIEW_WIDTH = 456;   // ~1 kHz bins over the 456 kHz CB band
 const VIEW_FPS = 10;
 const DEFAULT_STALE_MS = 8000;   // cb.fernsdr.staleMs overrides (via CbNet)
 const ACK_WARN_MS = 2000;        // a tune un-acked this long is logged once (audio stays gated)
+const RETUNE_RETRY_MS = 5000;     // an unacked sunrise re-tune is re-sent this often; also the drift re-tune rate limit
+const DRIFT_HZ = 1000;           // a state freq within this of the target is the same channel
 const MAX_CONCEAL = 8;           // frames concealed for a gap; bigger = discontinuity
 const NO_RETRY: Record<number, string> = { 4001: "receiver listener timeout", 4002: "disconnected by the receiver operator" };
 
@@ -48,6 +50,7 @@ export class FernClient {
   private wasOnAir = true;
   private awaitingReturn = false;   // our band is back on air; waiting for the receiver to confirm we are on it
   private lastRetuneAt = -Infinity;
+  private retryTimer2: NodeJS.Timeout | null = null;
   private readonly nac = new NacDecoder();
   private readonly wfc = new WfcDecoder();
 
@@ -71,6 +74,7 @@ export class FernClient {
     if (this.retryTimer) { clearTimeout(this.retryTimer); this.retryTimer = null; }
     this.clearStale();
     this.clearAckWatch();
+    this.clearRetry();
     const ws = this.ws;
     this.ws = null;
     this._connected = false;
@@ -87,6 +91,8 @@ export class FernClient {
   }
 
   private clearStale(): void { if (this.staleTimer) { clearTimeout(this.staleTimer); this.staleTimer = null; } }
+  private clearRetry(): void { if (this.retryTimer2) { clearTimeout(this.retryTimer2); this.retryTimer2 = null; } }
+  private retryMs(): number { return this.opts.retuneRetryMs ?? RETUNE_RETRY_MS; }
   private clearAckWatch(): void { if (this.ackTimer) { clearTimeout(this.ackTimer); this.ackTimer = null; } }
 
   /** Rows arrive ~10/s, so silence means a half-open socket (power or network
@@ -156,6 +162,8 @@ export class FernClient {
       this._connected = false;
       this.clearStale();
       this.clearAckWatch();
+      this.clearRetry();
+      this.awaitingReturn = false;
       this._offAir = null;   // CbNet clears its own flag on "disconnected"; a welcome recomputes
       const reason = NO_RETRY[code] ?? (this._error || String(reasonBuf) || `closed (${code})`);
       this._error = reason;
@@ -187,7 +195,7 @@ export class FernClient {
           this.ackedTune = m.ack.tune;
           if (caughtUp) { this.nac.reset(); this.lastSeq = null; this.clearAckWatch(); }
         }
-        if (this.awaitingReturn && this.serverBand === this.opts.band && this.ackedTune >= this.requestId) this.awaitingReturn = false;
+        if (this.awaitingReturn && this.serverBand === this.opts.band && this.ackedTune >= this.requestId) { this.awaitingReturn = false; this.clearRetry(); }
         this.retuneIfDrifted(m);
         return this.updateOffAir();
       case "band-status":
@@ -239,7 +247,19 @@ export class FernClient {
     this.updateOffAir();
   }
 
+  /** The receiver may ignore a re-tune while its band is still starting: keep asking until acked. */
+  private armRetry(): void {
+    this.clearRetry();
+    this.retryTimer2 = setTimeout(() => {
+      this.retryTimer2 = null;
+      if (!this.awaitingReturn || !this._connected || !this.ourBandOnAir()) return;
+      this.retune();
+      this.armRetry();
+    }, this.retryMs());
+  }
+
   private retune(): void {
+    if (this.ackedTune < this.requestId && Date.now() - this.lastRetuneAt < this.retryMs()) return;   // one already in flight
     this.lastRetuneAt = Date.now();
     this.requestId++;
     this.sendTune();
@@ -249,8 +269,8 @@ export class FernClient {
   /** A state that puts us on our band at a different freq/mode than we want: re-tune (at most every 5 s). */
   private retuneIfDrifted(m: any): void {
     if (!this.target || this.serverBand !== this.opts.band || this.ackedTune < this.requestId) return;
-    if (typeof m.freq !== "number" || Date.now() - this.lastRetuneAt < 5000) return;
-    if (m.freq !== this.target.freq || (typeof m.mode === "string" && m.mode !== this.target.mode)) this.retune();
+    if (typeof m.freq !== "number" || Date.now() - this.lastRetuneAt < this.retryMs()) return;
+    if (Math.abs(m.freq - this.target.freq) > DRIFT_HZ || (typeof m.mode === "string" && m.mode.toLowerCase() !== this.target.mode)) this.retune();
   }
 
   private mergeBands(bands: unknown): void {
@@ -275,8 +295,9 @@ export class FernClient {
       if (!this.target) this.target = { freq: this.band.center, mode: "am" };
       this.retune();
       this.awaitingReturn = true;
+      this.armRetry();
     }
-    if (!onAir) this.awaitingReturn = false;
+    if (!onAir) { this.awaitingReturn = false; this.clearRetry(); }
     if (bandStatus) this.wasOnAir = onAir;
     const off = elsewhere || !onAir || this.awaitingReturn;
     const nc = this.bandInfo.next_change;

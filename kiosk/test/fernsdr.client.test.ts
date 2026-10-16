@@ -307,6 +307,39 @@ describe("FernClient", () => {
       await until(() => events.some((e) => e.type === "onair"));
     });
 
+    it("an unacked sunrise re-tune is re-sent until the receiver acks it", async () => {
+      let sock: WsSocket | null = null;
+      const { msgs, events } = await setup((s) => { sock = s; }, { retuneRetryMs: 120 }, NIGHT);
+      await until(() => msgs.length >= 4);
+      client!.tune(27_185_000, "am");
+      sock!.send(JSON.stringify({ type: "state", band: "20m", ack: { tune: 1 } }));
+      await until(() => client!.offAir !== null);
+      sock!.send(JSON.stringify({ type: "band-status", bands: [{ id: "cb-radio", running: true, on_air: true }] }));
+      await until(() => msgs.filter((m) => m.type === "tune").length >= 3, 1500);
+      const tunes = msgs.filter((m) => m.type === "tune");
+      expect(tunes.map((t) => t.request_id)).toEqual([1, 2, 3]);   // first re-tune ignored, second re-sent
+      expect(events.some((e) => e.type === "onair")).toBe(false);
+      sock!.send(JSON.stringify({ type: "state", band: "cb-radio", ack: { tune: 3 } }));
+      await until(() => events.some((e) => e.type === "onair"));
+      await new Promise((r) => setTimeout(r, 300));
+      expect(msgs.filter((m) => m.type === "tune")).toHaveLength(3);
+      expect(events.filter((e) => e.type === "onair")).toHaveLength(1);
+    });
+
+    it("a normalised freq/mode on our band is not drift", async () => {
+      let sock: WsSocket | null = null;
+      const { msgs } = await setup((s) => { sock = s; }, { retuneRetryMs: 10 });
+      await until(() => msgs.length >= 4);
+      client!.tune(27_185_000, "am");
+      sock!.send(JSON.stringify({ type: "state", band: "cb-radio", ack: { tune: 1 } }));
+      await new Promise((r) => setTimeout(r, 30));
+      sock!.send(JSON.stringify({ type: "state", band: "cb-radio", freq: 27_185_100, mode: "AM" }));
+      await new Promise((r) => setTimeout(r, 80));
+      expect(msgs.filter((m) => m.type === "tune")).toHaveLength(1);
+      sock!.send(JSON.stringify({ type: "state", band: "cb-radio", freq: 27_195_000, mode: "am" }));
+      await until(() => msgs.filter((m) => m.type === "tune").length >= 2);
+    });
+
     it("on air but parked on another band: no 'back at' time", async () => {
       let sock: WsSocket | null = null;
       const { msgs } = await setup((s) => { sock = s; }, {}, { ...WELCOME, bands: [{ ...WELCOME.bands[0], running: true, on_air: true, next_change: Date.now() + 9e6 }] });
