@@ -108,10 +108,8 @@ shortwave sweep pauses.
 4. **Move on.** When the window timer ends, go to the next window. Skip in the
    admin tool (`POST /api/scan/skip`) moves on early.
 
-**Feasibility check:** listening and measuring in the same window at once is what
-makes this design work, and it is untested. Prove it on real IQ first. If it can't
-be done, logging still wins: the speaker gets only whatever measuring leaves free,
-which may be nothing.
+Listening and measuring in the same window at once is proven: a 60-minute run did
+both with no drops (`docs/bench/2026-11-hf-proofs.md`).
 
 ### Choices left to my judgment (marked for review)
 
@@ -227,12 +225,12 @@ offline) and Skip are visible in the admin tool. Icons are `lucide-static` only.
 
 ## Receiver: SpyServer
 
-Handshake verified read-only from a Mac on 2026-11-02, with no tuning and no IQ:
+Measured from the server on 2026-11-02:
 
 | | |
 | --- | --- |
 | Server | `192.168.1.30:5555`, protocol v2.0.1922 |
-| Device | Type 2, believed to be Airspy HF+ |
+| Device | Type 2 (Airspy HF+) |
 | Control | `CanControl: 1` |
 | Rate | 768 kHz, 660 kHz usable, 8 decimation stages |
 | Format | 16-bit |
@@ -240,27 +238,28 @@ Handshake verified read-only from a Mac on 2026-11-02, with no tuning and no IQ:
 
 - The native helper already reads IQ through an `IqSource` interface
   (`native/src/live.hpp:31`), which `RtlSource` implements. A `SpyServerSource`
-  is the natural seam, so CB and shortwave reuse the existing channelizer, lanes,
-  AGC, limiter and ALSA path. **My recommendation, not yet proven.**
-- **The seam has two catches, found during planning.** `Channelizer` only accepts
-  rates that are multiples of 50 kHz (`native/src/channelizer.cpp:14`) and 768 kHz
-  isn't one, so HF IQ is resampled to 750 kHz. `IqBlock` carries u8 IQ
-  (`native/src/live.hpp:21`), which may be too little dynamic range for HF, where
-  strong and weak stations share a window. Plan 1 tests this on real signals.
+  is the seam, so CB and shortwave reuse the existing channelizer, lanes, AGC,
+  limiter and ALSA path.
+- **Proven in Plan 1.** `SpyServerSource` works through this seam. `Channelizer` only
+  accepts multiples of 50 kHz, so HF IQ is resampled to 750 kHz. `IqBlock` stays u8,
+  with SpyServer digital gain: at the default level u8 is nearly empty, and at 24 a
+  +60 dB carrier sat in the 9650 kHz window with no floor rise. WWV was received and
+  demodulated correctly on 2.5, 5, 10 and 15 MHz, and tuning error is about 0.09 ppm,
+  so no frequency correction is needed. Gain is a required knob, default 24.
+- **Squelch needs an HF rule.** The existing squelch was open in only 94 of 179
+  reports, so "plays stations the scanner hits" needs a rule based on the survey.
 - FernSDR and SpyServer can't share the radio. FernSDR did not answer on port
   8073 on 2026-11-02, and the operator has moved the Pi to SpyServer.
 
 ## Constraints and known problems
 
-1. **Audio has one owner, and break-ins can't restart it.** The ALSA sink is
-   exclusive, and a SAME break-in must be a `retune()`. But NWR audio comes from
-   the RTL-SDR, while HF audio comes from SpyServer, and the helper's rate is
-   currently a spawn-time knob (2.4 Msps against 768 kHz). So the scanner helper
-   has to switch both source and rate in place, or else another design must keep
-   one audio owner without a restart at a break-in. The pass bar is the one under
-   "SAME break-ins": up to about 2 s of silence, no overlay, banner kept. KIOSK01
-   does not need to stream during HF mode. **This is the main technical risk:
-   settle it first.**
+1. **SAME break-in audio: decided, respawn the helper** (`docs/bench/2026-11-hf-proofs.md`).
+   Moving between SpyServer and KIOSK01 is a helper respawn, measured at about
+   1.0 s from stop to first audio in both directions, inside the operator's 2 s.
+   This is a deliberate, narrow exception to "a break-in is a `retune()`, never
+   `stop()+start()`", for HF mode only, because a retune can't change the radio. The
+   invariant's reasons still bind: no warm-up overlay, banner kept, `breakIn` guard
+   kept. Map mode and every other break-in stay retunes. KIOSK01 stays idle in HF mode.
 2. **The `mode` value is public, but renaming it looks safe.** `/api/status`
    returns `"mode": "cb"` today, and jeremyfuksa.com polls that endpoint. In the
    local checkout the site only passes the value through
@@ -273,11 +272,15 @@ Handshake verified read-only from a Mac on 2026-11-02, with no tuning and no IQ:
    keeping, such as watching all 40 channels from one window, are the builder's
    to port. The kiosk may be running that branch, and with FernSDR gone its CB
    mode is likely offline until this ships.
-4. **Heat.** The appliance runs about 1 °C under its trip. HF replaces the 2.4 Msps
-   DSP with 768 kHz, so it may run cooler, but that is unmeasured. A thermal A/B on
-   hardware is required.
-5. **Unproven on real IQ.** Sustained streaming from the Pi to the kiosk, and
-   logging other carriers while listening in the same window, have not been tested.
+4. **Heat.** The helper alone ran 27% of a core, and the box averaged 52 °C for an
+   hour, but with the service stopped, so no wall updates and no weather helper. That
+   doesn't show HF runs cooler than map mode. A thermal A/B with the real wall stage
+   is still required.
+5. **Audio gaps over Wi-Fi.** IQ runs clean for an hour at 12.3 Mbit/s with no drops
+   or exits, but holding one frequency, three of six runs had 0.8–1.8 s trimmed plus
+   matching silence, a sign of bursty arrival. The speaker path needs a jitter buffer
+   for network IQ, or a wired link. One unexplained 2 s stall also happened before
+   the soak, so Node's respawn after exit 3 must stay graceful.
 6. **Config.** All behaviour knobs go in config (window timer, cooldown,
    thresholds, bands, CB switch times, SpyServer address). `radios[]` is read once at
    boot.
