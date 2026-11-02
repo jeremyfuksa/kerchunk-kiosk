@@ -71,7 +71,7 @@ std::vector<Carrier> CarrierSurvey::take(double min_db, double* floor_db_out) {
     // A carrier is the top of its neighbourhood, so an AM station's sidebands don't count as stations.
     bool top = true;
     for (int j = std::max(0, k - peak_w); j <= std::min(CC_FFT - 1, k + peak_w) && top; j++)
-      if (db[j] > db[k]) top = false;
+      if (std::abs(j - dc) > dcw && db[j] > db[k]) top = false;   // the center spike isn't a neighbour
     if (!top) continue;
     const double hz = center_ + (k - dc) * binw;
     const long long snapped = std::llround(hz / SURVEY_RASTER_HZ) * (long long)SURVEY_RASTER_HZ;

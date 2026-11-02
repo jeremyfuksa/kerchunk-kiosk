@@ -201,7 +201,11 @@ inline constexpr double STALL_S = 2.0;             // no samples this long = SDR
 inline constexpr double BUSY_RETRY_S = 3.0;        // retry rtlsdr_open this long (previous helper releasing)
 inline constexpr double SPY_CONNECT_TIMEOUT_S = 3.0;   // SpyServer connect + handshake
 inline constexpr double SPY_IO_TIMEOUT_S = 0.5;        // socket I/O once streaming; a retune send can't wedge the DSP thread longer
-inline constexpr double SPY_RETUNE_DISCARD_MS = 150;   // old-center IQ in flight over TCP after a retune (a guess until measured on the Pi)
+// SpyServer confirms nothing after a retune, but echoes the digital gain in every IQ frame's flags. A
+// retune also steps the gain within a small cycle, so the flip marks new-center data in stream order.
+inline constexpr int SPY_DIGITAL_GAIN_DEFAULT = 32;    // at the server's default u8 is nearly empty (docs/bench/2026-11-hf-proofs.md)
+inline constexpr int SPY_MARKER_STEPS = 3;             // gain cycle, about 1 dB per step
+inline constexpr int SPY_RETUNE_DROP_FRAMES = 2;       // the flip frame itself can still be old center (measured)
 inline constexpr int ALSA_PERIOD = 480;            // 10 ms at 48 kHz
 inline constexpr unsigned ALSA_LATENCY_US = 60000; // requested device buffer latency
 // A busy hw/plughw device makes a blocking snd_pcm_open sleep in the kernel indefinitely (and

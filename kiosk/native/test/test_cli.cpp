@@ -41,7 +41,7 @@ TEST(cli_spyserver_sets_rate_and_excludes_rtl) {
   kc::Cli i;
   CHECK(!parse({"--spyserver", "h:5555", "--spyserver-gain", "99"}, i, err));
   kc::Cli j;
-  CHECK(parse({"--rtl-serial", "KIOSK01"}, j, err) && j.spyserver_host.empty() && j.spyserver_gain == -1);
+  CHECK(parse({"--rtl-serial", "KIOSK01"}, j, err) && j.spyserver_host.empty() && j.spyserver_gain == -1 && j.spyserver_digital_gain == kc::SPY_DIGITAL_GAIN_DEFAULT);
 }
 
 TEST(cli_rejects_bad_values_and_unknown) {

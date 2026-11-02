@@ -93,9 +93,10 @@ TEST(spy_parser_handles_every_split_point) {
 TEST(spy_parser_masks_flag_bits_in_message_type) {
   auto s = frame(0x00010000u | kc::spy::MSG_UINT8_IQ, 4, 4);
   kc::spy::FrameParser p;
-  uint32_t got = 0;
-  p.feed(s.data(), s.size(), [&](const kc::spy::FrameHeader& h, const uint8_t*, size_t) { got = h.msg_type; });
+  uint32_t got = 0, flags = 0;
+  p.feed(s.data(), s.size(), [&](const kc::spy::FrameHeader& h, const uint8_t*, size_t) { got = h.msg_type; flags = h.flags; });
   CHECK(got == kc::spy::MSG_UINT8_IQ);
+  CHECK(flags == 1);
 }
 
 TEST(spy_parser_fails_on_absurd_body_size) {

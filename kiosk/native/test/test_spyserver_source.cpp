@@ -22,10 +22,10 @@ using Clock = std::chrono::steady_clock;
 void put(std::vector<uint8_t>& b, uint32_t v) {
   for (int i = 0; i < 4; i++) b.push_back((uint8_t)(v >> (8 * i)));
 }
-std::vector<uint8_t> frame(uint32_t type, const std::vector<uint32_t>& words) {
+std::vector<uint8_t> frame(uint32_t type, const std::vector<uint32_t>& words, uint32_t flags = 0) {
   std::vector<uint8_t> b;
   put(b, 0x02000782);
-  put(b, type);
+  put(b, type | (flags << 16));
   put(b, 0);
   put(b, 0);
   put(b, (uint32_t)words.size() * 4);
@@ -43,7 +43,9 @@ void send_all(int fd, const std::vector<uint8_t>& b) {
 
 class FakeServer {
  public:
-  explicit FakeServer(uint32_t can_control = 1, uint32_t max_rate = 768000) : can_control_(can_control), max_rate_(max_rate) {
+  static constexpr uint8_t BEFORE_RETUNE = 0x40, AFTER_RETUNE = 0xC0;   // sample value on each side of a retune
+  explicit FakeServer(uint32_t can_control = 1, uint32_t max_rate = 768000, bool ignores_settings = false)
+      : can_control_(can_control), max_rate_(max_rate), ignores_settings_(ignores_settings) {
     lfd_ = ::socket(AF_INET, SOCK_STREAM, 0);
     sockaddr_in a{};
     a.sin_family = AF_INET;
@@ -78,7 +80,9 @@ class FakeServer {
     if (fd < 0) return;
     std::vector<uint8_t> in;
     bool greeted = false, streaming = false;
-    std::vector<uint8_t> iq = frame(kc::spy::MSG_UINT8_IQ, std::vector<uint32_t>(1920, 0x7f7f7f7fu));  // 3840 samples, 5 ms
+    uint32_t echoed_gain = 0;
+    int stale_frames = 0;       // like the real server: the frame that first echoes a gain is still old-center
+    uint8_t value = BEFORE_RETUNE;
     while (!stop_ && !drop_) {
       uint8_t buf[256];
       const ssize_t r = ::recv(fd, buf, sizeof buf, MSG_DONTWAIT);
@@ -97,6 +101,11 @@ class FakeServer {
           std::lock_guard<std::mutex> g(m_);
           settings_.push_back({k, v});
           if (k == kc::spy::STREAMING_ENABLED) streaming = v != 0;
+          if (k == kc::spy::IQ_DIGITAL_GAIN && !ignores_settings_) {
+            if (streaming) stale_frames = 1;   // the handshake's gain isn't a retune
+            else stale_seen_gain_ = v;
+            echoed_gain = v;
+          }
         }
         in.erase(in.begin(), in.begin() + 8 + (std::ptrdiff_t)size);
       }
@@ -105,12 +114,19 @@ class FakeServer {
         send_all(fd, frame(kc::spy::MSG_DEVICE_INFO, {2, 942747699, max_rate_, 660000, 8, 0, 8, 0, 1700000000, 16, 0, 0}));
         send_all(fd, frame(kc::spy::MSG_CLIENT_SYNC, {can_control_, 5, 100000000, 100000000, 100000000, 330000, 1699670000, 330000, 1699670000, 0}));
       }
-      if (streaming) send_all(fd, iq);
+      if (streaming) {
+        if (stale_frames > 0) stale_frames--;
+        else if (stale_seen_gain_ != echoed_gain) { stale_seen_gain_ = echoed_gain; value = AFTER_RETUNE; }
+        const uint32_t w = value * 0x01010101u;
+        send_all(fd, frame(kc::spy::MSG_UINT8_IQ, std::vector<uint32_t>(1920, w), echoed_gain));  // 3840 samples, 5 ms
+      }
       std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
     ::close(fd);
   }
   uint32_t can_control_, max_rate_;
+  bool ignores_settings_;
+  uint32_t stale_seen_gain_ = 0;
   int lfd_ = -1, port_ = 0;
   std::thread t_;
   std::atomic<bool> stop_{false}, drop_{false};
@@ -154,7 +170,7 @@ TEST(spy_source_handshake_sends_iq_only_u8_768k) {
   s.stop();
 }
 
-TEST(spy_source_gain_settings_are_only_sent_when_asked) {
+TEST(spy_source_sends_digital_gain_always_and_rf_gain_when_asked) {
   {
     FakeServer f;
     kc::SpyServerSource s({"127.0.0.1", f.port()}, quiet());
@@ -162,7 +178,8 @@ TEST(spy_source_gain_settings_are_only_sent_when_asked) {
     CHECK(s.open(err, {}));
     s.start();
     CHECK(eventually([&] { return f.saw(kc::spy::STREAMING_ENABLED, 1); }));
-    for (auto& p : f.settings()) CHECK(p.first != kc::spy::GAIN && p.first != kc::spy::IQ_DIGITAL_GAIN);
+    CHECK(f.saw(kc::spy::IQ_DIGITAL_GAIN, kc::SPY_DIGITAL_GAIN_DEFAULT));
+    for (auto& p : f.settings()) CHECK(p.first != kc::spy::GAIN);
     s.stop();
   }
   FakeServer f;
@@ -209,24 +226,85 @@ TEST(spy_source_set_center_sends_frequency_and_bumps_generation) {
   s.stop();
 }
 
-TEST(spy_source_holds_new_generation_back_while_old_center_drains) {
+TEST(spy_source_new_generation_never_carries_old_center_samples) {
+  FakeServer f;
+  kc::SpyServerSource s({"127.0.0.1", f.port()}, quiet());
+  std::string err;
+  CHECK(s.open(err, {}));
+  s.start();
+  collect(s, 2);
+  const uint32_t g = s.generation() + 1;
+  CHECK(s.set_center(7345000));
+  CHECK(f.saw(kc::spy::IQ_FREQUENCY, 7345000) || eventually([&] { return f.saw(kc::spy::IQ_FREQUENCY, 7345000); }));
+  int new_blocks = 0;
+  bool mixed_or_stale = false;
+  const auto end = Clock::now() + std::chrono::seconds(3);
+  while (new_blocks < 5 && Clock::now() < end) {
+    if (!s.consume([&](const kc::IqBlock& b) {
+          if (b.gen != g) return;
+          new_blocks++;
+          // Old-center samples sit well below mid-scale, new ones above it; the filter starts from mid.
+          for (uint32_t i = 0; i < b.n; i++) if (b.data[i] < 120) mixed_or_stale = true;
+        }))
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+  CHECK(new_blocks == 5);
+  CHECK(!mixed_or_stale);
+  s.stop();
+}
+
+TEST(spy_source_old_generation_blocks_stay_old) {
+  FakeServer f;
+  kc::SpyServerSource s({"127.0.0.1", f.port()}, quiet());
+  std::string err;
+  CHECK(s.open(err, {}));
+  s.start();
+  const uint32_t g0 = s.generation();
+  collect(s, 3);
+  CHECK(s.set_center(7345000));
+  bool leaked = false;
+  int seen_new = 0;
+  const auto end = Clock::now() + std::chrono::seconds(3);
+  while (seen_new < 3 && Clock::now() < end) {
+    if (!s.consume([&](const kc::IqBlock& b) {
+          if (b.gen != g0) { seen_new++; return; }
+          for (uint32_t i = 0; i < b.n; i++) if (b.data[i] > 135) leaked = true;
+        }))
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+  CHECK(seen_new == 3);
+  CHECK(!leaked);
+  s.stop();
+}
+
+TEST(spy_source_rapid_retunes_wait_for_the_last_one) {
   FakeServer f;
   kc::SpyServerSource s({"127.0.0.1", f.port()}, quiet());
   std::string err;
   CHECK(s.open(err, {}));
   s.start();
   collect(s, 1);
-  const uint32_t g = s.generation() + 1;
+  CHECK(s.set_center(7000000));
+  CHECK(s.set_center(8000000));
+  const uint32_t g = s.generation();
+  CHECK(!collect(s, 3).empty());
+  bool found = false;
+  auto got = collect(s, 3);
+  for (auto& b : got) found = found || b.first == g;
+  CHECK(found);
+  s.stop();
+}
+
+TEST(spy_source_server_ignoring_a_retune_stalls_rx) {
+  FakeServer f(1, 768000, /*ignores_settings=*/true);
+  kc::SpyServerSource s({"127.0.0.1", f.port()}, quiet());
+  std::string err;
+  CHECK(s.open(err, {}));
+  s.start();
+  collect(s, 2);
   CHECK(s.set_center(7345000));
-  const auto t0 = Clock::now();
-  bool arrived = false;
-  while (!arrived && Clock::now() - t0 < std::chrono::seconds(2)) {
-    if (!s.consume([&](const kc::IqBlock& b) { arrived = b.gen == g; }))
-      std::this_thread::sleep_for(std::chrono::milliseconds(1));
-  }
-  CHECK(arrived);
-  const double ms = std::chrono::duration<double, std::milli>(Clock::now() - t0).count();
-  CHECK(ms >= kc::SPY_RETUNE_DISCARD_MS - 5);
+  // Frames keep arriving, but none confirm the retune, so the helper must treat it as a lost radio.
+  CHECK(eventually([&] { return s.seconds_since_rx() > kc::STALL_S; }, kc::STALL_S + 1.0));
   s.stop();
 }
 

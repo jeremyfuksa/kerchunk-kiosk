@@ -100,7 +100,7 @@ bool SpyServerSource::open(std::string& err, const std::function<bool()>& should
             send_bytes(spy::encode_setting(spy::IQ_FORMAT, spy::FORMAT_U8)) &&
             send_bytes(spy::encode_setting(spy::IQ_DECIMATION, 0));
   if (ok && o_.gain >= 0) ok = send_bytes(spy::encode_setting(spy::GAIN, (uint32_t)o_.gain));
-  if (ok && o_.digital_gain >= 0) ok = send_bytes(spy::encode_setting(spy::IQ_DIGITAL_GAIN, (uint32_t)o_.digital_gain));
+  if (ok) ok = send_bytes(spy::encode_setting(spy::IQ_DIGITAL_GAIN, (uint32_t)o_.digital_gain));
   if (!ok) return fail(pre + "settings not sent");
   set_timeouts(fd_, SPY_IO_TIMEOUT_S);
   return true;
@@ -119,18 +119,23 @@ void SpyServerSource::publish_acc() {
   acc_n_ = 0;
 }
 
-void SpyServerSource::on_iq(const uint8_t* iq, size_t bytes) {
-  const long long now = mono_ns();
-  last_rx_ns_.store(now, std::memory_order_relaxed);
+void SpyServerSource::on_iq(uint32_t flags, const uint8_t* iq, size_t bytes) {
   const uint32_t g = gen_.load(std::memory_order_acquire);
   if (g != reader_gen_) {
     // A retune landed: no block may mix generations, and the converter's history is the old center.
     publish_acc();
     conv_.reset();
     reader_gen_ = g;
+    waiting_marker_ = true;
   }
   acc_.gen = g;
-  if (now < discard_until_ns_.load(std::memory_order_acquire)) return;
+  if (waiting_marker_) {
+    if (flags != want_gain_.load(std::memory_order_acquire)) return;
+    waiting_marker_ = false;
+    drop_frames_ = SPY_RETUNE_DROP_FRAMES;
+  }
+  last_rx_ns_.store(mono_ns(), std::memory_order_relaxed);
+  if (drop_frames_ > 0) { drop_frames_--; return; }
   const size_t in = bytes / 2;
   const size_t cap = conv_.max_out(in);
   if (out_.size() < cap * 2) out_.resize(cap * 2);
@@ -158,7 +163,7 @@ void SpyServerSource::start() {
         break;
       }
       parser_.feed(buf.data(), (size_t)r, [this](const spy::FrameHeader& h, const uint8_t* body, size_t n) {
-        if (h.msg_type == spy::MSG_UINT8_IQ) on_iq(body, n);
+        if (h.msg_type == spy::MSG_UINT8_IQ) on_iq(h.flags, body, n);
       });
       if (parser_.failed()) break;
     }
@@ -175,11 +180,14 @@ void SpyServerSource::stop() {
 
 bool SpyServerSource::set_center(double hz) {
   const auto f = (uint32_t)std::llround(hz);
-  if (fd_ >= 0 && !send_bytes(spy::encode_setting(spy::IQ_FREQUENCY, f))) {
+  marker_step_ = (marker_step_ + 1) % SPY_MARKER_STEPS;
+  const auto gain = (uint32_t)(o_.digital_gain + marker_step_);
+  if (fd_ >= 0 && !(send_bytes(spy::encode_setting(spy::IQ_FREQUENCY, f)) &&
+                    send_bytes(spy::encode_setting(spy::IQ_DIGITAL_GAIN, gain)))) {
     log_("SpyServer: retune to " + std::to_string(f) + " not sent");
     return false;   // generation untouched: nothing new is coming from this center
   }
-  discard_until_ns_.store(mono_ns() + (long long)(SPY_RETUNE_DISCARD_MS * 1e6), std::memory_order_release);
+  want_gain_.store(gain, std::memory_order_release);
   gen_.fetch_add(1, std::memory_order_acq_rel);
   return true;
 }

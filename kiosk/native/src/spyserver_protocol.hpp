@@ -29,7 +29,7 @@ struct ClientSync {
   uint32_t can_control, gain, device_center, iq_center, fft_center, min_iq_center, max_iq_center;
 };
 struct FrameHeader {
-  uint32_t protocol, msg_type, stream_type, sequence, body_size;
+  uint32_t protocol, msg_type, stream_type, sequence, body_size, flags;   // flags: the type word's high 16 bits; IQ frames echo the digital gain
 };
 
 std::vector<uint8_t> encode_hello(const std::string& client_id);

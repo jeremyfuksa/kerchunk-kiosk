@@ -2,6 +2,7 @@
 #pragma once
 #include <string>
 
+#include "constants.hpp"
 #include "engine.hpp"
 
 namespace kc {
@@ -16,7 +17,7 @@ struct Cli {
   std::string spyserver_host;
   int spyserver_port = 0;
   int spyserver_gain = -1;           // gain index; -1 = leave the server's setting
-  int spyserver_digital_gain = -1;   // -1 = leave the server's setting
+  int spyserver_digital_gain = SPY_DIGITAL_GAIN_DEFAULT;
   int audio_fd = -1;
   std::string iq_file, tune_json, audio_out, same_out;
   bool realtime = false;

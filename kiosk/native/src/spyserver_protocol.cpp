@@ -46,7 +46,7 @@ void FrameParser::feed(const uint8_t* p, size_t n, const OnFrame& f) {
   size_t at = 0;
   while (buf_.size() - at >= HEADER_BYTES) {
     const uint8_t* h = buf_.data() + at;
-    const FrameHeader hdr{get(h, 0), get(h, 1) & 0xffff, get(h, 2), get(h, 3), get(h, 4)};
+    const FrameHeader hdr{get(h, 0), get(h, 1) & 0xffff, get(h, 2), get(h, 3), get(h, 4), get(h, 1) >> 16};
     if (hdr.body_size > MAX_BODY_BYTES) {
       failed_ = true;
       buf_.clear();

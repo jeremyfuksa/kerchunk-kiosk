@@ -2,7 +2,7 @@
 
 Measured on the kiosk (i7-4770HQ) against an Airspy HF+ Discovery on an 80 m loop, served by SpyServer
 v2.0.1922 on a Pi at `192.168.1.30:5555`. The kiosk reaches the Pi over Wi-Fi (5785 MHz, −70 dBm, 117 Mbit/s).
-Helper: `kerchunk-dsp --spyserver` at commit `5d1e760`, digital gain 24 unless noted. Runs were daytime into
+Helper: `kerchunk-dsp --spyserver` at commit `5d1e760`, digital gain 24 unless noted (the default is now 32). Runs were daytime into
 evening local time, one afternoon only. Driver scripts were throwaway and are not in the repo.
 
 ## Stream
@@ -52,10 +52,47 @@ speaker, digital gain 24.
 data to draw and the weather helper (about 10% of a core) was not running. 52 °C shows the helper alone isn't
 hot. It does not show HF mode runs cooler than map mode. A thermal A/B with the real wall stage is still owed.
 
-Result: **passes**, except audio quality, which has not been judged by ear.
+Result: **partial.** Stream stability and listening with measuring at once pass. Still open:
+
+- Audio quality has not been judged by ear.
+- Peak temperature has no map-mode baseline to compare against, as above.
+- The up to 9.6 s per minute of underrun is unexplained. Part of it may be retune discards and bursts (see below).
+- Survey carriers were not spot-checked by hand beyond WWV.
 
 One earlier survey run, before this soak, exited 3 with `SDR stalled (no samples for 2.0 s)` about 30 s in. It
 did not recur in reruns of 63 s and 40 s or in this hour. Cause unknown.
+
+## Does 8-bit lose stations?
+
+Same windows and survey rule, 4 s captures taken in turn, around 17:30 local. "Missed" is a 16-bit carrier with no
+8-bit carrier within 5 kHz. Captures aren't simultaneous, so fading accounts for some differences.
+
+| Window kHz | s16 floor, carriers | u8 at 24: floor, carriers, missed | u8 at 32: floor, carriers, missed |
+| --- | --- | --- | --- |
+| 2400 | −43.1, 2 | −17.1, 2, 0 | −9.9, 2, 0 |
+| 4900 | −45.2, 3 | −17.2, 3, 0 | −13.5, 3, 0 |
+| 6050 | −39.2, 7 | −13.5, 6, 1 | −6.2, 7, 1 |
+| 7350 | −40.4, 13 | −14.6, 12, 2 | −7.3, 15, 2 |
+| 9650 | −42.9, 18 | −16.2, 15, 3 | −10.6, 21, 0 |
+| 11850 | −41.5, 9 | −15.7, 9, 0 | −9.0, 9, 0 |
+| 15300 | −45.8, 4 | −17.1, 3, 1 | −12.9, 5, 0 |
+
+Clipping was 0.000% in every window at both gains. Floors rise with gain, so antenna noise rather than
+quantization sets them at 32. Every missed carrier was within 6 dB of the 10 dB threshold except 15000 kHz at 24
+(+15.7, WWV) and 9440 kHz at 24 (+16.2). **8-bit stands, with default gain raised to 32.** Not tested after dark,
+when the strongest stations could clip: re-measure in a night run.
+
+## Retune marker
+
+SpyServer sends no confirmation after a retune, and accepted an out-of-range 40 kHz with no message. But IQ frames
+echo the digital gain in their flags. Tuning away from WWV 10 MHz (+52 dB) and back, six trials, carrier level per
+frame around the gain change: the flip arrives 42–63 ms after the send, and the carrier changes on the flip frame
+or the one after, every time. A retune therefore also steps the gain, the reader holds until the echo, then drops
+two frames. No echo means a stall and exit 3, so an ignored retune can't label the old window as the new one. The
+gain steps through a 3-value cycle of about 1 dB per step, which the survey's floor-relative dB doesn't see.
+
+In the helper, 8 retunes between 10050 and 7350 kHz: WWV reported in all 4 of its windows, and no ghost at 7300 kHz,
+where old-center WWV would land. This replaced a 150 ms wall-clock discard.
 
 ## WWV check
 
@@ -101,8 +138,10 @@ this doesn't happen.
 
 Bar: up to about 2 s of silence, no overlay, banner kept.
 
-**A, respawn.** The HF helper exits and an RTL helper starts on KIOSK01 at the real scanner settings (2.5 Msps,
-32 lanes). From stop signal to first audio, three runs each:
+**A, respawn.** This is not the plan's candidate A (two engines in one helper), which turned out to be unnecessary.
+The HF helper exits and an RTL helper starts on KIOSK01 at the real scanner settings (2.5 Msps, 32 lanes). From stop
+signal to first audio, three runs each, from a throwaway driver, so Node's stop and spawn path, the warm-up gate and
+the banner are **not** included:
 
 | Direction | Old helper exit | New helper ready | First audio |
 | --- | --- | --- | --- |
@@ -121,6 +160,8 @@ Not measured: SAME header timing before the voice message. There was no alert or
 memory of the EAS format, three header bursts and then an attention tone come before the voice, so a 1 s gap
 would cost part of the tone. SAME decoding while the weather helper also produces audio was not exercised either.
 
-**Decision: A.** Both pass. A needs no native work and keeps one helper as the audio owner. B needs `--pcm-in-fd`
-ported and a pipe between helpers to save about 0.9 s the operator has already accepted. Plan 2 has to keep the
-warm-up overlay off and the banner up during this respawn, since those are why the invariant exists.
+**Provisional decision: A, pending the operator's call and a measurement through Node.** Both pass the bar, and the
+plan said to prefer B. A was chosen because it needs no native work and keeps one helper as the audio owner, while B
+needs `--pcm-in-fd` ported and a pipe between helpers to save about 0.9 s the operator has already accepted. B is
+faster and measured slightly cleaner. Plan 2 must measure A through Node, and keep the warm-up overlay off and the
+banner up during the respawn, since those are why the invariant exists. If that can't hold 2 s, use B.

@@ -69,6 +69,13 @@ TEST(survey_ignores_dc_and_edges) {
   CHECK(survey(scene({{-0.48 * RATE, 40}})).empty());
 }
 
+TEST(survey_center_spike_does_not_hide_stations_beside_it) {
+  auto c = survey(scene({{0, 30}, {5000, 25}, {-7000, 25}}));
+  CHECK(has(c, 7355000));
+  CHECK(has(c, 7345000));
+  CHECK(!has(c, 7350000));
+}
+
 TEST(survey_covers_the_usable_span_and_close_to_center) {
   auto c = survey(scene({{320000, 25}, {-320000, 25}, {10000, 25}}));
   CHECK(has(c, 7670000) && has(c, 7030000) && has(c, 7360000));

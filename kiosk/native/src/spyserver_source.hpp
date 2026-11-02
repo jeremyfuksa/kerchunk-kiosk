@@ -19,7 +19,7 @@ class SpyServerSource : public DeviceSource {
     std::string host;
     int port = 5555;
     int gain = -1;           // gain index; -1 = leave the server's setting
-    int digital_gain = -1;   // IQ digital gain; -1 = leave the server's setting
+    int digital_gain = SPY_DIGITAL_GAIN_DEFAULT;   // base IQ digital gain; retunes step it (see below)
   };
   SpyServerSource(Options o, LogFn log);
   ~SpyServerSource() override;
@@ -36,7 +36,7 @@ class SpyServerSource : public DeviceSource {
 
  private:
   bool send_bytes(const std::vector<uint8_t>& b);
-  void on_iq(const uint8_t* iq, size_t bytes);
+  void on_iq(uint32_t flags, const uint8_t* iq, size_t bytes);
   void publish_acc();
   Options o_;
   LogFn log_;
@@ -48,7 +48,13 @@ class SpyServerSource : public DeviceSource {
   std::atomic<uint32_t> gen_{0};
   std::atomic<uint64_t> dropped_{0};
   std::atomic<long long> last_rx_ns_{0};
-  std::atomic<long long> discard_until_ns_{0};   // old-center IQ still in flight after a retune
+  // A retune is confirmed in stream order: it also steps the digital gain, and IQ frames echo the gain.
+  // Until the echo arrives the reader holds, and last_rx_ns_ stands still, so a server that ignores the
+  // retune reads as a stall (exit 3) rather than the old window labelled as the new one.
+  int marker_step_ = 0;                          // DSP thread only
+  std::atomic<uint32_t> want_gain_{0};
+  bool waiting_marker_ = false;                  // reader thread only
+  int drop_frames_ = 0;                          // reader thread only
   uint32_t reader_gen_ = 0;                      // reader thread only
   IqBlock acc_{};                                // reader thread only
   uint32_t acc_n_ = 0;
