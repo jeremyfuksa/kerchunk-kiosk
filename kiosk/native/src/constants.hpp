@@ -192,6 +192,9 @@ inline constexpr int RETUNE_ATTEMPTS = 3;         // rtlsdr_set_center_freq trie
 inline constexpr int RETUNE_RETRY_MS = 5;          // pause between those tries
 inline constexpr double STALL_S = 2.0;             // no samples this long = SDR loss -> exit 3
 inline constexpr double BUSY_RETRY_S = 3.0;        // retry rtlsdr_open this long (previous helper releasing)
+inline constexpr double SPY_CONNECT_TIMEOUT_S = 3.0;   // SpyServer connect + handshake
+inline constexpr double SPY_IO_TIMEOUT_S = 0.5;        // socket I/O once streaming; a retune send can't wedge the DSP thread longer
+inline constexpr double SPY_RETUNE_DISCARD_MS = 150;   // old-center IQ in flight over TCP after a retune (a guess until measured on the Pi)
 inline constexpr int ALSA_PERIOD = 480;            // 10 ms at 48 kHz
 inline constexpr unsigned ALSA_LATENCY_US = 60000; // requested device buffer latency
 // A busy hw/plughw device makes a blocking snd_pcm_open sleep in the kernel indefinitely (and

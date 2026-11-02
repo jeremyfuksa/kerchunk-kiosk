@@ -22,6 +22,28 @@ TEST(cli_accepts_node_spawn_surface) {
   CHECK(c.eng.lanes == 12);
 }
 
+TEST(cli_spyserver_sets_rate_and_excludes_rtl) {
+  kc::Cli c;
+  std::string err;
+  CHECK(parse({"--spyserver", "airspy.local:5555", "--spyserver-gain", "3", "--spyserver-digital-gain", "4"}, c, err));
+  CHECK(c.spyserver_host == "airspy.local" && c.spyserver_port == 5555);
+  CHECK(c.spyserver_gain == 3 && c.spyserver_digital_gain == 4);
+  CHECK(c.eng.rate == 750000);
+  kc::Cli d;
+  CHECK(parse({"--rate", "2400000", "--spyserver", "h:1"}, d, err));
+  CHECK(d.eng.rate == 750000);
+  kc::Cli e;
+  CHECK(!parse({"--spyserver", "h:5555", "--rtl-serial", "KIOSK01"}, e, err));
+  kc::Cli g;
+  CHECK(!parse({"--spyserver", "no-port"}, g, err));
+  kc::Cli h;
+  CHECK(!parse({"--spyserver", "h:70000"}, h, err));
+  kc::Cli i;
+  CHECK(!parse({"--spyserver", "h:5555", "--spyserver-gain", "99"}, i, err));
+  kc::Cli j;
+  CHECK(parse({"--rtl-serial", "KIOSK01"}, j, err) && j.spyserver_host.empty() && j.spyserver_gain == -1);
+}
+
 TEST(cli_rejects_bad_values_and_unknown) {
   kc::Cli c;
   std::string err;
