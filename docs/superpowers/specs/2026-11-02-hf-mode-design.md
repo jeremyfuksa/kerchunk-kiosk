@@ -137,8 +137,8 @@ monitor (KIOSK03, `kiosk/src/backend/index.ts:129`) keeps decoding NWR in every
 mode and raises the event (`server.ts:680`). The scanner path is only how the
 alert's audio reaches the speaker.
 
-The do-not-undo invariants apply: a break-in is a `retune()`, never
-`stop()+start()`, and the `breakIn` guard stays. The sweep pauses during a
+The do-not-undo invariants apply, with the one narrow exception under constraint 1:
+moving between radios can't be a `retune()`. The `breakIn` guard stays. The sweep pauses during a
 break-in and picks up where it left off.
 
 The operator accepts up to about 2 s of silence while the audio source changes,
@@ -242,10 +242,13 @@ Measured from the server on 2026-11-02:
   limiter and ALSA path.
 - **Proven in Plan 1.** `SpyServerSource` works through this seam. `Channelizer` only
   accepts multiples of 50 kHz, so HF IQ is resampled to 750 kHz. `IqBlock` stays u8,
-  with SpyServer digital gain: at the default level u8 is nearly empty, and at 24 a
-  +60 dB carrier sat in the 9650 kHz window with no floor rise. WWV was received and
+  with SpyServer digital gain: at the server's default level u8 is nearly empty. WWV was received and
   demodulated correctly on 2.5, 5, 10 and 15 MHz, and tuning error is about 0.09 ppm,
-  so no frequency correction is needed. Gain is a required knob, default 24.
+  so no frequency correction is needed. Gain is a required knob, default 32, with no
+  clipping and only marginal stations missed against 16-bit, in daylight. Re-measure
+  after dark.
+- **Window centres go off the 5 kHz raster.** The survey can't see the exact centre, so a
+  centre on the raster loses that channel on every visit.
 - **Squelch needs an HF rule.** The existing squelch was open in only 94 of 179
   reports, so "plays stations the scanner hits" needs a rule based on the survey.
 - FernSDR and SpyServer can't share the radio. FernSDR did not answer on port
@@ -253,9 +256,11 @@ Measured from the server on 2026-11-02:
 
 ## Constraints and known problems
 
-1. **SAME break-in audio: decided, respawn the helper** (`docs/bench/2026-11-hf-proofs.md`).
-   Moving between SpyServer and KIOSK01 is a helper respawn, measured at about
-   1.0 s from stop to first audio in both directions, inside the operator's 2 s.
+1. **SAME break-in audio: provisionally, respawn the helper; the operator's to confirm**
+   (`docs/bench/2026-11-hf-proofs.md`). Moving between SpyServer and KIOSK01 is a helper
+   respawn, measured at about 1.0 s from stop to first audio in both directions, inside
+   the operator's 2 s, but helper-only: Plan 2 must measure it through Node. Fallback:
+   KIOSK03 supplies the audio (0.115 s, needs `--pcm-in-fd` ported).
    This is a deliberate, narrow exception to "a break-in is a `retune()`, never
    `stop()+start()`", for HF mode only, because a retune can't change the radio. The
    invariant's reasons still bind: no warm-up overlay, banner kept, `breakIn` guard
