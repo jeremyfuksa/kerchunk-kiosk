@@ -181,6 +181,13 @@ inline constexpr double CC_GUARD_HZ = 12500;
 inline constexpr double CC_DC_FRAC = 0.02;
 inline constexpr double CC_EDGE_FRAC = 0.10;
 inline constexpr double CC_DB_DEFAULT = 15.0;
+// Carrier survey (HF). Narrower guards than Close Call: every station in the window matters.
+inline constexpr int SURVEY_EVERY_POLLS = 500;       // a carriers event every 5 s
+inline constexpr double SURVEY_DB_DEFAULT = 10.0;    // dB above the window's median floor
+inline constexpr double SURVEY_USABLE_HZ = 330000;   // +/- from center: the HF+'s 660 kHz usable span
+inline constexpr double SURVEY_DC_GUARD_HZ = 1500;   // the receiver's center spike
+inline constexpr double SURVEY_RASTER_HZ = 5000;     // shortwave broadcast raster
+inline constexpr double SURVEY_PEAK_HZ = 7500;       // a carrier tops this neighbourhood either side
 
 // ---- Live I/O (P1c)
 inline constexpr int IQ_BLOCK_BYTES = 48000;       // max 10 ms of u8 IQ at 2.4 Msps (blocks are <= 10 ms at any rate)

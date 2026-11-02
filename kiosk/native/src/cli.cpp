@@ -47,6 +47,8 @@ bool parse_cli(int argc, const char* const* argv, Cli& c, std::string& err) {
     double d;
     int n;
     if (k == "--close-call") c.eng.close_call = true;
+    else if (k == "--survey") c.eng.survey = true;
+    else if (k == "--survey-db") { if (!ranged(v, 3, 60, c.eng.survey_db)) return false; }
     else if (k == "--same-enable") c.eng.same = true;
     else if (k == "--realtime") c.realtime = true;
     else if (k == "--sink") { if (!val(c.sink)) return false; }
