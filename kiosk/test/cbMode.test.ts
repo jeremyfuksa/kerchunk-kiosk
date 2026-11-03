@@ -10,6 +10,7 @@ import { WsHub } from "../src/backend/ws.js";
 import { FakeEngine } from "../src/backend/engine/FakeEngine.js";
 import { CB_FREQ_HZ, cbChannels, cbDefaultChannels, cbNumberForFreq, cbLabel, CB_NAMES_DEFAULT } from "../src/backend/config/cb.js";
 import { configSchema, defaultConfig } from "../src/backend/config/schema.js";
+import { groupChannels } from "../src/backend/engine/grouping.js";
 
 const SCAN_FREQ = 145_130_000;
 const WX_FREQ = 162_550_000;
@@ -128,6 +129,39 @@ describe("toScanConfig cb mode", () => {
     c.scan.lanesPerGroup = 12;
     expect(freqs(toScanConfig(c, "cb"))).toHaveLength(12);
     expect(freqs(toScanConfig(c, "cb"))).toContain(CB19);
+  });
+
+  describe("on the HF+", () => {
+    const spy = () => ({ ...cfg(), spyserver: { host: "airspy.local", port: 5555 } });
+    it("listens to all 40 channels whatever the scan's lane count", () => {
+      const c = spy();
+      c.scan.lanesPerGroup = 32;
+      const sc = toScanConfig(c, "cb");
+      expect(sc.channels).toHaveLength(40);
+      expect(sc.lanesPerGroup).toBe(40);
+    });
+    it("all 40 fit one window, so CB never hops", () => {
+      const c = spy();
+      c.scan.lanesPerGroup = 32;
+      const sc = toScanConfig(c, "cb");
+      expect(groupChannels(sc.channels, sc.windowBandwidthHz!, sc.lanesPerGroup!)).toHaveLength(1);
+    });
+    it("every HF+ mode has the same lanes, so moving between them is a retune", () => {
+      const c = spy();
+      c.scan.lanesPerGroup = 32;
+      expect(toScanConfig(c, "hf").lanesPerGroup).toBe(40);
+      expect(toScanConfig(c, "monitor", { id: "m", freq: 7_200_000, alphaTag: "m", mode: "am", enabled: true }).lanesPerGroup).toBe(40);
+    });
+    it("leaves the scan's lanes alone", () => {
+      const c = spy();
+      c.scan.lanesPerGroup = 32;
+      expect(toScanConfig(c, "scan").lanesPerGroup).toBe(32);
+    });
+    it("never lowers a higher lane count", () => {
+      const c = spy();
+      c.scan.lanesPerGroup = 64;
+      expect(toScanConfig(c, "cb").lanesPerGroup).toBe(64);
+    });
   });
 
   it("honors config.cb.channels", () => {

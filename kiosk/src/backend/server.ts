@@ -94,6 +94,8 @@ const CLEARABLE_CHANNEL_FIELDS = ["ctcssHz", "dcsCode"] as const;
 // "cb" = CB-only listening (config.cb.channels); never mixed into the scan.
 const SPY_WINDOW_HZ = 600_000;
 const HF_TOP_HZ = 30_000_000;
+// All 40 CB channels (440 kHz) fit the window. The same count for every HF+ mode, so moving between them is a retune.
+const SPY_LANES = 40;
 export type ScanMode = "scan" | "weather" | "monitor" | "cb" | "hf";
 
 /** The HF scanner's station: one AM lane the survey chose, held open while it's on the speaker. */
@@ -112,6 +114,10 @@ export function nothingToShed(cfg: Config, mode: ScanMode): boolean {
   return mode === "cb" || mode === "hf" || (cfg.scan.closeCall === false && (cfg.scan.sweepRanges?.length ?? 0) === 0);
 }
 
+function spyLanes(cfg: Config): number {
+  return Math.max(SPY_LANES, cfg.scan.lanesPerGroup ?? DEFAULT_LANES_PER_GROUP);
+}
+
 export function toScanConfig(
   cfg: Config,
   mode: ScanMode,
@@ -125,7 +131,7 @@ export function toScanConfig(
       : hfWindow
         ? (hfTune?.listenHz ? [hfChannel(hfTune.listenHz)] : [])
       : mode === "cb"
-        ? cbChannels(cfg.cb?.channels ?? cbDefaultChannels(cfg.scan.lanesPerGroup ?? DEFAULT_LANES_PER_GROUP, cfg.cb?.modes), cfg.cb?.names, cfg.cb)
+        ? cbChannels(cfg.cb?.channels ?? cbDefaultChannels(cfg.spyserver ? spyLanes(cfg) : cfg.scan.lanesPerGroup ?? DEFAULT_LANES_PER_GROUP, cfg.cb?.modes), cfg.cb?.names, cfg.cb)
       : mode === "monitor"
         // Deliberate listening is never family-gated: resolve audible
         // explicitly so live events (and the wall map) report true.
@@ -213,7 +219,7 @@ export function toScanConfig(
     // CB and direct-tuned HF go through the HF+: the RTL radios can't hear below
     // 30 MHz. The window must fit inside SpyServer's 660 kHz.
     ...((mode === "cb" || mode === "hf" || (mode === "monitor" && monitorChannel && monitorChannel.freq < HF_TOP_HZ)) && cfg.spyserver
-      ? { spyserver: cfg.spyserver, windowBandwidthHz: SPY_WINDOW_HZ, flatBandwidthHz: SPY_WINDOW_HZ }
+      ? { spyserver: cfg.spyserver, windowBandwidthHz: SPY_WINDOW_HZ, flatBandwidthHz: SPY_WINDOW_HZ, lanesPerGroup: spyLanes(cfg) }
       : {}),
     ...(hfWindow && hfTune ? { fixedCenterHz: hfTune.centerHz } : {}),
     closeCallDb: cfg.scan.closeCallDb,
