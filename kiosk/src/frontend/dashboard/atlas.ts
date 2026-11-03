@@ -21,6 +21,9 @@ export function bandColor(band: string | null): string {
 
 const siteKey = (lat: number, lon: number): string => `${lat.toFixed(2)},${lon.toFixed(2)}`;
 
+/** A trace is one per site and band. */
+export const traceKey = (h: { lat: number; lon: number; band: string }): string => `${siteKey(h.lat, h.lon)}|${h.band}`;
+
 function located<T extends { lat?: number | null; lon?: number | null }>(r: T): r is T & { lat: number; lon: number } {
   return typeof r.lat === "number" && typeof r.lon === "number";
 }
@@ -67,11 +70,11 @@ export function traceLevel(ageMs: number, fadeMs: number): number {
 }
 
 export function atlasTraces(rows: readonly AtlasRow[], home: LatLon, live: HitKey | null, now: number, fadeMs: number): AtlasTrace[] {
-  const liveKey = live ? `${siteKey(live.lat, live.lon)}|${live.band}` : null;
+  const liveKey = live ? traceKey(live) : null;
   const newest = new Map<string, { row: AtlasRow & { lat: number; lon: number }; playedTs: number }>();
   for (const r of rows) {
     if (!r.onSpeaker || !located(r)) continue;
-    const key = `${siteKey(r.lat, r.lon)}|${r.band}`;
+    const key = traceKey({ lat: r.lat, lon: r.lon, band: r.band });
     if (key === liveKey) continue;
     const playedTs = r.playedTs ?? 0;
     const had = newest.get(key);
@@ -120,9 +123,11 @@ export function hitChange(prev: HitKey | null, next: HitKey | null): HitChange {
 
 export type HitAction = HitChange | "hold";
 
-/** `known` is false until the wall has seen one status since it entered the stage: nothing to animate from. */
-export function hitAction(known: boolean, prev: HitKey | null, next: HitKey | null): HitAction {
+/** `known` is false until the wall has seen one status since it entered the stage: nothing to animate from.
+ *  `lost` is the station a receiver error took off the wall: it coming back isn't a new hit. */
+export function hitAction(known: boolean, prev: HitKey | null, next: HitKey | null, lost: HitKey | null = null): HitAction {
   if (!known) return next ? "hold" : "none";
+  if (!prev && next && lost && hitChange(lost, next) === "none") return "hold";
   return hitChange(prev, next);
 }
 
@@ -137,7 +142,7 @@ export function lineKeyframes(lengths: readonly number[], steps: number): number
     start += len;
     return Array.from({ length: steps + 1 }, (_, k) => {
       const done = easeInOut(k / steps) * total;
-      return 1 - Math.max(0, Math.min(1, (done - from) / len));
+      return len > 0 ? 1 - Math.max(0, Math.min(1, (done - from) / len)) : 0;
     });
   });
 }
