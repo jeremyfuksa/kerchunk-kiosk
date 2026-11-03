@@ -122,16 +122,18 @@ export interface AircraftTarget {
 }
 
 export type EngineEvent =
-  | { type: "active"; channel: Channel; freq: number; ts: number }
+  // `unproven` on active, audible and idle: from a helper that has yet to outlast a stall, so it
+  // doesn't prove the engine recovered. The wall keeps its error up until status "running".
+  | { type: "active"; channel: Channel; freq: number; ts: number; unproven?: true }
   // Which channel OWNS THE SPEAKER right now (null = silence). Distinct from
   // "active": the wideband engine monitors many channels at once, so several
   // can be active while exactly one is audible (first-active-wins hold).
   // RtlFmEngine never emits this — there, active IS audible.
-  | { type: "audible"; channel: Channel | null; ts: number }
+  | { type: "audible"; channel: Channel | null; ts: number; unproven?: true }
   // Per-channel squelch close (idle fires only when ALL channels close) —
   // lets history pair openings with closings for durations.
   | { type: "release"; channelId: string; ts: number }
-  | { type: "idle"; ts: number }
+  | { type: "idle"; ts: number; unproven?: true }
   // Close Call discovery: strong RF on a non-configured frequency in the
   // tuned window. The server persists it as a disabled channel; any audio
   // from it arrives via normal active/audible events (synthesized channel).

@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import request from "supertest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
@@ -16,8 +16,8 @@ const at = (h: number, m = 0) => new Date(2026, 10, 2, h, m).getTime();
 const voa: Candidate = { station: "VOA", country: "USA", language: "E", site: "Greenville", lat: 35.6, lon: -77.2, powerKw: 250, distanceKm: 1700 };
 const bbc: Candidate = { station: "BBC", country: "G", language: "E", site: "Woofferton", lat: 52.3, lon: -2.7, powerKw: 300, distanceKm: 6600 };
 const log = () => new ReceptionLog({ path: ":memory:" });
-const survey = (l: ReceptionLog, ts: number, hz: number, db: number, cands: Candidate[] = []) =>
-  l.record(ts, "49m", [{ hz, db }], () => cands);
+const survey = (l: ReceptionLog, ts: number, hz: number, db: number, cands: Candidate[] = [], windowMs = 60_000) =>
+  l.record(ts, "49m", [{ hz, db }], () => cands, windowMs);
 
 describe("nightOf", () => {
   it("runs noon to noon, so one night keeps one date", () => {
@@ -42,19 +42,19 @@ describe("ReceptionLog", () => {
   it("marks the newest row for a frequency, even in the same millisecond as the last", () => {
     const l = log();
     const ts = at(22);
-    l.record(ts, "49m", [{ hz: 5_950_000, db: 30 }], () => []);
-    l.record(ts, "49m", [{ hz: 5_950_000, db: 30 }], () => [{ station: "Radio X" }]);
+    l.record(ts, "49m", [{ hz: 5_950_000, db: 30 }], () => [], 60_000);
+    l.record(ts, "49m", [{ hz: 5_950_000, db: 30 }], () => [{ station: "Radio X" }], 60_000);
     l.markOnSpeaker(ts, 5_950_000);
     expect(l.rows("2026-11-02").find((r) => r.station === "Radio X")?.onSpeaker).toBe(true);
   });
 
   it("remembers when a station last played, and hearing it on a later survey doesn't move that", () => {
     const l = log();
-    l.record(at(22), "49m", [{ hz: 5_950_000, db: 30 }], () => []);
+    l.record(at(22), "49m", [{ hz: 5_950_000, db: 30 }], () => [], 60_000);
     expect(l.rows("2026-11-02")[0]?.playedTs).toBeNull();
     l.markOnSpeaker(at(22, 1), 5_950_000);
     expect(l.rows("2026-11-02")[0]?.playedTs).toBe(at(22, 1));
-    l.record(at(22, 30), "49m", [{ hz: 5_950_000, db: 30 }], () => []);
+    l.record(at(22, 30), "49m", [{ hz: 5_950_000, db: 30 }], () => [], 60_000);
     expect(l.rows("2026-11-02")[0]?.playedTs).toBe(at(22, 1));
     l.markOnSpeaker(at(22, 45), 5_950_000);
     expect(l.rows("2026-11-02")[0]?.playedTs).toBe(at(22, 45));
@@ -69,12 +69,32 @@ describe("ReceptionLog", () => {
     expect(l.rows("2026-11-02")[0]?.passes).toBe(3);
   });
 
-  it("a carrier within tolerance is the same row", () => {
+  it("a pass is a visit to the window, however long the configured window is", () => {
+    const l = log();
+    survey(l, at(22), 5_950_000, 20, [], 20 * 60_000);       // a long window: the station fades and returns inside it
+    survey(l, at(22, 15), 5_950_000, 20, [], 20 * 60_000);
+    expect(l.rows("2026-11-02")[0]?.passes).toBe(1);
+    const fast = log();
+    survey(fast, at(22), 5_950_000, 20, [], 10_000);         // short windows: the next visit is only minutes off
+    survey(fast, at(22, 3), 5_950_000, 20, [], 10_000);
+    expect(fast.rows("2026-11-02")[0]?.passes).toBe(2);
+  });
+
+  it("the same station's small tuning difference is the same row", () => {
+    const l = log();
+    survey(l, at(22), 5_950_000, 20);
+    survey(l, at(22, 1), 5_952_000, 20);
+    expect(l.rows("2026-11-02").map((r) => r.freqHz)).toEqual([5_950_000]);
+  });
+
+  it("the next channel, 5 kHz away, is another row, named or not", () => {
     const l = log();
     survey(l, at(22), 5_950_000, 20);
     survey(l, at(22, 1), 5_955_000, 20);
-    survey(l, at(22, 2), 5_965_000, 20);
-    expect(l.rows("2026-11-02").map((r) => r.freqHz).sort()).toEqual([5_950_000, 5_965_000]);
+    expect(l.rows("2026-11-02").map((r) => r.freqHz)).toEqual([5_950_000, 5_955_000]);
+    const named = log();
+    named.record(at(22), "49m", [{ hz: 5_950_000, db: 20 }, { hz: 5_955_000, db: 30 }], () => [voa], 60_000);
+    expect(named.rows("2026-11-02").map((r) => r.peakDb)).toEqual([20, 30]);
   });
 
   it("a new night is a new row", () => {
@@ -106,14 +126,14 @@ describe("ReceptionLog", () => {
     expect(l.rows("2026-11-02")).toHaveLength(2);
   });
 
-  it("marks the row on the speaker, including an existing one a raster step away", () => {
+  it("marks the row on the speaker, and not the channel beside it", () => {
     const l = log();
     survey(l, at(22), 5_950_000, 20);
-    survey(l, at(22), 6_000_000, 20);
+    survey(l, at(22), 5_955_000, 20);
     l.markOnSpeaker(at(22, 1), 5_955_000);
     const rows = l.rows("2026-11-02");
-    expect(rows.find((r) => r.freqHz === 5_950_000)?.onSpeaker).toBe(true);
-    expect(rows.find((r) => r.freqHz === 6_000_000)?.onSpeaker).toBe(false);
+    expect(rows.find((r) => r.freqHz === 5_955_000)?.onSpeaker).toBe(true);
+    expect(rows.find((r) => r.freqHz === 5_950_000)?.onSpeaker).toBe(false);
   });
 
   it("marks nothing if the station has no row yet", () => {
@@ -176,6 +196,28 @@ describe("HF mode logging", () => {
     engine.emitCarriers(center, [{ hz: 2_350_000, db: 40 }]);
     const rows = (await request(server).get("/api/hf/log")).body.rows as Array<{ station: string | null; onSpeaker: boolean }>;
     expect(rows.find((r) => r.station === "Radio X")?.onSpeaker).toBe(true);
+    await request(server).post("/api/mode").send({ mode: "scan" });
+  });
+
+  it("counts passes by the configured window, live", async () => {
+    const { server, engine } = await app();
+    const center = engine.tunes.at(-1)!.fixedCenterHz!;
+    const passes = async () => ((await request(server).get("/api/hf/log")).body.rows as Array<{ passes: number }>)[0]?.passes;
+    const start = Date.now();
+    vi.useFakeTimers({ toFake: ["Date"], now: start });
+    try {
+      engine.emitCarriers(center, [{ hz: 2_350_000, db: 40 }]);
+      vi.setSystemTime(start + 30_000);
+      engine.emitCarriers(center, [{ hz: 2_350_000, db: 40 }]);
+      expect(await passes()).toBe(1);   // the default window, 60 s, covers both
+      const c = (await request(server).get("/api/config")).body;
+      await request(server).put("/api/config").send({ ...c, hf: { windowMs: 10_000 } });
+      vi.setSystemTime(start + 60_000);
+      engine.emitCarriers(engine.tunes.at(-1)!.fixedCenterHz!, [{ hz: 2_350_000, db: 40 }]);
+      expect(await passes()).toBe(2);
+    } finally {
+      vi.useRealTimers();
+    }
     await request(server).post("/api/mode").send({ mode: "scan" });
   });
 

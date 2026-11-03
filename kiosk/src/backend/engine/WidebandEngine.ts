@@ -747,7 +747,7 @@ export class WidebandEngine implements ScannerEngine {
         this.recordActivity(ev.id);
         this.openIds.add(ev.id);
         const ts = this.now();
-        this.emit({ type: "active", channel, freq: channel.freq, ts });
+        this.emit({ type: "active", channel, freq: channel.freq, ts, ...this.unproven() });
         if (typeof ev.db === "number") this.emit({ type: "signal", dbfs: ev.db, ts });
         break;
       }
@@ -757,7 +757,7 @@ export class WidebandEngine implements ScannerEngine {
         this.emit({ type: "release", channelId: ev.id, ts: this.now() });
         if (this.openIds.size === 0) {
           this.holdStartedAt = 0; // hold ended cleanly; next hold clocks fresh
-          this.emit({ type: "idle", ts: this.now() });
+          this.emit({ type: "idle", ts: this.now(), ...this.unproven() });
           // Idle again: dwell restarts from now so a long AUDIBLE hold doesn't
           // cause an instant hop when it closes. A silent close never re-arms
           // (spec 2026-10-13): silent traffic takes no scan time.
@@ -807,7 +807,7 @@ export class WidebandEngine implements ScannerEngine {
         // THIS, not "active" (any of the group's channels opening), so the
         // banner can't hop away from what is actually playing.
         const channel = this.audibleId ? this.findChannel(this.audibleId) : null;
-        this.emit({ type: "audible", channel, ts: this.now() });
+        this.emit({ type: "audible", channel, ts: this.now(), ...this.unproven() });
         break;
       }
       case "power": {
@@ -824,6 +824,12 @@ export class WidebandEngine implements ScannerEngine {
       default:
         break; // tuned is informational
     }
+  }
+
+  // After an exit, until READY_PROVEN_MS passes: traffic that mustn't lift the wall's error, because
+  // a helper that stalls after "ready" (or a held-open monitor or HF lane) plays until it dies again.
+  private unproven(): { unproven?: true } {
+    return this.reportReady ? { unproven: true } : {};
   }
 
   // Is any currently-open lane one the operator can actually hear? Unknown ids
@@ -894,7 +900,7 @@ export class WidebandEngine implements ScannerEngine {
     this.openIds.clear();
     // Consumers (dashboard, admin live, ws) clear their now-playing on idle;
     // the helper's late close used to deliver it, and is now dropped as stale.
-    this.emit({ type: "idle", ts });
+    this.emit({ type: "idle", ts, ...this.unproven() });
   }
 
   private sendSweepTune(centerHz: number): void {

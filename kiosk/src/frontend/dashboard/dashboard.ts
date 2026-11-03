@@ -85,10 +85,11 @@ export function reduce(s: DashState, ev: EngineEvent): DashState {
     // active/idle prove the engine is working, so they also clear any stale
     // error: a page whose WS was reconnecting during a backend restart misses
     // the status:running event and would otherwise show the old error forever.
+    // Not while the helper is unproven: it may be gone again in 2 s, blinking the error off.
     case "active":
       return {
         ...s,
-        error: null,
+        error: ev.unproven ? s.error : null,
         // The Recent log records every opening; nowPlaying only follows when
         // the engine doesn't report audibility explicitly.
         nowPlaying: s.audibleDriven ? s.nowPlaying : { freq: ev.freq, alphaTag: ev.channel.alphaTag, ...(ev.channel.tags ? { tags: ev.channel.tags } : {}) },
@@ -97,7 +98,7 @@ export function reduce(s: DashState, ev: EngineEvent): DashState {
     case "audible":
       return {
         ...s,
-        error: null,
+        error: ev.unproven ? s.error : null,
         audibleDriven: true,
         nowPlaying: ev.channel ? { freq: ev.channel.freq, alphaTag: ev.channel.alphaTag, ...(ev.channel.tags ? { tags: ev.channel.tags } : {}) } : null,
         signalDb: ev.channel ? s.signalDb : null,
@@ -124,7 +125,7 @@ export function reduce(s: DashState, ev: EngineEvent): DashState {
         warmed: ev.phase === "ready" ? true : ev.phase === "booting" ? false : s.warmed,
       };
     case "idle":
-      return { ...s, error: null, nowPlaying: s.audibleDriven ? s.nowPlaying : null };
+      return { ...s, error: ev.unproven ? s.error : null, nowPlaying: s.audibleDriven ? s.nowPlaying : null };
     case "error":
       // A hard engine error (e.g. NO_DEVICE) during warm-up must not stay
       // hidden behind the opaque full-screen overlay — force it cleared so the

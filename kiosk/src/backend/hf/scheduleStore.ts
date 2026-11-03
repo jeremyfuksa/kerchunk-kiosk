@@ -12,6 +12,7 @@ const FETCH_TIMEOUT_MS = 60_000;
 const AOKI_INDEX = "https://www1.s2.starcat.ne.jp/ndxc/nnk.htm";
 // The index names the zip's host, which changes, so a link is only followed to these.
 const AOKI_HOSTS = /^[a-z0-9.-]+\.(starcat|mediacat)\.ne\.jp$/;
+const MAX_REDIRECTS = 5;
 // The real files are about 1 MB zipped and 1 MB inside. These caps are generous for that, and
 // stop a bad or spoofed response from filling memory. EiBi has to come over plain HTTP.
 const MAX_DOWNLOAD_BYTES = 16 * 1024 * 1024;
@@ -96,13 +97,11 @@ export class ScheduleStore {
       const readme = await this.text("http://www.eibispace.de/dx/README.TXT");
       if (parseEibiReadme(readme).languages.size > 0) this.save("eibi-readme.txt", readme);
     }), await this.source("Aoki", async () => {
-      const page = await this.text(AOKI_INDEX);
+      const page = (await this.aokiBytes(new URL(AOKI_INDEX))).toString("latin1");
       // The page's labels are wrong and the path changes each season. Only the file name is reliable.
       const href = new RegExp(`href="([^"]*\\b[a-z]{2}${season}\\.zip)"`, "i").exec(page)?.[1];
       if (!href) throw new Error(`no ${season} zip on the index`);
-      const url = new URL(href, AOKI_INDEX);
-      if (url.protocol !== "https:" || !AOKI_HOSTS.test(url.hostname)) throw new Error(`refusing ${url.href}`);
-      const files = readZip(await this.bytes(url.href));
+      const files = readZip(await this.aokiBytes(new URL(href, AOKI_INDEX)));
       const name = [...files.keys()].find((n) => new RegExp(`${season}\\.txt$`, "i").test(n));
       const text = name ? files.get(name)!.toString("latin1") : "";
       if (parseAoki(text).length === 0) throw new Error("no rows");
@@ -131,8 +130,21 @@ export class ScheduleStore {
     if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`);
     return res;
   }
-  private async bytes(url: string): Promise<Buffer> {
-    const res = await this.response(url);
+  private async bytes(url: string): Promise<Buffer> { return this.read(url, await this.response(url)); }
+  /** Every hop has to stay on Aoki's hosts: fetch would follow a redirect anywhere. */
+  private async aokiBytes(first: URL): Promise<Buffer> {
+    let url = first;
+    for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+      if (url.protocol !== "https:" || !AOKI_HOSTS.test(url.hostname)) throw new Error(`refusing ${url.href}`);
+      const res = await this.fetch(url.href, { redirect: "manual", signal: AbortSignal.timeout(FETCH_TIMEOUT_MS), headers: { "User-Agent": "kerchunk-kiosk" } });
+      const location = res.headers.get("location");
+      if (res.status >= 300 && res.status < 400 && location) { url = new URL(location, url); continue; }
+      if (!res.ok) throw new Error(`${url.href}: HTTP ${res.status}`);
+      return this.read(url.href, res);
+    }
+    throw new Error(`${first.href}: too many redirects`);
+  }
+  private async read(url: string, res: Response): Promise<Buffer> {
     const chunks: Uint8Array[] = [];
     let size = 0;
     for await (const chunk of res.body ?? []) {
