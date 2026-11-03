@@ -54,7 +54,7 @@ describe("ituToIso2", () => {
 });
 
 const base: HfViewInput = {
-  hf: { stage: "sweep", band: "41m", centerHz: 7_402_500, listenHz: null, loHz: 7_200_000, hiHz: 7_600_000 },
+  hf: { band: "41m", centerHz: 7_402_500, listenHz: null, loHz: 7_200_000, hiHz: 7_600_000 },
   carriers: [], error: null, muted: false, signalDb: null, heardCount: 0, heard: [], home: { lat: 39.1, lon: -94.58 }, fmtTime: () => "10:00",
 };
 
@@ -113,11 +113,6 @@ describe("hfView", () => {
     expect(v.readout.state).toBe("error");
     expect(v.readout.meta).toBe("Receiver offline");
     expect(v.needle).toBeNull();
-  });
-
-  it("the CB stop says so", () => {
-    const v = hfView({ ...base, hf: { stage: "cbStop", band: "CB", centerHz: 27_195_000, listenHz: null } });
-    expect(v.readout).toMatchObject({ state: "hunting", meta: "CB · Checking the band" });
   });
 
   it("dial: carriers in the band become ticks, others are dropped", () => {

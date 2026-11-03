@@ -1,5 +1,7 @@
 # HF mode — design
 
+> **Superseded on 2026-11-03:** HF mode no longer stops on or holds on CB. The operator found the automatic hop wrong: "what if i wasn't done shortwave listening?" HF and CB are now separate manual modes, each with its own admin key, and the `cbStopMs`, `cbOpenDb`, `cbOpenMs` and `cbQuietMs` knobs are gone. Anything below about switching between them, automatically, is history.
+
 Date: 2026-11-02 · Status: awaiting operator review
 
 Inspired by [NightDX](https://github.com/marcozennaro/nightdx) (MIT), which does

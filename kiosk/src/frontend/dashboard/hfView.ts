@@ -59,7 +59,7 @@ export function hfView(i: HfViewInput): HfView {
   const hf = i.hf;
   const cand = hf?.candidate ?? null;
   const listen = hf?.listenHz ?? null;
-  const where = hf?.stage === "sweep" ? hf.band : "CB";
+  const where = hf?.band ?? "";
   let readout: HfReadout;
   if (i.error) {
     readout = { state: "error", meta: "Receiver offline", metaRight: "", headline: "", name: friendlyError(i.error), likely: "", details: [] };
@@ -75,7 +75,7 @@ export function hfView(i: HfViewInput): HfView {
     };
   } else {
     readout = {
-      state: "hunting", meta: hf?.stage === "cbStop" ? "CB · Checking the band" : `${where} · Hunting`,
+      state: "hunting", meta: `${where} · Hunting`,
       metaRight: i.muted ? "Muted" : "", headline: "", name: "Listening for a station", likely: "", details: [],
     };
   }

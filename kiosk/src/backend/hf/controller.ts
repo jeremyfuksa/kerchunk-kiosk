@@ -9,10 +9,9 @@ export type HfConfig = Partial<Omit<HfOpts, "isMatched">> & { bands?: HfBand[] }
 export interface HfControllerDeps {
   config: () => HfConfig | undefined;
   apply: (tune: HfTune) => void;
-  /** Every shortwave survey, for the reception log. CB stops and holds don't count. */
+  /** Every survey, for the reception log. */
   onSurvey?: (tune: HfTune, carriers: readonly HfCarrier[], floorDb: number) => void;
   isMatched?: (hz: number) => boolean;
-  isCbChannel?: (hz: number) => boolean;
   now?: () => number;
 }
 
@@ -27,7 +26,7 @@ export class HfController {
 
   private opts(): HfOpts {
     const { bands: _bands, ...knobs } = this.deps.config() ?? {};
-    return { ...HF_DEFAULTS, ...knobs, ...(this.deps.isMatched ? { isMatched: this.deps.isMatched } : {}), ...(this.deps.isCbChannel ? { isCbChannel: this.deps.isCbChannel } : {}) };
+    return { ...HF_DEFAULTS, ...knobs, ...(this.deps.isMatched ? { isMatched: this.deps.isMatched } : {}) };
   }
 
   /** Starts over on the first window. The caller tunes to current(). */
@@ -63,11 +62,10 @@ export class HfController {
 
   onEngineEvent(ev: EngineEvent): void {
     if (!this.sweep || !this.timer) return;
-    if (ev.type === "active" && ev.channel.tags?.includes("cb")) this.sweep.onCbActivity(this.now());
     if (ev.type !== "carriers") return;
-    this.sweep.setOpts(this.opts());   // live knobs, and the CB channel list
+    this.sweep.setOpts(this.opts());   // live knobs
     const live = this.sweep.current();
-    if (live.stage === "sweep" && live.centerHz === ev.centerHz) this.deps.onSurvey?.(live, this.sweep.inWindow(ev.carriers), ev.floorDb);
+    if (live.centerHz === ev.centerHz) this.deps.onSurvey?.(live, this.sweep.inWindow(ev.carriers), ev.floorDb);
     const tune = this.sweep.onCarriers(this.now(), ev.centerHz, ev.carriers);
     if (tune) this.deps.apply(tune);
   }

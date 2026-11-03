@@ -377,8 +377,8 @@ export function renderDashboard(root: HTMLElement): void {
         // The 5s poll usually reads identical values — only repaint on a change.
         const changed = s.mode !== mode || sc !== scanCount || mu !== muted || bi !== breakIn || wm !== state.warmed;
         mode = s.mode; scanCount = sc; muted = mu; breakIn = bi;
-        setCbStage(s.mode === "cb" || s.hf?.stage === "cb");
-        setHfStage(s.mode === "hf" && s.hf?.stage !== "cb");
+        setCbStage(s.mode === "cb");
+        setHfStage(s.mode === "hf");
         const hfWas = JSON.stringify(hf);
         hf = s.hf ?? null;
         if (hf && hf.band !== hfBand) { hfBand = hf.band; hfCarriers = []; poller.request("hfHeard"); }

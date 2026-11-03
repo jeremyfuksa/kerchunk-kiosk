@@ -145,19 +145,6 @@ describe("HF mode logging", () => {
     await request(server).post("/api/mode").send({ mode: "scan" });
   });
 
-  it("the CB stop writes no shortwave records", async () => {
-    const { server, engine } = await app();
-    const body = (await request(server).get("/api/config")).body;
-    await request(server).put("/api/config").send({ ...body, hf: { bands: [{ name: "49m", loHz: 5_900_000, hiHz: 6_200_000 }] } });
-    await request(server).post("/api/mode").send({ mode: "scan" });
-    await request(server).post("/api/mode").send({ mode: "hf" });
-    await request(server).post("/api/scan/skip");
-    expect(engine.tunes.at(-1)!.fixedCenterHz).toBe(27_195_000);
-    engine.emitCarriers(27_195_000, [{ hz: 27_185_000, db: 40 }]);
-    expect((await request(server).get("/api/hf/log")).body.rows).toEqual([]);
-    await request(server).post("/api/mode").send({ mode: "scan" });
-  });
-
   it("rejects a malformed night", async () => {
     const { server } = await app();
     expect((await request(server).get("/api/hf/log?night=x")).status).toBe(400);

@@ -260,10 +260,10 @@ even with green checks.
   sideband energy against their own floor, never the shared one (spec 2026-10-15).
 - **HF mode** (`POST /api/mode {mode:"hf"}`, needs `config.spyserver`): `hf/sweep.ts` decides (pure),
   `hf/controller.ts` drives it. One window at a time on a fixed timer, playing one in-band carrier the
-  survey found, with the CB band as a stop on every pass and a hold there while CB is active. Shortwave
+  survey found. It stays on shortwave until the operator changes mode: CB is its own manual mode, never
+  an automatic hop (operator, 2026-11-03). Shortwave
   stays out of the activity log and history (`isSharedActivity`), so it doesn't reach jeremyfuksa.com.
-  Knobs: `config.hf` (`windowMs`, `cbStopMs`, `minListenDb`, `cooldownMs`, `fadeMs`, `cbOpenDb`, `cbOpenMs`,
-  `cbQuietMs`, `bands`). Mode survives restarts in `mode.json` beside the config.
+  Knobs: `config.hf` (`windowMs`, `minListenDb`, `cooldownMs`, `fadeMs`, `bands`). Mode survives restarts in `mode.json` beside the config.
   Reception log: `hf/receptionLog.ts`, its own `reception.db` (never pruned), admin Log tab, `GET /api/hf/log`.
   Schedules: `hf/schedule.ts` + `scheduleStore.ts` fetch EiBi (HTTP only, its cert is expired), Aoki and HFCC
   daily into `schedules/` beside the config, keeping the last good copy. Runtime only, never in the repo:

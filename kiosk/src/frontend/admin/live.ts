@@ -10,7 +10,7 @@ export interface Tuned { freq: number; alphaTag: string; mode?: Channel["mode"] 
 
 export interface LiveState {
   mode: "scan" | "weather" | "monitor" | "cb" | "hf";
-  hf: { stage: "sweep" | "cbStop" | "cb"; band: string } | null;
+  hf: { band: string } | null;
   breakIn: boolean;
   monitoring: Tuned | null;
   nowPlaying: Tuned | null;
@@ -98,10 +98,10 @@ export function lcdView(s: LiveState): LcdView {
     };
   }
   if (s.mode === "hf") {
-    const where = s.hf?.stage === "sweep" ? s.hf.band : "CB";
+    const where = s.hf?.band ?? "";
     return s.nowPlaying
       ? { state: "live", meta: `HF · ${where}${modeTag(s.nowPlaying)}`, name: label(s.nowPlaying), freq: fmtFreq(s.nowPlaying.freq), silent, canLock: false }
-      : { state: "scanning", meta: `HF · ${where}`, name: s.hf?.stage === "cb" ? "Holding on CB…" : "Hunting…", freq: "", silent, canLock: false };
+      : { state: "scanning", meta: `HF · ${where}`, name: "Hunting…", freq: "", silent, canLock: false };
   }
   if (s.mode === "cb") {
     // CB-only listening: no lockouts or pauses — the set is the CB band itself.
