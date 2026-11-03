@@ -142,6 +142,57 @@ describe("ScheduleDb.candidates", () => {
     expect(names(7_200_000, utc(2, 12), d)).toEqual([]);
   });
 
+  describe("date windows and special days", () => {
+    const one = (row: string) => db({ eibi: row, aoki: "", hfcc: "" });
+    const on = (row: string, ts: number) => names(7_200_000, ts, one(row)).length > 0;
+
+    it("any EiBi row with dates has a window, whatever its persistence and any suffix on the stop", () => {
+      expect(on("7200;0000-2400;;CAN;Summer;E;NAm;;1;0107;3110", utc(2, 12))).toBe(false);
+      expect(on("7200;0000-2400;;CAN;Summer;E;NAm;;1;0107;2012", utc(2, 12))).toBe(true);
+      expect(on("7200;0000-2400;;CAN;Summer;E;NAm;;1;0107;3110[0923]", utc(2, 12))).toBe(false);
+      expect(on("7200;0000-2400;;CAN;Summer;E;NAm;;1;0107;3107f", utc(2, 12))).toBe(false);
+      expect(on("7200;0000-2400;;CAN;Winter;E;NAm;;1;0110;3103[0923]", utc(2, 12))).toBe(true);
+    });
+
+    it("an ordinal day is that weekday of the month, not every one", () => {
+      expect(on("7200;0000-2400;1.Sa;D;First;D;Eu;;1;;", utc(7, 12))).toBe(true);
+      expect(on("7200;0000-2400;1.Sa;D;First;D;Eu;;1;;", utc(14, 12))).toBe(false);
+      expect(on("7200;0000-2400;2.Su;D;Second;D;Eu;;1;;", utc(1, 12))).toBe(false);
+      expect(on("7200;0000-2400;2.Su;D;Second;D;Eu;;1;;", utc(8, 12))).toBe(true);
+    });
+
+    it("Last7 is the last Sunday of the month", () => {
+      expect(on("7200;0000-2400;Last7;D;Last;D;Eu;;1;;", utc(29, 12))).toBe(true);
+      expect(on("7200;0000-2400;Last7;D;Last;D;Eu;;1;;", utc(22, 12))).toBe(false);
+      expect(on("7200;0000-2400;Last7;D;Last;D;Eu;;1;;", utc(28, 12))).toBe(false);
+    });
+
+    it("a date in the days column is that date, inside a wider window", () => {
+      const row = "7200;1430-1500;22Nov;D;SM Radio;D;Eu;;6;2810;2211";
+      expect(on(row, utc(22, 14, 45))).toBe(true);
+      expect(on(row, utc(15, 14, 45))).toBe(false);
+    });
+
+    it("a slot past midnight keeps the date it started on", () => {
+      const row = "7200;2300-0100;1.Sa;D;Late;D;Eu;;1;;";
+      expect(on(row, utc(8, 0, 30))).toBe(true);    // Sunday the 8th, from the 1st Saturday
+      expect(on(row, utc(15, 0, 30))).toBe(false);  // Sunday the 15th, from the 2nd
+      const closing = "7200;2300-0100;;D;Late;D;Eu;;1;0101;3110";
+      expect(on(closing, Date.UTC(2026, 10, 1, 0, 30))).toBe(true);   // started on 31 Oct
+      expect(on(closing, Date.UTC(2026, 10, 1, 23, 30))).toBe(false);
+    });
+
+    it("an HFCC row outside its dates adds nothing, and its years count", () => {
+      const hfcc = (from: string, to: string) => ` 5985 0000 2400 40                             DHA  250 35        0 803 1234567 ${from} ${to} D 16000 Fas        UAE ADM ADM   879`;
+      const power = (from: string, to: string, ts: number) =>
+        db({ eibi: "5985;0000-2400;;UAE;Dh;E;x;;1;;", aoki: "", hfcc: hfcc(from, to) }).candidates(5_985_000, ts)[0]?.powerKw;
+      expect(power("011226", "241226", utc(2, 12))).toBeUndefined();
+      expect(power("011126", "241226", utc(2, 12))).toBe(250);
+      expect(power("251026", "280327", Date.UTC(2027, 1, 15))).toBe(250);
+      expect(power("251026", "280327", Date.UTC(2027, 5, 15))).toBeUndefined();
+    });
+  });
+
   it("HFCC alone never adds a station", () => {
     expect(names(5_985_000, utc(2, 3))).toEqual([]);
   });

@@ -4,15 +4,17 @@ import type { Candidate } from "./receptionLog.js";
 
 const ALL_DAYS = 0b1111111;   // bit 0 = Sunday
 const DAY = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
+const MONTH = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const JOIN_KHZ = 0.6;         // a schedule line is the same broadcast within this
 const RASTER_KHZ = 2.5;       // survey carriers are snapped to a 5 kHz raster
 const SAME_SITE_KM = 150;     // the lists' coordinates for one site agree well within this
 
-interface Slot { khz: number; start: number; end: number; days: number }
-export interface EibiRow extends Slot {
-  station: string; itu: string; language: string; hostItu: string; siteCode: string;
-  from?: number; to?: number;   // month*100+day, persistence-6 rows
+interface Slot {
+  khz: number; start: number; end: number; days: number;
+  from?: number; to?: number;   // month*100+day (a yearly window), or with the year in front
+  nth?: number;                 // which of the month's `days`: 1 = first, -1 = last
 }
+export interface EibiRow extends Slot { station: string; itu: string; language: string; hostItu: string; siteCode: string }
 export interface AokiRow extends Slot { station: string; language: string; powerKw?: number; site: string; itu: string; lat?: number; lon?: number }
 export interface HfccRow extends Slot { siteCode: string; powerKw?: number; itu: string }
 export interface Site { name: string; lat: number; lon: number }
@@ -37,6 +39,7 @@ const hhmm = (s: string): number => Number(s.slice(0, 2)) * 60 + Number(s.slice(
 function eibiDays(raw: string): number {
   const s = raw.trim();
   if (!s) return ALL_DAYS;
+  if (s === "Last7") return 1;   // Sunday
   if (/^[1-7]+$/.test(s)) {   // EiBi's digits start on Monday
     let m = 0;
     for (const c of s) m |= 1 << (Number(c) % 7);
@@ -50,10 +53,30 @@ function eibiDays(raw: string): number {
       if (d === DAY.indexOf(range[2]!)) return m;
     }
   }
-  // Mo,We / SaSu / 1.Sa / 1WeFr: every weekday named. Flags (irr, alt, 15Sep) name none: any day.
+  // Mo,We / SaSu / altFr: every weekday named. Flags (irr, alt, 15Sep) name none: any day.
   let m = 0;
   for (const name of s.match(/Mo|Tu|We|Th|Fr|Sa|Su/g) ?? []) m |= 1 << DAY.indexOf(name);
   return m || ALL_DAYS;
+}
+
+/** The days column can narrow a row to one date or one weekday of the month. The date columns give
+ *  the rest of the window. A stop can carry a suffix: 3110[0923], 3107f. */
+function eibiWhen(days: string, start: string, stop: string): Pick<Slot, "from" | "to" | "nth"> {
+  const ddmm = (v: string): number | undefined => {
+    const m = /^(\d{2})(\d{2})/.exec(v);
+    return m ? Number(m[2]) * 100 + Number(m[1]) : undefined;
+  };
+  const s = days.trim();
+  const date = /^(\d{1,2})([A-Z][a-z]{2})$/.exec(s);
+  const month = date ? MONTH.indexOf(date[2]!) : -1;
+  if (month >= 0) {
+    const d = (month + 1) * 100 + Number(date![1]);
+    return { from: d, to: d };
+  }
+  const from = ddmm(start);
+  const to = ddmm(stop);
+  const nth = s === "Last7" ? -1 : /^([1-5])\./.exec(s)?.[1];
+  return { ...(from !== undefined && to !== undefined ? { from, to } : {}), ...(nth !== undefined ? { nth: Number(nth) } : {}) };
 }
 
 export function parseEibi(csv: string): EibiRow[] {
@@ -65,13 +88,11 @@ export function parseEibi(csv: string): EibiRow[] {
     const persistence = Number(f[8] ?? 0);
     if (!time || persistence === 8 || persistence >= 90) continue;
     const site = /^\/([A-Z]+)(?:-(\S+))?$/.exec((f[7] ?? "").trim());
-    const dated = persistence === 6 && /^\d{4}$/.test(f[9] ?? "") && /^\d{4}$/.test(f[10] ?? "");
-    const ddmm = (v: string) => Number(v.slice(2, 4)) * 100 + Number(v.slice(0, 2));
     out.push({
       khz: Number(f[0]), start: hhmm(time[1]!), end: hhmm(time[2]!), days: eibiDays(f[2] ?? ""),
       station: (f[4] ?? "").trim(), itu: (f[3] ?? "").trim(), language: (f[5] ?? "").trim(),
       hostItu: site ? site[1]! : (f[3] ?? "").trim(), siteCode: site ? site[2] ?? "" : (f[7] ?? "").trim(),
-      ...(dated ? { from: ddmm(f[9]!), to: ddmm(f[10]!) } : {}),
+      ...eibiWhen(f[2] ?? "", f[9] ?? "", f[10] ?? ""),
     });
   }
   return out;
@@ -161,8 +182,10 @@ export function parseHfcc(text: string): HfccRow[] {
     const khz = Number(l.slice(0, 5));
     if (!khz) continue;
     const kw = Number(l.slice(51, 55));
+    const ddmmyy = (v: string): number => 20_00_00_00 + Number(v.slice(4, 6)) * 10_000 + Number(v.slice(2, 4)) * 100 + Number(v.slice(0, 2));
     out.push({
       khz, start: hhmm(l.slice(6, 10)), end: hhmm(l.slice(11, 15)), days: aokiDays(l.slice(72, 79)),
+      from: ddmmyy(l.slice(80, 86)), to: ddmmyy(l.slice(87, 93)),
       siteCode: l.slice(47, 50).trim(), ...(kw > 0 ? { powerKw: kw } : {}), itu: l.slice(113, 116).trim(),
     });
   }
@@ -197,6 +220,19 @@ function onAir(s: Slot, minute: number, dow: number): boolean {
   return (!!today && minute >= s.start) || (!!yesterday && minute < s.end);
 }
 
+/** Is this the slot's date? A slot past midnight belongs to the date it started. */
+function inDates(s: Slot, d: Date): boolean {
+  const minute = d.getUTCHours() * 60 + d.getUTCMinutes();
+  const day = s.end < s.start && minute < s.end ? new Date(d.getTime() - 86_400_000) : d;
+  const date = day.getUTCDate();
+  if (s.nth === -1 && new Date(day.getTime() + 7 * 86_400_000).getUTCMonth() === day.getUTCMonth()) return false;
+  if (s.nth !== undefined && s.nth > 0 && Math.ceil(date / 7) !== s.nth) return false;
+  if (s.from === undefined || s.to === undefined) return true;
+  const mmdd = (day.getUTCMonth() + 1) * 100 + date;
+  const today = s.from > 9999 ? day.getUTCFullYear() * 10_000 + mmdd : mmdd;
+  return s.from <= s.to ? today >= s.from && today <= s.to : today >= s.from || today <= s.to;
+}
+
 /** Not a broadcast: EiBi marks these with a "-" language or names the mode in the station. */
 export function isUtility(c: { station: string; language?: string }): boolean {
   return !!c.language?.startsWith("-") || /\b(USB|LSB|FSK|CW|RTTY|Fax|Meteo|Volmet|DGPS|STANAG)\b/i.test(c.station);
@@ -228,11 +264,13 @@ export class ScheduleDb {
     this.hfcc = byKhz(data.hfcc);
   }
 
-  private near<T extends Slot>(index: Map<number, T[]>, khz: number, span: number, minute: number, dow: number): T[] {
+  private near<T extends Slot>(index: Map<number, T[]>, khz: number, span: number, d: Date): T[] {
+    const minute = d.getUTCHours() * 60 + d.getUTCMinutes();
+    const dow = d.getUTCDay();
     const out: T[] = [];
     for (let k = Math.floor(khz - span); k <= Math.ceil(khz + span); k++) {
       for (const r of index.get(k) ?? []) {
-        if (Math.abs(r.khz - khz) <= span && onAir(r, minute, dow)) out.push(r);
+        if (Math.abs(r.khz - khz) <= span && onAir(r, minute, dow) && inDates(r, d)) out.push(r);
       }
     }
     return out;
@@ -241,14 +279,9 @@ export class ScheduleDb {
   /** Likely stations for a surveyed carrier, likeliest first. */
   candidates(hz: number, ts: number): Candidate[] {
     const d = new Date(ts);
-    const minute = d.getUTCHours() * 60 + d.getUTCMinutes();
-    const dow = d.getUTCDay();
-    const today = (d.getUTCMonth() + 1) * 100 + d.getUTCDate();
     const khz = hz / 1000;
     const { readme, hfccSites } = this.data;
-    const eibi = this.near(this.eibi, khz, RASTER_KHZ, minute, dow).filter((r) =>
-      r.from === undefined || r.to === undefined
-      || (r.from <= r.to ? today >= r.from && today <= r.to : today >= r.from || today <= r.to));
+    const eibi = this.near(this.eibi, khz, RASTER_KHZ, d);
     const out = new Map<string, Candidate>();
     for (const r of eibi) {
       if (out.has(r.station)) continue;
@@ -257,9 +290,9 @@ export class ScheduleDb {
       // distance where both are known: the lists file a territory (Guam) under its administrator.
       const sameTransmitter = (itu: string, at?: { lat: number; lon: number }): boolean =>
         named && at ? distanceKm(named, at) <= SAME_SITE_KM : itu === r.hostItu;
-      const aoki = this.near(this.aoki, r.khz, JOIN_KHZ, minute, dow)
+      const aoki = this.near(this.aoki, r.khz, JOIN_KHZ, d)
         .find((a) => sameTransmitter(a.itu, a.lat !== undefined && a.lon !== undefined ? { lat: a.lat, lon: a.lon } : undefined));
-      const hfcc = this.near(this.hfcc, r.khz, JOIN_KHZ, minute, dow).find((h) => sameTransmitter(h.itu, hfccSites.get(h.siteCode)));
+      const hfcc = this.near(this.hfcc, r.khz, JOIN_KHZ, d).find((h) => sameTransmitter(h.itu, hfccSites.get(h.siteCode)));
       const hfccSite = hfcc ? hfccSites.get(hfcc.siteCode) : undefined;
       const place = named
         ?? (aoki?.lat !== undefined && aoki.lon !== undefined ? { name: aoki.site, lat: aoki.lat, lon: aoki.lon } : undefined)
@@ -271,7 +304,7 @@ export class ScheduleDb {
         ...(power !== undefined ? { powerKw: power } : {}),
       }, place));
     }
-    for (const r of this.near(this.aoki, khz, RASTER_KHZ, minute, dow)) {
+    for (const r of this.near(this.aoki, khz, RASTER_KHZ, d)) {
       // Aoki names a station only where EiBi has nothing on this slot.
       if (eibi.length > 0 || out.has(r.station)) continue;
       out.set(r.station, this.finish({
