@@ -62,6 +62,16 @@ describe("dashboard reduce", () => {
     expect(s.error).toBeNull();
   });
 
+  it("an unproven helper's traffic leaves the error up: it may be gone again in 2 s", () => {
+    const ch = { id: "c1", freq: 1, alphaTag: "x", mode: "fm" as const, enabled: true };
+    let s = reduce(initialState(), { type: "error", code: "X", message: "boom", ts: 1 });
+    s = reduce(s, { type: "active", channel: ch, freq: 1, ts: 2, unproven: true });
+    s = reduce(s, { type: "audible", channel: ch, ts: 3, unproven: true });
+    s = reduce(s, { type: "idle", ts: 4, unproven: true });
+    expect(s.error).toBe("boom");
+    expect(reduce(s, { type: "status", state: "running", ts: 5 }).error).toBeNull();
+  });
+
   it("status running clears any error", () => {
     let s = reduce(initialState(), { type: "error", code: "X", message: "boom", ts: 1 });
     s = reduce(s, { type: "status", state: "running", ts: 2 });
