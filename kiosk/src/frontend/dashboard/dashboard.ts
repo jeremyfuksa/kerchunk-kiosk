@@ -8,7 +8,8 @@ import { hfHtml, hfView, mapShouldRun, type HfHeard, type HfView } from "./hfVie
 import { countrySelector } from "./ituCountry.js";
 import worldSvg from "./world.svg?raw";
 import { atlasDots, atlasTraces, hitAction, tracesSvg, type HitKey } from "./atlas.js";
-import { greylineDue, greylineSvg, skySvg, STAGE_VIEWBOX } from "./greyline.js";
+import { greylineDue, greylineSvg, skySvg, stagePx, STAGE_VIEWBOX } from "./greyline.js";
+import { atlasSnapshotSvg, paintSnapshot, runZoom, zoomFor, type ZoomDirection, hfLogWanted } from "./zoom.js";
 import { HF_WALL_DEFAULTS, HitAnimator } from "./hitAnim.js";
 import { robinson } from "./robinson.js";
 import { mountActivityMap } from "../map/map.js";
@@ -151,6 +152,7 @@ function fmtTime(ts: number): string { return new Date(ts).toLocaleTimeString();
 export { esc } from "../lib/format.js";
 
 const GREYLINE_CHECK_MS = 30_000;
+const MAP_DRAW_WAIT_MS = 3_000;
 
 export function renderDashboard(root: HTMLElement): void {
   let state = initialState();
@@ -176,6 +178,8 @@ export function renderDashboard(root: HTMLElement): void {
       </div>
       <div id="cbStage" class="kc-cb" aria-hidden="true"></div>
       <div id="hfStage" class="kc-hf" aria-hidden="true"><svg id="hfSky" class="kc-hf__layer" viewBox="${STAGE_VIEWBOX}"></svg><div id="hfLand" class="kc-hf__layer"></div><svg id="hfDots" class="kc-hf__layer" viewBox="${STAGE_VIEWBOX}"></svg><svg id="hfTraces" class="kc-hf__layer" viewBox="${STAGE_VIEWBOX}"></svg><svg id="hfLive" class="kc-hf__layer" viewBox="${STAGE_VIEWBOX}"></svg><div id="hfPulse" class="kc-hf__pulse"></div><div id="hfContent"></div></div>
+      <canvas id="hfSnap" class="kc-hf__snap" aria-hidden="true" hidden></canvas>
+      <div id="hfHaze" class="kc-hf__haze" aria-hidden="true"></div>
     </div>`;
   // ── Poll budget ─────────────────────────────────────────────────────────
   // Three independent timers (status 5 s, system 10 s, weather 10 min) used to
@@ -254,6 +258,7 @@ export function renderDashboard(root: HTMLElement): void {
   const hfSkyEl = root.querySelector<SVGSVGElement>("#hfSky")!;
   const hfLandEl = root.querySelector<HTMLElement>("#hfLand")!;
   const hfDotsEl = root.querySelector<SVGSVGElement>("#hfDots")!;
+  const hfSnapEl = root.querySelector<HTMLCanvasElement>("#hfSnap")!;
   const hfTracesEl = root.querySelector<SVGSVGElement>("#hfTraces")!;
   let hfOpts = HF_WALL_DEFAULTS;
   const hitAnim = new HitAnimator(root.querySelector<SVGSVGElement>("#hfLive")!, root.querySelector<HTMLElement>("#hfPulse")!, () => hfOpts);
@@ -285,10 +290,12 @@ export function renderDashboard(root: HTMLElement): void {
     hfTracesKey = "";
     schedule();
   }).catch(() => { /* default stands */ });
+  let hfLogLoaded = false;
   poller.poll("hfHeard", () => {
-    if (!hfOn) return Promise.resolve();
+    if (!hfLogWanted(hfOn, hfLogLoaded)) return Promise.resolve();
     return api.getHfLog(null).then((log) => {
       hfLog = log.rows as HfHeard[];
+      hfLogLoaded = true;
       schedule();
     }).catch(() => { /* the list fills next window */ });
   }, Number.POSITIVE_INFINITY);
@@ -301,12 +308,58 @@ export function renderDashboard(root: HTMLElement): void {
     if (group) group.innerHTML = greylineSvg(now);
   }
 
-  function setHfStage(on: boolean): void {
+  // The zoom moves a flat picture of the Atlas, never the live layers, which can't re-raster that fast. The real
+  // stage sits finished underneath and shows when the picture is hidden. A change of mind finishes it at once.
+  let zoomDone: (() => void) | null = null;
+  function finishZoom(): void {
+    const done = zoomDone;
+    zoomDone = null;
+    done?.();
+  }
+  function atlasPicture(): Promise<void> {
+    const css = getComputedStyle(root);
+    const color = (name: string): string => css.getPropertyValue(name).trim();
+    const home = robinson(hfHome.lat, hfHome.lon);
+    const { clientWidth: width, clientHeight: height } = hfEl;
+    const svg = atlasSnapshotSvg({
+      sky: skySvg(Date.now()), world: worldSvg, dots: atlasDots(hfLog), traces: atlasTraces(hfLog, hfHome, null),
+      traceOpacity: hfOpts.traceOpacity, home, width, height, viewBox: STAGE_VIEWBOX,
+      colors: { land: color("--kc-hf-land"), border: color("--kc-hf-border"), dot: color("--kc-hf-dot"), glass: color("--kc-glass") },
+    });
+    return paintSnapshot(hfSnapEl, svg, width, height);
+  }
+  function startZoom(direction: ZoomDirection, after: () => void): void {
+    const origin = stagePx(robinson(hfHome.lat, hfHome.lon), hfEl.clientWidth);
+    hfSnapEl.hidden = false;
+    const run = runZoom(direction, hfSnapEl, root.querySelector<HTMLElement>("#mapBase")!, root.querySelector<HTMLElement>("#hfHaze")!, origin, hfOpts.zoomMs);
+    dashEl.classList.add("hfZoom");
+    const done = (): void => {
+      run.stop();
+      hfSnapEl.hidden = true;
+      dashEl.classList.remove("hfZoom");
+      after();
+    };
+    zoomDone = done;
+    void run.finished.then(() => { if (zoomDone === done) finishZoom(); });
+  }
+  /** Paints the picture, then zooms, unless something else has happened by then. No picture, no zoom. */
+  function zoomWhenReady(direction: ZoomDirection, ready: Promise<unknown>, after: () => void): void {
+    const pending = (): void => { after(); };
+    zoomDone = pending;
+    void Promise.all([atlasPicture(), ready]).then(
+      () => { if (zoomDone === pending) { zoomDone = null; startZoom(direction, after); } },
+      () => { if (zoomDone === pending) finishZoom(); },
+    );
+  }
+
+  function setHfStage(on: boolean, zoom: ZoomDirection | null): void {
     if (on === hfOn) return;
+    finishZoom();
     hfOn = on;
-    dashEl.classList.toggle("hfStage", on);
     hfEl.setAttribute("aria-hidden", String(!on));
-    syncMap();
+    if (on) dashEl.classList.add("hfStage");
+    // Zooming in to HF, the map stays live until it's out of sight. Zooming back, it must be drawn first.
+    if (zoom !== "out") syncMap();
     if (on) {
       if (!hfSkyEl.firstElementChild) { hfGreylineAt = Date.now(); hfSkyEl.innerHTML = skySvg(hfGreylineAt); }
       else redrawGreyline();
@@ -319,6 +372,10 @@ export function renderDashboard(root: HTMLElement): void {
         svg.removeAttribute("height");
       }
       poller.request("hfHeard");
+      if (zoom === "out") {
+        dashEl.classList.add("hfZoomWait");   // the map stays up until the picture is ready
+        zoomWhenReady("out", Promise.resolve(), () => { dashEl.classList.remove("hfZoomWait"); syncMap(); });
+      }
     } else {
       hfKey = "";
       if (hfGreylineTimer) { clearInterval(hfGreylineTimer); hfGreylineTimer = null; }
@@ -327,6 +384,9 @@ export function renderDashboard(root: HTMLElement): void {
       hfHit = null;
       hfFading = null;
       hitAnim.clear();
+      const leave = (): void => { dashEl.classList.remove("hfStage"); };
+      if (zoom === "in" && mapHandle) zoomWhenReady("in", mapHandle.whenDrawn(MAP_DRAW_WAIT_MS), leave);
+      else leave();
     }
   }
 
@@ -425,6 +485,7 @@ export function renderDashboard(root: HTMLElement): void {
   // Mode and break-in come from /api/status (mode flips restart the engine, so
   // the status event re-polls); they name the pill and the glass's meta line.
   let mode: "scan" | "weather" | "monitor" | "cb" | "hf" = "scan";
+  let modeSeen = false;
   let breakIn = false;
   function paintStatus(): Promise<void> {
     return api.getStatus()
@@ -440,9 +501,11 @@ export function renderDashboard(root: HTMLElement): void {
         const wm = (!sawWarmupEvent && typeof s.warmed === "boolean") ? s.warmed : state.warmed;
         // The 5s poll usually reads identical values — only repaint on a change.
         const changed = s.mode !== mode || sc !== scanCount || mu !== muted || bi !== breakIn || wm !== state.warmed;
+        const zoom = matchMedia("(prefers-reduced-motion: reduce)").matches ? null : zoomFor(modeSeen ? mode : null, s.mode, bi, mapHandle !== null);
+        modeSeen = true;
         mode = s.mode; scanCount = sc; muted = mu; breakIn = bi;
         setCbStage(s.mode === "cb");
-        setHfStage(s.mode === "hf");
+        setHfStage(s.mode === "hf", zoom);
         const hfWas = JSON.stringify(hf);
         hf = s.hf ?? null;
         if (hf && hf.band !== hfBand) { hfBand = hf.band; hfCarriers = []; poller.request("hfHeard"); }

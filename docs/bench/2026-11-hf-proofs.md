@@ -255,3 +255,8 @@ With pulses on the live trace, 11:56 to 12:26 local, against that run: 53 °C pe
 
 Not proven live yet: noon clearing the traces, because no noon has passed on this code.
 
+### The zoom
+
+Final version, which moves a flat picture. Six zooms on the wall, 25 s apart, 2026-11-03 at about 13:10 local: 53 °C before, 58 °C peak, 50 °C within two minutes of the last one. An earlier version that scaled the live layers peaked at 62 °C.
+
+Landing, checked by comparing frames with the settled wall over the top 470 px, three trips from a fresh load: 0% different right after landing, with no late repaint.
