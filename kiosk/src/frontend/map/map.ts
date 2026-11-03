@@ -137,6 +137,8 @@ export interface ActivityMapOptions {
 export interface MapHandle {
   pause(): void;
   resume(): void;
+  /** Resolves once the map has drawn at least once and had a frame, or at the timeout. Never moves the camera. */
+  whenDrawn(timeoutMs: number): Promise<void>;
 }
 
 export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptions = {}): Promise<MapHandle | null> {
@@ -268,6 +270,8 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
     });
     const poke = (): void => { if (glass && !glass.off) glass.poke(); };
     let paused = false; // CB stage: hidden map — no draws, no polls
+    let drawnOnce = false;
+    google.maps.event.addListenerOnce(map, "idle", () => { drawnOnce = true; });
     // How often the wall really redraws (spec 2026-10-02 proof): one journal
     // line every PACING_REPORT_MS on the kiosk.
     const PACING_REPORT_MS = 5 * 60_000;
@@ -659,6 +663,14 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
     }).connect();
 
     return {
+      whenDrawn(timeoutMs: number): Promise<void> {
+        const frame = (): Promise<void> => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+        if (drawnOnce) return frame();
+        return new Promise((resolve) => {
+          const timer = setTimeout(resolve, timeoutMs);
+          google.maps.event.addListenerOnce(map, "idle", () => { clearTimeout(timer); resolve(); });
+        });
+      },
       pause(): void { paused = true; glass?.setPaused(true); },
       resume(): void {
         if (!paused) return;

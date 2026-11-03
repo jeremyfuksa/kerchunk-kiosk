@@ -268,6 +268,8 @@ even with green checks.
   `hitAnim.ts` (the only moving layer), `hfView.ts` (text). Four stacked layers: sky, land and dots, traces, live. A hit must never repaint the
   still ones. Knobs: `display.hf` (`greylineStepMs`, `traceOpacity`, `hit*Ms`, `zoomMs`), read at page load. The WS event `statusChanged`
   makes the wall poll at once, because `/api/status` alone would make hits up to 5 s late.
+  Pulses on the live trace and the zoom to and from map mode (`dashboard/zoom.ts`) animate transforms and opacity only. The zoom never
+  moves the Google map's camera.
   Reception log: `hf/receptionLog.ts`, its own `reception.db` (never pruned), admin Log tab, `GET /api/hf/log`.
   Schedules: `hf/schedule.ts` + `scheduleStore.ts` fetch EiBi (HTTP only, its cert is expired), Aoki and HFCC
   daily into `schedules/` beside the config, keeping the last good copy. Runtime only, never in the repo:

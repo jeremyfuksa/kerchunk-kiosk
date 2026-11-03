@@ -286,6 +286,7 @@ html[data-page="dashboard"] .kc-cb__needle {
 html[data-page="dashboard"] .kc-hf { display: none; }
 html[data-page="dashboard"] .dash.hfStage .kc-hf { display: block; position: absolute; inset: 0; z-index: 2; }
 html[data-page="dashboard"] .dash.hfStage .mapBase { visibility: hidden; }
+html[data-page="dashboard"] .dash.hfStage.hfZoom .mapBase { visibility: visible; }
 html[data-page="dashboard"] .dash.hfStage .kc-corner__slot,
 html[data-page="dashboard"] .dash.hfStage .kc-recent { display: none; }
 /* The corner stays: it holds the alert banner. */

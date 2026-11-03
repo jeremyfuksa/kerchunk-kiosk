@@ -8,7 +8,8 @@ import { hfHtml, hfView, mapShouldRun, type HfHeard, type HfView } from "./hfVie
 import { countrySelector } from "./ituCountry.js";
 import worldSvg from "./world.svg?raw";
 import { atlasDots, atlasTraces, hitAction, tracesSvg, type HitKey } from "./atlas.js";
-import { greylineDue, greylineSvg, skySvg, STAGE_VIEWBOX } from "./greyline.js";
+import { greylineDue, greylineSvg, skySvg, stagePx, STAGE_VIEWBOX } from "./greyline.js";
+import { runZoom, zoomFor, type ZoomDirection } from "./zoom.js";
 import { HF_WALL_DEFAULTS, HitAnimator } from "./hitAnim.js";
 import { robinson } from "./robinson.js";
 import { mountActivityMap } from "../map/map.js";
@@ -151,6 +152,7 @@ function fmtTime(ts: number): string { return new Date(ts).toLocaleTimeString();
 export { esc } from "../lib/format.js";
 
 const GREYLINE_CHECK_MS = 30_000;
+const MAP_DRAW_WAIT_MS = 3_000;
 
 export function renderDashboard(root: HTMLElement): void {
   let state = initialState();
@@ -301,12 +303,30 @@ export function renderDashboard(root: HTMLElement): void {
     if (group) group.innerHTML = greylineSvg(now);
   }
 
-  function setHfStage(on: boolean): void {
+  // The stage swap lands when the zoom does; a change of mind mid-zoom finishes it at once.
+  let zoomDone: (() => void) | null = null;
+  function finishZoom(): void {
+    const done = zoomDone;
+    zoomDone = null;
+    done?.();
+  }
+  function startZoom(direction: ZoomDirection, after: () => void): void {
+    dashEl.classList.add("hfZoom");
+    const origin = stagePx(robinson(hfHome.lat, hfHome.lon), hfEl.clientWidth);
+    const run = runZoom(direction, hfEl, root.querySelector<HTMLElement>("#mapBase")!, origin, hfOpts.zoomMs);
+    const done = (): void => { run.stop(); dashEl.classList.remove("hfZoom"); after(); };
+    zoomDone = done;
+    void run.finished.then(() => { if (zoomDone === done) finishZoom(); });
+  }
+
+  function setHfStage(on: boolean, zoom: ZoomDirection | null): void {
     if (on === hfOn) return;
+    finishZoom();
     hfOn = on;
-    dashEl.classList.toggle("hfStage", on);
     hfEl.setAttribute("aria-hidden", String(!on));
-    syncMap();
+    if (on) dashEl.classList.add("hfStage");
+    // Zooming in to HF, the map stays live until it's out of sight. Zooming back, it must be drawn first.
+    if (zoom !== "out") syncMap();
     if (on) {
       if (!hfSkyEl.firstElementChild) { hfGreylineAt = Date.now(); hfSkyEl.innerHTML = skySvg(hfGreylineAt); }
       else redrawGreyline();
@@ -319,6 +339,7 @@ export function renderDashboard(root: HTMLElement): void {
         svg.removeAttribute("height");
       }
       poller.request("hfHeard");
+      if (zoom === "out") startZoom("out", syncMap);
     } else {
       hfKey = "";
       if (hfGreylineTimer) { clearInterval(hfGreylineTimer); hfGreylineTimer = null; }
@@ -327,6 +348,16 @@ export function renderDashboard(root: HTMLElement): void {
       hfHit = null;
       hfFading = null;
       hitAnim.clear();
+      const leave = (): void => { dashEl.classList.remove("hfStage", "hfZoom"); };
+      if (zoom === "in" && mapHandle) {
+        dashEl.classList.add("hfZoom");
+        zoomDone = leave;
+        void mapHandle.whenDrawn(MAP_DRAW_WAIT_MS).then(() => {
+          if (zoomDone !== leave) return;
+          zoomDone = null;
+          startZoom("in", leave);
+        });
+      } else leave();
     }
   }
 
@@ -425,6 +456,7 @@ export function renderDashboard(root: HTMLElement): void {
   // Mode and break-in come from /api/status (mode flips restart the engine, so
   // the status event re-polls); they name the pill and the glass's meta line.
   let mode: "scan" | "weather" | "monitor" | "cb" | "hf" = "scan";
+  let modeSeen = false;
   let breakIn = false;
   function paintStatus(): Promise<void> {
     return api.getStatus()
@@ -440,9 +472,11 @@ export function renderDashboard(root: HTMLElement): void {
         const wm = (!sawWarmupEvent && typeof s.warmed === "boolean") ? s.warmed : state.warmed;
         // The 5s poll usually reads identical values — only repaint on a change.
         const changed = s.mode !== mode || sc !== scanCount || mu !== muted || bi !== breakIn || wm !== state.warmed;
+        const zoom = matchMedia("(prefers-reduced-motion: reduce)").matches ? null : zoomFor(modeSeen ? mode : null, s.mode, bi, mapHandle !== null);
+        modeSeen = true;
         mode = s.mode; scanCount = sc; muted = mu; breakIn = bi;
         setCbStage(s.mode === "cb");
-        setHfStage(s.mode === "hf");
+        setHfStage(s.mode === "hf", zoom);
         const hfWas = JSON.stringify(hf);
         hf = s.hf ?? null;
         if (hf && hf.band !== hfBand) { hfBand = hf.band; hfCarriers = []; poller.request("hfHeard"); }
