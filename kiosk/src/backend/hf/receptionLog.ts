@@ -27,6 +27,8 @@ export interface ReceptionRow {
   peakDb: number;
   passes: number;
   onSpeaker: boolean;
+  /** When it last played, or null if it never has. */
+  playedTs: number | null;
   station: string | null;
   country: string | null;
   language: string | null;
@@ -58,6 +60,10 @@ export class ReceptionLog {
       );
       CREATE INDEX IF NOT EXISTS reception_night ON reception (night, freq_hz);
     `);
+    const columns = this.db.prepare("PRAGMA table_info(reception)").all() as Array<{ name: string }>;
+    if (!columns.some((c) => c.name === "played_ts")) {
+      this.db.exec("ALTER TABLE reception ADD COLUMN played_ts INTEGER; UPDATE reception SET played_ts = last_ts WHERE on_speaker = 1;");
+    }
   }
 
   /** One survey of one window. `candidates` lists the schedule matches, likeliest first. */
@@ -97,10 +103,10 @@ export class ReceptionLog {
   /** The most recent row for this frequency tonight was on the speaker. */
   markOnSpeaker(ts: number, hz: number): void {
     this.db.prepare(`
-      UPDATE reception SET on_speaker = 1 WHERE id = (
+      UPDATE reception SET on_speaker = 1, played_ts = ? WHERE id = (
         SELECT id FROM reception WHERE night = ? AND ABS(freq_hz - ?) <= ? ORDER BY last_ts DESC, id DESC LIMIT 1
       )
-    `).run(nightOf(ts), hz, SAME_STATION_HZ);
+    `).run(ts, nightOf(ts), hz, SAME_STATION_HZ);
   }
 
   rows(night: string): ReceptionRow[] {
@@ -108,6 +114,7 @@ export class ReceptionLog {
     return rows.map((r) => ({
       night: r.night as string, firstTs: r.first_ts as number, lastTs: r.last_ts as number, freqHz: r.freq_hz as number,
       band: r.band as string, peakDb: r.peak_db as number, passes: r.passes as number, onSpeaker: r.on_speaker === 1,
+      playedTs: r.played_ts as number | null,
       station: r.station as string | null, country: r.country as string | null, language: r.language as string | null,
       site: r.site as string | null, lat: r.lat as number | null, lon: r.lon as number | null,
       powerKw: r.power_kw as number | null, distanceKm: r.distance_km as number | null,

@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach } from "vitest";
 import request from "supertest";
 import { mkdtempSync, rmSync } from "node:fs";
+import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { nightOf, ReceptionLog, type Candidate } from "../src/backend/hf/receptionLog.js";
@@ -45,6 +46,18 @@ describe("ReceptionLog", () => {
     l.record(ts, "49m", [{ hz: 5_950_000, db: 30 }], () => [{ station: "Radio X" }]);
     l.markOnSpeaker(ts, 5_950_000);
     expect(l.rows("2026-11-02").find((r) => r.station === "Radio X")?.onSpeaker).toBe(true);
+  });
+
+  it("remembers when a station last played, and hearing it on a later survey doesn't move that", () => {
+    const l = log();
+    l.record(at(22), "49m", [{ hz: 5_950_000, db: 30 }], () => []);
+    expect(l.rows("2026-11-02")[0]?.playedTs).toBeNull();
+    l.markOnSpeaker(at(22, 1), 5_950_000);
+    expect(l.rows("2026-11-02")[0]?.playedTs).toBe(at(22, 1));
+    l.record(at(22, 30), "49m", [{ hz: 5_950_000, db: 30 }], () => []);
+    expect(l.rows("2026-11-02")[0]?.playedTs).toBe(at(22, 1));
+    l.markOnSpeaker(at(22, 45), 5_950_000);
+    expect(l.rows("2026-11-02")[0]?.playedTs).toBe(at(22, 45));
   });
 
   it("counts passes, not sightings", () => {
@@ -177,5 +190,26 @@ describe("HF mode logging", () => {
     engine.emitCarriers(engine.tunes.at(-1)!.fixedCenterHz!, [{ hz: 2_350_000, db: 40 }]);
     history.prune();
     expect(receptionLog.nights()).toHaveLength(1);
+  });
+
+  it("upgrades an existing log: rows that played count from when they were last heard", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-log-"));
+    const path = join(dir, "reception.db");
+    const old = new DatabaseSync(path);
+    old.exec(`CREATE TABLE reception (
+      id INTEGER PRIMARY KEY, night TEXT NOT NULL, first_ts INTEGER NOT NULL, last_ts INTEGER NOT NULL,
+      freq_hz INTEGER NOT NULL, band TEXT NOT NULL, peak_db REAL NOT NULL, passes INTEGER NOT NULL,
+      on_speaker INTEGER NOT NULL DEFAULT 0, station TEXT, country TEXT, language TEXT, site TEXT,
+      lat REAL, lon REAL, power_kw REAL, distance_km REAL, others TEXT NOT NULL DEFAULT '[]');
+      INSERT INTO reception (night, first_ts, last_ts, freq_hz, band, peak_db, passes, on_speaker) VALUES
+        ('2026-11-02', 1, 500, 5950000, '49m', 30, 1, 1), ('2026-11-02', 1, 600, 6000000, '49m', 30, 1, 0);`);
+    old.close();
+    for (let i = 0; i < 2; i++) {   // a second open must not re-run it
+      const l = new ReceptionLog({ path });
+      const rows = l.rows("2026-11-02");
+      expect(rows.map((r) => r.playedTs)).toEqual([500, null]);
+      l.close();
+    }
+    rmSync(dir, { recursive: true });
   });
 });
