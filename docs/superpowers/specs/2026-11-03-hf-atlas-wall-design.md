@@ -89,7 +89,7 @@ A wall that loads or reloads while a station is playing draws the line and ring 
 
 The operator asked for switching between UHF and HF to look like zooming out of the local map to the global one, and back. Scan mode's map and the Atlas are different pictures at very different scales, so it's a staged illusion and not a real camera move:
 
-- **Out to HF:** about 1.5 s, eased (tune). The local map shrinks toward home and fades, while the Atlas starts scaled up about 8× around home and settles to full size. The crossfade hides the jump in scale.
+- **Out to HF:** about 1.5 s, eased (tune). The local map shrinks and the Atlas settles from about 8× around home to full size, fading in on top of the map while the map is still large, so the map's edges never show. The crossfade hides the jump in scale.
 - **Back to the map:** the reverse. The Atlas scales up around home and fades into the local map.
 - **The Google map must not move.** No camera moves or zoom calls: its layer is transformed as a still, because camera moves are what drove heat before (`CLAUDE.md`, "the kiosk camera stays still"). Pause it once it's hidden, as today. Coming back, it has to be drawn before the zoom starts, so hold on the Atlas until it's ready.
 - **It starts when the wall learns of the change.** The wall only polls `/api/status` every 5 s (`dashboard.ts`), so add a WebSocket event for a mode change, or the zoom can start up to 5 s after the button press, and after the audio has already changed.

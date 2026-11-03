@@ -4,7 +4,7 @@ export type ZoomDirection = "out" | "in";
 type Mode = "scan" | "weather" | "monitor" | "cb" | "hf";
 
 const STAGE_FROM = 8;
-const MAP_TO = 0.3;
+const MAP_TO = 0.55;
 
 export function zoomFor(prev: Mode | null, next: Mode, breakIn: boolean, hasMap: boolean): ZoomDirection | null {
   if (!hasMap || breakIn || prev === null) return null;
@@ -16,17 +16,17 @@ export function zoomFor(prev: Mode | null, next: Mode, breakIn: boolean, hasMap:
 type ZoomFrame = { offset: number; transform: string; opacity: number };
 
 export function zoomFrames(direction: ZoomDirection): { stage: ZoomFrame[]; map: ZoomFrame[] } {
-  // The crossfade sits mid-move, where it hides the jump in scale.
+  // The Atlas is on top: it fades in over a still-large map, so the map's edges never show against the dark.
   const stage: ZoomFrame[] = [
     { offset: 0, transform: `scale(${STAGE_FROM})`, opacity: 0 },
-    { offset: 0.35, transform: `scale(${1 + (STAGE_FROM - 1) * 0.45})`, opacity: 0 },
-    { offset: 0.65, transform: `scale(${1 + (STAGE_FROM - 1) * 0.15})`, opacity: 1 },
+    { offset: 0.1, transform: `scale(${1 + (STAGE_FROM - 1) * 0.8})`, opacity: 0 },
+    { offset: 0.5, transform: `scale(${1 + (STAGE_FROM - 1) * 0.25})`, opacity: 1 },
     { offset: 1, transform: "scale(1)", opacity: 1 },
   ];
   const map: ZoomFrame[] = [
     { offset: 0, transform: "scale(1)", opacity: 1 },
-    { offset: 0.35, transform: `scale(${1 - (1 - MAP_TO) * 0.55})`, opacity: 1 },
-    { offset: 0.65, transform: `scale(${1 - (1 - MAP_TO) * 0.85})`, opacity: 0 },
+    { offset: 0.5, transform: "scale(0.7)", opacity: 1 },
+    { offset: 0.6, transform: "scale(0.65)", opacity: 0 },
     { offset: 1, transform: `scale(${MAP_TO})`, opacity: 0 },
   ];
   const reverse = (f: ZoomFrame[]): ZoomFrame[] => [...f].reverse().map((k) => ({ ...k, offset: 1 - k.offset }));

@@ -31,14 +31,22 @@ describe("zoomFrames", () => {
     expect(f.stage[0]).toMatchObject({ transform: "scale(8)", opacity: 0 });
     expect(f.stage.at(-1)).toMatchObject({ transform: "scale(1)", opacity: 1 });
     expect(f.map[0]).toMatchObject({ transform: "scale(1)", opacity: 1 });
-    expect(f.map.at(-1)).toMatchObject({ transform: "scale(0.3)", opacity: 0 });
+    expect(f.map.at(-1)).toMatchObject({ transform: "scale(0.55)", opacity: 0 });
+  });
+  it("the Atlas covers the map before the map's edges show", () => {
+    const f = zoomFrames("out");
+    const atEdge = f.stage.find((k) => k.offset === 0.5)!;
+    expect(atEdge.opacity).toBe(1);
+    const m = f.map.find((k) => k.offset === 0.5)!;
+    expect(m.opacity).toBe(1);
+    expect(Number(/scale\((.*)\)/.exec(m.transform)![1])).toBeGreaterThanOrEqual(0.7);
   });
   it("in: exactly the reverse", () => {
     const o = zoomFrames("out");
     const i = zoomFrames("in");
     expect(i.stage[0]).toMatchObject({ transform: "scale(1)", opacity: 1 });
     expect(i.stage.at(-1)).toMatchObject({ transform: "scale(8)", opacity: 0 });
-    expect(i.map[0]).toMatchObject({ transform: "scale(0.3)", opacity: 0 });
+    expect(i.map[0]).toMatchObject({ transform: "scale(0.55)", opacity: 0 });
     expect(i.map.at(-1)).toMatchObject({ transform: "scale(1)", opacity: 1 });
     expect(o.stage).toHaveLength(i.stage.length);
   });
