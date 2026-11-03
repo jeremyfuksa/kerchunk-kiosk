@@ -27,7 +27,7 @@ describe("hfWindows", () => {
 
 describe("HfSweep windows", () => {
   it("starts on the first window with nothing playing", () => {
-    expect(new HfSweep(opts(), W, 0).current()).toEqual({ stage: "sweep", centerHz: W[0]!.centerHz, listenHz: null, band: "49m" });
+    expect(new HfSweep(opts(), W, 0).current()).toMatchObject({ stage: "sweep", centerHz: W[0]!.centerHz, listenHz: null, band: "49m", loHz: W[0]!.loHz, hiHz: W[0]!.hiHz });
   });
 
   it("moves on when the window timer ends, whatever is playing", () => {

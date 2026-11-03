@@ -57,7 +57,7 @@ function fetchConfigShared(): Promise<Config> {
 }
 
 export interface HfCandidate { station: string; itu?: string; country?: string; language?: string; site?: string; lat?: number; lon?: number; powerKw?: number; distanceKm?: number }
-export interface HfStatus { stage: "sweep" | "cbStop" | "cb"; band: string; centerHz: number; listenHz: number | null; candidate?: HfCandidate | null; others?: string[] }
+export interface HfStatus { stage: "sweep" | "cbStop" | "cb"; band: string; centerHz: number; listenHz: number | null; loHz?: number; hiHz?: number; candidate?: HfCandidate | null; others?: string[] }
 
 export const api = {
   getConfig: fetchConfigShared,

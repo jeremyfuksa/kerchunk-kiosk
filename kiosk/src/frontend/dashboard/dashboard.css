@@ -281,3 +281,51 @@ html[data-page="dashboard"] .kc-cb__lab.is-hot { color: var(--kc-glass); font-we
 html[data-page="dashboard"] .kc-cb__needle {
   position: absolute; top: -8%; bottom: -6%; width: 3px; transform: translateX(-50%); background: var(--kc-hay);
 }
+
+/* HF mode, "Station first" (spec 2026-11-02-hf-mode). Static between events: no animation, no blur. */
+html[data-page="dashboard"] .kc-hf { display: none; }
+html[data-page="dashboard"] .dash.hfStage .kc-hf { display: block; position: absolute; inset: 0; z-index: 2; }
+html[data-page="dashboard"] .dash.hfStage .mapBase { visibility: hidden; }
+html[data-page="dashboard"] .dash.hfStage .kc-corner__slot,
+html[data-page="dashboard"] .dash.hfStage .kc-recent,
+html[data-page="dashboard"] .dash.hfStage .kc-corner { display: none; }
+html[data-page="dashboard"] .kc-hf__tag {
+  position: absolute; top: 2.4rem; left: 2.2rem; color: var(--kc-mute); font-size: var(--kc-k-glass-meta);
+  font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+}
+html[data-page="dashboard"] .kc-hf__readout {
+  position: absolute; left: 2.2rem; top: 5.6rem; width: 44vw; box-sizing: border-box; padding: 1.8rem 2.4rem;
+  border-radius: var(--kc-r-sheet); background: var(--kc-well); box-shadow: var(--kc-well-shadow);
+}
+html[data-page="dashboard"] .kc-hf__meta { display: flex; justify-content: space-between; color: var(--kc-glass); font-size: var(--kc-k-glass-meta); font-weight: 600; }
+html[data-page="dashboard"] .kc-hf__freq { color: var(--kc-glass); font-size: 6.4rem; line-height: 1.1; font-weight: 700; font-variant-numeric: tabular-nums; margin-top: 0.4rem; }
+html[data-page="dashboard"] .kc-hf__freq small { font-size: 0.32em; margin-left: 0.4em; font-weight: 600; }
+html[data-page="dashboard"] .kc-hf__name { color: var(--kc-ink); font-size: var(--kc-k-glass-name); font-weight: 700; margin-top: 0.4rem; }
+html[data-page="dashboard"] .kc-hf__likely { color: var(--kc-mute); font-size: var(--kc-k-date); margin-top: 0.2rem; }
+html[data-page="dashboard"] .kc-hf__details { display: flex; flex-wrap: wrap; gap: 0.2rem 1.4rem; color: var(--kc-dim); font-size: var(--kc-k-glass-meta); margin-top: 0.8rem; }
+html[data-page="dashboard"] .kc-hf__seg { display: flex; gap: 5px; height: 12px; margin-top: 1.4rem; }
+html[data-page="dashboard"] .kc-hf__seg i { flex: 1; border-radius: 2px; background: var(--kc-glass); opacity: 0.14; }
+html[data-page="dashboard"] .kc-hf__seg i.on { opacity: 1; }
+html[data-page="dashboard"] .kc-hf__readout[data-state="hunting"] .kc-hf__meta { color: var(--kc-mute); }
+html[data-page="dashboard"] .kc-hf__readout[data-state="hunting"] .kc-hf__name { color: var(--kc-dim); }
+html[data-page="dashboard"] .kc-hf__readout[data-state="error"] .kc-hf__meta { color: var(--kc-coral); }
+html[data-page="dashboard"] .kc-hf__map { position: absolute; right: 2.2rem; top: 9rem; width: 46vw; }
+html[data-page="dashboard"] .kc-hf__map svg { display: block; width: 100%; height: auto; }
+html[data-page="dashboard"] .kc-hf__map svg path { fill: color-mix(in srgb, var(--kc-ink) 16%, transparent); stroke: none; }
+html[data-page="dashboard"] .kc-hf__map svg path.is-tx { fill: color-mix(in srgb, var(--kc-glass) 55%, transparent); }
+html[data-page="dashboard"] .kc-hf__map svg path.kc-hf__path { fill: none; stroke: var(--kc-glass); stroke-width: 3; }
+html[data-page="dashboard"] .kc-hf__qth { fill: var(--kc-ink); }
+html[data-page="dashboard"] .kc-hf__tx { fill: var(--kc-glass); }
+html[data-page="dashboard"] .kc-hf__log { position: absolute; right: 2.2rem; top: 31rem; width: 46vw; }
+html[data-page="dashboard"] .kc-hf__log h2 { margin: 0 0 0.4rem; color: var(--kc-mute); font-size: var(--kc-k-date); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
+html[data-page="dashboard"] .kc-hf__row { display: flex; justify-content: space-between; gap: 1.5rem; padding: 0.35rem 0; border-top: 1px solid var(--kc-line); font-size: var(--kc-k-date); }
+html[data-page="dashboard"] .kc-hf__row i { font-style: normal; color: var(--kc-dim); font-variant-numeric: tabular-nums; }
+html[data-page="dashboard"] .kc-hf__dial {
+  position: absolute; left: 2.2rem; right: 2.2rem; bottom: 2.2rem; box-sizing: border-box; padding: 1.2rem 2.4rem 1rem;
+  border-radius: var(--kc-r-sheet); background: var(--kc-well); box-shadow: var(--kc-well-shadow);
+}
+html[data-page="dashboard"] .kc-hf__scale { position: relative; height: 3.2rem; border-bottom: 1px solid var(--kc-line); }
+html[data-page="dashboard"] .kc-hf__tick { position: absolute; bottom: 0; width: 2px; height: 1rem; background: var(--kc-dim); }
+html[data-page="dashboard"] .kc-hf__tick.is-strong { height: 1.8rem; background: var(--kc-ink); }
+html[data-page="dashboard"] .kc-hf__needle { position: absolute; bottom: 0; top: 0; width: 3px; background: var(--kc-glass); }
+html[data-page="dashboard"] .kc-hf__ends { display: flex; justify-content: space-between; color: var(--kc-mute); font-size: var(--kc-k-date); margin-top: 0.3rem; font-variant-numeric: tabular-nums; }

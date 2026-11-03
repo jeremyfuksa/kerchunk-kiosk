@@ -1,9 +1,12 @@
 import type { EngineEvent } from "../../backend/engine/ScannerEngine.js";
 import { ReconnectingWs } from "../lib/wsClient.js";
-import { api } from "../lib/api.js";
+import { api, type HfStatus } from "../lib/api.js";
 import { fmtFreq, esc } from "../lib/format.js";
 import { alertTheme } from "./alertTheme.js";
 import { reloadOnMapFailure } from "./mapRetry.js";
+import { hfHtml, hfView, type HfHeard, type HfView } from "./hfView.js";
+import { countrySelector } from "./ituCountry.js";
+import worldSvg from "./world.svg?raw";
 import { mountActivityMap } from "../map/map.js";
 import { fromDeg, setWind } from "../lib/wind.js";
 import { cornerView, sentenceCase, meterFill, METER_SEGMENTS } from "./cornerView.js";
@@ -138,6 +141,7 @@ export function reduce(s: DashState, ev: EngineEvent): DashState {
   }
 }
 
+const HF_HEARD_ROWS = 5;
 function fmtTime(ts: number): string { return new Date(ts).toLocaleTimeString(); }
 
 // Re-exported for tests (kept stable from the pre-refactor public surface).
@@ -166,6 +170,7 @@ export function renderDashboard(root: HTMLElement): void {
         <aside class="kc-recent"><h2>Recently heard</h2><ul id="logList"></ul></aside>
       </div>
       <div id="cbStage" class="kc-cb" aria-hidden="true"></div>
+      <div id="hfStage" class="kc-hf" aria-hidden="true"><div class="kc-hf__map" id="hfMap"></div><div id="hfContent"></div></div>
     </div>`;
   // ── Poll budget ─────────────────────────────────────────────────────────
   // Three independent timers (status 5 s, system 10 s, weather 10 min) used to
@@ -239,6 +244,76 @@ export function renderDashboard(root: HTMLElement): void {
     if (cbOn) { cbKey = ""; schedule(); }
   }).catch(() => { /* defaults stand */ });
 
+  // ── HF "Station first" stage. The world map mounts once and only its overlay changes.
+  const hfEl = root.querySelector<HTMLElement>("#hfStage")!;
+  const hfMapEl = root.querySelector<HTMLElement>("#hfMap")!;
+  const hfContentEl = root.querySelector<HTMLElement>("#hfContent")!;
+  let hfOn = false;
+  let hf: HfStatus | null = null;
+  let hfCarriers: ReadonlyArray<{ hz: number; db: number }> = [];
+  let hfHeard: HfHeard[] = [];
+  let hfHeardCount = 0;
+  let hfBand = "";
+  let hfKey = "";
+  let hfSegEls: HTMLElement[] = [];
+  let hfHome = { lat: 39.1, lon: -94.58 };
+  void api.getConfig().then((cfg) => {
+    hfHome = { lat: cfg.display?.weatherLat ?? hfHome.lat, lon: cfg.display?.weatherLon ?? hfHome.lon };
+  }).catch(() => { /* default stands */ });
+  poller.poll("hfHeard", () => {
+    if (!hfOn) return Promise.resolve();
+    return api.getHfLog(null).then((log) => {
+      const rows = log.rows as HfHeard[];
+      hfHeardCount = rows.length;
+      hfHeard = [...rows].sort((a, b) => b.lastTs - a.lastTs).slice(0, HF_HEARD_ROWS);
+      schedule();
+    }).catch(() => { /* the list fills next window */ });
+  }, Number.POSITIVE_INFINITY);
+
+  function setHfStage(on: boolean): void {
+    if (on === hfOn) return;
+    hfOn = on;
+    dashEl.classList.toggle("hfStage", on);
+    hfEl.setAttribute("aria-hidden", String(!on));
+    if (on) {
+      if (!hfMapEl.firstElementChild) hfMapEl.innerHTML = worldSvg;
+      mapHandle?.pause();
+      poller.request("hfHeard");
+    } else {
+      mapHandle?.resume();
+      hfKey = "";
+    }
+  }
+
+  function paintHf(): void {
+    const v = hfView({
+      hf, carriers: hfCarriers, error: state.error, muted, signalDb: state.signalDb,
+      heardCount: hfHeardCount, heard: hfHeard, home: hfHome, fmtTime: (ts) => new Date(ts).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }),
+    });
+    if (v.key !== hfKey) {
+      hfKey = v.key;
+      hfContentEl.innerHTML = hfHtml(v);
+      hfSegEls = Array.from(hfContentEl.querySelectorAll<HTMLElement>(".kc-hf__seg i"));
+      paintHfMap(v);
+    } else {
+      hfSegEls.forEach((el, k) => el.classList.toggle("on", k < v.lit));
+    }
+  }
+
+  function paintHfMap(v: HfView): void {
+    const svg = hfMapEl.querySelector("svg");
+    if (!svg) return;
+    svg.querySelectorAll(".is-tx").forEach((p) => p.classList.remove("is-tx"));
+    if (v.map.tint) svg.querySelectorAll(countrySelector(v.map.tint)).forEach((p) => p.classList.add("is-tx"));
+    svg.querySelector("#hfOverlay")?.remove();
+    const m = v.map;
+    svg.insertAdjacentHTML("beforeend", `<g id="hfOverlay">`
+      + (m.path ? `<path class="kc-hf__path" d="${m.path}"/>` : "")
+      + `<circle class="kc-hf__qth" cx="${m.home.x}" cy="${m.home.y}" r="9"/>`
+      + (m.dot ? `<circle class="kc-hf__tx" cx="${m.dot.x}" cy="${m.dot.y}" r="11"/>` : "")
+      + `</g>`);
+  }
+
   function setCbStage(on: boolean): void {
     if (on === cbOn) return;        // idempotent: a break-in round trip can't stack timers
     cbOn = on;
@@ -294,6 +369,11 @@ export function renderDashboard(root: HTMLElement): void {
         const changed = s.mode !== mode || sc !== scanCount || mu !== muted || bi !== breakIn || wm !== state.warmed;
         mode = s.mode; scanCount = sc; muted = mu; breakIn = bi;
         setCbStage(s.mode === "cb" || s.hf?.stage === "cb");
+        setHfStage(s.mode === "hf" && s.hf?.stage !== "cb");
+        const hfWas = JSON.stringify(hf);
+        hf = s.hf ?? null;
+        if (hf && hf.band !== hfBand) { hfBand = hf.band; hfCarriers = []; poller.request("hfHeard"); }
+        if (JSON.stringify(hf) !== hfWas) schedule();
         if (wm !== state.warmed) state = { ...state, warmed: wm };
         if (changed) schedule();
       })
@@ -411,6 +491,7 @@ export function renderDashboard(root: HTMLElement): void {
     glassHost.setAttribute("aria-hidden", String(v.show === "pill"));
     paintLog();
     if (cbOn) paintCb();
+    if (hfOn) paintHf();
   }
 
   // Under the full-screen map layout the Recent log is display:none — skip the
@@ -503,6 +584,7 @@ export function renderDashboard(root: HTMLElement): void {
   new ReconnectingWs(`${proto}://${location.host}/ws`, (ev) => {
     if (ev.type === "reload") { location.reload(); return; }
     if (ev.type === "warmup") sawWarmupEvent = true; // WS now owns `warmed`
+    if (ev.type === "carriers" && hf && ev.centerHz === hf.centerHz) { hfCarriers = ev.carriers; schedule(); }
     state = reduce(state, ev);
     cb = cbReduce(cb, ev);
     // Mode, mute and break-in can change on these: re-poll status through the
