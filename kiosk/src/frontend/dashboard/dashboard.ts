@@ -3,6 +3,7 @@ import { ReconnectingWs } from "../lib/wsClient.js";
 import { api } from "../lib/api.js";
 import { fmtFreq, esc } from "../lib/format.js";
 import { alertTheme } from "./alertTheme.js";
+import { reloadOnMapFailure } from "./mapRetry.js";
 import { mountActivityMap } from "../map/map.js";
 import { fromDeg, setWind } from "../lib/wind.js";
 import { cornerView, sentenceCase, meterFill, METER_SEGMENTS } from "./cornerView.js";
@@ -181,15 +182,17 @@ export function renderDashboard(root: HTMLElement): void {
   // log is display:none, so paint() skips rebuilding it.
   let mapMounted = false;
   let mapHandle: MapHandle | null = null;
-  void mountActivityMap(root.querySelector<HTMLElement>("#mapBase")!, { interactive: false })
-    .then((h) => {
-      if (!h) return;
-      mapMounted = true;
-      mapHandle = h;
-      dashEl.classList.add("mapStage");
-      if (cbOn) h.pause(); // the page loaded in CB mode before the map mounted
-    })
-    .catch(() => { /* no map = classic dashboard, nothing lost */ });
+  void reloadOnMapFailure(
+    mountActivityMap(root.querySelector<HTMLElement>("#mapBase")!, { interactive: false })
+      .then((h) => {
+        if (!h) return;
+        mapMounted = true;
+        mapHandle = h;
+        dashEl.classList.add("mapStage");
+        if (cbOn) h.pause(); // the page loaded in CB mode before the map mounted
+      }),
+    () => location.reload(),
+  );
   let lastRiskSig = "";
   function paintRisk(): Promise<void> {
     return fetch("/api/system").then((r) => r.ok ? r.json() : null).then((s) => {
