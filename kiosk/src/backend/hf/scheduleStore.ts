@@ -8,11 +8,18 @@ import type { Candidate } from "./receptionLog.js";
 
 const REFRESH_MS = 24 * 3_600_000;
 const FETCH_TIMEOUT_MS = 60_000;
-const AOKI_INDEX = "http://www1.s2.starcat.ne.jp/ndxc/nnk.htm";
+const AOKI_INDEX = "https://www1.s2.starcat.ne.jp/ndxc/nnk.htm";
+// The index names the zip's host, which changes, so a link is only followed to these.
+const AOKI_HOSTS = /^[a-z0-9.-]+\.(starcat|mediacat)\.ne\.jp$/;
+// The real files are about 1 MB zipped and 1 MB inside. These caps are generous for that, and
+// stop a bad or spoofed response from filling memory. EiBi has to come over plain HTTP.
+const MAX_DOWNLOAD_BYTES = 16 * 1024 * 1024;
+const MAX_INFLATED_BYTES = 32 * 1024 * 1024;
 
 /** The few fields of a zip this needs. Node has no zip reader, and these files are simple. */
-export function readZip(zip: Buffer): Map<string, Buffer> {
+export function readZip(zip: Buffer, maxBytes = MAX_INFLATED_BYTES): Map<string, Buffer> {
   const out = new Map<string, Buffer>();
+  let total = 0;
   let end = -1;
   for (let i = zip.length - 22; i >= 0 && end < 0; i--) if (zip.readUInt32LE(i) === 0x06054b50) end = i;
   if (end < 0) return out;
@@ -25,7 +32,10 @@ export function readZip(zip: Buffer): Map<string, Buffer> {
     const name = zip.toString("latin1", p + 46, p + 46 + nameLen);
     const start = local + 30 + zip.readUInt16LE(local + 26) + zip.readUInt16LE(local + 28);
     const body = zip.subarray(start, start + size);
-    out.set(name, method === 8 ? inflateRawSync(body) : Buffer.from(body));
+    const data = method === 8 ? inflateRawSync(body, { maxOutputLength: maxBytes - total }) : Buffer.from(body);
+    total += data.length;
+    if (total > maxBytes) throw new Error("zip too large");
+    out.set(name, data);
     p += 46 + nameLen + zip.readUInt16LE(p + 30) + zip.readUInt16LE(p + 32);
   }
   return out;
@@ -89,7 +99,9 @@ export class ScheduleStore {
       // The page's labels are wrong and the path changes each season. Only the file name is reliable.
       const href = new RegExp(`href="([^"]*\\b[a-z]{2}${season}\\.zip)"`, "i").exec(page)?.[1];
       if (!href) throw new Error(`no ${season} zip on the index`);
-      const files = readZip(await this.bytes(new URL(href, AOKI_INDEX).href));
+      const url = new URL(href, AOKI_INDEX);
+      if (url.protocol !== "https:" || !AOKI_HOSTS.test(url.hostname)) throw new Error(`refusing ${url.href}`);
+      const files = readZip(await this.bytes(url.href));
       const name = [...files.keys()].find((n) => new RegExp(`${season}\\.txt$`, "i").test(n));
       const text = name ? files.get(name)!.toString("latin1") : "";
       if (parseAoki(text).length === 0) throw new Error("no rows");
@@ -118,7 +130,17 @@ export class ScheduleStore {
     if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`);
     return res;
   }
-  private async bytes(url: string): Promise<Buffer> { return Buffer.from(await (await this.response(url)).arrayBuffer()); }
+  private async bytes(url: string): Promise<Buffer> {
+    const res = await this.response(url);
+    const chunks: Uint8Array[] = [];
+    let size = 0;
+    for await (const chunk of res.body ?? []) {
+      size += chunk.length;
+      if (size > MAX_DOWNLOAD_BYTES) throw new Error(`${url}: too large`);
+      chunks.push(chunk);
+    }
+    return Buffer.concat(chunks);
+  }
   private async text(url: string): Promise<string> { return (await this.bytes(url)).toString("latin1"); }
 
   private save(name: string, text: string): void {

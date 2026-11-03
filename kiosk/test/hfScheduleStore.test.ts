@@ -36,8 +36,8 @@ const home = { lat: 39, lon: -94 };
 const routes = (): Record<string, () => Response> => ({
   "http://www.eibispace.de/dx/sked-b26.csv": () => new Response(EIBI),
   "http://www.eibispace.de/dx/README.TXT": () => new Response("   I) Language codes.\n   E     English: x\n"),
-  "http://www1.s2.starcat.ne.jp/ndxc/nnk.htm": () => new Response('<a href="https://aoki.example/x/xzb26.zip">B22</a><a href="old/xta26.zip">A26</a>'),
-  "https://aoki.example/x/xzb26.zip": () => new Response(new Uint8Array(zip({ "xzb26.txt": AOKI, "userlist1.txt": "no" }))),
+  "https://www1.s2.starcat.ne.jp/ndxc/nnk.htm": () => new Response('<a href="https://www1.m2.mediacat.ne.jp/x/xzb26.zip">B22</a><a href="old/xta26.zip">A26</a>'),
+  "https://www1.m2.mediacat.ne.jp/x/xzb26.zip": () => new Response(new Uint8Array(zip({ "xzb26.txt": AOKI, "userlist1.txt": "no" }))),
   "https://hfcc.org/data/b26/b26allx2.zip": () => new Response(new Uint8Array(zip({ "B26all00.TXT": HFCC, "site.txt": "RMI Okeechobee                     USA 27N27 080W56\r\n" }))),
 });
 
@@ -67,6 +67,17 @@ describe("readZip", () => {
   });
 });
 
+describe("readZip limits", () => {
+  it("refuses a file that inflates past the cap", () => {
+    const big = zip({ "bomb.txt": "x".repeat(2_000_000) });
+    expect(() => readZip(big, 1_000_000)).toThrow();
+    expect(readZip(big, 3_000_000).get("bomb.txt")?.length).toBe(2_000_000);
+  });
+  it("counts the total across files", () => {
+    expect(() => readZip(zip({ "a": "x".repeat(800_000), "b": "x".repeat(800_000) }), 1_000_000)).toThrow();
+  });
+});
+
 describe("ScheduleStore", () => {
   beforeEachDir();
   function beforeEachDir() { dir = ""; }
@@ -82,8 +93,29 @@ describe("ScheduleStore", () => {
   it("finds the Aoki zip by file name, not its label", async () => {
     const { s, calls } = store();
     await s.refresh();
-    expect(calls).toContain("https://aoki.example/x/xzb26.zip");
+    expect(calls).toContain("https://www1.m2.mediacat.ne.jp/x/xzb26.zip");
     expect(calls.some((u) => u.includes("xta26"))).toBe(false);
+  });
+
+  it("won't follow an Aoki link off the known hosts", async () => {
+    for (const bad of ["http://169.254.169.254/xzb26.zip", "https://evil.example/xzb26.zip", "https://www1.m2.mediacat.ne.jp.evil.example/xzb26.zip", "http://www1.m2.mediacat.ne.jp/xzb26.zip"]) {
+      const r = routes();
+      r["https://www1.s2.starcat.ne.jp/ndxc/nnk.htm"] = () => new Response(`<a href="${bad}">x</a>`);
+      const { s, calls } = store(r);
+      await s.refresh();
+      expect(calls).not.toContain(bad);
+    }
+  });
+
+  it("refuses an oversized download and keeps what it had", async () => {
+    const a = store();
+    await a.s.refresh();
+    const big = routes();
+    big["http://www.eibispace.de/dx/sked-b26.csv"] = () => new Response("9395;0000-2400;;X;Huge;E;x;;1;;\n".repeat(1_000_000));
+    const b = store(big);
+    b.s.loadFromDisk();
+    await b.s.refresh();
+    expect(b.s.candidates(9_395_000, NOW)[0]?.station).toBe("Radio Slovakia");
   });
 
   it("survives a restart from disk, with no fetch", async () => {
@@ -120,7 +152,7 @@ describe("ScheduleStore", () => {
 
   it("one source failing doesn't stop the others", async () => {
     const broken = routes();
-    broken["http://www1.s2.starcat.ne.jp/ndxc/nnk.htm"] = () => new Response("nope", { status: 500 });
+    broken["https://www1.s2.starcat.ne.jp/ndxc/nnk.htm"] = () => new Response("nope", { status: 500 });
     const { s } = store(broken);
     await s.refresh();
     expect(s.candidates(9_395_000, NOW)[0]?.station).toBe("Radio Slovakia");

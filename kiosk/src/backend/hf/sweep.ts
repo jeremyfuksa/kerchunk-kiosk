@@ -6,7 +6,7 @@ export interface HfBand { name: string; loHz: number; hiHz: number }
 export interface HfWindow { centerHz: number; band: string; loHz: number; hiHz: number }
 export interface HfCarrier { hz: number; db: number }
 export type HfStage = "sweep" | "cbStop" | "cb";
-export interface HfTune { stage: HfStage; centerHz: number; listenHz: number | null; band: string }
+export interface HfTune { stage: HfStage; centerHz: number; listenHz: number | null; band: string; loHz?: number; hiHz?: number }
 
 export interface HfOpts {
   windowMs: number;       // time on each shortwave window
@@ -83,7 +83,7 @@ export class HfSweep {
       return { stage: this.stage, centerHz: CB_CENTER_HZ, listenHz: null, band: "CB" };
     }
     const w = this.windows[this.index]!;
-    return { stage: "sweep", centerHz: w.centerHz, listenHz: this.listenHz, band: w.band };
+    return { stage: "sweep", centerHz: w.centerHz, listenHz: this.listenHz, band: w.band, loHz: w.loHz, hiHz: w.hiHz };
   }
 
   /** A window sees past its band's edges, onto ham and utility signals. Those aren't this sweep's. */
