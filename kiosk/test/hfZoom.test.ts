@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { atlasSnapshotSvg, zoomFor, zoomFrames } from "../src/frontend/dashboard/zoom.js";
+import { atlasSnapshotSvg, hfLogWanted, zoomFor, zoomFrames } from "../src/frontend/dashboard/zoom.js";
 
 describe("zoomFor", () => {
   it("zoom_out_only_from_scan_to_hf", () => {
@@ -22,6 +22,17 @@ describe("zoomFor", () => {
   it("no_zoom_without_a_map", () => {
     expect(zoomFor("scan", "hf", false, false)).toBeNull();
     expect(zoomFor("hf", "scan", false, false)).toBeNull();
+  });
+});
+
+describe("hfLogWanted", () => {
+  it("fetches once on a page in map mode, so the first zoom's picture has the night's traces", () => {
+    expect(hfLogWanted(false, false)).toBe(true);
+    expect(hfLogWanted(false, true)).toBe(false);
+  });
+  it("always fetches on the HF stage", () => {
+    expect(hfLogWanted(true, false)).toBe(true);
+    expect(hfLogWanted(true, true)).toBe(true);
   });
 });
 

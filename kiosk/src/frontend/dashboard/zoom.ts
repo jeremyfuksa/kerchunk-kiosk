@@ -3,6 +3,11 @@
 import { tracesSvg, type AtlasDot, type AtlasTrace } from "./atlas.js";
 
 export type ZoomDirection = "out" | "in";
+
+/** The log only grows in HF, so one fetch at page load keeps it right for every zoom out of map mode. */
+export function hfLogWanted(hfOn: boolean, loaded: boolean): boolean {
+  return hfOn || !loaded;
+}
 type Mode = "scan" | "weather" | "monitor" | "cb" | "hf";
 
 const STAGE_FROM = 8;

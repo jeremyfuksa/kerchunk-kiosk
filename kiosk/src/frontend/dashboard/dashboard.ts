@@ -9,7 +9,7 @@ import { countrySelector } from "./ituCountry.js";
 import worldSvg from "./world.svg?raw";
 import { atlasDots, atlasTraces, hitAction, tracesSvg, type HitKey } from "./atlas.js";
 import { greylineDue, greylineSvg, skySvg, stagePx, STAGE_VIEWBOX } from "./greyline.js";
-import { atlasSnapshotSvg, paintSnapshot, runZoom, zoomFor, type ZoomDirection } from "./zoom.js";
+import { atlasSnapshotSvg, paintSnapshot, runZoom, zoomFor, type ZoomDirection, hfLogWanted } from "./zoom.js";
 import { HF_WALL_DEFAULTS, HitAnimator } from "./hitAnim.js";
 import { robinson } from "./robinson.js";
 import { mountActivityMap } from "../map/map.js";
@@ -290,10 +290,12 @@ export function renderDashboard(root: HTMLElement): void {
     hfTracesKey = "";
     schedule();
   }).catch(() => { /* default stands */ });
+  let hfLogLoaded = false;
   poller.poll("hfHeard", () => {
-    if (!hfOn) return Promise.resolve();
+    if (!hfLogWanted(hfOn, hfLogLoaded)) return Promise.resolve();
     return api.getHfLog(null).then((log) => {
       hfLog = log.rows as HfHeard[];
+      hfLogLoaded = true;
       schedule();
     }).catch(() => { /* the list fills next window */ });
   }, Number.POSITIVE_INFINITY);
@@ -307,7 +309,7 @@ export function renderDashboard(root: HTMLElement): void {
   }
 
   // The zoom moves a flat picture of the Atlas, never the live layers, which can't re-raster that fast. The real
-  // stage sits finished underneath and shows when the picture fades. A change of mind finishes it at once.
+  // stage sits finished underneath and shows when the picture is hidden. A change of mind finishes it at once.
   let zoomDone: (() => void) | null = null;
   function finishZoom(): void {
     const done = zoomDone;
