@@ -1574,6 +1574,15 @@ describe("SpyServer source", () => {
     await engine.stop();
   });
 
+  it("a retune across sources during the warm-up settle still finishes warming up", async () => {
+    const { engine, events } = makeEngine({});
+    await engine.start(rtlCfg());
+    expect(await waitFor(() => events.some((e) => e.type === "warmup" && e.phase === "tuned"), 1000)).toBe(true);
+    await engine.retune(spyCfg());
+    expect(await waitFor(() => events.some((e) => e.type === "warmup" && e.phase === "ready"), 3500)).toBe(true);
+    await engine.stop();
+  });
+
   it("a same-source retune still re-points without a respawn", async () => {
     const args = tmpFile("args");
     const tunes = tmpFile("tunes");

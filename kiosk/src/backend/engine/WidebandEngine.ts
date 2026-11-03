@@ -554,9 +554,9 @@ export class WidebandEngine implements ScannerEngine {
     this.holdStartedAt = 0;
     this.exitFailures = 0;
     this.reportReady = true;
-    // Already warm: the new helper's first tune must not replay the warm-up. If it
-    // never got warm, keep the gate so "ready" still fires.
-    if (this.warmReadySeen) this.firstTunedSeen = true;
+    // Already warm: the new helper's first tune must not replay the warm-up. If not,
+    // killChild just cancelled the settle timer, so the first tune must re-arm it.
+    this.firstTunedSeen = this.warmReadySeen;
     this.config = config;
     this.groups = groups;
     this.groupIndex = 0;
