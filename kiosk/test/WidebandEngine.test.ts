@@ -1590,7 +1590,8 @@ describe("SpyServer source", () => {
     const args = tmpFile("args");
     const { engine, events } = makeEngine({ FAKE_WB_ARGS_FILE: args, FAKE_WB_MODE: "nodevice" }, { restartDelayMs: 1500 });
     await engine.start(spyCfg());
-    expect(await waitFor(() => events.some((e) => e.type === "status" && e.state === "starting"), 1000)).toBe(true);
+    // start() itself reports "starting" once; the second one is the exit going into backoff.
+    expect(await waitFor(() => events.filter((e) => e.type === "status" && e.state === "starting").length >= 2, 1000)).toBe(true);
     const mark = events.length;
     await engine.retune(rtlCfg());
     expect(await waitFor(() => lines(args).length === 2, 700)).toBe(true);
@@ -1609,12 +1610,12 @@ describe("SpyServer source", () => {
     await waitFor(() => lines(args).length === 1, 1000);
     await engine.retune(rtlCfg());
     await engine.retune(spyCfg());
-    await waitFor(() => lines(args).length === 3, 1000);
-    await new Promise((r) => setTimeout(r, 800));   // past the 500 ms kill grace
-    const alive = lines(pids).filter((p) => { try { process.kill(Number(p), 0); return true; } catch { return false; } });
-    expect(alive).toHaveLength(1);
-    expect(alive[0]).toBe(lines(pids).at(-1));
-    expect(lines(args).at(-1)).toContain("--spyserver");
+    await waitFor(() => lines(pids).length === 3, 1000);
+    const living = () => lines(pids).filter((p) => { try { process.kill(Number(p), 0); return true; } catch { return false; } });
+    expect(await waitFor(() => living().length === 1, 3000)).toBe(true);   // the old ones go within the kill grace
+    // Children start close together, so the files' order isn't spawn order: ask the engine.
+    expect(living()).toEqual([String(engine.helperPid)]);
+    expect(lines(args).filter((l) => l.includes("--spyserver"))).toHaveLength(2);
     await engine.stop();
   });
 

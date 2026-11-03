@@ -173,6 +173,10 @@ do not "simplify" them away:
 - **SAME break-in is a `retune()`, never `stop()+start()`.** The weather
   break-in re-points the live helper; a restart replays the warm-up
   overlay, chops audio, and wipes the alert banner.
+  One exception: from CB on SpyServer a retune can't change radios, so
+  `WidebandEngine.respawnForSource` respawns the helper. It must stay silent:
+  no warm-up events and no `stopped` state (about 1.0 s to NWR audio, operator
+  approved 2026-11-02; `docs/bench/2026-11-hf-proofs.md`).
 - **The `breakIn` guard in `server.ts` stays.** While a break-in holds the
   scanner on NWR, safetyMode logs temperature but must not bounce the engine —
   the restart cold-start spikes *caused* the overheating oscillation it tried
@@ -247,6 +251,9 @@ even with green checks.
   map. The kiosk swaps to the CB stage (`dashboard/cbDial.ts` model, `cbView.ts` view,
   `.cbStage`), pausing the map via `MapHandle.pause()`. Knobs:
   `display.cb.fadeStepsMin` / `stepTickMs` / `logRows`.
+  `config.spyserver` (`host`, `port` 5555, `gain`, `digitalGain`, `audioBufferMs` 500) puts CB on
+  the Airspy HF+: window 600 kHz, helper rate 750 kHz, and `--audio-buffer-ms` for Wi-Fi bursts, so
+  audio plays about 500 ms behind the wall. Absent = CB on the scan radio.
   LSB channels: `config.cb.modes` (default `{"38":"lsb"}`, which takes channel 32's lane in
   the default set); SSB squelch `cb.ssbOpenDb` / `cb.ssbHangMs` (1500). LSB lanes squelch on
   sideband energy against their own floor, never the shared one (spec 2026-10-15).
