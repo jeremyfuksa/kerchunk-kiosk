@@ -294,10 +294,13 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
   const logSafely = (write: () => void): void => {
     try { write(); } catch (e) { console.error(`[hf] reception log: ${(e as Error).message}`); }
   };
+  // The wall polls every 5 s; this makes it poll now, so a hit or a mode change shows on time.
+  const statusChanged = (): void => { deps.wsHub.broadcast({ type: "statusChanged", ts: Date.now() }); };
   const hf = new HfController({
     config: () => config.hf as HfConfig | undefined,
     apply: (tune) => {
       if (tune.listenHz !== null) logSafely(() => deps.receptionLog?.markOnSpeaker(Date.now(), tune.listenHz!));
+      statusChanged();
       if (engine.state !== "running") return;   // an operator stop stays stopped
       void switchMode(scanConfigFor("hf", null)).catch((e) => console.error(`[hf] retune failed: ${(e as Error).message}`));
     },
@@ -1205,6 +1208,7 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
       monitorChannel = null;
       if (mode === "hf") hf.start();
       saveMode();
+      statusChanged();
       await switchMode(scanConfigFor(mode, null));
       return json(res, 200, { mode, state: engine.state });
     }

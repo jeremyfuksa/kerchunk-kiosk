@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { atlasDots, atlasTraces, bandColor, hitChange, legend, tracePath, HF_BANDS_ORDER, type AtlasRow, type HitKey } from "../src/frontend/dashboard/atlas.js";
+import { atlasDots, atlasTraces, bandColor, hitAction, hitChange, legend, tracePath, HF_BANDS_ORDER, type AtlasRow, type HitKey } from "../src/frontend/dashboard/atlas.js";
+import { lineKeyframes } from "../src/frontend/dashboard/atlas.js";
 import { configSchema, defaultConfig } from "../src/backend/config/schema.js";
 
 const HOME = { lat: 39.1, lon: -94.58 };
@@ -86,6 +87,41 @@ describe("hitChange", () => {
   it("late_schedule_name_starts_one_hit", () => {
     expect(hitChange(null, ROMANIA)).toBe("start");
     expect(hitChange(ROMANIA, ROMANIA)).toBe("none");
+  });
+});
+
+describe("hitAction", () => {
+  it("first_status_holds_rather_than_starts", () => {
+    expect(hitAction(false, null, ROMANIA)).toBe("hold");
+    expect(hitAction(false, null, null)).toBe("none");
+  });
+  it("re_entering_the_stage_holds", () => {
+    // Leaving the stage resets known and the previous key, so coming back is a first status.
+    expect(hitAction(false, ROMANIA, ROMANIA)).toBe("hold");
+  });
+  it("after the first status it follows hitChange", () => {
+    expect(hitAction(true, null, ROMANIA)).toBe("start");
+    expect(hitAction(true, ROMANIA, null)).toBe("end");
+    expect(hitAction(true, ROMANIA, { ...ROMANIA, hz: 1 })).toBe("replace");
+    expect(hitAction(true, ROMANIA, ROMANIA)).toBe("none");
+  });
+});
+
+describe("lineKeyframes", () => {
+  it("one path runs 1 to 0, starting and ending still", () => {
+    const [k] = lineKeyframes([100], 10);
+    expect(k![0]).toBe(1);
+    expect(k!.at(-1)).toBe(0);
+    expect(k!).toHaveLength(11);
+    expect(k![1]! - k![0]!).toBeGreaterThan(k![5]! - k![4]!);   // eased: slow at the start
+  });
+  it("two paths draw one after the other", () => {
+    const [a, b] = lineKeyframes([100, 300], 20);
+    expect(a!.at(-1)).toBe(0);
+    expect(b![0]).toBe(1);
+    const firstMoved = b!.findIndex((v) => v < 1);
+    expect(a![firstMoved]).toBe(0);    // the second starts only once the first is done
+    expect(b!.at(-1)).toBe(0);
   });
 });
 

@@ -77,3 +77,27 @@ export function hitChange(prev: HitKey | null, next: HitKey | null): HitChange {
   if (!next) return "end";
   return prev.hz === next.hz && prev.lat === next.lat && prev.lon === next.lon ? "none" : "replace";
 }
+
+export type HitAction = HitChange | "hold";
+
+/** `known` is false until the wall has seen one status since it entered the stage: nothing to animate from. */
+export function hitAction(known: boolean, prev: HitKey | null, next: HitKey | null): HitAction {
+  if (!known) return next ? "hold" : "none";
+  return hitChange(prev, next);
+}
+
+const easeInOut = (t: number): number => (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2);
+
+/** stroke-dashoffset steps per path (1 = hidden, 0 = drawn) for one eased line across all of them, in order. */
+export function lineKeyframes(lengths: readonly number[], steps: number): number[][] {
+  const total = lengths.reduce((a, b) => a + b, 0);
+  let start = 0;
+  return lengths.map((len) => {
+    const from = start;
+    start += len;
+    return Array.from({ length: steps + 1 }, (_, k) => {
+      const done = easeInOut(k / steps) * total;
+      return 1 - Math.max(0, Math.min(1, (done - from) / len));
+    });
+  });
+}

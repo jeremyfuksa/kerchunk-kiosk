@@ -7,9 +7,9 @@ import { reloadOnMapFailure } from "./mapRetry.js";
 import { hfHtml, hfView, mapShouldRun, type HfHeard, type HfView } from "./hfView.js";
 import { countrySelector } from "./ituCountry.js";
 import worldSvg from "./world.svg?raw";
-import { atlasDots, atlasTraces } from "./atlas.js";
+import { atlasDots, atlasTraces, hitAction, type HitKey } from "./atlas.js";
 import { skySvg, STAGE_VIEWBOX } from "./greyline.js";
-import { HitAnimator } from "./hitAnim.js";
+import { HF_WALL_DEFAULTS, HitAnimator } from "./hitAnim.js";
 import { robinson } from "./robinson.js";
 import { mountActivityMap } from "../map/map.js";
 import { fromDeg, setWind } from "../lib/wind.js";
@@ -145,7 +145,6 @@ export function reduce(s: DashState, ev: EngineEvent): DashState {
   }
 }
 
-const HF_TRACE_OPACITY = 0.34;
 function fmtTime(ts: number): string { return new Date(ts).toLocaleTimeString(); }
 
 // Re-exported for tests (kept stable from the pre-refactor public surface).
@@ -253,12 +252,16 @@ export function renderDashboard(root: HTMLElement): void {
   const hfSkyEl = root.querySelector<SVGSVGElement>("#hfSky")!;
   const hfLandEl = root.querySelector<HTMLElement>("#hfLand")!;
   const hfTracesEl = root.querySelector<SVGSVGElement>("#hfTraces")!;
-  const hitAnim = new HitAnimator(root.querySelector<SVGSVGElement>("#hfLive")!);
+  let hfOpts = HF_WALL_DEFAULTS;
+  const hitAnim = new HitAnimator(root.querySelector<SVGSVGElement>("#hfLive")!, () => hfOpts);
   const hfContentEl = root.querySelector<HTMLElement>("#hfContent")!;
   let hfOn = false;
   let hfDotsKey = "";
   let hfTracesKey = "";
-  let hfLiveKey = "";
+  let hfTintKey = "";
+  let hfHitKnown = false;
+  let hfHit: HitKey | null = null;
+  let hfFading: HitKey | null = null;
   let hfLit = -1;
   function syncMap(): void {
     if (mapShouldRun(cbOn, hfOn)) mapHandle?.resume(); else mapHandle?.pause();
@@ -266,7 +269,6 @@ export function renderDashboard(root: HTMLElement): void {
   let hf: HfStatus | null = null;
   let hfCarriers: ReadonlyArray<{ hz: number; db: number }> = [];
   let hfLog: HfHeard[] = [];
-  let hfTraceOpacity = HF_TRACE_OPACITY;
   let hfBand = "";
   let hfListenHz: number | null = null;
   let hfKey = "";
@@ -274,7 +276,7 @@ export function renderDashboard(root: HTMLElement): void {
   let hfHome = { lat: 39.1, lon: -94.58 };
   void api.getConfig().then((cfg) => {
     hfHome = { lat: cfg.display?.weatherLat ?? hfHome.lat, lon: cfg.display?.weatherLon ?? hfHome.lon };
-    hfTraceOpacity = cfg.display?.hf?.traceOpacity ?? hfTraceOpacity;
+    hfOpts = { ...HF_WALL_DEFAULTS, ...cfg.display?.hf };
     hfTracesKey = "";
     schedule();
   }).catch(() => { /* default stands */ });
@@ -304,7 +306,10 @@ export function renderDashboard(root: HTMLElement): void {
       poller.request("hfHeard");
     } else {
       hfKey = "";
-      hfLiveKey = "";
+      hfTintKey = "";
+      hfHitKnown = false;
+      hfHit = null;
+      hfFading = null;
       hitAnim.clear();
     }
   }
@@ -333,19 +338,33 @@ export function renderDashboard(root: HTMLElement): void {
       hfLandEl.querySelector("#hfDots")?.remove();
       hfLandEl.querySelector("svg")?.insertAdjacentHTML("beforeend", `<g id="hfDots">${dots.map((d) => `<circle cx="${d.x.toFixed(1)}" cy="${d.y.toFixed(1)}" r="${d.r.toFixed(1)}" opacity="${d.opacity.toFixed(2)}"/>`).join("")}</g>`);
     }
-    const traces = atlasTraces(hfLog, hfHome, v.liveStation);
-    const tracesKey = `${hfTraceOpacity}|${hfHome.lat},${hfHome.lon}|${traces.map((t) => t.key).join(";")}`;
+    applyHit(v.liveStation);
+    const traces = atlasTraces(hfLog, hfHome, v.liveStation ?? hfFading);
+    const tracesKey = `${hfOpts.traceOpacity}|${hfHome.lat},${hfHome.lon}|${traces.map((t) => t.key).join(";")}`;
     if (tracesKey !== hfTracesKey) {
       hfTracesKey = tracesKey;
       const home = robinson(hfHome.lat, hfHome.lon);
-      hfTracesEl.innerHTML = traces.map((t) => t.segments.map((d) => `<path d="${d}" fill="none" stroke="${t.color}" stroke-opacity="${hfTraceOpacity}" stroke-width="2.6" stroke-linecap="round"/>`).join("")).join("")
+      hfTracesEl.innerHTML = traces.map((t) => t.segments.map((d) => `<path d="${d}" fill="none" stroke="${t.color}" stroke-opacity="${hfOpts.traceOpacity}" stroke-width="2.6" stroke-linecap="round"/>`).join("")).join("")
         + `<circle class="kc-hf__qth" cx="${home.x.toFixed(1)}" cy="${home.y.toFixed(1)}" r="6"/>`;
     }
-    const liveKey = JSON.stringify([v.liveStation, v.tint]);
-    if (liveKey !== hfLiveKey) {
-      hfLiveKey = liveKey;
-      if (v.liveStation) hitAnim.hold(v.liveStation, hfHome, tintPaths(v.tint));
-      else hitAnim.clear();
+    const tintKey = `${v.tint}|${v.liveColor}`;
+    if (tintKey !== hfTintKey) {
+      hfTintKey = tintKey;
+      hitAnim.tint(tintPaths(v.tint), v.liveColor);
+    }
+  }
+
+  function applyHit(next: HitKey | null): void {
+    const action = hitAction(hfHitKnown, hfHit, next);
+    const prev = hfHit;
+    hfHitKnown = true;
+    hfHit = next;
+    if (action === "hold" && next) hitAnim.hold(next, hfHome);
+    if (action === "start" && next) hitAnim.start(next, hfHome);
+    if (action === "replace" && next) { hitAnim.start(next, hfHome); }
+    if (action === "end") {
+      hfFading = prev;
+      hitAnim.end(() => { hfFading = null; schedule(); });
     }
   }
 
@@ -629,7 +648,7 @@ export function renderDashboard(root: HTMLElement): void {
     cb = cbReduce(cb, ev);
     // Mode, mute and break-in can change on these: re-poll status through the
     // lane (a break-in is a retune, so only the alert announces it).
-    if (ev.type === "status" || ev.type === "alert") poller.request("status");
+    if (ev.type === "status" || ev.type === "alert" || ev.type === "statusChanged") poller.request("status");
     schedule(); // coalesce: a burst of events in one frame => one paint()
   }).connect();
   paint();
