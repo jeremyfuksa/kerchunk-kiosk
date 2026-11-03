@@ -18,6 +18,7 @@ Engine::Engine(const EngineOptions& o, Emit emit, Pcm speaker, Pcm tee, Pcm same
       ssb_(o.lanes), ssb_buf_(o.lanes, std::vector<cf>(Channelizer::kLaneSamplesPerHop)),
       disc_acc_(o.lanes, 0.0), disc_n_(o.lanes, 0), readings_(o.lanes) {
   if (o.close_call) cc_ = std::make_unique<CloseCall>(o.rate);   // FFTW planning on this (the DSP) thread
+  if (o.survey) survey_ = std::make_unique<CarrierSurvey>(o.rate);
   ch_.set_lanes(std::vector<double>(opt_.lanes, 0.0));
   out48_.reserve(256);
 }
@@ -100,6 +101,7 @@ void Engine::tune(const TuneCmd& t) {
     cc_->set_db(t.close_call_db);
   }
   cc_on_ = cc_ && t.close_call && !t.monitor;
+  if (survey_) survey_->reset(center_);
   sync_speaker();
   lane_samples_ = 0;
   next_poll_ = CHUNK_SAMPLES;
@@ -211,6 +213,7 @@ void Engine::on_hop(const cf* lanes, int per, const cf* raw, int raw_n) {
   }
   flush_audio();
   if (cc_on_) cc_->push_raw(raw, raw_n);
+  if (survey_) survey_->push_raw(raw, raw_n);
   lane_samples_ += per;
   while (lane_samples_ >= next_poll_) {
     poll();
@@ -239,6 +242,13 @@ void Engine::poll() {
     json p = {{"ev", "power"}, {"levels", sc_.power_levels(readings_)}, {"noise", sc_.noise_levels(readings_)}};
     if (drops_since_power_ > 0) { p["drops"] = drops_since_power_; drops_since_power_ = 0; }
     emit_(p);
+  }
+  if (survey_ && polls_ % SURVEY_EVERY_POLLS == 0) {
+    double floor_db = 0;
+    const auto carriers = survey_->take(opt_.survey_db, &floor_db);
+    json list = json::array();
+    for (const auto& k : carriers) list.push_back({{"hz", k.hz}, {"db", round1(k.db_above_floor)}});
+    emit_({{"ev", "carriers"}, {"center", center_}, {"floorDb", round1(floor_db)}, {"carriers", list}});
   }
   if (cc_on_ && polls_ % CC_EVERY_POLLS == 0) {
     if (auto hit = cc_->check(now(), sc_.assigned_freqs())) {

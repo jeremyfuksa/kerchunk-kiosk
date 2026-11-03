@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { durationLabel, migrateInsightHours, PAUSE_S } from "../src/frontend/admin/radio.js";
+import { durationLabel, migrateInsightHours, modeKeyTarget, PAUSE_S } from "../src/frontend/admin/radio.js";
 
 describe("Pause key label", () => {
   it("is derived from PAUSE_S", () => {
@@ -46,5 +46,18 @@ describe("migrateInsightHours", () => {
     const s = store({ "kerchunk.admin.insightHours": "6", "kerchunk.adminNext.insightHours": "12" });
     expect(migrateInsightHours(s.get, s.set, s.remove)).toBe(6);
     expect(s.data.get("kerchunk.adminNext.insightHours")).toBe("12");
+  });
+});
+
+describe("modeKeyTarget", () => {
+  it("a key turns its own mode on, and off back to the scan", () => {
+    expect(modeKeyTarget("scan", "hf")).toBe("hf");
+    expect(modeKeyTarget("hf", "hf")).toBe("scan");
+    expect(modeKeyTarget("scan", "cb")).toBe("cb");
+    expect(modeKeyTarget("cb", "cb")).toBe("scan");
+  });
+  it("the other key goes straight across", () => {
+    expect(modeKeyTarget("hf", "cb")).toBe("cb");
+    expect(modeKeyTarget("cb", "hf")).toBe("hf");
   });
 });
