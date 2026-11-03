@@ -1,9 +1,9 @@
 // Hash routes for the admin. The new admin answers at /admin; `#/next/…`
 // from before the flip redirects (see legacyRedirect).
-export type Tab = "radio" | "tune" | "library" | "system";
+export type Tab = "radio" | "tune" | "library" | "log" | "system";
 
 export const TAB_TITLES: Record<Tab, string> = {
-  radio: "Radio", tune: "Tune", library: "Library", system: "System",
+  radio: "Radio", tune: "Tune", library: "Library", log: "Log", system: "System",
 };
 
 function segments(hash: string): string[] {
@@ -44,6 +44,7 @@ export function parseRoute(hash: string): Route {
   const [head, ...rest] = segments(hash);
   switch (head) {
     case "tune": return { tab: "tune" };
+    case "log": return { tab: "log" };
     case "library": {
       if (rest[0] === "new") return { tab: "library", sub: "new" };
       const detail = parseDetail(rest);

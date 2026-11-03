@@ -58,6 +58,7 @@ describe("HfSweep windows", () => {
     const s = new HfSweep(opts(), W, 0);
     s.tick(60_000);
     expect(s.onCarriers(61_000, W[0]!.centerHz, [car(5_950_000, 40)])).toBeNull();
+    expect(s.onCarriers(61_000, W[0]!.centerHz, [car(7_300_000, 40)])).toBeNull();   // in the new band, but an old survey
   });
 });
 

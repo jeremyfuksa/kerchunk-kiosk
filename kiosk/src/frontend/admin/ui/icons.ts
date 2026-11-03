@@ -1,4 +1,5 @@
 // Every glyph in the admin comes from lucide-static (operator mandate).
+import log from "lucide-static/icons/scroll-text.svg?raw";
 import radio from "lucide-static/icons/radio.svg?raw";
 import tune from "lucide-static/icons/sliders-horizontal.svg?raw";
 import library from "lucide-static/icons/library.svg?raw";
@@ -23,7 +24,7 @@ import refresh from "lucide-static/icons/refresh-cw.svg?raw";
 import bell from "lucide-static/icons/bell-ring.svg?raw";
 import map from "lucide-static/icons/map.svg?raw";
 // speaker reuses volume-2; speakerOff reuses volume-x
-const ICONS = { radio, tune, library, system, play, stop, skip, weather, cb, pause, lockout, volume, volumeOff, close, external, chevron, trash, plus, check, power, refresh, bell, map, speaker: volume, speakerOff: volumeOff } as const;
+const ICONS = { log, radio, tune, library, system, play, stop, skip, weather, cb, pause, lockout, volume, volumeOff, close, external, chevron, trash, plus, check, power, refresh, bell, map, speaker: volume, speakerOff: volumeOff } as const;
 export type IconName = keyof typeof ICONS;
 
 export function ico(name: IconName, cls = "kc-ico"): string {

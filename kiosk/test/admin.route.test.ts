@@ -11,6 +11,7 @@ describe("admin routes", () => {
   it("parses tabs and the triage sub-route", () => {
     expect(parseRoute("#/tune")).toEqual({ tab: "tune" });
     expect(parseRoute("#/library")).toEqual({ tab: "library" });
+    expect(parseRoute("#/log")).toEqual({ tab: "log" });
     expect(parseRoute("#/library/new")).toEqual({ tab: "library", sub: "new" });
     expect(parseRoute("#/system")).toEqual({ tab: "system" });
   });

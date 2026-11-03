@@ -56,6 +56,9 @@ function fetchConfigShared(): Promise<Config> {
   });
 }
 
+export interface HfCandidate { station: string; itu?: string; country?: string; language?: string; site?: string; lat?: number; lon?: number; powerKw?: number; distanceKm?: number }
+export interface HfStatus { stage: "sweep" | "cbStop" | "cb"; band: string; centerHz: number; listenHz: number | null; candidate?: HfCandidate | null; others?: string[] }
+
 export const api = {
   getConfig: fetchConfigShared,
   putConfig: (cfg: Config) => {
@@ -88,7 +91,7 @@ export const api = {
     fetch("/api/audio/volume", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ percent }) }),
   setMuted: (muted: boolean) =>
     fetch("/api/audio/mute", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ muted }) }),
-  getStatus: (signal?: AbortSignal) => fetch("/api/status", { signal }).then(j<{ state: string; mode: "scan" | "weather" | "monitor" | "cb" | "hf"; hf?: { stage: "sweep" | "cbStop" | "cb"; band: string; centerHz: number; listenHz: number | null }; monitor: Channel | null; scanCount: number; muted?: boolean; warmed?: boolean; breakIn?: boolean; startedAt?: number }>),
+  getStatus: (signal?: AbortSignal) => fetch("/api/status", { signal }).then(j<{ state: string; mode: "scan" | "weather" | "monitor" | "cb" | "hf"; hf?: HfStatus; monitor: Channel | null; scanCount: number; muted?: boolean; warmed?: boolean; breakIn?: boolean; startedAt?: number }>),
   monitor: (freq: number, alphaTag?: string) =>
     fetch("/api/monitor", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ freq, alphaTag }) }).then(j<{ mode: string }>),
   monitorStop: () =>
@@ -116,6 +119,8 @@ export const api = {
   getLogs: () => fetch("/api/logs").then(j<{ freq: number; alphaTag: string; ts: number }[]>),
   getSystem: <T = unknown>() => fetch("/api/system").then(j<T>),
   getStats: <T = unknown>(sinceMs: number) => fetch(`/api/stats?since=${sinceMs}`).then(j<T>),
+  getHfLog: (night: string | null) =>
+    fetch(`/api/hf/log${night ? `?night=${encodeURIComponent(night)}` : ""}`).then(j<{ nights: Array<{ night: string; count: number }>; night: string | null; rows: unknown[] }>),
   getHistory: <T = unknown>(q: Record<string, string | number>) =>
     fetch(`/api/history?${new URLSearchParams(Object.entries(q).map(([k, v]) => [k, String(v)]))}`).then(j<T>),
 };

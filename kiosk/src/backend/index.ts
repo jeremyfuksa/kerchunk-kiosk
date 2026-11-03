@@ -4,6 +4,8 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createServer, isSharedActivity } from "./server.js";
 import { ModeStore } from "./modeStore.js";
+import { ReceptionLog } from "./hf/receptionLog.js";
+import { ScheduleStore } from "./hf/scheduleStore.js";
 import { ConfigStore } from "./config/ConfigStore.js";
 import { ActivityLog } from "./activityLog.js";
 import { WsHub } from "./ws.js";
@@ -290,8 +292,23 @@ const radar = config.display && radarCfg?.enabled
 // Bound after createServer (it needs getConfig); beats before then are dropped.
 let wallWatchdog: WallWatchdog | undefined;
 
+// Shortwave schedules: fetched at runtime, a while after boot so they don't pile onto the
+// cold start, and checked hourly after that. A failed fetch keeps the last good copy.
+const schedules = new ScheduleStore({
+  dir: join(dirname(CONFIG_PATH), "schedules"),
+  home: { lat: config.display?.weatherLat ?? 39.1, lon: config.display?.weatherLon ?? -94.58 },
+});
+schedules.loadFromDisk();
+const refreshSchedules = (): void => {
+  if (schedules.due()) void schedules.refresh().catch((e) => console.error(`[schedule] ${(e as Error).message}`));
+};
+setTimeout(refreshSchedules, 120_000).unref();
+setInterval(refreshSchedules, 3_600_000).unref();
+
 const { server, getConfig, bootScanConfig } = createServer({
   modeStore: new ModeStore(join(dirname(CONFIG_PATH), "mode.json")),
+  receptionLog: new ReceptionLog({ path: join(dirname(CONFIG_PATH), "reception.db") }),
+  hfCandidates: (hz, ts) => schedules.candidates(hz, ts),
   configStore, engine, weatherEngine, activityLog, wsHub, staticDir: STATIC_DIR,
   lookup, weather, history, aircraftFeed, radar,
   ccSampleDir: join(dirname(CONFIG_PATH), "cc-samples"),
