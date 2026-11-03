@@ -1,3 +1,4 @@
+import type { ModeStore } from "./modeStore.js";
 import { createServer as httpCreateServer, type IncomingMessage, type ServerResponse, type Server } from "node:http";
 import { readFileSync, existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
@@ -28,6 +29,8 @@ import { CcRecorder } from "./ccRecorder.js";
 import { isLoopback } from "./wallWatchdog.js";
 
 export interface ServerDeps {
+  /** Keeps the operator's mode across restarts. Absent = always boot in scan. */
+  modeStore?: ModeStore;
   /** Optional identification chain — enriches Close Call channel names. */
   lookup?: LookupProvider;
   /** Boot enrichment pass pacing (tests shrink these). */
@@ -224,7 +227,7 @@ function json(res: ServerResponse, status: number, body: unknown, headers: Recor
   res.end(data);
 }
 
-export function createServer(deps: ServerDeps): { server: Server; getConfig: () => Config } {
+export function createServer(deps: ServerDeps): { server: Server; getConfig: () => Config; bootScanConfig: () => ScanConfig } {
   const { configStore, engine, activityLog, staticDir } = deps;
   let config = configStore.load();
   // Config revision. PUT /api/config replaces the document wholesale, and
@@ -254,8 +257,19 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
   // Runtime mode. Deliberately not read from or written to config: the kiosk
   // always boots into scan mode. "monitor" = direct tune (review a discovery
   // or any channel); its target lives only in memory.
-  let mode: ScanMode = "scan";
-  let monitorChannel: Channel | null = null;
+  // The operator's mode survives a restart. One that can't run any more falls back to scan.
+  const savedMode = deps.modeStore?.load();
+  let mode: ScanMode = savedMode
+    && !(savedMode.mode === "monitor" && !savedMode.monitor)
+    && !(savedMode.mode === "weather" && !config.weatherChannel)
+    ? savedMode.mode : "scan";
+  let monitorChannel: Channel | null = mode === "monitor" ? savedMode?.monitor ?? null : null;
+  // Called only for the operator's own choices: a SAME break-in's "weather" is temporary.
+  const saveMode = (): void => {
+    if (mode !== "scan" && mode !== "weather" && mode !== "cb" && mode !== "monitor") return;
+    try { deps.modeStore?.save({ mode, monitor: monitorChannel }); }
+    catch (e) { console.error(`[mode] save failed: ${(e as Error).message}`); }
+  };
 
   // One-time migration: earlier Close Call builds filed discoveries as
   // DISABLED cc_* channels in the main table. Move them where they belong.
@@ -896,7 +910,7 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
         const f = monitorChannel.freq;
         const stillKnown = config.channels.some((c) => c.freq === f)
           || (config.discoveries ?? []).some((d) => d.freq === f);
-        if (!stillKnown) { mode = "scan"; monitorChannel = null; }
+        if (!stillKnown) { mode = "scan"; monitorChannel = null; saveMode(); }
       }
       // Restart the engine only when the change is scan-RELEVANT. Pure
       // metadata (dismissing discoveries, lockout edits) only moves knownHz —
@@ -1134,6 +1148,7 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
       }
       mode = next;
       monitorChannel = null;
+      saveMode();
       await switchMode(scanConfigFor(mode, null));
       return json(res, 200, { mode, state: engine.state });
     }
@@ -1159,6 +1174,7 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
         mode: mode_, enabled: true,
       };
       mode = "monitor";
+      saveMode();
       await switchMode(scanConfigFor(mode, monitorChannel));
       return json(res, 200, { mode, monitor: monitorChannel });
     }
@@ -1166,6 +1182,7 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
     if (method === "POST" && path === "/api/monitor/stop") {
       mode = "scan";
       monitorChannel = null;
+      saveMode();
       await switchMode(scanConfigFor(mode, null));
       return json(res, 200, { mode, state: engine.state });
     }
@@ -1498,5 +1515,6 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
   // Expose the server's (migrated) config so the boot path in index.ts starts
   // the engine from the SAME snapshot the API uses, not a pre-migration copy
   // loaded before createServer ran (CLAUDE.md's boot-vs-API divergence warning).
-  return { server, getConfig: () => config };
+  // Boot goes through toScanConfig, in the saved mode, same as the API path.
+  return { server, getConfig: () => config, bootScanConfig: () => scanConfigFor(mode, monitorChannel) };
 }
