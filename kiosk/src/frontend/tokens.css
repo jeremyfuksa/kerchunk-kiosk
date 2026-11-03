@@ -54,6 +54,12 @@
   --kc-mute: #8d96a3;
   --kc-glass: #5fd4c3;       /* LIVE — the emphasis budget */
   /* The HF wall's Atlas (spec 2026-11-03-hf-atlas) */
+  --kc-cb-live: #ffd27a;
+  --kc-cb-recent: #8fd8e8;
+  --kc-cb-mast: #7a8098;
+  --kc-cb-core: #c9cfe0;
+  --kc-cb-ground: #07080f;
+  --kc-cb-plate: rgba(14, 14, 42, 0.74);
   --kc-hf-live: var(--kc-glass);    /* the live band's colour; dashboard.ts sets it per station */
   --kc-hf-land: #07080f;
   --kc-hf-border: #c9cfd8;
@@ -106,8 +112,6 @@
   --kc-k-alert-title: 3.1rem;  /* weather alert card title */
   --kc-k-weather: 2.25rem;     /* current conditions under the clock: icon + temperature */
   --kc-k-glass-error: 2.6rem;  /* the error text on the wall glass (smaller than a channel name) */
-  --kc-k-cb-num: 15rem;        /* CB wall: the channel number, read from across the room */
-  --kc-k-cb-dial-h: 13rem;     /* CB wall: the band dial's height */
   --kc-grow-ms: 420ms;         /* pill → glass on a hit */
   --kc-release-ms: 360ms;      /* glass → pill on release */
   --kc-sweep-ms: 4500ms;       /* one pass of the idle sweep tick */

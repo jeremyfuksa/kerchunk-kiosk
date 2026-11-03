@@ -29,8 +29,11 @@ import icoFog from "lucide-static/icons/cloud-fog.svg?raw";
 import icoWind from "lucide-static/icons/wind.svg?raw";
 import icoArrow from "lucide-static/icons/navigation-2.svg?raw";
 import { CB_EMPTY, cbReduce, cbSeed, type CbState, type CbHistoryRow } from "./cbDial.js";
-import { cbView, cbHtml, CB_VIEW_DEFAULTS } from "./cbView.js";
-import { CB_NAMES_DEFAULT, cbDefaultChannels } from "../../backend/config/cb.js";
+import { cbView, cbHtml, CB_VIEW_DEFAULTS, type CbView } from "./cbView.js";
+import { CB_VIEWBOX, cbSkyState, cbSkySvg, mastTop, mastsSvg } from "./cbHorizon.js";
+import { CbRings } from "./cbRings.js";
+import { subsolar, sunAltitude } from "./sun.js";
+import { CB_ALL, CB_NAMES_DEFAULT, cbDefaultChannels } from "../../backend/config/cb.js";
 import { DEFAULT_LANES_PER_GROUP } from "../../backend/config/engineDefaults.js";
 import type { MapHandle } from "../map/map.js";
 import "./dashboard.css";
@@ -178,7 +181,7 @@ export function renderDashboard(root: HTMLElement): void {
         </div>
         <aside class="kc-recent"><h2>Recently heard</h2><ul id="logList"></ul></aside>
       </div>
-      <div id="cbStage" class="kc-cb" aria-hidden="true"></div>
+      <div id="cbStage" class="kc-cb" aria-hidden="true"><svg id="cbSky" class="kc-cb__layer" viewBox="${CB_VIEWBOX}"></svg><svg id="cbMasts" class="kc-cb__layer" viewBox="${CB_VIEWBOX}"></svg><svg id="cbLive" class="kc-cb__layer kc-cb__live" viewBox="${CB_VIEWBOX}"></svg><div id="cbContent"></div></div>
       <div id="hfStage" class="kc-hf" aria-hidden="true"><svg id="hfSky" class="kc-hf__layer" viewBox="${STAGE_VIEWBOX}"></svg><div id="hfLand" class="kc-hf__layer"></div><svg id="hfDots" class="kc-hf__layer" viewBox="${STAGE_VIEWBOX}"></svg><svg id="hfTraces" class="kc-hf__layer" viewBox="${STAGE_VIEWBOX}"></svg><svg id="hfLive" class="kc-hf__layer" viewBox="${STAGE_VIEWBOX}"></svg><div id="hfPulse" class="kc-hf__pulse"></div><div id="hfContent"></div></div>
       <canvas id="hfSnap" class="kc-hf__snap" aria-hidden="true" hidden></canvas>
       <div id="hfHaze" class="kc-hf__haze" aria-hidden="true"></div>
@@ -234,6 +237,13 @@ export function renderDashboard(root: HTMLElement): void {
   let cbSegEls: HTMLElement[] = [];
   let cbDbEl: HTMLElement | null = null;
   const cbEl = root.querySelector<HTMLElement>("#cbStage")!;
+  const cbSkyEl = root.querySelector<SVGSVGElement>("#cbSky")!;
+  const cbMastsEl = root.querySelector<SVGSVGElement>("#cbMasts")!;
+  const cbContentEl = root.querySelector<HTMLElement>("#cbContent")!;
+  const cbRings = new CbRings(root.querySelector<SVGSVGElement>("#cbLive")!, () => hfOpts);
+  let cbSkyKey = "";
+  let cbHitKnown = false;
+  let cbHit: number | null = null;
   // How far back the entry backfill reaches (log rows can predate the fade).
   const CB_HISTORY_MS = 24 * 60 * 60_000;
   let cbOpts = {
@@ -245,7 +255,7 @@ export function renderDashboard(root: HTMLElement): void {
   void api.getConfig().then((cfg) => {
     cbOpts = {
       names: cfg.cb?.names ?? CB_NAMES_DEFAULT,
-      monitored: cfg.cb?.channels ?? cbDefaultChannels(cfg.scan.lanesPerGroup ?? DEFAULT_LANES_PER_GROUP, cfg.cb?.modes),
+      monitored: cfg.cb?.channels ?? cbDefaultChannels(cfg.spyserver ? CB_ALL.length : cfg.scan.lanesPerGroup ?? DEFAULT_LANES_PER_GROUP, cfg.cb?.modes),
       ...CB_VIEW_DEFAULTS,
       ...cfg.display?.cb,
     };
@@ -500,7 +510,10 @@ export function renderDashboard(root: HTMLElement): void {
     } else {
       if (cbTimer) { clearInterval(cbTimer); cbTimer = null; }
       cbKey = "";
-      cbEl.innerHTML = "";
+      cbContentEl.innerHTML = "";
+      cbRings.clear();
+      cbHitKnown = false;
+      cbHit = null;
     }
     schedule();
   }
@@ -682,13 +695,34 @@ export function renderDashboard(root: HTMLElement): void {
       .join("");
   }
 
+  function applyCbHit(v: CbView): void {
+    const key = (n: number | null): HitKey | null => (n === null ? null : { hz: n, lat: 0, lon: 0, band: "" });
+    const action = hitAction(cbHitKnown, key(cbHit), key(v.liveN));
+    cbHitKnown = true;
+    cbHit = v.liveN;
+    if (action === "end") { cbRings.end(); return; }
+    const top = v.ticks.find((t) => t.n === v.liveN);
+    if (!top) return;
+    // The live mast is drawn at its just-heard height, whatever step it had.
+    const { x, y } = mastTop({ ...top, step: 4 });
+    if (action === "hold") cbRings.hold(x, y);
+    if (action === "start" || action === "replace") cbRings.start(x, y);
+  }
+
   function paintCb(): void {
     const v = cbView({ cb, now: Date.now(), liveFreq: state.nowPlaying?.freq ?? null, error: state.error, muted, ...cbOpts });
+    const sky = cbSkyState(sunAltitude(hfHome.lat, hfHome.lon, subsolar(Date.now())));
+    if (sky !== cbSkyKey) {
+      cbSkyKey = sky;
+      cbSkyEl.innerHTML = cbSkySvg(sky);
+    }
+    applyCbHit(v);
     if (v.key !== cbKey) {
       cbKey = v.key;
-      cbEl.innerHTML = cbHtml(v, state.signalDb);
-      cbSegEls = Array.from(cbEl.querySelectorAll<HTMLElement>(".kc-cb__seg i"));
-      cbDbEl = cbEl.querySelector<HTMLElement>(".kc-cb__db");
+      cbContentEl.innerHTML = cbHtml(v, state.signalDb);
+      cbMastsEl.innerHTML = mastsSvg(v.ticks, v.liveN);
+      cbSegEls = Array.from(cbContentEl.querySelectorAll<HTMLElement>(".kc-cb__seg i"));
+      cbDbEl = cbContentEl.querySelector<HTMLElement>(".kc-cb__db");
     } else if (v.readout.state === "live") {
       // Signal ticks on the same channel only move the meter and the dB text.
       const lit = segmentsLit(meterFill(state.signalDb), METER_SEGMENTS);
