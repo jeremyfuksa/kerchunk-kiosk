@@ -1644,7 +1644,7 @@ describe("SpyServer source", () => {
     writeFileSync(up, "");
     expect(await waitFor(running, READY_PROVEN_MS + 2000)).toBe(true);
     await engine.stop();
-  });
+  }, READY_PROVEN_MS + 5000);
 
   it("a retune across sources clears an old source's error once the new helper is ready", async () => {
     const dir = mkdtempSync(join(tmpdir(), "wb-"));
@@ -1659,7 +1659,7 @@ describe("SpyServer source", () => {
     // It never got warm, so its first warm-up may finish. It must not restart.
     expect(events.slice(mark).filter((e) => (e.type === "warmup" && e.phase === "booting") || (e.type === "status" && e.state === "stopped"))).toEqual([]);
     await engine.stop();
-  });
+  }, READY_PROVEN_MS + 5000);
 
   it("a helper that says ready and then dies doesn't report running, so the error doesn't blink", async () => {
     const { engine, events } = makeEngine({ FAKE_WB_MODE: "crash" }, { restartDelayMs: 20, maxRestartDelayMs: 40 });
@@ -1682,7 +1682,7 @@ describe("SpyServer source", () => {
     await new Promise((r) => setTimeout(r, READY_PROVEN_MS + 200));
     await engine.stop();
     expect(events.slice(mark).filter((e) => e.type === "status" && e.state === "running")).toEqual([]);
-  });
+  }, READY_PROVEN_MS + 5000);
 
   it("the old source's backoff timer can't fire a second helper after a retune across sources", async () => {
     const args = tmpFile("args");

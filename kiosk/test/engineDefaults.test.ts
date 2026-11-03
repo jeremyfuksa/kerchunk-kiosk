@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { HELPER_DEFAULTS, MAX_LANES_PER_GROUP } from "../src/backend/config/engineDefaults.js";
+import { DEFAULT_SILENCE_TIMEOUT_MS, HELPER_DEFAULTS, MAX_LANES_PER_GROUP } from "../src/backend/config/engineDefaults.js";
+import { READY_PROVEN_MS } from "../src/backend/engine/WidebandEngine.js";
 
 // The admin shows these as placeholders ("blank = default"), so they must be
 // the helper's real defaults. The helper's truth is native/src/constants.hpp.
@@ -30,6 +31,12 @@ describe("engine defaults mirror native/src/constants.hpp", () => {
 
   it("MAX_LANES_PER_GROUP == MAX_LANES", () => {
     expect(MAX_LANES_PER_GROUP).toBe(cpp("MAX_LANES"));
+  });
+
+  it("the helper's SpyServer stall exit sits between READY_PROVEN_MS and the silence watchdog", () => {
+    const stallMs = cpp("SPY_STALL_S") * 1000;
+    expect(READY_PROVEN_MS).toBeGreaterThan(stallMs);       // else the wall reports a recovery, then the stall
+    expect(DEFAULT_SILENCE_TIMEOUT_MS).toBeGreaterThan(stallMs);   // else Node kills it before it says why
   });
 
   it("nativeAmGainDb defaults to 0 dB (Node sends no --am-gain-db)", () => {
