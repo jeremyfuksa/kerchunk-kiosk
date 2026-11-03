@@ -18,6 +18,11 @@ describe("hfWindows", () => {
     }
     for (const w of all) expect(w.centerHz % 5_000).toBe(2_500);
   });
+  it("reaches the broadcasters the schedules list just outside the ITU bands, and stays off ham 20 m", () => {
+    const inBand = (hz: number) => HF_BANDS_DEFAULT.some((b) => hz >= b.loHz && hz <= b.hiHz);
+    for (const hz of [5_850_000, 7_780_000, 9_265_000, 9_395_000, 9_955_000, 12_160_000]) expect(inBand(hz)).toBe(true);
+    expect(inBand(14_200_000)).toBe(false);
+  });
   it("runs 120 m to 13 m in ascending order", () => {
     expect(all[0]!.band).toBe("120m");
     expect(all.at(-1)!.band).toBe("13m");

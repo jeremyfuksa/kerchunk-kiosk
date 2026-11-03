@@ -81,6 +81,14 @@ describe("hfView", () => {
     expect(html).toContain("Radio Marti");
   });
 
+  it("the meter spans shortwave levels, not VHF ones, and ignores the helper's 0 dB open placeholder", () => {
+    const lit = (signalDb: number) => hfView({ ...base, signalDb, hf: { ...base.hf!, listenHz: 7_355_000 } }).lit;
+    expect(lit(-60)).toBe(0);
+    expect(lit(-35)).toBe(6);
+    expect(lit(-10)).toBe(12);
+    expect(lit(0)).toBe(0);
+  });
+
   it("shows a utility mode code as a word", () => {
     const v = hfView({ ...base, hf: { ...base.hf!, listenHz: 5_000_000, candidate: { station: "WWV", language: "-TS" } } });
     expect(v.readout.details).toEqual(["Utility"]);

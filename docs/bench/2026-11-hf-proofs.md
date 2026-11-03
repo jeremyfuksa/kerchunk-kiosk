@@ -50,7 +50,7 @@ speaker, digital gain 24.
 
 **The temperature comparison is not a fair one against map mode.** The service was stopped, so the wall had no
 data to draw and the weather helper (about 10% of a core) was not running. 52 °C shows the helper alone isn't
-hot. It does not show HF mode runs cooler than map mode. A thermal A/B with the real wall stage is still owed.
+hot. It does not show HF mode runs cooler than map mode. The thermal comparison below settles it.
 
 Result: **partial.** Stream stability and listening with measuring at once pass. Still open:
 
@@ -193,7 +193,7 @@ This used the mode API. A real SAME header can't be produced on demand, so the b
 
 - Dead SpyServer address in CB mode: "Radio error" with the connect failure on the wall, and `scan` started KIOSK01 at once. After restoring the address, the error cleared with no restart.
 - A test alert banner displayed over the CB stage.
-- 30 minutes in CB with the real wall: 71 °C peak, 55.2 °C mean, helper 74.7% of a core mean (32 lanes). The map-mode leg was stopped for operator listening, so the thermal A/B is still owed.
+- 30 minutes in CB with the real wall: 71 °C peak, 55.2 °C mean, helper 74.7% of a core mean (32 lanes). The map-mode leg was stopped for operator listening; see the thermal comparison below for HF against map mode.
 - Direct tune to 5850 kHz through the backend: −22.7 dBFS over 12 s on the tee, wall card correct, held over a minute with only the startup prefill as silence. Not yet judged by ear.
 
 ## 8-bit after dark
@@ -212,3 +212,29 @@ Night of 2026-11-02, speaker muted.
 
 Not proven: a real CB hold (the band was quiet), a real SAME alert from HF, and audio by ear.
 
+## Thermal comparison
+
+Night of 2026-11-03 from 00:19 local, on `main` at `5c87527`, with the real wall and the speaker muted. Each leg settled for 2 minutes, then ran 30 minutes, sampled every 15 s.
+
+| Leg | Peak | Mean | Helper mean | Helper max |
+|---|---|---|---|---|
+| HF | 51 °C | 48.4 °C | 23.1% of a core | 25.8% |
+| Map | 64 °C | 57.5 °C | 34.5% | 57.7% |
+| HF again | 51 °C | 48.4 °C | 22.8% | 25.7% |
+
+HF ran about 9 °C cooler than map mode on average, and the two HF legs agree. The meter was dark through these legs (see below), so they don't include its redraws. Map-mode traffic may differ by day. CB's 71 °C peak above was a separate run with 32 lanes, not part of this comparison.
+
+## One pass, window by window
+
+Recorded 02:07 to 02:25 local. Windows with anything to play: 60 m, 49 m, 41 m, 25 m, and 75 m on the second pass. 22 m to 13 m were empty at that hour.
+
+Two defects came out of it, both fixed in the PR that adds this section:
+
+- 9395 kHz (WRMI) at +46 dB, second only to 5935 at +47, was neither played nor logged, because 31 m started at 9400. The bands now follow where Aoki and HFCC list broadcasters. Rows outside the old edges included 9955 (93), 5850 (62), 9930 (41), 9395 (38), 7730 (37), 9965 (29) and 7780 (26). 31 m now takes two windows, so a pass is a minute longer.
+- The wall's meter was dark on most stations. Across both passes that night, levels ran from −59 dBFS (p10, weakest) to −9 (p90, strongest), and the shared meter scale starts at −35. HF now uses −60 to −10.
+
+Rerun after both fixes, 02:30 to 03:00 local, with the meter moving:
+
+- 30 minutes in HF: 54 °C peak, 47.9 °C mean, helper 23.0% of a core mean. The meter's redraws add no measurable heat.
+- 9395 (WRMI, +49 dB) and 9965 (Hope Radio 5, +24 dB) played and were logged. 5850, 7730 and 7780 (WRMI) were logged. The wider 41 m also logs some non-broadcast carriers: 7755 and 7800 unidentified, 7795 JMH Japan Meteo Fax.
+- A strong station can stay silent on alternate passes: 9395 at +46 dB played nothing on the second pass, because a pass takes about 15 minutes and `config.hf.cooldownMs` is 30. It is still logged.
