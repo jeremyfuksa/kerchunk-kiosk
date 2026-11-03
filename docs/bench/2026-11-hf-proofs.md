@@ -231,4 +231,10 @@ Recorded 02:07 to 02:25 local. Windows with anything to play: 60 m, 49 m, 41 m, 
 Two defects came out of it, both fixed in the PR that adds this section:
 
 - 9395 kHz (WRMI) at +46 dB, second only to 5935 at +47, was neither played nor logged, because 31 m started at 9400. The bands now follow where Aoki and HFCC list broadcasters. Rows outside the old edges included 9955 (93), 5850 (62), 9930 (41), 9395 (38), 7730 (37), 9965 (29) and 7780 (26). 31 m now takes two windows, so a pass is a minute longer.
-- The wall's meter was dark on most stations. Levels ran from −53 dBFS (p10, weakest) to −17 (p90, strongest), and the shared meter scale starts at −35. HF now uses −55 to −15.
+- The wall's meter was dark on most stations. Across both passes that night, levels ran from −59 dBFS (p10, weakest) to −9 (p90, strongest), and the shared meter scale starts at −35. HF now uses −60 to −10.
+
+Rerun after both fixes, 02:30 to 03:00 local, with the meter moving:
+
+- 30 minutes in HF: 54 °C peak, 47.9 °C mean, helper 23.0% of a core mean. The meter's redraws add no measurable heat.
+- 9395 (WRMI, +49 dB) and 9965 (Hope Radio 5, +24 dB) played and were logged. 5850, 7730 and 7780 (WRMI) were logged. The wider 41 m also logs some non-broadcast carriers: 7755 and 7800 unidentified, 7795 JMH Japan Meteo Fax.
+- A strong station can stay silent on alternate passes: 9395 at +46 dB played nothing on the second pass, because a pass takes about 15 minutes and `config.hf.cooldownMs` is 30. It is still logged.

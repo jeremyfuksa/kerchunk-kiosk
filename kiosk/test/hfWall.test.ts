@@ -83,9 +83,9 @@ describe("hfView", () => {
 
   it("the meter spans shortwave levels, not VHF ones, and ignores the helper's 0 dB open placeholder", () => {
     const lit = (signalDb: number) => hfView({ ...base, signalDb, hf: { ...base.hf!, listenHz: 7_355_000 } }).lit;
-    expect(lit(-55)).toBe(0);
+    expect(lit(-60)).toBe(0);
     expect(lit(-35)).toBe(6);
-    expect(lit(-15)).toBe(12);
+    expect(lit(-10)).toBe(12);
     expect(lit(0)).toBe(0);
   });
 

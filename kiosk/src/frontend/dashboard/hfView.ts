@@ -8,8 +8,8 @@ import { ituToIso2 } from "./ituCountry.js";
 import { greatCircle, robinson, type LatLon } from "./robinson.js";
 
 const PATH_SEGMENTS = 48;
-// The HF+ measured about -55 to -17 dBFS on stations, night of 2026-11-03; the shared meter scale starts at -35.
-const HF_METER_DB = { floor: -55, ceil: -15 } as const;
+// The HF+ measured about -59 to -9 dBFS on stations, night of 2026-11-03; the shared meter scale starts at -35.
+const HF_METER_DB = { floor: -60, ceil: -10 } as const;
 
 /** 0 dB is the helper's placeholder when a lane is opened by hand, not a level. */
 function hfMeterFill(db: number | null): number {
