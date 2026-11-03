@@ -180,3 +180,15 @@ describe("hfView", () => {
     expect(hfHtml(v)).not.toContain("<b>x</b>");
   });
 });
+
+describe("noon", () => {
+  it("a new night's log replaces last night's on the wall", () => {
+    const night = [row(5_950_000, "Radio A", 100), row(7_300_000, "Radio B", 200)];
+    const before = hfView({ ...base, log: night });
+    const after = hfView({ ...base, log: [row(9_600_000, "Radio C", 300)] });
+    expect(before.heardTitle).toBe("Heard tonight 2");
+    expect(after.heardTitle).toBe("Heard tonight 1");
+    expect(after.rows).toEqual(["9600 Radio C"]);
+    expect(after.key).not.toBe(before.key);
+  });
+});

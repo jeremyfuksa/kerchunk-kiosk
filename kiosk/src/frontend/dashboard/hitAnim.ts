@@ -24,6 +24,8 @@ export class HitAnimator {
   private lines: SVGElement[] = [];
   private glows: SVGElement[] = [];
   private rings: { rim: SVGElement; halo: SVGElement; core: SVGElement } | null = null;
+  /** What's drawing the line and ring in: end() freezes these where they are. */
+  private drawing: Animation[] = [];
   private pulseTimer: ReturnType<typeof setInterval> | null = null;
   private pulseAnim: Animation | null = null;
 
@@ -49,6 +51,7 @@ export class HitAnimator {
   private stopAnims(): void {
     for (const a of this.anims) a.cancel();
     this.anims = [];
+    this.drawing = [];
     this.stopPulses();
   }
 
@@ -78,16 +81,22 @@ export class HitAnimator {
   private finishFade(): void {
     const done = this.fading;
     this.fading = null;
-    if (done) { this.stopAnims(); this.hitGroup.replaceChildren(); done(); }
+    if (done) { this.wipe(); done(); }
+  }
+
+  private wipe(): void {
+    this.stopAnims();
+    this.hitGroup.replaceChildren();
+    this.rings = null;
+    this.lines = [];
+    this.glows = [];
   }
 
   /** Everything off: for leaving the stage. */
   clear(): void {
     this.fading = null;
-    this.stopAnims();
+    this.wipe();
     this.tintGroup.replaceChildren();
-    this.hitGroup.replaceChildren();
-    this.rings = null;
   }
 
   /** Draws the held state. Animations run on top of it, and cancelling them leaves exactly this. */
@@ -129,8 +138,13 @@ export class HitAnimator {
     const run = (el: Element, frames: Keyframe[], timing: KeyframeAnimationOptions): void => { this.anims.push(el.animate(frames, timing)); };
     const extras: SVGElement[] = [];   // only exist during the hit
 
-    run(this.rings!.rim, [{ r: `${from}px` }, { r: `${RING_R}px` }], grow);
-    run(this.rings!.halo, [{ r: `${from}px` }, { r: `${RING_R}px` }], grow);
+    const draw = (el: Element, frames: Keyframe[], timing: KeyframeAnimationOptions): void => {
+      const a = el.animate(frames, timing);
+      this.anims.push(a);
+      this.drawing.push(a);
+    };
+    draw(this.rings!.rim, [{ r: `${from}px` }, { r: `${RING_R}px` }], grow);
+    draw(this.rings!.halo, [{ r: `${from}px` }, { r: `${RING_R}px` }], grow);
     for (const [gap, opacity] of [[TRAIL_GAP, 0.45], [TRAIL_GAP * 2, 0.25]] as const) {
       const trail = this.add(this.hitGroup, "circle", { cx: x, cy: y, r: 0, fill: "none", stroke: color, "stroke-width": 2, "stroke-opacity": 0 });
       extras.push(trail);
@@ -149,8 +163,8 @@ export class HitAnimator {
     this.lines.forEach((line, i) => {
       const frames = steps[i]!.map((v) => ({ strokeDasharray: "1 1", strokeDashoffset: v }));
       const timing = { duration: o.hitLineMs, delay: o.hitLineDelayMs, fill: "both" as const };
-      run(line, frames, timing);
-      run(this.glows[i]!, frames, timing);
+      draw(line, frames, timing);
+      draw(this.glows[i]!, frames, timing);
     });
 
     const homeXy = robinson(home.lat, home.lon);
@@ -170,17 +184,19 @@ export class HitAnimator {
     });
   }
 
-  /** The scan moved on: the ring fades out and the line settles to a trace. Calls onDone when it's a trace. */
-  end(onDone: () => void): void {
+  /** The scan moved on: the ring fades out and the line settles to a trace, or away if one's already under it.
+   *  Calls onDone when it's a trace. A hit still drawing in fades from wherever it got to. */
+  end(onDone: () => void, traceUnder = false): void {
     this.finishFade();
     if (!this.rings) { onDone(); return; }
+    for (const a of this.drawing) a.commitStyles();
     this.stopAnims();
     const o = this.opts();
-    if (matchMedia("(prefers-reduced-motion: reduce)").matches) { this.hitGroup.replaceChildren(); onDone(); return; }
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) { this.wipe(); onDone(); return; }
     const timing = { duration: o.hitFadeMs, easing: "ease-out", fill: "both" as const };
     const anims: Animation[] = [];
     for (const el of [this.rings.rim, this.rings.halo, this.rings.core, ...this.glows]) anims.push(el.animate([{ opacity: 1 }, { opacity: 0 }], timing));
-    for (const el of this.lines) anims.push(el.animate([{ opacity: 1 }, { opacity: o.traceOpacity }], timing));
+    for (const el of this.lines) anims.push(el.animate([{ opacity: 1 }, { opacity: traceUnder ? 0 : o.traceOpacity }], timing));
     this.anims = anims;
     this.fading = onDone;
     void Promise.allSettled(anims.map((a) => a.finished)).then(() => { if (this.anims === anims) this.finishFade(); });

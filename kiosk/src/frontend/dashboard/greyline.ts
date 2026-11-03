@@ -20,7 +20,7 @@ export const GREYLINE_BANDS: ReadonlyArray<{ alt: number; color: string }> = [
   { alt: -9, color: "#2a2466" }, { alt: -12, color: "#1c1c50" }, { alt: -14, color: "#14163c" },
 ];
 
-const LON_STEP = 3;
+const LON_STEP = 1;
 const LAT_STEP = 0.25;
 // The operator rejected the true shape, where night ends in a flat line above a sunlit polar cap, so
 // band edges past these latitudes are steepened until they run off the globe. Not true out there.

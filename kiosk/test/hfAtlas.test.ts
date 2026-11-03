@@ -245,3 +245,24 @@ describe("traces fading over time", () => {
     expect(tracesSvg([t("1"), t("2")], 0.34)).not.toContain("<mask");
   });
 });
+
+describe("small things that used to go wrong", () => {
+  const OTHER: HitKey = { hz: 9_600_000, lat: 10, lon: 10, band: "31m" };
+  it("a station back after a receiver error holds instead of replaying its hit", () => {
+    expect(hitAction(true, null, ROMANIA, ROMANIA)).toBe("hold");
+    expect(hitAction(true, null, OTHER, ROMANIA)).toBe("start");
+    expect(hitAction(true, null, ROMANIA, null)).toBe("start");
+  });
+  it("a zero-length path keeps its keyframes numeric", () => {
+    expect(lineKeyframes([0], 4)[0]!.every(Number.isFinite)).toBe(true);
+    expect(lineKeyframes([10, 0], 4).flat().every(Number.isFinite)).toBe(true);
+  });
+  it("a station at home draws a path with no NaN in it", () => {
+    expect(tracePath(HOME, HOME).join("")).not.toContain("NaN");
+  });
+  it("a one-point path gives a pulse with real numbers", () => {
+    const f = pulseFrames([[{ x: 1, y: 2 }]], (p) => p);
+    expect(f.every((k) => Number.isFinite(k.offset) && Number.isFinite(k.opacity))).toBe(true);
+    expect(f.map((k) => k.transform).join("")).not.toContain("NaN");
+  });
+});

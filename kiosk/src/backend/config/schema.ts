@@ -384,8 +384,6 @@ export const configSchema = z.object({
         h: z.number().positive().max(15).default(3),
       }).default({}),
     }).default({}),
-    // Weather Glass layer (frontend/map/glassLayer.ts). Reaches the wall on
-    // its next load: PUT /api/config, then POST /api/kiosk/reload.
     // The HF wall (spec 2026-11-03-hf-atlas). Read at page load: PUT /api/config, then POST /api/kiosk/reload.
     hf: z.object({
       greylineStepMs: z.number().int().min(60_000).max(3_600_000).default(300_000),
@@ -402,6 +400,8 @@ export const configSchema = z.object({
       pulseEveryMs: z.number().int().min(0).max(60_000).default(4_500),
       pulseMs: z.number().int().min(300).max(20_000).default(2_000),
     }).default({}),
+    // Weather Glass layer (frontend/map/glassLayer.ts). Reaches the wall on
+    // its next load: PUT /api/config, then POST /api/kiosk/reload.
     glass: z.object({
       maxFps: z.number().int().min(1).max(60).default(30),        // steady redraw rate
       txFps: z.number().int().min(1).max(60).default(60),         // while a front is growing

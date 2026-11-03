@@ -7,7 +7,7 @@ import { reloadOnMapFailure } from "./mapRetry.js";
 import { hfHtml, hfView, mapShouldRun, type HfHeard, type HfView } from "./hfView.js";
 import { countrySelector } from "./ituCountry.js";
 import worldSvg from "./world.svg?raw";
-import { atlasDots, atlasTraces, hitAction, tracesSvg, type HitKey } from "./atlas.js";
+import { atlasDots, atlasTraces, hitAction, traceKey, tracesSvg, type HitKey } from "./atlas.js";
 import { greylineDue, greylineSvg, skySvg, stagePx, STAGE_VIEWBOX } from "./greyline.js";
 import { atlasSnapshotSvg, paintSnapshot, runZoom, zoomFor, type ZoomDirection, hfLogWanted } from "./zoom.js";
 import { HF_WALL_DEFAULTS, HitAnimator } from "./hitAnim.js";
@@ -153,6 +153,7 @@ export { esc } from "../lib/format.js";
 
 const GREYLINE_CHECK_MS = 30_000;
 const MAP_DRAW_WAIT_MS = 3_000;
+const ZOOM_TEXT_FADE_MS = 250;
 
 export function renderDashboard(root: HTMLElement): void {
   let state = initialState();
@@ -260,8 +261,9 @@ export function renderDashboard(root: HTMLElement): void {
   const hfDotsEl = root.querySelector<SVGSVGElement>("#hfDots")!;
   const hfSnapEl = root.querySelector<HTMLCanvasElement>("#hfSnap")!;
   const hfTracesEl = root.querySelector<SVGSVGElement>("#hfTraces")!;
+  const hfLiveEl = root.querySelector<SVGSVGElement>("#hfLive")!;
   let hfOpts = HF_WALL_DEFAULTS;
-  const hitAnim = new HitAnimator(root.querySelector<SVGSVGElement>("#hfLive")!, root.querySelector<HTMLElement>("#hfPulse")!, () => hfOpts);
+  const hitAnim = new HitAnimator(hfLiveEl, root.querySelector<HTMLElement>("#hfPulse")!, () => hfOpts);
   const hfContentEl = root.querySelector<HTMLElement>("#hfContent")!;
   let hfOn = false;
   let hfDotsKey = "";
@@ -272,6 +274,11 @@ export function renderDashboard(root: HTMLElement): void {
   let hfHitKnown = false;
   let hfHit: HitKey | null = null;
   let hfFading: HitKey | null = null;
+  let hfLost: HitKey | null = null;      // the station a receiver error took off the wall
+  let hfTraceUnder = false;              // this station's site already had its trace when the hit began
+  let hfDrawn: ReadonlySet<string> = new Set();
+  let hfLogRev = 0;
+  let hfLayersKey = "";
   let hfLit = -1;
   function syncMap(): void {
     if (mapShouldRun(cbOn, hfOn)) mapHandle?.resume(); else mapHandle?.pause();
@@ -288,6 +295,7 @@ export function renderDashboard(root: HTMLElement): void {
     hfHome = { lat: cfg.display?.weatherLat ?? hfHome.lat, lon: cfg.display?.weatherLon ?? hfHome.lon };
     hfOpts = { ...HF_WALL_DEFAULTS, ...cfg.display?.hf };
     hfTracesKey = "";
+    if (hfHit) hitAnim.hold(hfHit, hfHome);   // drawn from the default home, if the config came late
     schedule();
   }).catch(() => { /* default stands */ });
   let hfLogLoaded = false;
@@ -295,6 +303,7 @@ export function renderDashboard(root: HTMLElement): void {
     if (!hfLogWanted(hfOn, hfLogLoaded)) return Promise.resolve();
     return api.getHfLog(null).then((log) => {
       hfLog = log.rows as HfHeard[];
+      hfLogRev++;
       hfLogLoaded = true;
       schedule();
     }).catch(() => { /* the list fills next window */ });
@@ -375,7 +384,11 @@ export function renderDashboard(root: HTMLElement): void {
       poller.request("hfHeard");
       if (zoom === "out") {
         dashEl.classList.add("hfZoomWait");   // the map stays up until the picture is ready
-        zoomWhenReady("out", Promise.resolve(), () => { dashEl.classList.remove("hfZoomWait"); syncMap(); });
+        zoomWhenReady("out", Promise.resolve(), () => {
+          dashEl.classList.remove("hfZoomWait");
+          syncMap();
+          for (const el of [hfContentEl, hfLiveEl]) el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: ZOOM_TEXT_FADE_MS });
+        });
       }
     } else {
       hfKey = "";
@@ -384,10 +397,19 @@ export function renderDashboard(root: HTMLElement): void {
       hfHitKnown = false;
       hfHit = null;
       hfFading = null;
-      hitAnim.clear();
-      const leave = (): void => { dashEl.classList.remove("hfStage"); };
-      if (zoom === "in" && mapHandle) zoomWhenReady("in", mapHandle.whenDrawn(MAP_DRAW_WAIT_MS), leave);
-      else leave();
+      hfLost = null;
+      hfLayersKey = "";
+      // The picture has no text or live line, so those fade before it takes over.
+      let fades: Animation[] = [];
+      const leave = (): void => {
+        for (const f of fades) f.cancel();
+        hitAnim.clear();
+        dashEl.classList.remove("hfStage");
+      };
+      if (zoom === "in" && mapHandle) {
+        fades = [hfContentEl, hfLiveEl].map((el) => el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: ZOOM_TEXT_FADE_MS, fill: "forwards" }));
+        zoomWhenReady("in", Promise.all([mapHandle.whenDrawn(MAP_DRAW_WAIT_MS), ...fades.map((f) => f.finished)]), leave);
+      } else leave();
     }
   }
 
@@ -408,21 +430,13 @@ export function renderDashboard(root: HTMLElement): void {
 
   /** Each layer repaints only when what it shows has changed. */
   function paintHfLayers(v: HfView): void {
-    const dots = atlasDots(hfLog);
-    const dotsKey = JSON.stringify(dots);
-    if (dotsKey !== hfDotsKey) {
-      hfDotsKey = dotsKey;
-      hfDotsEl.innerHTML = dots.map((d) => `<circle cx="${d.x.toFixed(1)}" cy="${d.y.toFixed(1)}" r="${d.r.toFixed(1)}" opacity="${d.opacity.toFixed(2)}"/>`).join("");
-    }
     applyHit(v.liveStation);
     // Traces age on the greyline's clock, so they only ever change on its slow step.
-    const traces = atlasTraces(hfLog, hfHome, v.liveStation ?? hfFading, hfGreylineAt, hfOpts.traceFadeMs);
-    const tracesKey = `${hfOpts.traceOpacity}|${hfHome.lat},${hfHome.lon}|${traces.map((t) => `${t.key}@${t.level}`).join(";")}`;
-    if (tracesKey !== hfTracesKey) {
-      hfTracesKey = tracesKey;
-      const home = robinson(hfHome.lat, hfHome.lon);
-      hfTracesEl.innerHTML = tracesSvg(traces, hfOpts.traceOpacity)
-        + `<circle class="kc-hf__qth" cx="${home.x.toFixed(1)}" cy="${home.y.toFixed(1)}" r="6"/>`;
+    const live = hfTraceUnder ? null : v.liveStation ?? hfFading;
+    const layersKey = `${hfLogRev}|${hfGreylineAt}|${live ? traceKey(live) : ""}|${hfOpts.traceOpacity}|${hfOpts.traceFadeMs}|${hfHome.lat},${hfHome.lon}`;
+    if (layersKey !== hfLayersKey) {
+      hfLayersKey = layersKey;
+      paintStillLayers(live);
     }
     const tintKey = `${v.tint}|${v.liveColor}`;
     if (tintKey !== hfTintKey) {
@@ -431,17 +445,40 @@ export function renderDashboard(root: HTMLElement): void {
     }
   }
 
+  function paintStillLayers(live: HitKey | null): void {
+    const dots = atlasDots(hfLog);
+    const dotsKey = JSON.stringify(dots);
+    if (dotsKey !== hfDotsKey) {
+      hfDotsKey = dotsKey;
+      hfDotsEl.innerHTML = dots.map((d) => `<circle cx="${d.x.toFixed(1)}" cy="${d.y.toFixed(1)}" r="${d.r.toFixed(1)}" opacity="${d.opacity.toFixed(2)}"/>`).join("");
+    }
+    const traces = atlasTraces(hfLog, hfHome, live, hfGreylineAt, hfOpts.traceFadeMs);
+    hfDrawn = new Set(traces.map((t) => t.key));
+    const tracesKey = `${hfOpts.traceOpacity}|${hfHome.lat},${hfHome.lon}|${traces.map((t) => `${t.key}@${t.level}`).join(";")}`;
+    if (tracesKey !== hfTracesKey) {
+      hfTracesKey = tracesKey;
+      const home = robinson(hfHome.lat, hfHome.lon);
+      hfTracesEl.innerHTML = tracesSvg(traces, hfOpts.traceOpacity)
+        + `<circle class="kc-hf__qth" cx="${home.x.toFixed(1)}" cy="${home.y.toFixed(1)}" r="6"/>`;
+    }
+  }
+
   function applyHit(next: HitKey | null): void {
-    const action = hitAction(hfHitKnown, hfHit, next);
+    const action = hitAction(hfHitKnown, hfHit, next, hfLost);
     const prev = hfHit;
     hfHitKnown = true;
     hfHit = next;
-    if (action === "hold" && next) hitAnim.hold(next, hfHome);
-    if (action === "start" && next) hitAnim.start(next, hfHome);
-    if (action === "replace" && next) { hitAnim.start(next, hfHome); }
+    if (!state.error) hfLost = null;
+    else if (prev) hfLost = prev;
+    if (action === "hold" && next) { hfFading = null; hitAnim.hold(next, hfHome); }
+    if ((action === "start" || action === "replace") && next) {
+      const under = hfDrawn.has(traceKey(next));
+      hitAnim.start(next, hfHome);   // may finish a fade, whose callback clears hfTraceUnder
+      hfTraceUnder = under;
+    }
     if (action === "end") {
       hfFading = prev;
-      hitAnim.end(() => { hfFading = null; schedule(); });
+      hitAnim.end(() => { hfFading = null; hfTraceUnder = false; schedule(); }, hfTraceUnder);
     }
   }
 
@@ -505,6 +542,8 @@ export function renderDashboard(root: HTMLElement): void {
         const changed = s.mode !== mode || sc !== scanCount || mu !== muted || bi !== breakIn || wm !== state.warmed;
         const zoom = matchMedia("(prefers-reduced-motion: reduce)").matches ? null : zoomFor(modeSeen ? mode : null, s.mode, bi, mapHandle !== null);
         modeSeen = true;
+        // Finishes a zoom this change makes wrong; a zoom it starts begins below.
+        if (s.mode !== mode || bi !== breakIn) finishZoom();
         mode = s.mode; scanCount = sc; muted = mu; breakIn = bi;
         setCbStage(s.mode === "cb");
         setHfStage(s.mode === "hf", zoom);

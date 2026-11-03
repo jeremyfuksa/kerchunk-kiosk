@@ -681,6 +681,7 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
     breakIn = false;                  // break-in over; thermal management resumes
     if (mode !== "weather") return;   // operator changed it; leave alone
     mode = breakInFrom;
+    statusChanged();
     if (mode === "hf") hf.resume();
     void switchMode(scanConfigFor(mode, null))
       .catch((e) => console.error(`[switchMode] revert-to-${mode} failed: ${(e as Error).message}`));
@@ -1241,6 +1242,7 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
       hf.stop();
       mode = "monitor";
       saveMode();
+      statusChanged();
       await switchMode(scanConfigFor(mode, monitorChannel));
       return json(res, 200, { mode, monitor: monitorChannel });
     }
@@ -1250,6 +1252,7 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
       mode = "scan";
       monitorChannel = null;
       saveMode();
+      statusChanged();
       await switchMode(scanConfigFor(mode, null));
       return json(res, 200, { mode, state: engine.state });
     }

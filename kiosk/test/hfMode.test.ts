@@ -230,6 +230,16 @@ describe("POST /api/mode hf", () => {
     await request(server).post("/api/mode").send({ mode: "scan" });
   });
 
+  it("monitor_changes_broadcast_status_changed", async () => {
+    const { server, wsHub } = await app();
+    const spy = vi.spyOn(wsHub, "broadcast");
+    const sent = () => spy.mock.calls.filter(([e]) => (e as { type: string }).type === "statusChanged").length;
+    await request(server).post("/api/monitor").send({ freq: 146_520_000 });
+    expect(sent()).toBe(1);
+    await request(server).post("/api/monitor/stop");
+    expect(sent()).toBe(2);
+  });
+
   it("hf_tune_broadcasts_status_changed", async () => {
     const { server, wsHub } = await app();
     await request(server).post("/api/mode").send({ mode: "hf" });
