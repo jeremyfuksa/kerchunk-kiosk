@@ -2,7 +2,8 @@ import { WebSocketServer } from "ws";
 import { spawn, execFile } from "node:child_process";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createServer, toScanConfig } from "./server.js";
+import { createServer } from "./server.js";
+import { ModeStore } from "./modeStore.js";
 import { ConfigStore } from "./config/ConfigStore.js";
 import { ActivityLog } from "./activityLog.js";
 import { WsHub } from "./ws.js";
@@ -289,7 +290,8 @@ const radar = config.display && radarCfg?.enabled
 // Bound after createServer (it needs getConfig); beats before then are dropped.
 let wallWatchdog: WallWatchdog | undefined;
 
-const { server, getConfig } = createServer({
+const { server, getConfig, bootScanConfig } = createServer({
+  modeStore: new ModeStore(join(dirname(CONFIG_PATH), "mode.json")),
   configStore, engine, weatherEngine, activityLog, wsHub, staticDir: STATIC_DIR,
   lookup, weather, history, aircraftFeed, radar,
   ccSampleDir: join(dirname(CONFIG_PATH), "cc-samples"),
@@ -357,7 +359,7 @@ server.listen(PORT, () => {
   // getConfig() is the server's migrated config (legacy cc_ channels moved to
   // discoveries), not the pre-migration snapshot loaded above — so boot starts
   // the engine from the same source of truth the API path uses.
-  engine.start(toScanConfig(getConfig(), "scan"))
+  engine.start(bootScanConfig())
     // Re-apply persisted volume/mute to the hardware mixer on boot, so the saved
     // setting actually takes effect instead of inheriting the OS mixer state.
     // Direct audio.js calls WITH the configured mixer card/control — the same
