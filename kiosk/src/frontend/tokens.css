@@ -56,8 +56,8 @@
   /* The HF wall's Atlas (spec 2026-11-03-hf-atlas) */
   --kc-cb-live: #ffd27a;
   --kc-cb-recent: #8fd8e8;
-  --kc-cb-mast: #7a8098;
-  --kc-cb-core: #c9cfe0;
+  --kc-cb-mast: #b4bcd2;
+  --kc-cb-core: #eef1f8;
   --kc-cb-ground: #07080f;
   --kc-cb-plate: rgba(14, 14, 42, 0.74);
   --kc-hf-live: var(--kc-glass);    /* the live band's colour; dashboard.ts sets it per station */

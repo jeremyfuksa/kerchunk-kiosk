@@ -257,7 +257,7 @@ html[data-page="dashboard"] .kc-cb__readout[data-state="error"] .kc-cb__seg i { 
 html[data-page="dashboard"] .kc-cb__readout[data-state="error"] .kc-cb__meta { color: var(--kc-coral); }
 html[data-page="dashboard"] .kc-cb__readout[data-state="error"] .kc-cb__sub b { font-size: 22px; }
 
-html[data-page="dashboard"] .kc-cb__log { position: absolute; right: 28px; top: 160px; width: 400px; }
+html[data-page="dashboard"] .kc-cb__log { position: absolute; right: 35px; top: 208px; width: 400px; }
 html[data-page="dashboard"] .kc-cb__log h2 { margin: 0 0 4px; color: var(--kc-dim); font-size: 13px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
 html[data-page="dashboard"] .kc-cb__row { display: flex; justify-content: space-between; gap: 16px; padding: 4px 0; color: var(--kc-dim); font-size: 15px; }
 html[data-page="dashboard"] .kc-cb__row i { font-style: normal; font-variant-numeric: tabular-nums; }

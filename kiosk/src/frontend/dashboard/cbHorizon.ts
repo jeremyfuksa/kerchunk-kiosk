@@ -13,7 +13,7 @@ const STAR_SCALE = 0.683;   // the stars are laid out for the Atlas's 2000-wide 
 
 /** Top to horizon. The Atlas's day teal and twilight bands, plus how much of the stars show. */
 const SKIES: Record<CbSkyState, { stops: readonly string[]; stars: number }> = {
-  day: { stops: ["#0f3a4c", "#14505c", "#1c6470", "#2fb7a6"], stars: 0 },
+  day: { stops: ["#0f3a4c", "#14505c", "#175a66", "#1f6f76"], stars: 0 },
   low: { stops: ["#14505c", "#3a2c78", "#5b3f7f", "#c9785a"], stars: 0 },
   twilight: { stops: ["#14163c", "#2a2466", "#4c3580", "#8a4f86"], stars: 0.6 },
   night: { stops: ["#0a0b20", "#14163c", "#1c1c50", "#2a2466"], stars: 1 },
