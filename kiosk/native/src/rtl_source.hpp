@@ -11,7 +11,7 @@
 #include "outputs.hpp"
 
 namespace kc {
-class RtlSource : public IqSource {
+class RtlSource : public DeviceSource {
  public:
   struct Options { std::string serial; int index = -1; int rate = 2'400'000; std::string gain = "auto"; int ppm = 0; };
   RtlSource(Options o, LogFn log);
@@ -20,10 +20,10 @@ class RtlSource : public IqSource {
   // releases it. `should_stop` is polled each retry; when it returns true open() gives up with
   // err = "aborted". Every other failure's err starts with "failed to open RTL-SDR" (Node's
   // NO_DEVICE classifier keys on that prefix).
-  bool open(std::string& err, const std::function<bool()>& should_stop = {});
-  void start();
-  void stop();
-  double seconds_since_rx() const;
+  bool open(std::string& err, const std::function<bool()>& should_stop = {}) override;
+  void start() override;
+  void stop() override;
+  double seconds_since_rx() const override;
   bool consume(const std::function<void(const IqBlock&)>& use) override { return ring_.try_consume(use); }
   bool set_center(double hz) override;   // RETUNE_ATTEMPTS tries; false = every one failed
   uint32_t generation() const override { return gen_.load(); }

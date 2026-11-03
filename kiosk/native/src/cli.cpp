@@ -47,11 +47,31 @@ bool parse_cli(int argc, const char* const* argv, Cli& c, std::string& err) {
     double d;
     int n;
     if (k == "--close-call") c.eng.close_call = true;
+    else if (k == "--survey") c.eng.survey = true;
+    else if (k == "--survey-db") { if (!ranged(v, 3, 60, c.eng.survey_db)) return false; }
     else if (k == "--same-enable") c.eng.same = true;
     else if (k == "--realtime") c.realtime = true;
     else if (k == "--sink") { if (!val(c.sink)) return false; }
     else if (k == "--gain") { if (!val(c.gain)) return false; if (c.gain != "auto" && !to_double(c.gain, d)) { err = "--gain must be auto or dB"; return false; } }
     else if (k == "--rtl-serial") { if (!val(c.rtl_serial)) return false; }
+    else if (k == "--spyserver") {
+      if (!val(v)) return false;
+      const size_t colon = v.rfind(':');
+      if (colon == std::string::npos || colon == 0 || !to_int(v.substr(colon + 1), n) || n < 1 || n > 65535) {
+        err = "--spyserver must be host:port";
+        return false;
+      }
+      c.spyserver_host = v.substr(0, colon);
+      c.spyserver_port = n;
+    }
+    else if (k == "--spyserver-gain") {
+      if (!val(v) || !to_int(v, n) || n < 0 || n > 32) { err = "--spyserver-gain must be an integer in [0, 32]"; return false; }
+      c.spyserver_gain = n;
+    }
+    else if (k == "--spyserver-digital-gain") {
+      if (!val(v) || !to_int(v, n) || n < 0 || n > 32) { err = "--spyserver-digital-gain must be an integer in [0, 32]"; return false; }
+      c.spyserver_digital_gain = n;
+    }
     else if (k == "--iq-file") { if (!val(c.iq_file)) return false; }
     else if (k == "--tune") { if (!val(c.tune_json)) return false; }
     else if (k == "--audio-out") { if (!val(c.audio_out)) return false; }
@@ -102,6 +122,10 @@ bool parse_cli(int argc, const char* const* argv, Cli& c, std::string& err) {
     }
     else if (k == "--limiter-release-ms") { if (!ranged(v, 5, 1000, c.eng.limiter_release_ms)) return false; }
     else { err = "unknown arg " + k; return false; }
+  }
+  if (!c.spyserver_host.empty()) {
+    if (!c.rtl_serial.empty() || c.rtl_index >= 0) { err = "--spyserver can't be combined with an RTL-SDR"; return false; }
+    c.eng.rate = 750'000;   // IqRateConverter::OUT_RATE; Channelizer needs a multiple of LANE_RATE
   }
   return true;
 }

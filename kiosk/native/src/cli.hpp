@@ -2,6 +2,7 @@
 #pragma once
 #include <string>
 
+#include "constants.hpp"
 #include "engine.hpp"
 
 namespace kc {
@@ -12,6 +13,11 @@ struct Cli {
   std::string rtl_serial;
   int rtl_index = -1;
   int ppm = 0;   // tuner frequency correction (--ppm, rtlsdr_set_freq_correction)
+  // --spyserver host:port replaces the RTL-SDR and forces eng.rate to 750000.
+  std::string spyserver_host;
+  int spyserver_port = 0;
+  int spyserver_gain = -1;           // gain index; -1 = leave the server's setting
+  int spyserver_digital_gain = SPY_DIGITAL_GAIN_DEFAULT;
   int audio_fd = -1;
   std::string iq_file, tune_json, audio_out, same_out;
   bool realtime = false;
