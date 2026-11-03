@@ -182,3 +182,16 @@ The link stays on Wi-Fi, so the helper got `--audio-buffer-ms`. Same window (505
 At 500 and 1000 ms the silence sits entirely in the first report window, which is the startup prefill, and no later window reported any. **500 ms is the default.** Audio plays about 500 ms behind the helper's open and close events.
 
 This is 20 minutes at each buffered size, one evening. It doesn't explain the bursts, and it wasn't run with the wall or the weather helper up.
+
+## SAME switch through Node
+
+`POST /api/mode` from `cb` on SpyServer to `weather` on KIOSK01, through the real backend, five cycles, timed to the first NWR audio on `/api/stream.wav`: **998–1034 ms**. Over all cycles the WebSocket carried no `warmup` or `stopped` event and no error, and `warmed` stayed true. The return to CB adds the 500 ms speaker buffer, and at night it had no audio to time.
+
+This used the mode API. A real SAME header can't be produced on demand, so the break-in path itself is covered by server tests only, and how much of the header and attention tone the 1 s costs is still unmeasured.
+
+## CB on the live wall
+
+- Dead SpyServer address in CB mode: "Radio error" with the connect failure on the wall, and `scan` started KIOSK01 at once. After restoring the address, the error cleared with no restart.
+- A test alert banner displayed over the CB stage.
+- 30 minutes in CB with the real wall: 71 °C peak, 55.2 °C mean, helper 74.7% of a core mean (32 lanes). The map-mode leg was stopped for operator listening, so the thermal A/B is still owed.
+- Direct tune to 5850 kHz through the backend: −22.7 dBFS over 12 s on the tee, wall card correct, held over a minute with only the startup prefill as silence. Not yet judged by ear.

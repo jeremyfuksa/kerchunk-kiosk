@@ -256,11 +256,11 @@ Measured from the server on 2026-11-02:
 
 ## Constraints and known problems
 
-1. **SAME break-in audio: provisionally, respawn the helper; the operator's to confirm**
-   (`docs/bench/2026-11-hf-proofs.md`). Moving between SpyServer and KIOSK01 is a helper
-   respawn, measured at about 1.0 s from stop to first audio in both directions, inside
-   the operator's 2 s, but helper-only: Plan 2 must measure it through Node. Fallback:
-   KIOSK03 supplies the audio (0.115 s, needs `--pcm-in-fd` ported).
+1. **SAME break-in audio: respawn the helper, approved by the operator on 2026-11-02**
+   (`docs/bench/2026-11-hf-proofs.md`). Moving from SpyServer to KIOSK01 is a helper
+   respawn, measured through Node at about 1.0 s to NWR audio, inside the operator's 2 s.
+   Fallback if that stops holding: KIOSK03 supplies the audio (0.115 s, needs
+   `--pcm-in-fd` ported).
    This is a deliberate, narrow exception to "a break-in is a `retune()`, never
    `stop()+start()`", for HF mode only, because a retune can't change the radio. The
    invariant's reasons still bind: no warm-up overlay, banner kept, `breakIn` guard
@@ -281,11 +281,9 @@ Measured from the server on 2026-11-02:
    hour, but with the service stopped, so no wall updates and no weather helper. That
    doesn't show HF runs cooler than map mode. A thermal A/B with the real wall stage
    is still required.
-5. **Audio gaps over Wi-Fi.** IQ runs clean for an hour at 12.3 Mbit/s with no drops
-   or exits, but holding one frequency, three of six runs had 0.8–1.8 s trimmed plus
-   matching silence, a sign of bursty arrival. The speaker path needs a jitter buffer
-   for network IQ, or a wired link. One unexplained 2 s stall also happened before
-   the soak, so Node's respawn after exit 3 must stay graceful.
+5. **Audio gaps over Wi-Fi.** The link stays on Wi-Fi, per the operator on 2026-11-02. A
+   500 ms speaker buffer removes the gaps from bursty arrival in the bench. One unexplained
+   2 s stall also happened before the soak, so Node's respawn after exit 3 must stay graceful.
 6. **Config.** All behaviour knobs go in config (window timer, cooldown,
    thresholds, bands, CB switch times, SpyServer address). `radios[]` is read once at
    boot.
