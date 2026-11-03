@@ -3,7 +3,7 @@ import { hfWindows, HF_BANDS_DEFAULT, HF_DEFAULTS, HfSweep, type HfOpts } from "
 
 const CB_CENTER = 27_195_000;
 const opts = (over: Partial<HfOpts> = {}): HfOpts => ({ ...HF_DEFAULTS, ...over });
-const W = [{ centerHz: 5_952_500, band: "49m" }, { centerHz: 7_252_500, band: "41m" }];
+const W = [{ centerHz: 5_952_500, band: "49m", loHz: 5_700_000, hiHz: 6_200_000 }, { centerHz: 7_252_500, band: "41m", loHz: 7_200_000, hiHz: 7_600_000 }];
 const car = (hz: number, db: number) => ({ hz, db });
 
 describe("hfWindows", () => {
@@ -66,6 +66,15 @@ describe("HfSweep listening", () => {
   it("plays the strongest carrier that clears the listen threshold", () => {
     const s = new HfSweep(opts(), W, 0);
     expect(s.onCarriers(5_000, center, [car(5_950_000, 40), car(6_000_000, 45), car(5_900_000, 5)])?.listenHz).toBe(6_000_000);
+  });
+
+  it("carriers the window sees outside its band don't play and aren't surveyed", () => {
+    const narrow = [{ centerHz: 3_952_500, band: "75m", loHz: 3_900_000, hiHz: 4_000_000 }];
+    const s = new HfSweep(opts(), narrow, 0);
+    const seen = [car(3_840_000, 50), car(3_950_000, 20), car(4_000_000, 20), car(4_005_000, 50)];
+    expect(s.inWindow(seen).map((c) => c.hz)).toEqual([3_950_000, 4_000_000]);
+    expect(s.onCarriers(5_000, 3_952_500, [car(3_840_000, 50)])).toBeNull();
+    expect(s.onCarriers(5_001, 3_952_500, seen)?.listenHz).toBe(3_950_000);
   });
 
   it("stays quiet when nothing clears the threshold", () => {

@@ -3,7 +3,7 @@
 import { CB_FREQ_HZ } from "../config/cb.js";
 
 export interface HfBand { name: string; loHz: number; hiHz: number }
-export interface HfWindow { centerHz: number; band: string }
+export interface HfWindow { centerHz: number; band: string; loHz: number; hiHz: number }
 export interface HfCarrier { hz: number; db: number }
 export type HfStage = "sweep" | "cbStop" | "cb";
 export interface HfTune { stage: HfStage; centerHz: number; listenHz: number | null; band: string }
@@ -56,7 +56,7 @@ export function hfWindows(bands: readonly HfBand[]): HfWindow[] {
     const step = (b.hiHz - b.loHz) / n;
     for (let i = 0; i < n; i++) {
       const c = b.loHz + step * (i + 0.5);
-      out.push({ centerHz: Math.floor(c / RASTER_HZ) * RASTER_HZ + RASTER_HZ / 2, band: b.name });
+      out.push({ centerHz: Math.floor(c / RASTER_HZ) * RASTER_HZ + RASTER_HZ / 2, band: b.name, loHz: b.loHz, hiHz: b.hiHz });
     }
   }
   return out.sort((a, b) => a.centerHz - b.centerHz);
@@ -86,10 +86,17 @@ export class HfSweep {
     return { stage: "sweep", centerHz: w.centerHz, listenHz: this.listenHz, band: w.band };
   }
 
+  /** A window sees past its band's edges, onto ham and utility signals. Those aren't this sweep's. */
+  inWindow(carriers: readonly HfCarrier[]): HfCarrier[] {
+    const w = this.windows[this.index];
+    return this.stage === "sweep" && w ? carriers.filter((c) => c.hz >= w.loHz && c.hz <= w.hiHz) : [...carriers];
+  }
+
   /** A survey for the live window. Returns the new tune when the station changes. */
-  onCarriers(now: number, centerHz: number, carriers: readonly HfCarrier[]): HfTune | null {
+  onCarriers(now: number, centerHz: number, seen: readonly HfCarrier[]): HfTune | null {
     if (this.stage === "cb" || centerHz !== this.current().centerHz) return null;
-    if (this.stage === "cbStop") return this.cbSurvey(now, carriers);
+    if (this.stage === "cbStop") return this.cbSurvey(now, seen);
+    const carriers = this.inWindow(seen);
 
     if (this.listenHz !== null) {
       const heard = carriers.some((c) => Math.abs(c.hz - this.listenHz!) <= RASTER_HZ && c.db >= this.opts.minListenDb);

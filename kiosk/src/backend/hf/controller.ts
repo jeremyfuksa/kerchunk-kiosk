@@ -66,7 +66,7 @@ export class HfController {
     if (ev.type !== "carriers") return;
     this.sweep.setOpts(this.opts());
     const live = this.sweep.current();
-    if (live.stage === "sweep" && live.centerHz === ev.centerHz) this.deps.onSurvey?.(live, ev.carriers, ev.floorDb);
+    if (live.stage === "sweep" && live.centerHz === ev.centerHz) this.deps.onSurvey?.(live, this.sweep.inWindow(ev.carriers), ev.floorDb);
     const tune = this.sweep.onCarriers(this.now(), ev.centerHz, ev.carriers);
     if (tune) this.deps.apply(tune);
   }
