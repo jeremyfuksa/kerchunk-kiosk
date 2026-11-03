@@ -195,3 +195,7 @@ This used the mode API. A real SAME header can't be produced on demand, so the b
 - A test alert banner displayed over the CB stage.
 - 30 minutes in CB with the real wall: 71 °C peak, 55.2 °C mean, helper 74.7% of a core mean (32 lanes). The map-mode leg was stopped for operator listening, so the thermal A/B is still owed.
 - Direct tune to 5850 kHz through the backend: −22.7 dBFS over 12 s on the tee, wall card correct, held over a minute with only the startup prefill as silence. Not yet judged by ear.
+
+## 8-bit after dark
+
+The same comparison at 23:50 local, the check owed above. Clipping was again 0.000% in every window at gains 24 and 32. Gain 32 missed at most one carrier per window, all under +15 dB. The strongest night signals don't clip, so the default of 32 stands. One night, 4 s per capture.
