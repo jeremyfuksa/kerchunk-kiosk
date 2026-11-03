@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { subsolar, sunAltitude } from "../src/frontend/dashboard/sun.js";
-import { greylineDue, GREYLINE_BANDS, nightEdges, nightBandPath, nightInterval, skySvg, greylineSvg, globeOutline } from "../src/frontend/dashboard/greyline.js";
+import { robinson } from "../src/frontend/dashboard/robinson.js";
+import { greylineDue, STAGE_VIEWBOX, GREYLINE_BANDS, nightEdges, nightBandPath, nightInterval, skySvg, greylineSvg, globeOutline } from "../src/frontend/dashboard/greyline.js";
 
 const NOV = Date.UTC(2026, 10, 3, 9, 11);
 const JUNE = Date.UTC(2026, 5, 21, 12, 0);
@@ -77,6 +78,22 @@ function inPath(d: string, px: number, py: number): boolean {
   }
   return inside;
 }
+
+describe("framing", () => {
+  const [x0, y0, w, h] = STAGE_VIEWBOX.split(" ").map(Number) as [number, number, number, number];
+  const pxPerUnit = 1366 / w;
+  it("the pole's flat line and the high Arctic are off the top, so traces leave rather than flatten", () => {
+    expect(y0).toBeGreaterThan(robinson(78, 0).y - 1);
+  });
+  it("the flat south edge is hidden behind the reception band", () => {
+    const southPx = (robinson(-90, 0).y - y0) * pxPerUnit;
+    expect(southPx).toBeGreaterThanOrEqual(708);
+  });
+  it("keeps the wall's shape and centres the globe", () => {
+    expect(h / w).toBeCloseTo(768 / 1366, 2);
+    expect(x0 + w / 2).toBeCloseTo(robinson(0, 0).x, 0);
+  });
+});
 
 describe("band shape", () => {
   it("a band at the map's edge doesn't cover daylight inside the rim", () => {

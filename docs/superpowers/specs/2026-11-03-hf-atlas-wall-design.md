@@ -35,7 +35,7 @@ Back to front:
 
 1. **Space.** Near-black (`#04050d`) with about 520 still stars of varied size and brightness, seeded so they don't change between loads. They show only outside the globe.
 2. **Atmosphere.** A thin blue halo behind the globe only, falling off smoothly into space with no hard line. The prototype stacks strokes of the outline: `#5a78e6` reaching 85 map units in 18 steps at opacity 0.02, plus `#7fd0ee` reaching 24 in 12 steps at 0.028. The operator approved this strength after asking twice for less, so don't raise it without asking.
-3. **Globe.** The sky is clipped to the Robinson outline of `world.svg` (`robinson()` at longitude ±180). Fill it edge to edge across the stage's width, as in the prototype.
+3. **Globe.** The sky is clipped to the Robinson outline of `world.svg` (`robinson()` at longitude ±180). The prototype shows the whole globe. The final framing is under "Layout".
 4. **Greyline.** The real day and night for the current time, as flat stepped bands with no blur. Day is teal (`#14505c` to `#0f3a4c`) with a soft glow around the point under the sun. Bands at sun altitudes −0.8°, −3°, −6°, −9°, −12° and −14° are `#5b3f7f`, `#4c3580`, `#3a2c78`, `#2a2466`, `#1c1c50` and `#14163c`. It's computed from the clock with no network, and it redraws on a slow timer with no visible motion between redraws.
 5. **Land.** Near-black (`#07080f`, opacity 0.72), with hairline borders (`#c9cfd8`, opacity 0.2).
 6. **Tonight's sites.** A quiet dot for every located site in tonight's log, whether it played or not, brighter and larger with stronger `peakDb`.
@@ -101,7 +101,7 @@ The heat proof below includes several of these.
 
 At 1366×768, per the prototype:
 
-- **Map:** edge to edge, with the 2000×857 map scaled to 1366 wide and starting 38 px down.
+- **Map:** larger than the screen, centred, 1905 map units across the 1366 px. The top of the screen is about 78°N, so the flat pole line and the high Arctic are off screen: the operator rejected traces flattening along that line. The flat south edge sits behind the reception band.
 - **Station panel:** lower left over the South Pacific, 430 px wide, 66 px from the bottom, on a translucent dark plate with no blur (`rgba(14,14,42,.74)`). It holds the frequency at 68 px, the name at 30 px, one line of details, and the meter. All of `hfView`'s readout data stays, including "Likely", "Muted", and the error and hunting states.
 - **Top left:** "HF · 25m", small and dim.
 - **Clock and weather:** top right, inside the corner of space and clear of the globe's rim. The prototype's one line crosses the rim, and the operator agreed to moving it. Stacking it is fine if one line won't fit. Keep the Lucide weather icon that's there today.
