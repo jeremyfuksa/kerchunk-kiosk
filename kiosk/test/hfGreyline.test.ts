@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { subsolar, sunAltitude } from "../src/frontend/dashboard/sun.js";
-import { GREYLINE_BANDS, nightEdges, nightBandPath, nightInterval, skySvg, greylineSvg, globeOutline } from "../src/frontend/dashboard/greyline.js";
+import { greylineDue, GREYLINE_BANDS, nightEdges, nightBandPath, nightInterval, skySvg, greylineSvg, globeOutline } from "../src/frontend/dashboard/greyline.js";
 
 const NOV = Date.UTC(2026, 10, 3, 9, 11);
 const JUNE = Date.UTC(2026, 5, 21, 12, 0);
@@ -62,5 +62,34 @@ describe("night bands", () => {
   it("uses the spec's six bands", () => {
     expect(GREYLINE_BANDS.map((b) => b.alt)).toEqual([-0.8, -3, -6, -9, -12, -14]);
     expect(GREYLINE_BANDS.map((b) => b.color)).toEqual(["#5b3f7f", "#4c3580", "#3a2c78", "#2a2466", "#1c1c50", "#14163c"]);
+  });
+});
+
+function inPath(d: string, px: number, py: number): boolean {
+  let inside = false;
+  for (const sub of d.split("M").filter(Boolean)) {
+    const pts = sub.replace("Z", "").split("L").map((p) => p.split(" ").map(Number) as [number, number]);
+    for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+      const [xi, yi] = pts[i]!;
+      const [xj, yj] = pts[j]!;
+      if (yi > py !== yj > py && px < ((xj - xi) * (py - yi)) / (yj - yi) + xi) inside = !inside;
+    }
+  }
+  return inside;
+}
+
+describe("band shape", () => {
+  it("a band at the map's edge doesn't cover daylight inside the rim", () => {
+    const s = subsolar(Date.UTC(2026, 2, 20, 18));   // terminator on the antimeridian
+    const d = nightBandPath(-0.8, s);
+    expect(inPath(d, 150, 500)).toBe(false);          // the equator near 147 W, afternoon there
+    expect(inPath(d, 1500, 500)).toBe(true);          // the equator near 91 E, night there
+  });
+});
+
+describe("greylineDue", () => {
+  it("greyline_redraws_only_when_the_step_passes", () => {
+    expect(greylineDue(1_000, 1_000 + 299_999, 300_000)).toBe(false);
+    expect(greylineDue(1_000, 1_000 + 300_000, 300_000)).toBe(true);
   });
 });

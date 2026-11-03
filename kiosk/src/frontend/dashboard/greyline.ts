@@ -61,24 +61,38 @@ export function nightEdges(alt: number, lon: number, sub: SubPoint): { upper: nu
   };
 }
 
+/** One meridian between two latitudes. Robinson's meridians curve, so a straight line would cut across daylight. */
+function meridian(lon: number, fromLat: number, toLat: number): string[] {
+  const n = Math.max(1, Math.ceil(Math.abs(toLat - fromLat) / 5));
+  return Array.from({ length: n + 1 }, (_, i) => {
+    const p = robinson(fromLat + ((toLat - fromLat) * i) / n, lon);
+    return `${p.x.toFixed(1)} ${p.y.toFixed(1)}`;
+  });
+}
+
 /** Night as polygons over each run of longitudes that has any. Runs past the rim; the globe clips it. */
 export function nightBandPath(alt: number, sub: SubPoint): string {
   let d = "";
-  let run: Array<{ lon: number; e: NonNullable<ReturnType<typeof nightEdges>> }> = [];
+  let run: Array<{ lon: number; e: NonNullable<ReturnType<typeof nightEdges>>; i: { lo: number; hi: number } }> = [];
   const flush = (): void => {
     const first = run[0];
     const last = run.at(-1);
     if (!first || !last) return;
     const top = run.map((c) => `${c.e.xUpper.toFixed(1)} ${c.e.upper.toFixed(1)}`);
     const bottom = run.map((c) => `${c.e.xLower.toFixed(1)} ${c.e.lower.toFixed(1)}`).reverse();
-    if (first.lon === -180) { top.unshift(`${OFF_LEFT} ${first.e.upper.toFixed(1)}`); bottom.push(`${OFF_LEFT} ${first.e.lower.toFixed(1)}`); }
-    if (last.lon === 180) { top.push(`${OFF_RIGHT} ${last.e.upper.toFixed(1)}`); bottom.unshift(`${OFF_RIGHT} ${last.e.lower.toFixed(1)}`); }
-    d += `M${top.join("L")}L${bottom.join("L")}Z`;
+    const left = first.lon === -180
+      ? [`${OFF_LEFT} ${first.e.lower.toFixed(1)}`, `${OFF_LEFT} ${first.e.upper.toFixed(1)}`]
+      : meridian(first.lon, first.i.lo, first.i.hi);
+    const right = last.lon === 180
+      ? [`${OFF_RIGHT} ${last.e.upper.toFixed(1)}`, `${OFF_RIGHT} ${last.e.lower.toFixed(1)}`]
+      : meridian(last.lon, last.i.hi, last.i.lo);
+    d += `M${[...top, ...right, ...bottom, ...left].join("L")}Z`;
     run = [];
   };
   for (let lon = -180; lon <= 180; lon += LON_STEP) {
     const e = nightEdges(alt, lon, sub);
-    if (e) run.push({ lon, e });
+    const i = nightInterval(alt, lon, sub);
+    if (e && i) run.push({ lon, e, i });
     else flush();
   }
   flush();
@@ -90,6 +104,10 @@ export function globeOutline(): string {
   for (let lat = 90; lat >= -90; lat -= 2) { const p = robinson(lat, -180); pts.push(`${p.x.toFixed(1)} ${p.y.toFixed(1)}`); }
   for (let lat = -90; lat <= 90; lat += 2) { const p = robinson(lat, 180); pts.push(`${p.x.toFixed(1)} ${p.y.toFixed(1)}`); }
   return `M${pts.join("L")}Z`;
+}
+
+export function greylineDue(lastTs: number, now: number, stepMs: number): boolean {
+  return now - lastTs >= stepMs;
 }
 
 /** The part of the sky that changes: the sun's glow and the bands. */

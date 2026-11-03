@@ -8,7 +8,7 @@ import { hfHtml, hfView, mapShouldRun, type HfHeard, type HfView } from "./hfVie
 import { countrySelector } from "./ituCountry.js";
 import worldSvg from "./world.svg?raw";
 import { atlasDots, atlasTraces, hitAction, type HitKey } from "./atlas.js";
-import { skySvg, STAGE_VIEWBOX } from "./greyline.js";
+import { greylineDue, greylineSvg, skySvg, STAGE_VIEWBOX } from "./greyline.js";
 import { HF_WALL_DEFAULTS, HitAnimator } from "./hitAnim.js";
 import { robinson } from "./robinson.js";
 import { mountActivityMap } from "../map/map.js";
@@ -150,6 +150,8 @@ function fmtTime(ts: number): string { return new Date(ts).toLocaleTimeString();
 // Re-exported for tests (kept stable from the pre-refactor public surface).
 export { esc } from "../lib/format.js";
 
+const GREYLINE_CHECK_MS = 30_000;
+
 export function renderDashboard(root: HTMLElement): void {
   let state = initialState();
 
@@ -258,6 +260,8 @@ export function renderDashboard(root: HTMLElement): void {
   let hfOn = false;
   let hfDotsKey = "";
   let hfTracesKey = "";
+  let hfGreylineAt = 0;
+  let hfGreylineTimer: ReturnType<typeof setInterval> | null = null;
   let hfTintKey = "";
   let hfHitKnown = false;
   let hfHit: HitKey | null = null;
@@ -288,6 +292,14 @@ export function renderDashboard(root: HTMLElement): void {
     }).catch(() => { /* the list fills next window */ });
   }, Number.POSITIVE_INFINITY);
 
+  function redrawGreyline(): void {
+    const now = Date.now();
+    if (!greylineDue(hfGreylineAt, now, hfOpts.greylineStepMs)) return;
+    hfGreylineAt = now;
+    const group = hfSkyEl.querySelector("#hfGreyline");
+    if (group) group.innerHTML = greylineSvg(now);
+  }
+
   function setHfStage(on: boolean): void {
     if (on === hfOn) return;
     hfOn = on;
@@ -295,7 +307,9 @@ export function renderDashboard(root: HTMLElement): void {
     hfEl.setAttribute("aria-hidden", String(!on));
     syncMap();
     if (on) {
-      if (!hfSkyEl.firstElementChild) hfSkyEl.innerHTML = skySvg(Date.now());
+      if (!hfSkyEl.firstElementChild) { hfGreylineAt = Date.now(); hfSkyEl.innerHTML = skySvg(hfGreylineAt); }
+      else redrawGreyline();
+      hfGreylineTimer ??= setInterval(redrawGreyline, GREYLINE_CHECK_MS);
       if (!hfLandEl.firstElementChild) {
         hfLandEl.innerHTML = worldSvg;
         const svg = hfLandEl.querySelector("svg")!;
@@ -306,6 +320,7 @@ export function renderDashboard(root: HTMLElement): void {
       poller.request("hfHeard");
     } else {
       hfKey = "";
+      if (hfGreylineTimer) { clearInterval(hfGreylineTimer); hfGreylineTimer = null; }
       hfTintKey = "";
       hfHitKnown = false;
       hfHit = null;

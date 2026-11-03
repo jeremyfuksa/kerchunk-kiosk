@@ -264,6 +264,10 @@ even with green checks.
   an automatic hop (operator, 2026-11-03). Shortwave
   stays out of the activity log and history (`isSharedActivity`), so it doesn't reach jeremyfuksa.com.
   Knobs: `config.hf` (`windowMs`, `minListenDb`, `cooldownMs`, `fadeMs`, `bands`). Mode survives restarts in `mode.json` beside the config.
+  The wall is the Atlas (spec 2026-11-03-hf-atlas): `dashboard/greyline.ts` (sky), `atlas.ts` (traces, dots, band colours, hit logic),
+  `hitAnim.ts` (the only moving layer), `hfView.ts` (text). Four stacked layers: sky, land and dots, traces, live. A hit must never repaint the
+  still ones. Knobs: `display.hf` (`greylineStepMs`, `traceOpacity`, `hit*Ms`, `zoomMs`), read at page load. The WS event `statusChanged`
+  makes the wall poll at once, because `/api/status` alone would make hits up to 5 s late.
   Reception log: `hf/receptionLog.ts`, its own `reception.db` (never pruned), admin Log tab, `GET /api/hf/log`.
   Schedules: `hf/schedule.ts` + `scheduleStore.ts` fetch EiBi (HTTP only, its cert is expired), Aoki and HFCC
   daily into `schedules/` beside the config, keeping the last good copy. Runtime only, never in the repo:
