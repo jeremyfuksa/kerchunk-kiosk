@@ -15,7 +15,7 @@ export interface Shell {
   setTriageCount(n: number): void;
 }
 
-const TABS: Tab[] = ["radio", "tune", "library", "system"];
+const TABS: Tab[] = ["radio", "tune", "library", "log", "system"];
 
 /** What the shell needs to write: the poller's exclusive lane (every
  *  every admin write goes through it) and somewhere to say a failure. Passed

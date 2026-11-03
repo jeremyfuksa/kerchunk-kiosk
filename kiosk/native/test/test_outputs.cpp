@@ -158,3 +158,28 @@ TEST(alsa_sink_stats_line_silent_when_clean_and_in_ms_otherwise) {
   CHECK(kc::AlsaSink::format_stats(s, 60) ==
         "speaker output, last 60 s: 0 ms overflowed, 100 ms drift-trimmed, 10 ms underrun silence, 2 ALSA xruns");
 }
+
+TEST(jitter_buffer_zero_matches_todays_limits) {
+  const auto b = kc::AudioBuffer::for_ms(0);
+  CHECK(b.target == (size_t)kc::AUDIO_TARGET_LAT);
+  CHECK(b.trim_above == (size_t)kc::AUDIO_MAX_LAT);
+  CHECK(b.resume_at == (size_t)(2 * kc::ALSA_PERIOD));
+  CHECK(b.ring == (size_t)kc::AUDIO_RING);
+}
+
+TEST(jitter_buffer_trims_only_above_target_plus_one_second) {
+  const auto b = kc::AudioBuffer::for_ms(500);
+  CHECK(b.target == 24000);
+  CHECK(b.trim_above == 24000 + 48000);
+  CHECK(kc::JitterPolicy::drop_for(b.trim_above, b) == 0);
+  CHECK(kc::JitterPolicy::drop_for(b.trim_above + 1, b) == b.trim_above + 1 - b.target);
+  CHECK(b.ring > b.trim_above);   // the ring must be able to reach the trim point, or it overflows first
+}
+
+TEST(alsa_policy_resumes_only_at_target_after_underrun) {
+  const auto b = kc::AudioBuffer::for_ms(500);
+  CHECK(b.resume_at == 24000);
+  CHECK(kc::AlsaPolicy::decide(23999, true, 0, b.resume_at) == kc::AlsaPolicy::Action::Silence);
+  CHECK(kc::AlsaPolicy::decide(24000, true, 0, b.resume_at) == kc::AlsaPolicy::Action::Read);
+  CHECK(kc::AlsaPolicy::decide(kc::ALSA_PERIOD, false, 0, b.resume_at) == kc::AlsaPolicy::Action::Read);   // flowing is unaffected
+}

@@ -68,7 +68,7 @@ export interface CornerInput {
   error: string | null; engineState: string;
   nowPlaying: { freq: number; alphaTag: string; tags?: readonly string[] } | null;
   tunedHz: number | null; scanCount: number; muted: boolean;
-  mode: "scan" | "weather" | "monitor" | "cb"; breakIn: boolean;
+  mode: "scan" | "weather" | "monitor" | "cb" | "hf"; breakIn: boolean;
 }
 export interface PillView { show: "pill"; key: string; word: string; detail: string; tone: "plain" | "hay"; muted: boolean; sweep: boolean; warmLit: number | null }
 export interface GlassView { show: "glass"; key: string; lcd: LcdInput; head: ServiceHead | null; hint: string | null; meter: boolean }
@@ -93,7 +93,7 @@ function glass(g: Omit<GlassView, "show" | "key">): GlassView {
 }
 
 function modeWord(mode: CornerInput["mode"]): string {
-  return mode === "weather" ? "Weather only" : mode === "monitor" ? "Listening to one channel" : mode === "cb" ? "CB only" : "Scanning";
+  return mode === "weather" ? "Weather only" : mode === "monitor" ? "Listening to one channel" : mode === "cb" ? "CB only" : mode === "hf" ? "HF" : "Scanning";
 }
 
 export function cornerView(i: CornerInput): CornerView {
@@ -118,7 +118,7 @@ export function cornerView(i: CornerInput): CornerView {
     const prefix = breakIn ? "Weather break-in"
       : i.mode === "weather" ? "Weather only"
       : i.mode === "monitor" ? "Listening to one channel"
-      : i.mode === "cb" ? "CB only" : "Live";
+      : i.mode === "cb" ? "CB only" : i.mode === "hf" ? "HF" : "Live";
     // A break-in is always NOAA weather radio — say so, not "· Weather".
     const svc = breakIn ? "NOAA" : serviceLabel(cat);
     return glass({

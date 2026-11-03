@@ -193,11 +193,11 @@ void AlsaSink::run() {
   int consecutive_fail = 0;
   bool logged = false;
   while (running_) {
-    if (const size_t d = JitterPolicy::drop_for(ring_.size())) {   // SDR clock vs sound-card clock drift
+    if (const size_t d = JitterPolicy::drop_for(ring_.size(), buffer_)) {   // SDR clock vs sound-card clock drift
       ring_.discard(d);
       drift_.fetch_add(d, std::memory_order_relaxed);
     }
-    const AlsaPolicy::Action act = AlsaPolicy::decide(ring_.size(), underrun, waited_ms);
+    const AlsaPolicy::Action act = AlsaPolicy::decide(ring_.size(), underrun, waited_ms, buffer_.resume_at);
     if (act == AlsaPolicy::Action::Wait) {
       std::this_thread::sleep_for(std::chrono::milliseconds(1));
       waited_ms += 1.0;

@@ -137,6 +137,8 @@ export interface ActivityMapOptions {
 export interface MapHandle {
   pause(): void;
   resume(): void;
+  /** Resolves once the map has drawn at least once and had a frame, or at the timeout. Never moves the camera. */
+  whenDrawn(timeoutMs: number): Promise<void>;
 }
 
 export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptions = {}): Promise<MapHandle | null> {
@@ -506,14 +508,16 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
     const fitPad = interactive ? 56 : KIOSK_FIT_PAD;
     const mapReady = new Promise<void>((resolve) =>
       google.maps.event.addListenerOnce(map, "idle", resolve));
-    void Promise.allSettled([sitesReady, channelsReady, mapReady])
-      .then(() => {
-        map.fitBounds(framedBounds(), fitPad);
-        // Remember the home zoom once the fit settles — the punch zoom and
-        // the pull-back both reference it.
-        google.maps.event.addListenerOnce(map, "idle", () => { homeZoom = map.getZoom(); captureStage(); });
-        setTimeout(() => { if (!scatterStage) captureStage(); }, STAGE_FALLBACK_MS);
-      });
+    const framed = new Promise<void>((resolveFramed) => {
+      void Promise.allSettled([sitesReady, channelsReady, mapReady])
+        .then(() => {
+          map.fitBounds(framedBounds(), fitPad);
+          // Remember the home zoom once the fit settles — the punch zoom and
+          // the pull-back both reference it.
+          google.maps.event.addListenerOnce(map, "idle", () => { homeZoom = map.getZoom(); captureStage(); resolveFramed(); });
+          setTimeout(() => { if (!scatterStage) captureStage(); resolveFramed(); }, STAGE_FALLBACK_MS);
+        });
+    });
 
     // ── Camera (spec 2026-10-02 "fixed stage"): the kiosk frames once and
     // never moves on its own — each push made Google re-lay-out the vector map
@@ -659,6 +663,12 @@ export async function mountActivityMap(host: HTMLElement, opts: ActivityMapOptio
     }).connect();
 
     return {
+      whenDrawn(timeoutMs: number): Promise<void> {
+        const frame = (): Promise<void> => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+        // Framed, not just drawn: a map that lands and then jumps to its fit looks broken.
+        const timeout = new Promise<void>((r) => setTimeout(r, timeoutMs));
+        return Promise.race([framed, timeout]).then(frame);
+      },
       pause(): void { paused = true; glass?.setPaused(true); },
       resume(): void {
         if (!paused) return;
