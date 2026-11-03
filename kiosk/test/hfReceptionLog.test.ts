@@ -115,14 +115,14 @@ describe("HF mode logging", () => {
   let dir: string;
   afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
-  async function app() {
+  async function app(hfCandidates?: (hz: number, ts: number) => Candidate[]) {
     dir = mkdtempSync(join(tmpdir(), "krl-"));
     const engine = new FakeEngine();
     const receptionLog = log();
     const history = new HistoryStore({ path: ":memory:" });
     const { server } = createServer({
       configStore: new ConfigStore(join(dir, "config.json")), engine, activityLog: new ActivityLog(10),
-      wsHub: new WsHub(), staticDir: dir, receptionLog, history,
+      wsHub: new WsHub(), staticDir: dir, receptionLog, history, ...(hfCandidates ? { hfCandidates } : {}),
     });
     const c = (await request(server).get("/api/config")).body;
     await request(server).put("/api/config").send({ ...c, spyserver: { host: "airspy.local" } });
@@ -142,6 +142,18 @@ describe("HF mode logging", () => {
     expect(res.body.rows.map((r: { freqHz: number }) => r.freqHz).sort()).toEqual([2_350_000, 2_400_000]);
     expect(res.body.rows.find((r: { freqHz: number }) => r.freqHz === 2_350_000).onSpeaker).toBe(true);
     expect(res.body.rows.find((r: { freqHz: number }) => r.freqHz === 2_400_000).onSpeaker).toBe(false);
+    await request(server).post("/api/mode").send({ mode: "scan" });
+  });
+
+  it("a station whose schedule row appears after it took the speaker still counts as played", async () => {
+    let cands: Candidate[] = [];
+    const { server, engine } = await app(() => cands);
+    const center = engine.tunes.at(-1)!.fixedCenterHz!;
+    engine.emitCarriers(center, [{ hz: 2_350_000, db: 40 }]);
+    cands = [{ station: "Radio X", lat: 45, lon: 26 } as Candidate];   // a schedule slot turns over, or the list arrives
+    engine.emitCarriers(center, [{ hz: 2_350_000, db: 40 }]);
+    const rows = (await request(server).get("/api/hf/log")).body.rows as Array<{ station: string | null; onSpeaker: boolean }>;
+    expect(rows.find((r) => r.station === "Radio X")?.onSpeaker).toBe(true);
     await request(server).post("/api/mode").send({ mode: "scan" });
   });
 

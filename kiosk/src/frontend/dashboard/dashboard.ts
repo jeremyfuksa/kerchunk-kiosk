@@ -7,7 +7,7 @@ import { reloadOnMapFailure } from "./mapRetry.js";
 import { hfHtml, hfView, mapShouldRun, type HfHeard, type HfView } from "./hfView.js";
 import { countrySelector } from "./ituCountry.js";
 import worldSvg from "./world.svg?raw";
-import { atlasDots, atlasTraces, hitAction, type HitKey } from "./atlas.js";
+import { atlasDots, atlasTraces, hitAction, tracesSvg, type HitKey } from "./atlas.js";
 import { greylineDue, greylineSvg, skySvg, STAGE_VIEWBOX } from "./greyline.js";
 import { HF_WALL_DEFAULTS, HitAnimator } from "./hitAnim.js";
 import { robinson } from "./robinson.js";
@@ -175,7 +175,7 @@ export function renderDashboard(root: HTMLElement): void {
         <aside class="kc-recent"><h2>Recently heard</h2><ul id="logList"></ul></aside>
       </div>
       <div id="cbStage" class="kc-cb" aria-hidden="true"></div>
-      <div id="hfStage" class="kc-hf" aria-hidden="true"><svg id="hfSky" class="kc-hf__layer" viewBox="${STAGE_VIEWBOX}"></svg><div id="hfLand" class="kc-hf__layer"></div><svg id="hfTraces" class="kc-hf__layer" viewBox="${STAGE_VIEWBOX}"></svg><svg id="hfLive" class="kc-hf__layer" viewBox="${STAGE_VIEWBOX}"></svg><div id="hfContent"></div></div>
+      <div id="hfStage" class="kc-hf" aria-hidden="true"><svg id="hfSky" class="kc-hf__layer" viewBox="${STAGE_VIEWBOX}"></svg><div id="hfLand" class="kc-hf__layer"></div><svg id="hfDots" class="kc-hf__layer" viewBox="${STAGE_VIEWBOX}"></svg><svg id="hfTraces" class="kc-hf__layer" viewBox="${STAGE_VIEWBOX}"></svg><svg id="hfLive" class="kc-hf__layer" viewBox="${STAGE_VIEWBOX}"></svg><div id="hfContent"></div></div>
     </div>`;
   // ── Poll budget ─────────────────────────────────────────────────────────
   // Three independent timers (status 5 s, system 10 s, weather 10 min) used to
@@ -253,6 +253,7 @@ export function renderDashboard(root: HTMLElement): void {
   const hfEl = root.querySelector<HTMLElement>("#hfStage")!;
   const hfSkyEl = root.querySelector<SVGSVGElement>("#hfSky")!;
   const hfLandEl = root.querySelector<HTMLElement>("#hfLand")!;
+  const hfDotsEl = root.querySelector<SVGSVGElement>("#hfDots")!;
   const hfTracesEl = root.querySelector<SVGSVGElement>("#hfTraces")!;
   let hfOpts = HF_WALL_DEFAULTS;
   const hitAnim = new HitAnimator(root.querySelector<SVGSVGElement>("#hfLive")!, () => hfOpts);
@@ -350,8 +351,7 @@ export function renderDashboard(root: HTMLElement): void {
     const dotsKey = JSON.stringify(dots);
     if (dotsKey !== hfDotsKey) {
       hfDotsKey = dotsKey;
-      hfLandEl.querySelector("#hfDots")?.remove();
-      hfLandEl.querySelector("svg")?.insertAdjacentHTML("beforeend", `<g id="hfDots">${dots.map((d) => `<circle cx="${d.x.toFixed(1)}" cy="${d.y.toFixed(1)}" r="${d.r.toFixed(1)}" opacity="${d.opacity.toFixed(2)}"/>`).join("")}</g>`);
+      hfDotsEl.innerHTML = dots.map((d) => `<circle cx="${d.x.toFixed(1)}" cy="${d.y.toFixed(1)}" r="${d.r.toFixed(1)}" opacity="${d.opacity.toFixed(2)}"/>`).join("");
     }
     applyHit(v.liveStation);
     const traces = atlasTraces(hfLog, hfHome, v.liveStation ?? hfFading);
@@ -359,7 +359,7 @@ export function renderDashboard(root: HTMLElement): void {
     if (tracesKey !== hfTracesKey) {
       hfTracesKey = tracesKey;
       const home = robinson(hfHome.lat, hfHome.lon);
-      hfTracesEl.innerHTML = traces.map((t) => t.segments.map((d) => `<path d="${d}" fill="none" stroke="${t.color}" stroke-opacity="${hfOpts.traceOpacity}" stroke-width="2.6" stroke-linecap="round"/>`).join("")).join("")
+      hfTracesEl.innerHTML = tracesSvg(traces, hfOpts.traceOpacity)
         + `<circle class="kc-hf__qth" cx="${home.x.toFixed(1)}" cy="${home.y.toFixed(1)}" r="6"/>`;
     }
     const tintKey = `${v.tint}|${v.liveColor}`;

@@ -304,7 +304,12 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
       if (engine.state !== "running") return;   // an operator stop stays stopped
       void switchMode(scanConfigFor("hf", null)).catch((e) => console.error(`[hf] retune failed: ${(e as Error).message}`));
     },
-    onSurvey: (tune, carriers) => logSafely(() => deps.receptionLog?.record(Date.now(), tune.band, carriers, deps.hfCandidates ?? (() => []))),
+    onSurvey: (tune, carriers) => logSafely(() => {
+      const now = Date.now();
+      deps.receptionLog?.record(now, tune.band, carriers, deps.hfCandidates ?? (() => []));
+      // A row can appear while the station plays (a schedule slot turns over, or noon): it played too.
+      if (tune.listenHz !== null) deps.receptionLog?.markOnSpeaker(now, tune.listenHz);
+    }),
     ...(deps.hfCandidates ? { isMatched: (hz: number) => deps.hfCandidates!(hz, Date.now()).some((c) => !isUtility(c)) } : {}),
   });
   engine.on((ev) => { if (mode === "hf") hf.onEngineEvent(ev); });

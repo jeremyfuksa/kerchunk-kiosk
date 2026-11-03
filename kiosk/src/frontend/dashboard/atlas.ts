@@ -67,6 +67,12 @@ export function atlasTraces(rows: readonly AtlasRow[], home: LatLon, live: HitKe
   return [...out.values()];
 }
 
+/** Faded as one group: a site heard on seven bands, or the hub at home, stays as faint as a single trace. */
+export function tracesSvg(traces: readonly AtlasTrace[], opacity: number): string {
+  const paths = traces.flatMap((t) => t.segments.map((d) => `<path d="${d}" stroke="${t.color}"/>`)).join("");
+  return `<g opacity="${opacity}" fill="none" stroke-width="2.6" stroke-linecap="round">${paths}</g>`;
+}
+
 export function legend(rows: readonly AtlasRow[], liveBand: string | null): LegendEntry[] {
   const traced = new Set(rows.filter((r) => r.onSpeaker && located(r)).map((r) => r.band));
   return HF_BANDS_ORDER.map((b) => ({ label: b.slice(0, -1), color: bandColor(b), lit: traced.has(b), live: b === liveBand }));

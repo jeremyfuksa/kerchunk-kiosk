@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { atlasDots, atlasTraces, bandColor, hitAction, hitChange, legend, tracePath, HF_BANDS_ORDER, type AtlasRow, type HitKey } from "../src/frontend/dashboard/atlas.js";
-import { lineKeyframes } from "../src/frontend/dashboard/atlas.js";
+import { readFileSync } from "node:fs";
+import { lineKeyframes, tracesSvg } from "../src/frontend/dashboard/atlas.js";
 import { configSchema, defaultConfig } from "../src/backend/config/schema.js";
 
 const HOME = { lat: 39.1, lon: -94.58 };
@@ -59,6 +60,24 @@ describe("atlasTraces", () => {
   it("a path starts at the transmitter", () => {
     const [first] = tracePath({ lat: 0, lon: 0 }, HOME);
     expect(first).toMatch(/^M985\.7 501\.9/);
+  });
+});
+
+describe("tracesSvg", () => {
+  const t = (key: string) => ({ key, color: "red", segments: ["M0 0L1 1"] });
+  it("fades as one group, so overlapping traces can't add up to full brightness", () => {
+    const html = tracesSvg([t("a"), t("b")], 0.34);
+    expect(html).toMatch(/^<g opacity="0\.34"/);
+    expect(html).not.toContain("stroke-opacity");
+    expect(html.match(/<path/g)).toHaveLength(2);
+  });
+});
+
+describe("still layers", () => {
+  it("dots have their own layer, so a new dot doesn't repaint the land mid-hit", () => {
+    const src = readFileSync("src/frontend/dashboard/dashboard.ts", "utf8");
+    expect(src).toContain('<svg id="hfDots" class="kc-hf__layer"');
+    expect(src).not.toMatch(/hfLandEl\.querySelector\("svg"\)\?\.insertAdjacentHTML/);
   });
 });
 
