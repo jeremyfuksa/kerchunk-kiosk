@@ -1,5 +1,16 @@
-// Supertest gives a server a new ephemeral port for each request. With keep-alive on, a request whose port the OS
-// has reused can land on a stale socket to an earlier test's server, which answers with its own 401 or 405.
-import http from "node:http";
+// Supertest listens on the IPv6 wildcard, then connects to 127.0.0.1. macOS lets that port number also be held by any
+// other process's 127.0.0.1 listener, which then gets the request: tests here have seen other apps' 400, 401 and 405.
+// Connecting over ::1 can only reach the wildcard. Linux refuses the double bind, so it needs none of this.
+import { createRequire } from "node:module";
+import type { Server } from "node:http";
+import type { AddressInfo } from "node:net";
 
-http.globalAgent = new http.Agent({ keepAlive: false });
+if (process.platform === "darwin") {
+  const Test = createRequire(import.meta.url)("supertest/lib/test.js") as {
+    prototype: { serverAddress(this: { _server?: Server }, app: Server, path: string): string };
+  };
+  Test.prototype.serverAddress = function (app, path) {
+    if (!app.address()) this._server = app.listen(0);
+    return `http://[::1]:${(app.address() as AddressInfo).port}${path}`;
+  };
+}
