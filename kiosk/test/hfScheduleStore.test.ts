@@ -48,11 +48,18 @@ function store(r = routes(), now = () => NOW) {
   const calls: string[] = [];
   const s = new ScheduleStore({
     dir, home, now, log: () => {},
-    fetch: (async (url: string) => {
-      calls.push(url);
-      const h = r[url];
-      if (!h) return new Response("nope", { status: 404 });
-      return h();
+    fetch: (async (first: string, init?: RequestInit) => {
+      // Follows redirects unless told not to, as the real fetch does.
+      for (let url = first, hop = 0; hop < 20; hop++) {
+        calls.push(url);
+        const h = r[url];
+        if (!h) return new Response("nope", { status: 404 });
+        const res = h();
+        const location = res.headers.get("location");
+        if (init?.redirect === "manual" || !location) return res;
+        url = new URL(location, url).href;
+      }
+      throw new Error("redirect loop");
     }) as unknown as typeof fetch,
   });
   return { s, calls };
@@ -105,6 +112,39 @@ describe("ScheduleStore", () => {
       await s.refresh();
       expect(calls).not.toContain(bad);
     }
+  });
+
+  it("won't follow an Aoki redirect off the known hosts", async () => {
+    for (const bad of ["http://169.254.169.254/xzb26.zip", "https://evil.example/xzb26.zip", "http://www1.m2.mediacat.ne.jp/xzb26.zip"]) {
+      const r = routes();
+      const fetched = () => new Response(new Uint8Array(zip({ "xzb26.txt": AOKI })));
+      r["https://www1.m2.mediacat.ne.jp/x/xzb26.zip"] = () => new Response(null, { status: 302, headers: { location: bad } });
+      r[bad] = fetched;
+      const { s, calls } = store(r);
+      await s.refresh();
+      expect(calls).not.toContain(bad);
+      expect(s.candidates(11_955_000, NOW)).toEqual([]);
+    }
+  });
+
+  it("does follow an Aoki redirect that stays on the known hosts, relative or not", async () => {
+    const r = routes();
+    const zipped = r["https://www1.m2.mediacat.ne.jp/x/xzb26.zip"]!;
+    r["https://www1.m2.mediacat.ne.jp/x/xzb26.zip"] = () => new Response(null, { status: 301, headers: { location: "/moved/xzb26.zip" } });
+    r["https://www1.m2.mediacat.ne.jp/moved/xzb26.zip"] = () => new Response(null, { status: 302, headers: { location: "https://www1.s2.starcat.ne.jp/y/xzb26.zip" } });
+    r["https://www1.s2.starcat.ne.jp/y/xzb26.zip"] = zipped;
+    const { s } = store(r);
+    await s.refresh();
+    expect(s.candidates(11_955_000, NOW)[0]?.station).toBe("NHK WORLD RADIO JAPAN");
+  });
+
+  it("gives up on an Aoki redirect loop", async () => {
+    const r = routes();
+    r["https://www1.m2.mediacat.ne.jp/x/xzb26.zip"] = () => new Response(null, { status: 302, headers: { location: "https://www1.m2.mediacat.ne.jp/x/xzb26.zip" } });
+    const { s, calls } = store(r);
+    await s.refresh();
+    expect(calls.filter((u) => u.endsWith("xzb26.zip")).length).toBeLessThan(10);
+    expect(s.candidates(9_395_000, NOW)[0]?.station).toBe("Radio Slovakia");
   });
 
   it("refuses an oversized download and keeps what it had", async () => {
