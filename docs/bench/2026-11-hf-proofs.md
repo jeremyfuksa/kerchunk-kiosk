@@ -165,3 +165,20 @@ plan said to prefer B. A was chosen because it needs no native work and keeps on
 needs `--pcm-in-fd` ported and a pipe between helpers to save about 0.9 s the operator has already accepted. B is
 faster and measured slightly cleaner. Plan 2 must measure A through Node, and keep the warm-up overlay off and the
 banner up during the respawn, since those are why the invariant exists. If that can't hold 2 s, use B.
+
+## Speaker jitter buffer
+
+The link stays on Wi-Fi, so the helper got `--audio-buffer-ms`. Same window (5050 kHz, WWV lane) with the speaker path live and muted, sizes rotated in 5-minute rounds so changing Wi-Fi conditions don't favor one size, around 21:10 local. Totals per round:
+
+| Buffer | Round | Drift-trimmed | Underrun silence | Overflow, xruns |
+| --- | --- | --- | --- | --- |
+| 0 ms | 1 | 420 ms | 860 ms | 0, 0 |
+| 500 ms | 1 | 0 | 940 ms | 0, 0 |
+| 1000 ms | 1 | 0 | 1450 ms | 0, 0 |
+| 0 ms | 2 | 3590 ms | 4240 ms | 0, 0 |
+| 500 ms | 2 | 0 | 940 ms | 0, 0 |
+| 1000 ms | 2 | 0 | 1430 ms | 0, 0 |
+
+At 500 and 1000 ms the silence sits entirely in the first report window, which is the startup prefill, and no later window reported any. **500 ms is the default.** Audio plays about 500 ms behind the helper's open and close events.
+
+This is 20 minutes at each buffered size, one evening. It doesn't explain the bursts, and it wasn't run with the wall or the weather helper up.

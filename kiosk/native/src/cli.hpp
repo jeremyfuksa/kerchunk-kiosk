@@ -18,6 +18,7 @@ struct Cli {
   int spyserver_port = 0;
   int spyserver_gain = -1;           // gain index; -1 = leave the server's setting
   int spyserver_digital_gain = SPY_DIGITAL_GAIN_DEFAULT;
+  int audio_buffer_ms = 0;   // speaker queue for network IQ; 0 = the USB tuning
   int audio_fd = -1;
   std::string iq_file, tune_json, audio_out, same_out;
   bool realtime = false;
