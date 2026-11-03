@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseAoki, parseEibi, parseEibiReadme, parseHfcc, parseHfccSites, ScheduleDb, seasonCode } from "../src/backend/hf/schedule.js";
+import { isUtility, parseAoki, parseEibi, parseEibiReadme, parseHfcc, parseHfccSites, ScheduleDb, seasonCode } from "../src/backend/hf/schedule.js";
 
 const EIBI = [
   "kHz:75;Time(UTC):93;Days:59;ITU:49;Station:201;Lng:49;Target:62;Remarks:135;P:35;Start:60;Stop:60;",
@@ -174,6 +174,15 @@ describe("ScheduleDb.candidates", () => {
     const readme = "IV) Transmitter site codes.\n   USA: o-Okeechobee 27N27-80W56\n   G: London 51N30-00W07\n   KOR: Seoul 37N34-126E58\n";
     const d = new ScheduleDb({ eibi: parseEibi(eibi), readme: parseEibiReadme(readme), aoki: [], hfcc: [], hfccSites: new Map(), home });
     expect(d.candidates(7_435_000, utc(2, 12)).map((c) => c.station)).toEqual(["Near Broadcast", "Far Broadcast", "Seoul Meteo Fax"]);
+  });
+
+  it("utility stations are recognised by mode as well as by language code", () => {
+    expect(isUtility({ station: "FUE French Navy USB/FSK", language: "French" })).toBe(true);
+    expect(isUtility({ station: "HLL Seoul Meteo Fax", language: "-MF" })).toBe(true);
+    expect(isUtility({ station: "Voice of Turkey", language: "Turkish" })).toBe(false);
+    const eibi = "3910;0000-2400;;F;FUE French Navy USB/FSK;F;x;;1;;\n3910;0000-2400;;G;Far Broadcast;E;x;;1;;";
+    const d = db({ eibi, aoki: "", hfcc: "" });
+    expect(d.candidates(3_910_000, utc(2, 12)).map((c) => c.station)).toEqual(["Far Broadcast", "FUE French Navy USB/FSK"]);
   });
 
   it("an empty database matches nothing", () => {

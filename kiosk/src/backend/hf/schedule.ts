@@ -196,6 +196,11 @@ function onAir(s: Slot, minute: number, dow: number): boolean {
   return (!!today && minute >= s.start) || (!!yesterday && minute < s.end);
 }
 
+/** Not a broadcast: EiBi marks these with a "-" language or names the mode in the station. */
+export function isUtility(c: { station: string; language?: string }): boolean {
+  return !!c.language?.startsWith("-") || /\b(USB|LSB|FSK|CW|RTTY|Fax|Meteo|Volmet|DGPS|STANAG)\b/i.test(c.station);
+}
+
 export interface ScheduleData {
   eibi: EibiRow[]; readme: EibiReadme; aoki: AokiRow[]; hfcc: HfccRow[]; hfccSites: Map<string, Site>;
   home: { lat: number; lon: number };
@@ -268,8 +273,8 @@ export class ScheduleDb {
         ...(r.powerKw !== undefined ? { powerKw: r.powerKw } : {}),
       }, r.lat !== undefined && r.lon !== undefined ? { name: r.site, lat: r.lat, lon: r.lon } : undefined));
     }
-    const utility = (c: Candidate): number => (c.language?.startsWith("-") ? 1 : 0);
-    return [...out.values()].sort((a, b) => utility(a) - utility(b) || (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity));
+    const rank = (c: Candidate): number => (isUtility(c) ? 1 : 0);
+    return [...out.values()].sort((a, b) => rank(a) - rank(b) || (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity));
   }
 
   private finish(c: Candidate, place: Site | undefined): Candidate {

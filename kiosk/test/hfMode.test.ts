@@ -130,6 +130,24 @@ describe("POST /api/mode hf", () => {
     await request(server).post("/api/mode").send({ mode: "scan" });
   });
 
+  it("a utility station's schedule entry doesn't jump the queue", async () => {
+    dir = mkdtempSync(join(tmpdir(), "khf-"));
+    const engine = new FakeEngine();
+    const { server } = createServer({
+      configStore: new ConfigStore(join(dir, "config.json")), engine, activityLog: new ActivityLog(10),
+      wsHub: new WsHub(), staticDir: dir,
+      hfCandidates: (hz) => hz === 2_350_000 ? [{ station: "Navy USB/FSK" }] : [],
+    });
+    const c = (await request(server).get("/api/config")).body;
+    await request(server).put("/api/config").send({ ...c, spyserver: { host: "airspy.local" } });
+    await request(server).post("/api/channels").send({ freq: 145_130_000, alphaTag: "S", mode: "nfm", enabled: true });
+    await request(server).post("/api/scan/start");
+    await request(server).post("/api/mode").send({ mode: "hf" });
+    engine.emitCarriers(2_397_500, [{ hz: 2_400_000, db: 60 }, { hz: 2_350_000, db: 30 }]);
+    expect((await request(server).get("/api/status")).body.hf.listenHz).toBe(2_400_000);
+    await request(server).post("/api/mode").send({ mode: "scan" });
+  });
+
   it("skip moves on early", async () => {
     const { server, engine } = await app();
     await request(server).post("/api/mode").send({ mode: "hf" });

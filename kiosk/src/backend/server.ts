@@ -1,6 +1,7 @@
 import type { ModeStore } from "./modeStore.js";
 import { HfController, type HfConfig } from "./hf/controller.js";
 import type { HfTune } from "./hf/sweep.js";
+import { isUtility } from "./hf/schedule.js";
 import type { Candidate, ReceptionLog } from "./hf/receptionLog.js";
 import { createServer as httpCreateServer, type IncomingMessage, type ServerResponse, type Server } from "node:http";
 import { readFileSync, existsSync } from "node:fs";
@@ -296,7 +297,7 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
       void switchMode(scanConfigFor("hf", null)).catch((e) => console.error(`[hf] retune failed: ${(e as Error).message}`));
     },
     onSurvey: (tune, carriers) => deps.receptionLog?.record(Date.now(), tune.band, carriers, deps.hfCandidates ?? (() => [])),
-    ...(deps.hfCandidates ? { isMatched: (hz: number) => deps.hfCandidates!(hz, Date.now()).length > 0 } : {}),
+    ...(deps.hfCandidates ? { isMatched: (hz: number) => deps.hfCandidates!(hz, Date.now()).some((c) => !isUtility(c)) } : {}),
   });
   engine.on((ev) => { if (mode === "hf") hf.onEngineEvent(ev); });
   if (mode === "hf") hf.start();
