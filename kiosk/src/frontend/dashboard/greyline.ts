@@ -6,7 +6,14 @@ import { subsolar, sunAltitude, type SubPoint } from "./sun.js";
 /** The 1366×768 stage in map units. The top is about 81°N, so paths over the Arctic run off the screen instead
  *  of squashing along Robinson's flat pole line. The band hides everything south of about 75°S, and New Zealand
  *  sets how large this can go. */
-export const STAGE_VIEWBOX = "70.7 10 1830 1029";
+const STAGE = { x: 70.7, y: 10, w: 1830, h: 1029 };
+export const STAGE_VIEWBOX = `${STAGE.x} ${STAGE.y} ${STAGE.w} ${STAGE.h}`;
+
+/** Map units to pixels on a stage this wide. */
+export function stagePx(p: { x: number; y: number }, stageWidth: number): { x: number; y: number } {
+  const k = stageWidth / STAGE.w;
+  return { x: (p.x - STAGE.x) * k, y: (p.y - STAGE.y) * k };
+}
 
 export const GREYLINE_BANDS: ReadonlyArray<{ alt: number; color: string }> = [
   { alt: -0.8, color: "#5b3f7f" }, { alt: -3, color: "#4c3580" }, { alt: -6, color: "#3a2c78" },
