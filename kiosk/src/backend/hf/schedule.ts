@@ -6,6 +6,7 @@ const ALL_DAYS = 0b1111111;   // bit 0 = Sunday
 const DAY = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
 const JOIN_KHZ = 0.6;         // a schedule line is the same broadcast within this
 const RASTER_KHZ = 2.5;       // survey carriers are snapped to a 5 kHz raster
+const SAME_SITE_KM = 150;     // the lists' coordinates for one site agree well within this
 
 interface Slot { khz: number; start: number; end: number; days: number }
 export interface EibiRow extends Slot {
@@ -251,9 +252,14 @@ export class ScheduleDb {
     const out = new Map<string, Candidate>();
     for (const r of eibi) {
       if (out.has(r.station)) continue;
-      const aoki = this.near(this.aoki, r.khz, JOIN_KHZ, minute, dow)[0];
-      const hfcc = this.near(this.hfcc, r.khz, JOIN_KHZ, minute, dow)[0];
       const named = readme.sites.get(`${r.hostItu}-${r.siteCode}`) ?? (r.hostItu !== r.itu || r.siteCode ? undefined : readme.sites.get(`${r.itu}-`));
+      // The lists spell a station differently, so the transmitter is the join. Sites compare by
+      // distance where both are known: the lists file a territory (Guam) under its administrator.
+      const sameTransmitter = (itu: string, at?: { lat: number; lon: number }): boolean =>
+        named && at ? distanceKm(named, at) <= SAME_SITE_KM : itu === r.hostItu;
+      const aoki = this.near(this.aoki, r.khz, JOIN_KHZ, minute, dow)
+        .find((a) => sameTransmitter(a.itu, a.lat !== undefined && a.lon !== undefined ? { lat: a.lat, lon: a.lon } : undefined));
+      const hfcc = this.near(this.hfcc, r.khz, JOIN_KHZ, minute, dow).find((h) => sameTransmitter(h.itu, hfccSites.get(h.siteCode)));
       const hfccSite = hfcc ? hfccSites.get(hfcc.siteCode) : undefined;
       const place = named
         ?? (aoki?.lat !== undefined && aoki.lon !== undefined ? { name: aoki.site, lat: aoki.lat, lon: aoki.lon } : undefined)

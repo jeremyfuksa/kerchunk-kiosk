@@ -28,7 +28,7 @@ function zip(files: Record<string, string>): Buffer {
   return Buffer.concat([...parts, cd, end]);
 }
 
-const EIBI = "9395;0000-2400;;SVK;Radio Slovakia;E;ENA;;1;;\r\n";
+const EIBI = "9395;0000-2400;;SVK;Radio Slovakia;E;ENA;/USA-o;1;;\r\n";
 const AOKI = "title\r\nFRE   STATION                         UTC       Su-W-Sa Language             Pow Azi Location                ADM L/L             Remark\r\n11955 NHK WORLD RADIO JAPAN           0000-2400 1234567 Japanese             300 290 Ibaragi-Koga-Yamata     J   361024N1394923E NHK b26\r\n";
 const HFCC = " 9395 0000 2400 3,4,9                          RMI  100 355       0 805 1234567 251026 280327 D       EngSpa     USA RMI FCC  1368\r\n";
 const NOW = Date.UTC(2026, 10, 2, 12);

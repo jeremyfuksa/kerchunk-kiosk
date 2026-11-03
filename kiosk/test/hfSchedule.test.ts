@@ -162,12 +162,46 @@ describe("ScheduleDb.candidates", () => {
   });
 
   it("falls back to Aoki coordinates, then HFCC's site table", () => {
-    const [a] = db({ eibi: "9395;0000-0030;;XX;Blues;E;NAm;;1;;" }).candidates(9_395_000, utc(4, 0, 15));
+    const [a] = db({ eibi: "9395;0000-0030;;USA;Blues;E;NAm;;1;;" }).candidates(9_395_000, utc(4, 0, 15));
     expect(a!.site).toBe("Okeechobee6");
     expect(a!.lat).toBeCloseTo(27.457, 2);
     const [h] = db({ eibi: "5985;0230-0330;;UAE;Dh;E;x;;1;;", aoki: "" }).candidates(5_985_000, utc(2, 3));
     expect(h!.site).toBe("Dhabayya");
     expect(h!.powerKw).toBe(250);
+  });
+
+  describe("enrichment joins the same transmitter, not just the frequency", () => {
+    const NHK = AOKI.split("\r\n")[3]!.replace("11955", " 9395").replace("2155-0100", "0000-0030");
+    const aoki = [AOKI.split("\r\n")[1], NHK, AOKI.split("\r\n")[2]].join("\r\n");   // NHK is first on 9395
+
+    it("takes power from the row at the named site, not the first on the frequency", () => {
+      const [c] = db({ eibi: "9395;0000-0030;;USA;Blues;E;NAm;o;1;;", aoki, hfcc: "" }).candidates(9_395_000, utc(4, 0, 15));
+      expect(c).toMatchObject({ site: "Okeechobee, FL", powerKw: 100 });
+    });
+
+    it("with no named site, takes the row in the transmitter's country", () => {
+      const [c] = db({ eibi: "9395;0000-0030;;USA;Blues;E;NAm;;1;;", aoki, hfcc: "" }).candidates(9_395_000, utc(4, 0, 15));
+      expect(c).toMatchObject({ site: "Okeechobee6", powerKw: 100 });
+    });
+
+    it("another country's row on the frequency adds nothing", () => {
+      const [a] = db({ eibi: "9395;0000-0030;;SVK;Bratislava;E;Eu;;1;;", hfcc: "" }).candidates(9_395_000, utc(4, 0, 15));
+      expect(a).not.toHaveProperty("site");
+      expect(a).not.toHaveProperty("powerKw");
+      const [h] = db({ eibi: "5985;0230-0330;;SVK;Bratislava;E;Eu;;1;;", aoki: "" }).candidates(5_985_000, utc(2, 3));
+      expect(h).not.toHaveProperty("site");
+      expect(h).not.toHaveProperty("powerKw");
+    });
+
+    it("a site's coordinates beat the country code: lists file a territory under its administrator", () => {
+      const readme = "IV) Transmitter site codes.\n   GUM: Agat 13N20-144E39\n";
+      const hfcc = parseHfcc(" 9395 0000 2400 3,4,9                          AGT  100 355       0 805 1234567 251026 280327 D       EngSpa     USA RMI FCC  1368");
+      const d = new ScheduleDb({
+        eibi: parseEibi("9395;0000-2400;;GUM;Guam;E;As;;1;;"), readme: parseEibiReadme(readme), aoki: [], hfcc,
+        hfccSites: new Map([["AGT", { name: "Agat", lat: 13.34, lon: 144.65 }]]), home,
+      });
+      expect(d.candidates(9_395_000, utc(2, 12))[0]?.powerKw).toBe(100);
+    });
   });
 
   it("broadcasters rank ahead of utility stations, then the nearest first", () => {
