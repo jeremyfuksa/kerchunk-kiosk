@@ -7,6 +7,10 @@ import { reloadOnMapFailure } from "./mapRetry.js";
 import { hfHtml, hfView, mapShouldRun, type HfHeard, type HfView } from "./hfView.js";
 import { countrySelector } from "./ituCountry.js";
 import worldSvg from "./world.svg?raw";
+import { atlasDots, atlasTraces } from "./atlas.js";
+import { skySvg, STAGE_VIEWBOX } from "./greyline.js";
+import { HitAnimator } from "./hitAnim.js";
+import { robinson } from "./robinson.js";
 import { mountActivityMap } from "../map/map.js";
 import { fromDeg, setWind } from "../lib/wind.js";
 import { cornerView, sentenceCase, meterFill, METER_SEGMENTS } from "./cornerView.js";
@@ -141,7 +145,7 @@ export function reduce(s: DashState, ev: EngineEvent): DashState {
   }
 }
 
-const HF_HEARD_ROWS = 3;
+const HF_TRACE_OPACITY = 0.34;
 function fmtTime(ts: number): string { return new Date(ts).toLocaleTimeString(); }
 
 // Re-exported for tests (kept stable from the pre-refactor public surface).
@@ -170,7 +174,7 @@ export function renderDashboard(root: HTMLElement): void {
         <aside class="kc-recent"><h2>Recently heard</h2><ul id="logList"></ul></aside>
       </div>
       <div id="cbStage" class="kc-cb" aria-hidden="true"></div>
-      <div id="hfStage" class="kc-hf" aria-hidden="true"><div class="kc-hf__map" id="hfMap"></div><div id="hfContent"></div></div>
+      <div id="hfStage" class="kc-hf" aria-hidden="true"><svg id="hfSky" class="kc-hf__layer" viewBox="${STAGE_VIEWBOX}"></svg><div id="hfLand" class="kc-hf__layer"></div><svg id="hfTraces" class="kc-hf__layer" viewBox="${STAGE_VIEWBOX}"></svg><svg id="hfLive" class="kc-hf__layer" viewBox="${STAGE_VIEWBOX}"></svg><div id="hfContent"></div></div>
     </div>`;
   // ── Poll budget ─────────────────────────────────────────────────────────
   // Three independent timers (status 5 s, system 10 s, weather 10 min) used to
@@ -246,31 +250,38 @@ export function renderDashboard(root: HTMLElement): void {
 
   // ── HF "Station first" stage. The world map mounts once and only its overlay changes.
   const hfEl = root.querySelector<HTMLElement>("#hfStage")!;
-  const hfMapEl = root.querySelector<HTMLElement>("#hfMap")!;
+  const hfSkyEl = root.querySelector<SVGSVGElement>("#hfSky")!;
+  const hfLandEl = root.querySelector<HTMLElement>("#hfLand")!;
+  const hfTracesEl = root.querySelector<SVGSVGElement>("#hfTraces")!;
+  const hitAnim = new HitAnimator(root.querySelector<SVGSVGElement>("#hfLive")!);
   const hfContentEl = root.querySelector<HTMLElement>("#hfContent")!;
   let hfOn = false;
-  let hfMapKey = "";
+  let hfDotsKey = "";
+  let hfTracesKey = "";
+  let hfLiveKey = "";
   let hfLit = -1;
   function syncMap(): void {
     if (mapShouldRun(cbOn, hfOn)) mapHandle?.resume(); else mapHandle?.pause();
   }
   let hf: HfStatus | null = null;
   let hfCarriers: ReadonlyArray<{ hz: number; db: number }> = [];
-  let hfHeard: HfHeard[] = [];
-  let hfHeardCount = 0;
+  let hfLog: HfHeard[] = [];
+  let hfTraceOpacity = HF_TRACE_OPACITY;
   let hfBand = "";
+  let hfListenHz: number | null = null;
   let hfKey = "";
   let hfSegEls: HTMLElement[] = [];
   let hfHome = { lat: 39.1, lon: -94.58 };
   void api.getConfig().then((cfg) => {
     hfHome = { lat: cfg.display?.weatherLat ?? hfHome.lat, lon: cfg.display?.weatherLon ?? hfHome.lon };
+    hfTraceOpacity = cfg.display?.hf?.traceOpacity ?? hfTraceOpacity;
+    hfTracesKey = "";
+    schedule();
   }).catch(() => { /* default stands */ });
   poller.poll("hfHeard", () => {
     if (!hfOn) return Promise.resolve();
     return api.getHfLog(null).then((log) => {
-      const rows = log.rows as HfHeard[];
-      hfHeardCount = rows.length;
-      hfHeard = [...rows].sort((a, b) => b.lastTs - a.lastTs).slice(0, HF_HEARD_ROWS);
+      hfLog = log.rows as HfHeard[];
       schedule();
     }).catch(() => { /* the list fills next window */ });
   }, Number.POSITIVE_INFINITY);
@@ -282,21 +293,27 @@ export function renderDashboard(root: HTMLElement): void {
     hfEl.setAttribute("aria-hidden", String(!on));
     syncMap();
     if (on) {
-      if (!hfMapEl.firstElementChild) hfMapEl.innerHTML = worldSvg;
+      if (!hfSkyEl.firstElementChild) hfSkyEl.innerHTML = skySvg(Date.now());
+      if (!hfLandEl.firstElementChild) {
+        hfLandEl.innerHTML = worldSvg;
+        const svg = hfLandEl.querySelector("svg")!;
+        svg.setAttribute("viewBox", STAGE_VIEWBOX);
+        svg.removeAttribute("width");
+        svg.removeAttribute("height");
+      }
       poller.request("hfHeard");
     } else {
       hfKey = "";
-      hfMapKey = "";
+      hfLiveKey = "";
+      hitAnim.clear();
     }
   }
 
   function paintHf(): void {
-    const v = hfView({
-      hf, carriers: hfCarriers, error: state.error, muted, signalDb: state.signalDb,
-      heardCount: hfHeardCount, heard: hfHeard, home: hfHome, fmtTime: (ts) => new Date(ts).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }),
-    });
+    const v = hfView({ hf, carriers: hfCarriers, error: state.error, muted, signalDb: state.signalDb, log: hfLog });
     if (v.key !== hfKey) {
       hfKey = v.key;
+      hfEl.style.setProperty("--kc-hf-live", v.liveColor);
       hfContentEl.innerHTML = hfHtml(v);
       hfSegEls = Array.from(hfContentEl.querySelectorAll<HTMLElement>(".kc-hf__seg i"));
       hfLit = v.lit;
@@ -304,24 +321,37 @@ export function renderDashboard(root: HTMLElement): void {
       hfLit = v.lit;
       hfSegEls.forEach((el, k) => el.classList.toggle("on", k < v.lit));
     }
-    if (v.mapKey !== hfMapKey) {
-      hfMapKey = v.mapKey;
-      paintHfMap(v);
+    paintHfLayers(v);
+  }
+
+  /** Each layer repaints only when what it shows has changed. */
+  function paintHfLayers(v: HfView): void {
+    const dots = atlasDots(hfLog);
+    const dotsKey = JSON.stringify(dots);
+    if (dotsKey !== hfDotsKey) {
+      hfDotsKey = dotsKey;
+      hfLandEl.querySelector("#hfDots")?.remove();
+      hfLandEl.querySelector("svg")?.insertAdjacentHTML("beforeend", `<g id="hfDots">${dots.map((d) => `<circle cx="${d.x.toFixed(1)}" cy="${d.y.toFixed(1)}" r="${d.r.toFixed(1)}" opacity="${d.opacity.toFixed(2)}"/>`).join("")}</g>`);
+    }
+    const traces = atlasTraces(hfLog, hfHome, v.liveStation);
+    const tracesKey = `${hfTraceOpacity}|${hfHome.lat},${hfHome.lon}|${traces.map((t) => t.key).join(";")}`;
+    if (tracesKey !== hfTracesKey) {
+      hfTracesKey = tracesKey;
+      const home = robinson(hfHome.lat, hfHome.lon);
+      hfTracesEl.innerHTML = traces.map((t) => t.segments.map((d) => `<path d="${d}" fill="none" stroke="${t.color}" stroke-opacity="${hfTraceOpacity}" stroke-width="2.6" stroke-linecap="round"/>`).join("")).join("")
+        + `<circle class="kc-hf__qth" cx="${home.x.toFixed(1)}" cy="${home.y.toFixed(1)}" r="6"/>`;
+    }
+    const liveKey = JSON.stringify([v.liveStation, v.tint]);
+    if (liveKey !== hfLiveKey) {
+      hfLiveKey = liveKey;
+      if (v.liveStation) hitAnim.hold(v.liveStation, hfHome, tintPaths(v.tint));
+      else hitAnim.clear();
     }
   }
 
-  function paintHfMap(v: HfView): void {
-    const svg = hfMapEl.querySelector("svg");
-    if (!svg) return;
-    svg.querySelectorAll(".is-tx").forEach((p) => p.classList.remove("is-tx"));
-    if (v.map.tint) svg.querySelectorAll(countrySelector(v.map.tint)).forEach((p) => p.classList.add("is-tx"));
-    svg.querySelector("#hfOverlay")?.remove();
-    const m = v.map;
-    svg.insertAdjacentHTML("beforeend", `<g id="hfOverlay">`
-      + (m.path ? `<path class="kc-hf__path" d="${m.path}"/>` : "")
-      + `<circle class="kc-hf__qth" cx="${m.home.x}" cy="${m.home.y}" r="9"/>`
-      + (m.dot ? `<circle class="kc-hf__tx" cx="${m.dot.x}" cy="${m.dot.y}" r="11"/>` : "")
-      + `</g>`);
+  function tintPaths(iso: string | null): string[] {
+    if (!iso) return [];
+    return Array.from(hfLandEl.querySelectorAll(countrySelector(iso))).flatMap((p) => p.getAttribute("d") ?? []);
   }
 
   function setCbStage(on: boolean): void {
@@ -382,6 +412,7 @@ export function renderDashboard(root: HTMLElement): void {
         const hfWas = JSON.stringify(hf);
         hf = s.hf ?? null;
         if (hf && hf.band !== hfBand) { hfBand = hf.band; hfCarriers = []; poller.request("hfHeard"); }
+        if ((hf?.listenHz ?? null) !== hfListenHz) { hfListenHz = hf?.listenHz ?? null; poller.request("hfHeard"); }
         if (JSON.stringify(hf) !== hfWas) schedule();
         if (wm !== state.warmed) state = { ...state, warmed: wm };
         if (changed) schedule();
