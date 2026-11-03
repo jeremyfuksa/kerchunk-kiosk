@@ -3,7 +3,7 @@ import request from "supertest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createServer, toScanConfig } from "../src/backend/server.js";
+import { createServer, nothingToShed, toScanConfig } from "../src/backend/server.js";
 import { ConfigStore } from "../src/backend/config/ConfigStore.js";
 import { ActivityLog } from "../src/backend/activityLog.js";
 import { WsHub } from "../src/backend/ws.js";
@@ -346,5 +346,27 @@ describe("direct tune below 30 MHz", () => {
     expect(res.status).toBe(200);
     expect(engine.retunes.at(-1)?.spyserver?.host).toBe("airspy.local");
     expect(engine.retunes.at(-1)?.channels[0]?.mode).toBe("am");
+  });
+});
+
+describe("thermal shedding", () => {
+  it("has nothing to shed in CB, which already runs with no Close Call or sweep", () => {
+    const c = defaultConfig();
+    c.scan.closeCall = true;
+    c.scan.sweepRanges = [{ loHz: 1, hiHz: 2 }];
+    expect(nothingToShed(c, "cb")).toBe(true);
+    expect(nothingToShed(c, "scan")).toBe(false);
+    c.scan.closeCall = false;
+    c.scan.sweepRanges = [];
+    expect(nothingToShed(c, "scan")).toBe(true);
+  });
+});
+
+describe("SAME decoder placement", () => {
+  it("the scanner never decodes when a dedicated weather radio does, even on a break-in", () => {
+    const wx = { id: "wx", freq: WX_FREQ, alphaTag: "NWR", mode: "nfm" as const, enabled: true };
+    const dedicated = { ...defaultConfig(), weatherChannel: wx, radios: [{ serial: "KIOSK03", role: "weather" as const }] };
+    expect(toScanConfig(dedicated, "weather").sameEnable).toBe(false);
+    expect(toScanConfig({ ...defaultConfig(), weatherChannel: wx }, "weather").sameEnable).toBe(true);
   });
 });
