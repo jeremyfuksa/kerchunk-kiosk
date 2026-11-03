@@ -74,7 +74,7 @@ A wall that loads or reloads while a station is playing draws the line and ring 
 
 ### Traces
 
-- A faded trace stays until the log clears. It's the path in its band's colour at opacity 0.34 (tune on the wall). The operator's words: "the faded trace should never go away", then "until log clears".
+- A faded trace stays until the log clears. It's the path in its band's colour at opacity 0.34 (tune on the wall), with all traces faded together as one group: only the live station is at full brightness, and overlaps can't add up. The operator's words: "the faded trace should never go away", then "until log clears".
 - **Clearing:** a listening night runs noon to noon (`nightOf`). When `/api/hf/log`'s latest night changes, the traces and dots show only the new night.
 - **Source of truth:** rows from `/api/hf/log` with `onSpeaker` true and a location, one trace per site and band. They survive a reload, a restart and a trip through another mode, and they're drawn with no animation. The live station's trace appears when it fades, not before.
 - Last night's real data gave 74 traces. A full noon-to-noon run could give more, so check legibility with the heaviest log available.

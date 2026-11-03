@@ -249,7 +249,7 @@ export function renderDashboard(root: HTMLElement): void {
     if (cbOn) { cbKey = ""; schedule(); }
   }).catch(() => { /* defaults stand */ });
 
-  // ── HF "Station first" stage. The world map mounts once and only its overlay changes.
+  // ── HF's Atlas stage. The still layers mount once, and only the live layer moves.
   const hfEl = root.querySelector<HTMLElement>("#hfStage")!;
   const hfSkyEl = root.querySelector<SVGSVGElement>("#hfSky")!;
   const hfLandEl = root.querySelector<HTMLElement>("#hfLand")!;
