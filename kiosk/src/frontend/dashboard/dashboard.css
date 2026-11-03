@@ -284,7 +284,8 @@ html[data-page="dashboard"] .kc-cb__needle {
 
 /* HF mode, "The Atlas" (spec 2026-11-03-hf-atlas). Sized for the wall's 1366×768. No blur. */
 html[data-page="dashboard"] .kc-hf { display: none; }
-html[data-page="dashboard"] .dash.hfStage .kc-hf { display: block; position: absolute; inset: 0; z-index: 2; }
+/* Its own layer always: dropping it when a zoom ends makes every layer inside re-raster, a visible flash. */
+html[data-page="dashboard"] .dash.hfStage .kc-hf { display: block; position: absolute; inset: 0; z-index: 2; will-change: transform, opacity, filter; }
 html[data-page="dashboard"] .dash.hfStage .mapBase { visibility: hidden; }
 html[data-page="dashboard"] .dash.hfStage.hfZoom .mapBase { visibility: visible; }
 /* The atmosphere the zoom passes through: a blue haze, with faint streaks radiating from home. Only exists mid-zoom. */
