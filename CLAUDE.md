@@ -266,7 +266,7 @@ even with green checks.
   Knobs: `config.hf` (`windowMs`, `minListenDb`, `cooldownMs`, `fadeMs`, `bands`). Mode survives restarts in `mode.json` beside the config.
   The wall is the Atlas (spec 2026-11-03-hf-atlas): `dashboard/greyline.ts` (sky), `atlas.ts` (traces, dots, band colours, hit logic),
   `hitAnim.ts` (the only moving layer), `hfView.ts` (text). Four stacked layers: sky, land and dots, traces, live. A hit must never repaint the
-  still ones. Knobs: `display.hf` (`greylineStepMs`, `traceOpacity`, `hit*Ms`, `zoomMs`), read at page load. The WS event `statusChanged`
+  still ones. Knobs: `display.hf` (`greylineStepMs`, `traceOpacity`, `traceFadeMs`, `hit*Ms`, `zoomMs`), read at page load. The WS event `statusChanged`
   makes the wall poll at once, because `/api/status` alone would make hits up to 5 s late.
   Pulses on the live trace animate transforms and opacity only. The zoom to and from map mode (`dashboard/zoom.ts`) also animates
   `filter: blur()`, only while it runs, and it moves one flat canvas picture of the Atlas, never the live layers: scaling those left

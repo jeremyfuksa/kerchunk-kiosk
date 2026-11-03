@@ -6,12 +6,12 @@ export const HF_BANDS_ORDER = ["120m", "90m", "75m", "60m", "49m", "41m", "31m",
 const LIVE_TEAL = "var(--kc-glass)";
 const PATH_SEGMENTS = 120;
 
-export interface AtlasRow { freqHz: number; band: string; peakDb: number; onSpeaker: boolean; lat?: number | null; lon?: number | null }
+export interface AtlasRow { freqHz: number; band: string; peakDb: number; onSpeaker: boolean; lat?: number | null; lon?: number | null; playedTs?: number | null }
 /** A station on the speaker that has a place on the map. */
 export interface HitKey { hz: number; lat: number; lon: number; band: string }
 export type HitChange = "none" | "start" | "end" | "replace";
 export interface AtlasDot { x: number; y: number; r: number; opacity: number }
-export interface AtlasTrace { key: string; color: string; segments: string[] }
+export interface AtlasTrace { key: string; color: string; segments: string[]; level: number }
 export interface LegendEntry { label: string; color: string; lit: boolean; live: boolean }
 
 export function bandColor(band: string | null): string {
@@ -58,22 +58,53 @@ export function tracePath(from: LatLon, to: LatLon): string[] {
   return tracePoints(from, to).map((run) => `M${run.map((p) => `${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join("L")}`);
 }
 
-export function atlasTraces(rows: readonly AtlasRow[], home: LatLon, live: HitKey | null): AtlasTrace[] {
+/** Steps from full brightness to gone. Small enough that no single step can be seen. */
+export const TRACE_STEPS = 12;
+
+/** 0 is full brightness and TRACE_STEPS is gone. */
+export function traceLevel(ageMs: number, fadeMs: number): number {
+  return Math.min(TRACE_STEPS, Math.max(0, Math.floor((ageMs / fadeMs) * TRACE_STEPS)));
+}
+
+export function atlasTraces(rows: readonly AtlasRow[], home: LatLon, live: HitKey | null, now: number, fadeMs: number): AtlasTrace[] {
   const liveKey = live ? `${siteKey(live.lat, live.lon)}|${live.band}` : null;
-  const out = new Map<string, AtlasTrace>();
+  const newest = new Map<string, { row: AtlasRow & { lat: number; lon: number }; playedTs: number }>();
   for (const r of rows) {
     if (!r.onSpeaker || !located(r)) continue;
     const key = `${siteKey(r.lat, r.lon)}|${r.band}`;
-    if (key === liveKey || out.has(key)) continue;
-    out.set(key, { key, color: bandColor(r.band), segments: tracePath({ lat: r.lat, lon: r.lon }, home) });
+    if (key === liveKey) continue;
+    const playedTs = r.playedTs ?? 0;
+    const had = newest.get(key);
+    if (!had || playedTs > had.playedTs) newest.set(key, { row: r, playedTs });
   }
-  return [...out.values()];
+  const out: AtlasTrace[] = [];
+  for (const [key, { row, playedTs }] of newest) {
+    const level = traceLevel(now - playedTs, fadeMs);
+    if (level < TRACE_STEPS) out.push({ key, color: bandColor(row.band), segments: tracePath({ lat: row.lat, lon: row.lon }, home), level });
+  }
+  return out;
 }
 
-/** Faded as one group: a site heard on seven bands, or the hub at home, stays as faint as a single trace. */
+const TRACE_STROKE = 'fill="none" stroke-width="2.6" stroke-linecap="round"';
+const TRACE_AREA = 'x="-100" y="-100" width="2200" height="1300"';
+
+/** Each age fades as one group, so a site heard on seven bands, or the hub at home, stays as faint as a single trace.
+ *  Across ages, each dimmer group is cut away under every brighter one, so the brightest wins and nothing adds up. */
 export function tracesSvg(traces: readonly AtlasTrace[], opacity: number): string {
-  const paths = traces.flatMap((t) => t.segments.map((d) => `<path d="${d}" stroke="${t.color}"/>`)).join("");
-  return `<g opacity="${opacity}" fill="none" stroke-width="2.6" stroke-linecap="round">${paths}</g>`;
+  const levels = [...new Set(traces.map((t) => t.level))].sort((a, b) => a - b);
+  let brighter = "";
+  let out = "";
+  for (const level of levels) {
+    const ds = traces.filter((t) => t.level === level).flatMap((t) => t.segments.map((d) => ({ d, color: t.color })));
+    const faded = Number((opacity * (1 - level / TRACE_STEPS)).toFixed(3));
+    const cut = brighter
+      ? `<mask id="hfTraceAge${level}" maskUnits="userSpaceOnUse" ${TRACE_AREA}><rect ${TRACE_AREA} fill="#fff"/><g ${TRACE_STROKE} stroke="#000">${brighter}</g></mask>`
+      : "";
+    const paths = ds.map(({ d, color }) => `<path d="${d}" stroke="${color}"/>`).join("");
+    out += `${cut}<g opacity="${faded}" ${TRACE_STROKE}${cut ? ` mask="url(#hfTraceAge${level})"` : ""}>${paths}</g>`;
+    brighter += ds.map(({ d }) => `<path d="${d}"/>`).join("");
+  }
+  return out;
 }
 
 export function legend(rows: readonly AtlasRow[], liveBand: string | null): LegendEntry[] {

@@ -1,11 +1,13 @@
 import { describe, it, expect } from "vitest";
-import { atlasDots, atlasTraces, bandColor, hitAction, hitChange, legend, tracePath, HF_BANDS_ORDER, type AtlasRow, type HitKey } from "../src/frontend/dashboard/atlas.js";
+import { atlasDots, atlasTraces, bandColor, traceLevel, TRACE_STEPS, hitAction, hitChange, legend, tracePath, HF_BANDS_ORDER, type AtlasRow, type HitKey } from "../src/frontend/dashboard/atlas.js";
 import { readFileSync } from "node:fs";
 import { lineKeyframes, pulseFrames, tracePoints, tracesSvg } from "../src/frontend/dashboard/atlas.js";
 import { configSchema, defaultConfig } from "../src/backend/config/schema.js";
 
 const HOME = { lat: 39.1, lon: -94.58 };
-const row = (o: Partial<AtlasRow>): AtlasRow => ({ freqHz: 11_825_000, band: "25m", peakDb: 20, onSpeaker: true, lat: 44.75, lon: 26.1, ...o });
+const TS = 1_800_000_000_000;
+const DAY = 86_400_000;
+const row = (o: Partial<AtlasRow>): AtlasRow => ({ freqHz: 11_825_000, band: "25m", peakDb: 20, onSpeaker: true, lat: 44.75, lon: 26.1, playedTs: TS, ...o });
 const ROMANIA: HitKey = { hz: 11_825_000, lat: 44.75, lon: 26.1, band: "25m" };
 
 describe("bandColor", () => {
@@ -37,21 +39,21 @@ describe("atlasDots", () => {
 
 describe("atlasTraces", () => {
   it("traces_only_for_played_located_rows", () => {
-    expect(atlasTraces([row({ onSpeaker: false }), row({ lat: null, lon: null })], HOME, null)).toEqual([]);
-    expect(atlasTraces([row({})], HOME, null)).toHaveLength(1);
+    expect(atlasTraces([row({ onSpeaker: false }), row({ lat: null, lon: null })], HOME, null, TS, DAY)).toEqual([]);
+    expect(atlasTraces([row({})], HOME, null, TS, DAY)).toHaveLength(1);
   });
   it("traces_one_per_site_and_band", () => {
-    const t = atlasTraces([row({}), row({ freqHz: 11_900_000 }), row({ band: "31m", freqHz: 9_600_000 })], HOME, null);
+    const t = atlasTraces([row({}), row({ freqHz: 11_900_000 }), row({ band: "31m", freqHz: 9_600_000 })], HOME, null, TS, DAY);
     expect(t).toHaveLength(2);
     expect(t.map((x) => x.color).sort()).toEqual([bandColor("25m"), bandColor("31m")].sort());
   });
   it("live_station_has_no_trace_until_it_ends", () => {
     const rows = [row({})];
-    expect(atlasTraces(rows, HOME, ROMANIA)).toEqual([]);
-    expect(atlasTraces(rows, HOME, null)).toHaveLength(1);
+    expect(atlasTraces(rows, HOME, ROMANIA, TS, DAY)).toEqual([]);
+    expect(atlasTraces(rows, HOME, null, TS, DAY)).toHaveLength(1);
   });
   it("the live station hides only its own site and band", () => {
-    expect(atlasTraces([row({ band: "31m" })], HOME, ROMANIA)).toHaveLength(1);
+    expect(atlasTraces([row({ band: "31m" })], HOME, ROMANIA, TS, DAY)).toHaveLength(1);
   });
   it("path_across_the_antimeridian_has_two_segments", () => {
     expect(tracePath({ lat: -38.8, lon: 176.4 }, HOME)).toHaveLength(2);
@@ -64,7 +66,7 @@ describe("atlasTraces", () => {
 });
 
 describe("tracesSvg", () => {
-  const t = (key: string) => ({ key, color: "red", segments: ["M0 0L1 1"] });
+  const t = (key: string) => ({ key, color: "red", segments: ["M0 0L1 1"], level: 0 });
   it("fades as one group, so overlapping traces can't add up to full brightness", () => {
     const html = tracesSvg([t("a"), t("b")], 0.34);
     expect(html).toMatch(/^<g opacity="0\.34"/);
@@ -179,7 +181,7 @@ describe("display.hf", () => {
   const base = () => ({ ...defaultConfig(), display: { weatherLat: 39.1, weatherLon: -94.58 } });
   it("display_hf_defaults", () => {
     expect(configSchema.parse(base()).display!.hf).toEqual({
-      greylineStepMs: 300_000, traceOpacity: 0.34, hitGrowMs: 900, hitLineDelayMs: 550, hitLineMs: 2000, hitPingMs: 800, hitFadeMs: 700, zoomMs: 1500, pulseEveryMs: 4500, pulseMs: 2000,
+      greylineStepMs: 300_000, traceOpacity: 0.34, traceFadeMs: 21_600_000, hitGrowMs: 900, hitLineDelayMs: 550, hitLineMs: 2000, hitPingMs: 800, hitFadeMs: 700, zoomMs: 1500, pulseEveryMs: 4500, pulseMs: 2000,
     });
   });
   it("pulses can be turned off", () => {
@@ -187,5 +189,59 @@ describe("display.hf", () => {
   });
   it("rejects a trace opacity above 1", () => {
     expect(() => configSchema.parse({ ...base(), display: { ...base().display, hf: { traceOpacity: 1.5 } } })).toThrow();
+  });
+});
+
+describe("traces fading over time", () => {
+  const FADE = 21_600_000;
+  const NOW = TS;
+  const ago = (ms: number) => ({ playedTs: NOW - ms });
+  it("steps from full to gone over the fade time", () => {
+    expect(traceLevel(0, FADE)).toBe(0);
+    expect(traceLevel(FADE / TRACE_STEPS - 1, FADE)).toBe(0);
+    expect(traceLevel(FADE / TRACE_STEPS, FADE)).toBe(1);
+    expect(traceLevel(FADE - 1, FADE)).toBe(TRACE_STEPS - 1);
+    expect(traceLevel(FADE, FADE)).toBe(TRACE_STEPS);
+  });
+  it("a station played after the wall's clock last stepped is simply new", () => {
+    expect(traceLevel(-5_000, FADE)).toBe(0);
+  });
+  it("a trace goes once the fade time has passed since it last played", () => {
+    expect(atlasTraces([row(ago(FADE - 1))], HOME, null, NOW, FADE)).toHaveLength(1);
+    expect(atlasTraces([row(ago(FADE))], HOME, null, NOW, FADE)).toEqual([]);
+  });
+  it("playing again resets it, whichever log row comes first", () => {
+    const old = row(ago(FADE));
+    const fresh = row({ ...ago(0), freqHz: 11_900_000 });
+    for (const rows of [[old, fresh], [fresh, old]]) {
+      const t = atlasTraces(rows, HOME, null, NOW, FADE);
+      expect(t).toHaveLength(1);
+      expect(t[0]!.level).toBe(0);
+    }
+  });
+  it("the dot stays after the trace has gone", () => {
+    expect(atlasDots([row(ago(FADE * 2))])).toHaveLength(1);
+  });
+  it("dims with age", () => {
+    const t = (key: string, level: number) => ({ key, color: "red", segments: [`M${key}`], level });
+    const html = tracesSvg([t("1", 0), t("2", TRACE_STEPS / 2)], 0.34);
+    expect(html).toContain('opacity="0.34"');
+    expect(html).toContain('opacity="0.17"');
+  });
+  it("overlaps can't add up across ages: a dimmer trace is cut away under every brighter one", () => {
+    const t = (key: string, level: number) => ({ key, color: "red", segments: [`M${key}`], level });
+    const html = tracesSvg([t("1", 0), t("2", 3), t("3", 6)], 0.34);
+    const mask = (n: number) => new RegExp(`<mask id="hfTraceAge${n}"[^]*?</mask>`).exec(html)?.[0] ?? "";
+    expect(html.match(/<mask /g)).toHaveLength(2);
+    expect(mask(3)).toContain('d="M1"');
+    expect(mask(3)).not.toContain('d="M2"');
+    expect(mask(6)).toContain('d="M1"');
+    expect(mask(6)).toContain('d="M2"');
+    expect(html).toContain('mask="url(#hfTraceAge3)"');
+    expect(html).toContain('mask="url(#hfTraceAge6)"');
+  });
+  it("traces of one age need no mask", () => {
+    const t = (key: string) => ({ key, color: "red", segments: [`M${key}`], level: 2 });
+    expect(tracesSvg([t("1"), t("2")], 0.34)).not.toContain("<mask");
   });
 });

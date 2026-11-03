@@ -89,7 +89,7 @@ describe("atlasSnapshotSvg", () => {
   const world = '<svg><path class="A" d="M1 1L2 2Z"/>\n<path d="M3 3L4 4Z" id="B"/></svg>';
   const input = {
     sky: '<rect fill="url(#x)"/>', world, dots: [{ x: 5, y: 6, r: 3, opacity: 0.5 }],
-    traces: [{ key: "k", color: "var(--kc-glass)", segments: ["M7 7L8 8"] }], traceOpacity: 0.34,
+    traces: [{ key: "k", color: "var(--kc-glass)", segments: ["M7 7L8 8"], level: 0 }], traceOpacity: 0.34,
     home: { x: 9, y: 9 }, width: 1366, height: 768, viewBox: "0 0 10 10",
     colors: { land: "#111111", border: "#222222", dot: "#333333", glass: "#5fd4c3" },
   };

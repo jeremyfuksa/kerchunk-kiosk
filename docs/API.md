@@ -160,7 +160,7 @@ additionally removes orphans (recorded on a hit that never filed) and enforces
 | --- | --- | --- |
 | GET | `/api/system` | System stats snapshot + `safetyMode` + health verdict (`healthy`/`stressed`/`trouble`) + `coreCount` + `scanCoverage` (below). |
 | GET | `/api/status` | See above (external consumer). |
-| GET | `/api/hf/log` | HF reception log: `{ nights, night, rows }`, `?night=YYYY-MM-DD` (default latest). |
+| GET | `/api/hf/log` | HF reception log: `{ nights, night, rows }`, `?night=YYYY-MM-DD` (default latest). A row's `playedTs` is when it last played, `null` if never. |
 | GET | `/api/logs` | See above (external consumer). |
 | GET | `/api/weather` | See above (external consumer). |
 | GET | `/api/history` | Hit history; query params `since`, `until`, `freq`, `tag`, `kind`, `limit`. Labels resolved to current channel names. |

@@ -306,6 +306,7 @@ export function renderDashboard(root: HTMLElement): void {
     hfGreylineAt = now;
     const group = hfSkyEl.querySelector("#hfGreyline");
     if (group) group.innerHTML = greylineSvg(now);
+    schedule();
   }
 
   // The zoom moves a flat picture of the Atlas, never the live layers, which can't re-raster that fast. The real
@@ -322,7 +323,7 @@ export function renderDashboard(root: HTMLElement): void {
     const home = robinson(hfHome.lat, hfHome.lon);
     const { clientWidth: width, clientHeight: height } = hfEl;
     const svg = atlasSnapshotSvg({
-      sky: skySvg(Date.now()), world: worldSvg, dots: atlasDots(hfLog), traces: atlasTraces(hfLog, hfHome, null),
+      sky: skySvg(Date.now()), world: worldSvg, dots: atlasDots(hfLog), traces: atlasTraces(hfLog, hfHome, null, hfGreylineAt, hfOpts.traceFadeMs),
       traceOpacity: hfOpts.traceOpacity, home, width, height, viewBox: STAGE_VIEWBOX,
       colors: { land: color("--kc-hf-land"), border: color("--kc-hf-border"), dot: color("--kc-hf-dot"), glass: color("--kc-glass") },
     });
@@ -414,8 +415,9 @@ export function renderDashboard(root: HTMLElement): void {
       hfDotsEl.innerHTML = dots.map((d) => `<circle cx="${d.x.toFixed(1)}" cy="${d.y.toFixed(1)}" r="${d.r.toFixed(1)}" opacity="${d.opacity.toFixed(2)}"/>`).join("");
     }
     applyHit(v.liveStation);
-    const traces = atlasTraces(hfLog, hfHome, v.liveStation ?? hfFading);
-    const tracesKey = `${hfOpts.traceOpacity}|${hfHome.lat},${hfHome.lon}|${traces.map((t) => t.key).join(";")}`;
+    // Traces age on the greyline's clock, so they only ever change on its slow step.
+    const traces = atlasTraces(hfLog, hfHome, v.liveStation ?? hfFading, hfGreylineAt, hfOpts.traceFadeMs);
+    const tracesKey = `${hfOpts.traceOpacity}|${hfHome.lat},${hfHome.lon}|${traces.map((t) => `${t.key}@${t.level}`).join(";")}`;
     if (tracesKey !== hfTracesKey) {
       hfTracesKey = tracesKey;
       const home = robinson(hfHome.lat, hfHome.lon);
