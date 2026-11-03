@@ -98,7 +98,7 @@ export class ReceptionLog {
   markOnSpeaker(ts: number, hz: number): void {
     this.db.prepare(`
       UPDATE reception SET on_speaker = 1 WHERE id = (
-        SELECT id FROM reception WHERE night = ? AND ABS(freq_hz - ?) <= ? ORDER BY last_ts DESC LIMIT 1
+        SELECT id FROM reception WHERE night = ? AND ABS(freq_hz - ?) <= ? ORDER BY last_ts DESC, id DESC LIMIT 1
       )
     `).run(nightOf(ts), hz, SAME_STATION_HZ);
   }

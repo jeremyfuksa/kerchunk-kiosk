@@ -38,6 +38,15 @@ describe("ReceptionLog", () => {
     expect(rows[0]).toMatchObject({ freqHz: 5_950_000, band: "49m", peakDb: 35, firstTs: at(22), lastTs: at(22, 2), station: null });
   });
 
+  it("marks the newest row for a frequency, even in the same millisecond as the last", () => {
+    const l = log();
+    const ts = at(22);
+    l.record(ts, "49m", [{ hz: 5_950_000, db: 30 }], () => []);
+    l.record(ts, "49m", [{ hz: 5_950_000, db: 30 }], () => [{ station: "Radio X" }]);
+    l.markOnSpeaker(ts, 5_950_000);
+    expect(l.rows("2026-11-02").find((r) => r.station === "Radio X")?.onSpeaker).toBe(true);
+  });
+
   it("counts passes, not sightings", () => {
     const l = log();
     for (const m of [0, 0.1, 0.2, 0.5]) survey(l, at(22) + m * 60_000, 5_950_000, 20);
