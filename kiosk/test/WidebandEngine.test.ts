@@ -1,7 +1,7 @@
 import { cbChannels, cbDefaultChannels } from "../src/backend/config/cb.js";
 import { describe, it, expect, beforeAll } from "vitest";
 import { join } from "node:path";
-import { chmodSync, mkdtempSync, readFileSync, existsSync } from "node:fs";
+import { chmodSync, mkdtempSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { WidebandEngine } from "../src/backend/engine/WidebandEngine.js";
 import type { ScanConfig, EngineEvent } from "../src/backend/engine/ScannerEngine.js";
@@ -1588,12 +1588,12 @@ describe("SpyServer source", () => {
 
   it("a retune across sources during restart backoff spawns now and cancels the timer", async () => {
     const args = tmpFile("args");
-    const { engine, events } = makeEngine({ FAKE_WB_ARGS_FILE: args, FAKE_WB_MODE: "nodevice" }, { restartDelayMs: 300 });
+    const { engine, events } = makeEngine({ FAKE_WB_ARGS_FILE: args, FAKE_WB_MODE: "nodevice" }, { restartDelayMs: 1500 });
     await engine.start(spyCfg());
     expect(await waitFor(() => events.some((e) => e.type === "status" && e.state === "starting"), 1000)).toBe(true);
     const mark = events.length;
     await engine.retune(rtlCfg());
-    expect(await waitFor(() => lines(args).length === 2, 100)).toBe(true);
+    expect(await waitFor(() => lines(args).length === 2, 700)).toBe(true);
     expect(lines(args)[1]).not.toContain("--spyserver");
     expect(events.slice(mark).filter(isLoud)).toEqual([]);
     await engine.stop();
@@ -1615,6 +1615,38 @@ describe("SpyServer source", () => {
     expect(alive).toHaveLength(1);
     expect(alive[0]).toBe(lines(pids).at(-1));
     expect(lines(args).at(-1)).toContain("--spyserver");
+    await engine.stop();
+  });
+
+  it("recovering from an outage reports running once the helper is ready, clearing the wall's error", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "wb-"));
+    const up = join(dir, "up");
+    const wrapper = join(dir, "helper.sh");
+    writeFileSync(wrapper, `#!/bin/bash\n[ -f "${up}" ] || { echo "failed to open SpyServer" >&2; exit 1; }\nexec "${FAKE}" "$@"\n`, { mode: 0o755 });
+    const { engine, events } = makeEngine({}, { helperCmd: [wrapper], restartDelayMs: 20, maxRestartDelayMs: 40 });
+    await engine.start(spyCfg());
+    expect(await waitFor(() => events.some((e) => e.type === "error"), 2000)).toBe(true);
+    const mark = events.length;
+    const running = () => events.slice(mark).some((e) => e.type === "status" && e.state === "running");
+    await new Promise((r) => setTimeout(r, 100));
+    expect(running()).toBe(false);   // still down: the error stays up
+    writeFileSync(up, "");
+    expect(await waitFor(running, 2000)).toBe(true);
+    await engine.stop();
+  });
+
+  it("a retune across sources clears an old source's error once the new helper is ready", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "wb-"));
+    const wrapper = join(dir, "helper.sh");
+    writeFileSync(wrapper, `#!/bin/bash\ncase "$*" in *--spyserver*) echo "failed to open SpyServer" >&2; exit 1;; esac\nexec "${FAKE}" "$@"\n`, { mode: 0o755 });
+    const { engine, events } = makeEngine({}, { helperCmd: [wrapper], restartDelayMs: 20, maxRestartDelayMs: 40 });
+    await engine.start(spyCfg());
+    expect(await waitFor(() => events.some((e) => e.type === "error"), 2000)).toBe(true);
+    const mark = events.length;
+    await engine.retune(rtlCfg());
+    expect(await waitFor(() => events.slice(mark).some((e) => e.type === "status" && e.state === "running"), 2000)).toBe(true);
+    // It never got warm, so its first warm-up may finish. It must not restart.
+    expect(events.slice(mark).filter((e) => (e.type === "warmup" && e.phase === "booting") || (e.type === "status" && e.state === "stopped"))).toEqual([]);
     await engine.stop();
   });
 

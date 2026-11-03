@@ -250,6 +250,9 @@ export class WidebandEngine implements ScannerEngine {
   private readonly lanesOverride: number | undefined;
   // Lane count + rate the LIVE helper was spawned with: a retune whose config
   // needs different ones must respawn (both are spawn-time helper args).
+  // Set when the UIs may be showing a helper error: the next "ready" reports
+  // "running", which clears it. Nothing else would on a quiet band.
+  private reportReady = false;
   private spawnedShape: { lanes: number; rate: number; source: string } | null = null;
   private readonly centerOffsetHz: number;
   private readonly niceness: number | undefined;
@@ -550,6 +553,7 @@ export class WidebandEngine implements ScannerEngine {
     this.audibleId = null;
     this.holdStartedAt = 0;
     this.exitFailures = 0;
+    this.reportReady = true;
     // Already warm: the new helper's first tune must not replay the warm-up. If it
     // never got warm, keep the gate so "ready" still fires.
     if (this.warmReadySeen) this.firstTunedSeen = true;
@@ -711,6 +715,10 @@ export class WidebandEngine implements ScannerEngine {
       case "ready":
         if (this.readyTimer) { clearTimeout(this.readyTimer); this.readyTimer = null; }
         if (this.child) this.armSilence(this.child);
+        if (this.reportReady) {
+          this.reportReady = false;
+          this.emit({ type: "status", state: "running", ts: this.now() });
+        }
         this.resetRevisit();
         this.sendTune();
         this.startDwellTimer();
@@ -1178,6 +1186,7 @@ export class WidebandEngine implements ScannerEngine {
       : `${exited}${this.autoRestart ? "; restarting" : ""}`;
 
     this.exitFailures += 1;
+    this.reportReady = true;
     // Journal every unexpected exit with its reason, soft path included: the
     // soft path emits only a "starting" status, so a one-off helper death used
     // to leave no trace of WHY (seen live 2026-09-26: an unexplained native
