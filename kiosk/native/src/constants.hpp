@@ -207,6 +207,10 @@ inline constexpr double STALL_S = 2.0;             // no samples this long = SDR
 inline constexpr double BUSY_RETRY_S = 3.0;        // retry rtlsdr_open this long (previous helper releasing)
 inline constexpr double SPY_CONNECT_TIMEOUT_S = 3.0;   // SpyServer connect + handshake
 inline constexpr double SPY_IO_TIMEOUT_S = 0.5;        // socket I/O once streaming; a retune send can't wedge the DSP thread longer
+inline constexpr double SPY_RESOLVE_TIMEOUT_S = 2.0;   // name lookup (mDNS can sit for seconds); the break-in budget is about 2 s
+// Wi-Fi delivers in bursts: largest gap measured 1.82 s, and 2.0 s exits showed up on the wall. Must stay
+// under Node's silence watchdog (DEFAULT_SILENCE_TIMEOUT_MS) and READY_PROVEN_MS must outlast it; test/engineDefaults.test.ts holds both.
+inline constexpr double SPY_STALL_S = 4.0;
 // SpyServer confirms nothing after a retune, but echoes the digital gain in every IQ frame's flags. A
 // retune also steps the gain within a small cycle, so the flip marks new-center data in stream order.
 inline constexpr int SPY_DIGITAL_GAIN_DEFAULT = 32;    // at the server's default u8 is nearly empty (docs/bench/2026-11-hf-proofs.md)
