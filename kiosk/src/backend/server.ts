@@ -1,6 +1,6 @@
 import type { ModeStore } from "./modeStore.js";
 import { HfController, type HfConfig } from "./hf/controller.js";
-import type { HfTune } from "./hf/sweep.js";
+import { HF_DEFAULTS, type HfTune } from "./hf/sweep.js";
 import { isUtility } from "./hf/schedule.js";
 import type { Candidate, ReceptionLog } from "./hf/receptionLog.js";
 import { createServer as httpCreateServer, type IncomingMessage, type ServerResponse, type Server } from "node:http";
@@ -315,7 +315,7 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
     },
     onSurvey: (tune, carriers) => logSafely(() => {
       const now = Date.now();
-      deps.receptionLog?.record(now, tune.band, carriers, deps.hfCandidates ?? (() => []));
+      deps.receptionLog?.record(now, tune.band, carriers, deps.hfCandidates ?? (() => []), config.hf?.windowMs ?? HF_DEFAULTS.windowMs);
       // A row can appear while the station plays (a schedule slot turns over, or noon): it played too.
       if (tune.listenHz !== null) deps.receptionLog?.markOnSpeaker(now, tune.listenHz);
     }),

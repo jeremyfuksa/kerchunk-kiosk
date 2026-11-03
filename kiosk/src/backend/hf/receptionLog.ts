@@ -2,9 +2,8 @@
 // Its own database, so history.prune() can never reach it. No audio, only measurements.
 import { DatabaseSync } from "node:sqlite";
 
-const SAME_STATION_HZ = 5_000;
-// A window lasts about a minute and a pass many minutes. Anything longer apart than this is a new pass.
-const NEW_PASS_MS = 5 * 60_000;
+// Half the 5 kHz raster: the same station's small tuning differences, but never the next channel.
+const SAME_STATION_HZ = 2_500;
 
 export interface Candidate {
   station: string;
@@ -66,8 +65,9 @@ export class ReceptionLog {
     }
   }
 
-  /** One survey of one window. `candidates` lists the schedule matches, likeliest first. */
-  record(ts: number, band: string, carriers: ReadonlyArray<{ hz: number; db: number }>, candidates: (hz: number, ts: number) => readonly Candidate[]): void {
+  /** One survey of one window. `candidates` lists the schedule matches, likeliest first. Sightings
+   *  further apart than `windowMs` can't be one visit to the window, so they're another pass. */
+  record(ts: number, band: string, carriers: ReadonlyArray<{ hz: number; db: number }>, candidates: (hz: number, ts: number) => readonly Candidate[], windowMs: number): void {
     const night = nightOf(ts);
     this.db.exec("BEGIN");
     try {
@@ -82,7 +82,7 @@ export class ReceptionLog {
       `).get(night, c.hz, SAME_STATION_HZ, top?.station ?? null) as { id: number; peak_db: number; last_ts: number; passes: number; others: string } | undefined;
       if (row) {
         this.db.prepare("UPDATE reception SET last_ts = ?, peak_db = ?, passes = ?, others = ? WHERE id = ?").run(
-          ts, Math.max(row.peak_db, c.db), ts - row.last_ts > NEW_PASS_MS ? row.passes + 1 : row.passes,
+          ts, Math.max(row.peak_db, c.db), ts - row.last_ts > windowMs ? row.passes + 1 : row.passes,
           JSON.stringify([...new Set([...(JSON.parse(row.others) as string[]), ...others])]), row.id,
         );
       } else {

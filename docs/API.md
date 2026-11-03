@@ -200,7 +200,7 @@ additionally removes orphans (recorded on a hit that never filed) and enforces
 One JSON message per event, `EngineEvent` union
 (`kiosk/src/backend/engine/ScannerEngine.ts`): `active`, `audible`,
 `release`, `idle`, `closecall`, `rf`, `tone`, `same`, `signal`, `tuned`,
-`alert`, `aircraft`, `radar`, `lightning`, `status`, `statusChanged` (the mode or HF station changed: poll `/api/status`), `warmup`, `reload`, `error`. `tone`
+`alert`, `aircraft`, `radar`, `lightning`, `status`, `statusChanged` (the mode or HF station changed: poll `/api/status`), `warmup`, `reload`, `error`. `active`, `audible` and `idle` may carry `unproven: true`: they come from a helper restarted after a failure that hasn't yet outlasted a stall, so they don't clear an error (`status` `running` does). `tone`
 (`{ channelId, ctcssHz?, dcs? }`) is the CTCSS tone and/or DCS code heard on
 an open FM channel, once per transmission; `dcs` is in its on-air normal form
 (`"047N"` for a `023I` transmitter — the two are identical on air). The server
