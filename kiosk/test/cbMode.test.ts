@@ -276,6 +276,10 @@ describe("CB over SpyServer", () => {
     expect(parsed.spyserver?.port).toBe(5555);
     expect(parsed.spyserver?.audioBufferMs).toBeGreaterThan(0);
     expect(configSchema.safeParse({ ...defaultConfig(), spyserver: { host: "" } }).success).toBe(false);
+    for (const host of ["-x", "--sink", "a:1", "a b", "a/b"]) {
+      expect(configSchema.safeParse({ ...defaultConfig(), spyserver: { host } }).success).toBe(false);
+    }
+    expect(configSchema.safeParse({ ...defaultConfig(), spyserver: { host: "192.168.1.30" } }).success).toBe(true);
     expect(configSchema.safeParse({ ...defaultConfig(), spyserver: { host: "a", digitalGain: 33 } }).success).toBe(false);
     expect(configSchema.safeParse({ ...defaultConfig(), spyserver: { host: "a", audioBufferMs: 3001 } }).success).toBe(false);
   });

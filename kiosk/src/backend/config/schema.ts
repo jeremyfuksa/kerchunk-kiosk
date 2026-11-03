@@ -544,7 +544,8 @@ export const configSchema = z.object({
   // the u8 stream needs (docs/bench/2026-11-hf-proofs.md). audioBufferMs = speaker
   // queue, because network IQ arrives in bursts (--audio-buffer-ms).
   spyserver: z.object({
-    host: z.string().min(1),
+    // A bare hostname or IPv4 address: it becomes the helper's --spyserver host:port.
+    host: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9.-]*$/),
     port: z.number().int().min(1).max(65535).default(5555),
     gain: z.number().int().min(0).max(32).optional(),
     digitalGain: z.number().int().min(0).max(32).optional(),
