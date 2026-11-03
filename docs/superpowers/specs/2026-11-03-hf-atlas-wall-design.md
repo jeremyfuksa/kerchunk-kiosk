@@ -101,7 +101,7 @@ The heat proof below includes several of these.
 
 At 1366×768, per the prototype:
 
-- **Map:** larger than the screen, centred, 1905 map units across the 1366 px. The top of the screen is about 78°N, so the flat pole line and the high Arctic are off screen: the operator rejected traces flattening along that line. The flat south edge sits behind the reception band.
+- **Map:** larger than the screen, centred, 1830 map units across the 1366 px. The top of the screen is about 81°N, so the flat pole line and the high Arctic are off screen: the operator rejected traces flattening along that line. The reception band hides everything south of about 75°S, because the operator found too much empty southern sea. New Zealand's east coast limits how large it can go.
 - **Station panel:** lower left over the South Pacific, 430 px wide, 66 px from the bottom, on a translucent dark plate with no blur (`rgba(14,14,42,.74)`). It holds the frequency at 68 px, the name at 30 px, one line of details, and the meter. All of `hfView`'s readout data stays, including "Likely", "Muted", and the error and hunting states.
 - **Top left:** "HF · 25m", small and dim.
 - **Clock and weather:** top right, inside the corner of space and clear of the globe's rim. The prototype's one line crosses the rim, and the operator agreed to moving it. Stacking it is fine if one line won't fit. Keep the Lucide weather icon that's there today.

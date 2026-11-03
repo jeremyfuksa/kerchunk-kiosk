@@ -83,11 +83,18 @@ describe("framing", () => {
   const [x0, y0, w, h] = STAGE_VIEWBOX.split(" ").map(Number) as [number, number, number, number];
   const pxPerUnit = 1366 / w;
   it("the pole's flat line and the high Arctic are off the top, so traces leave rather than flatten", () => {
-    expect(y0).toBeGreaterThan(robinson(78, 0).y - 1);
+    expect(y0).toBeGreaterThan(robinson(82, 0).y);
   });
   it("the flat south edge is hidden behind the reception band", () => {
     const southPx = (robinson(-90, 0).y - y0) * pxPerUnit;
     expect(southPx).toBeGreaterThanOrEqual(708);
+  });
+  it("most of the empty southern sea sits behind the reception band", () => {
+    expect((robinson(-75, 0).y - y0) * pxPerUnit).toBeLessThanOrEqual(715);
+  });
+  it("every landmass stays on screen, New Zealand and Hawaii included", () => {
+    expect(robinson(-47, 178).x).toBeLessThan(x0 + w);
+    expect(robinson(21, -160).x).toBeGreaterThan(x0);
   });
   it("keeps the wall's shape and centres the globe", () => {
     expect(h / w).toBeCloseTo(768 / 1366, 2);
