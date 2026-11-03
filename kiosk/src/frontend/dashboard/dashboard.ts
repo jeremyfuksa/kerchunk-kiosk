@@ -178,6 +178,7 @@ export function renderDashboard(root: HTMLElement): void {
       </div>
       <div id="cbStage" class="kc-cb" aria-hidden="true"></div>
       <div id="hfStage" class="kc-hf" aria-hidden="true"><svg id="hfSky" class="kc-hf__layer" viewBox="${STAGE_VIEWBOX}"></svg><div id="hfLand" class="kc-hf__layer"></div><svg id="hfDots" class="kc-hf__layer" viewBox="${STAGE_VIEWBOX}"></svg><svg id="hfTraces" class="kc-hf__layer" viewBox="${STAGE_VIEWBOX}"></svg><svg id="hfLive" class="kc-hf__layer" viewBox="${STAGE_VIEWBOX}"></svg><div id="hfPulse" class="kc-hf__pulse"></div><div id="hfContent"></div></div>
+      <div id="hfHaze" class="kc-hf__haze" aria-hidden="true"></div>
     </div>`;
   // ── Poll budget ─────────────────────────────────────────────────────────
   // Three independent timers (status 5 s, system 10 s, weather 10 min) used to
@@ -313,7 +314,7 @@ export function renderDashboard(root: HTMLElement): void {
   function startZoom(direction: ZoomDirection, after: () => void): void {
     dashEl.classList.add("hfZoom");
     const origin = stagePx(robinson(hfHome.lat, hfHome.lon), hfEl.clientWidth);
-    const run = runZoom(direction, hfEl, root.querySelector<HTMLElement>("#mapBase")!, origin, hfOpts.zoomMs);
+    const run = runZoom(direction, hfEl, root.querySelector<HTMLElement>("#mapBase")!, root.querySelector<HTMLElement>("#hfHaze")!, origin, hfOpts.zoomMs);
     const done = (): void => { run.stop(); dashEl.classList.remove("hfZoom"); after(); };
     zoomDone = done;
     void run.finished.then(() => { if (zoomDone === done) finishZoom(); });

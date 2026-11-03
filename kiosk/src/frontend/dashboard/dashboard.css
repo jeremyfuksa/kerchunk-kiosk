@@ -287,6 +287,14 @@ html[data-page="dashboard"] .kc-hf { display: none; }
 html[data-page="dashboard"] .dash.hfStage .kc-hf { display: block; position: absolute; inset: 0; z-index: 2; }
 html[data-page="dashboard"] .dash.hfStage .mapBase { visibility: hidden; }
 html[data-page="dashboard"] .dash.hfStage.hfZoom .mapBase { visibility: visible; }
+/* The atmosphere the zoom passes through: a blue haze, with faint streaks radiating from home. Only exists mid-zoom. */
+html[data-page="dashboard"] .kc-hf__haze { display: none; }
+html[data-page="dashboard"] .dash.hfZoom .kc-hf__haze {
+  display: block; position: absolute; inset: 0; z-index: 2; opacity: 0; pointer-events: none; will-change: transform, opacity;
+  background:
+    repeating-conic-gradient(from 0deg at var(--kc-hf-zoom-at), transparent 0deg 2.2deg, var(--kc-hf-streak) 2.2deg 2.6deg, transparent 2.6deg 5.3deg),
+    radial-gradient(circle at var(--kc-hf-zoom-at), var(--kc-hf-haze), var(--kc-hf-haze-edge));
+}
 html[data-page="dashboard"] .dash.hfStage .kc-corner__slot,
 html[data-page="dashboard"] .dash.hfStage .kc-recent { display: none; }
 /* The corner stays: it holds the alert banner. */

@@ -50,9 +50,26 @@ describe("zoomFrames", () => {
     expect(i.map.at(-1)).toMatchObject({ transform: "scale(1)", opacity: 1 });
     expect(o.stage).toHaveLength(i.stage.length);
   });
-  it("only animates what the compositor can move on its own", () => {
-    for (const k of [...zoomFrames("out").stage, ...zoomFrames("out").map]) {
-      for (const key of Object.keys(k)) expect(["transform", "opacity", "offset"]).toContain(key);
+  it("only animates what the compositor can do on its own", () => {
+    const f = zoomFrames("out");
+    for (const k of [...f.stage, ...f.map, ...f.haze]) {
+      for (const key of Object.keys(k)) expect(["transform", "opacity", "offset", "filter"]).toContain(key);
+    }
+  });
+  it("feels like motion: both pictures are blurred mid-move and sharp at rest", () => {
+    const blur = (k: { filter?: string }) => Number(/blur\((.*)px\)/.exec(k.filter ?? "")?.[1] ?? 0);
+    const f = zoomFrames("out");
+    expect(blur(f.stage.at(-1)!)).toBe(0);
+    expect(blur(f.map[0]!)).toBe(0);
+    expect(blur(f.stage.find((k) => k.offset === 0.5)!)).toBeGreaterThan(0);
+    expect(blur(f.map.find((k) => k.offset === 0.5)!)).toBeGreaterThan(0);
+  });
+  it("haze hides the swap: gone at both ends, thick at the crossover", () => {
+    for (const d of ["out", "in"] as const) {
+      const h = zoomFrames(d).haze;
+      expect(h[0]!.opacity).toBe(0);
+      expect(h.at(-1)!.opacity).toBe(0);
+      expect(Math.max(...h.map((k) => k.opacity))).toBeGreaterThanOrEqual(0.8);
     }
   });
 });
