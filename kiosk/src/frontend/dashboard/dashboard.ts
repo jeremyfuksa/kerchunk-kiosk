@@ -8,7 +8,7 @@ import { hfHtml, hfView, mapShouldRun, type HfHeard, type HfView } from "./hfVie
 import { countrySelector } from "./ituCountry.js";
 import worldSvg from "./world.svg?raw";
 import { atlasDots, atlasTraces, hitAction, traceKey, tracesSvg, type HitKey } from "./atlas.js";
-import { greylineDue, greylineSvg, skySvg, stagePx, STAGE_VIEWBOX } from "./greyline.js";
+import { greylineDue, greylineSvg, skySvg, stagePx, STAGE_VIEWBOX, LIMB_MASK, limbMaskSvg } from "./greyline.js";
 import { atlasSnapshotSvg, paintSnapshot, runZoom, zoomFor, type ZoomDirection, hfLogWanted } from "./zoom.js";
 import { HF_WALL_DEFAULTS, HitAnimator } from "./hitAnim.js";
 import { robinson } from "./robinson.js";
@@ -458,7 +458,7 @@ export function renderDashboard(root: HTMLElement): void {
     if (tracesKey !== hfTracesKey) {
       hfTracesKey = tracesKey;
       const home = robinson(hfHome.lat, hfHome.lon);
-      hfTracesEl.innerHTML = tracesSvg(traces, hfOpts.traceOpacity)
+      hfTracesEl.innerHTML = `${limbMaskSvg()}<g ${LIMB_MASK}>${tracesSvg(traces, hfOpts.traceOpacity)}</g>`
         + `<circle class="kc-hf__qth" cx="${home.x.toFixed(1)}" cy="${home.y.toFixed(1)}" r="6"/>`;
     }
   }
