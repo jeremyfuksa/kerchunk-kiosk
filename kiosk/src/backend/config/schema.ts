@@ -108,6 +108,9 @@ export {
   DEFAULT_FLAT_BANDWIDTH_HZ, MAX_LANES_PER_GROUP, MIN_SAMPLE_RATE_HZ, MAX_SAMPLE_RATE_HZ,
 };
 
+// Speaker queue for network IQ. See docs/bench/2026-11-hf-proofs.md.
+export const DEFAULT_SPY_AUDIO_BUFFER_MS = 500;
+
 export const configSchema = z.object({
   version: z.literal(1),
   scan: z.object({
@@ -534,6 +537,18 @@ export const configSchema = z.object({
     modes: z.record(z.string().regex(/^([1-9]|[1-3]\d|40)$/), z.enum(["am", "lsb"])).optional(),
     ssbOpenDb: z.number().positive().max(40).optional(),
     ssbHangMs: z.number().int().min(0).max(10_000).optional(),
+  }).optional(),
+  // The Airspy HF+ on SpyServer. When set, CB mode listens through it instead of
+  // the scan radio (spec 2026-11-02-hf-mode). gain = the server's gain index,
+  // absent = the server's own; digitalGain absent = the helper's default, which
+  // the u8 stream needs (docs/bench/2026-11-hf-proofs.md). audioBufferMs = speaker
+  // queue, because network IQ arrives in bursts (--audio-buffer-ms).
+  spyserver: z.object({
+    host: z.string().min(1),
+    port: z.number().int().min(1).max(65535).default(5555),
+    gain: z.number().int().min(0).max(32).optional(),
+    digitalGain: z.number().int().min(0).max(32).optional(),
+    audioBufferMs: z.number().int().min(0).max(3000).default(DEFAULT_SPY_AUDIO_BUFFER_MS),
   }).optional(),
   // RepeaterBook lookup (Close Call enrichment). userAgent must be the
   // string REGISTERED with RepeaterBook; states are full names ("Missouri").

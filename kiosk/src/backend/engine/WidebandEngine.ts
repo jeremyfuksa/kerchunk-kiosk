@@ -119,6 +119,12 @@ export interface WidebandEngineOptions {
 // --lanes, and grouping splits oversized clusters at the same count so the
 // helper never truncates.
 const DEFAULT_WINDOW_HZ = DEFAULT_WINDOW_BANDWIDTH_HZ;
+// --spyserver forces this rate in the helper (IqRateConverter::OUT_RATE).
+const SPY_RATE_HZ = 750_000;
+// A 10 kHz raster has no 25 kHz gap to park the spike in. This is wide enough to
+// land in a skipped CB slot, 10 kHz from its neighbours, whenever one is in range.
+const SPY_DC_CLEAR_HZ = 6_000;
+const sourceOf = (c: ScanConfig): string => (c.spyserver ? `${c.spyserver.host}:${c.spyserver.port}` : "");
 // Hop-timer tick ceiling while activity-weighted dwell or priority revisit is
 // on: scaled dwells and 700 ms priority looks
 // aren't multiples of dwell/3, so the old dwell/3 tick (1 s at the 3 s
@@ -244,7 +250,7 @@ export class WidebandEngine implements ScannerEngine {
   private readonly lanesOverride: number | undefined;
   // Lane count + rate the LIVE helper was spawned with: a retune whose config
   // needs different ones must respawn (both are spawn-time helper args).
-  private spawnedShape: { lanes: number; rate: number } | null = null;
+  private spawnedShape: { lanes: number; rate: number; source: string } | null = null;
   private readonly centerOffsetHz: number;
   private readonly niceness: number | undefined;
   private readonly maxHoldMs: number;
@@ -341,6 +347,7 @@ export class WidebandEngine implements ScannerEngine {
   }
 
   private rateFor(config: ScanConfig): number {
+    if (config.spyserver) return SPY_RATE_HZ;
     return this.sampleRateHz ?? config.sampleRateHz ?? DEFAULT_SAMPLE_RATE_HZ;
   }
 
@@ -480,11 +487,15 @@ export class WidebandEngine implements ScannerEngine {
   private groupingOpts(config: ScanConfig): GroupingOptions {
     return {
       flatHz: config.flatBandwidthHz ?? DEFAULT_FLAT_BANDWIDTH_HZ,
+      ...(config.spyserver ? { dcClearHz: SPY_DC_CLEAR_HZ } : {}),
       ...(this.centerOffsetHz !== 0 ? { dcClearHz: 0 } : {}),
     };
   }
 
   async retune(config: ScanConfig): Promise<void> {
+    if (this._state === "running" && this.spawnedShape && this.spawnedShape.source !== sourceOf(config)) {
+      return this.respawnForSource(config);
+    }
     if (this._state !== "running" || !this.child?.stdin?.writable) {
       return this.start(config);
     }
@@ -516,23 +527,66 @@ export class WidebandEngine implements ScannerEngine {
     this.startDwellTimer();  // re-arm the hop cadence (single group ⇒ parks)
   }
 
+  /**
+   * A retune can't change radios, so crossing between SpyServer and an RTL-SDR
+   * respawns the helper. It's the operator-approved exception for HF/CB to "a
+   * break-in is a retune" (spec 2026-11-02-hf-mode), and it keeps that rule's
+   * reasons: no warm-up events and no "stopped" state, so the wall shows no overlay
+   * and the alert banner stays up. A restart backoff is abandoned: the old source's
+   * outage says nothing about the new one.
+   */
+  private respawnForSource(config: ScanConfig): void {
+    const groups = groupChannels(
+      config.channels,
+      config.windowBandwidthHz ?? DEFAULT_WINDOW_HZ,
+      this.lanesFor(config),
+      this.groupingOpts(config),
+    );
+    if (groups.length === 0) { void this.start(config); return; }
+    this.clearRestartTimer();
+    this.releaseOpenOnHop();
+    this.killChild();
+    this.alertUntil.clear();
+    this.audibleId = null;
+    this.holdStartedAt = 0;
+    this.exitFailures = 0;
+    // Already warm: the new helper's first tune must not replay the warm-up. If it
+    // never got warm, keep the gate so "ready" still fires.
+    if (this.warmReadySeen) this.firstTunedSeen = true;
+    this.config = config;
+    this.groups = groups;
+    this.groupIndex = 0;
+    this.resetRevisit();
+    this.sweeps = sweepCenters(config.sweepRanges ?? [], config.windowBandwidthHz ?? DEFAULT_WINDOW_HZ, this.groups);
+    this.sweepIndex = 0;
+    this.sweeping = false;
+    this.stopping = false;
+    this.spawnHelper();
+  }
+
   private helperArgs(): string[] {
     const cfg = this.config!;
+    const spy = cfg.spyserver;
     const args = [
       "--sink", cfg.audioSink,
       "--hang-ms", String(cfg.dwellMs),
+      ...(spy
+        ? ["--spyserver", `${spy.host}:${spy.port}`, "--audio-buffer-ms", String(spy.audioBufferMs),
+          ...(spy.gain !== undefined ? ["--spyserver-gain", String(spy.gain)] : []),
+          ...(spy.digitalGain !== undefined ? ["--spyserver-digital-gain", String(spy.digitalGain)] : [])]
       // Prefer serial (deterministic); fall back to index resolved at spawn.
-      ...(this.rtlSerial
-        ? ["--rtl-serial", this.rtlSerial]
-        : this.rtlIndexResolver
-          ? (() => { const i = this.rtlIndexResolver!(); return i === null ? [] : ["--rtl-index", String(i)]; })()
-          : []),
+        : this.rtlSerial
+          ? ["--rtl-serial", this.rtlSerial]
+          : this.rtlIndexResolver
+            ? (() => { const i = this.rtlIndexResolver!(); return i === null ? [] : ["--rtl-index", String(i)]; })()
+            : []),
       "--open-db", String(cfg.openAboveFloorDb ?? 9),
     ];
     // Front-end rate + lane slots, always explicit. The weather radio pins a
     // narrow rate (10x cheaper — the front-end dominates the helper's cost)
     // and 2 lanes; the scanner takes config.scan.sampleRateHz / lanesPerGroup.
-    args.push("--rate", String(this.rateFor(cfg)), "--lanes", String(this.lanesFor(cfg)));
+    if (!spy) args.push("--rate", String(this.rateFor(cfg)));
+    args.push("--lanes", String(this.lanesFor(cfg)));
     // Close Call FFT: built on unless explicitly disabled (matches the per-tune
     // `closeCall ?? true`). Off => the helper skips the 2048-pt FFT entirely.
     // A closeCall config change respawns the helper, so this stays in sync.
@@ -549,13 +603,13 @@ export class WidebandEngine implements ScannerEngine {
     // toScanConfig; set true on the dedicated weather engine). Off => no
     // multimon-ng process and no last-lane tap.
     if (cfg.sameEnable) args.push("--same-enable");
-    if (cfg.gain !== "auto") args.push("--gain", String(cfg.gain));
+    if (!spy && cfg.gain !== "auto") args.push("--gain", String(cfg.gain));
     // Quieting squelch threshold on kerchunk-dsp's own dB scale (default -6).
     if (cfg.nativeQuietDb !== undefined) args.push("--quiet-db", String(cfg.nativeQuietDb));
     // AM vs FM loudness balance (airband ran hot vs FM, 2026-09-26).
     if (cfg.nativeAmGainDb !== undefined) args.push("--am-gain-db", String(cfg.nativeAmGainDb));
     if (cfg.nativeSsbGainDb !== undefined) args.push("--ssb-gain-db", String(cfg.nativeSsbGainDb));
-    if (this.ppm) args.push("--ppm", String(this.ppm));
+    if (!spy && this.ppm) args.push("--ppm", String(this.ppm));
     // FM speaker audio low-pass (weak-signal hiss vs voice brightness).
     if (cfg.fmAudioLpfHz !== undefined) args.push("--audio-lpf-hz", String(cfg.fmAudioLpfHz));
     // FM speaker high-pass (CTCSS hum), 0 = off.
@@ -576,7 +630,7 @@ export class WidebandEngine implements ScannerEngine {
 
     this.clearWatchdogs(); // cheap insurance: no stale timer from a prior child
     this.lastSpawnAt = this.now();
-    this.spawnedShape = { lanes: this.lanesFor(this.config), rate: this.rateFor(this.config) };
+    this.spawnedShape = { lanes: this.lanesFor(this.config), rate: this.rateFor(this.config), source: sourceOf(this.config) };
     const base = [...this.helperCmd, ...this.helperArgs()];
     // Low-priority spawn (weather radio): `nice` execs the helper so all of its
     // threads inherit the nice value from birth. Lowering own priority needs

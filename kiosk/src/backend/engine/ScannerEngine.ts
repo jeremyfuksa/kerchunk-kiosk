@@ -34,6 +34,9 @@ export interface ScanConfig {
   audioSink: string;
   // Wideband engine tuning (optional; RtlFmEngine/FakeEngine ignore these).
   windowBandwidthHz?: number;
+  // Set = the helper reads this SpyServer instead of the engine's RTL-SDR. It's
+  // spawn-time state: crossing sources respawns the helper (WidebandEngine.retune).
+  spyserver?: { host: string; port: number; gain?: number; digitalGain?: number; audioBufferMs: number };
   // Flat part of the SDR passband for edge-aware grouping (see schema).
   flatBandwidthHz?: number;
   // kerchunk-dsp lane slots per group (--lanes; default 12) and front-end

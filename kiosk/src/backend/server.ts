@@ -81,6 +81,7 @@ const STARTED_AT = Date.now();
 const CLEARABLE_CHANNEL_FIELDS = ["ctcssHz", "dcsCode"] as const;
 
 // "cb" = CB-only listening (config.cb.channels); never mixed into the scan.
+const SPY_WINDOW_HZ = 600_000;
 export type ScanMode = "scan" | "weather" | "monitor" | "cb";
 
 export function toScanConfig(
@@ -177,6 +178,10 @@ export function toScanConfig(
     ],
     ...(mode === "scan" ? { ccAudibleHz: ccAudibleRanges(cfg.audio.audibleFamilies) } : {}),
     closeCall: mode === "cb" ? false : cfg.scan.closeCall,
+    // CB through the HF+: the window must fit inside SpyServer's 660 kHz.
+    ...(mode === "cb" && cfg.spyserver
+      ? { spyserver: cfg.spyserver, windowBandwidthHz: SPY_WINDOW_HZ, flatBandwidthHz: SPY_WINDOW_HZ }
+      : {}),
     closeCallDb: cfg.scan.closeCallDb,
     lockoutHz: cfg.scan.lockoutHz,
     // PCM tee gate: the helper builds --audio-fd when remote listening OR

@@ -1,3 +1,4 @@
+import { cbChannels, cbDefaultChannels } from "../src/backend/config/cb.js";
 import { describe, it, expect, beforeAll } from "vitest";
 import { join } from "node:path";
 import { chmodSync, mkdtempSync, readFileSync, existsSync } from "node:fs";
@@ -1496,4 +1497,134 @@ describe("priority revisit (scan.priorityRevisit)", () => {
     await engine.stop();
   });
 
+});
+
+describe("SpyServer source", () => {
+  const SPY = { host: "airspy.local", port: 5555, digitalGain: 32, audioBufferMs: 500 };
+  const CB = cbChannels(cbDefaultChannels(32));
+  const spyCfg = (over: Partial<ScanConfig> = {}) =>
+    cfg(CB, { spyserver: SPY, windowBandwidthHz: 600_000, flatBandwidthHz: 600_000, gain: 30, lanesPerGroup: 32, ...over });
+  const rtlCfg = (over: Partial<ScanConfig> = {}) => cfg([VHF_A], { gain: 30, lanesPerGroup: 32, ...over });
+  const isLoud = (e: EngineEvent) => e.type === "warmup" || (e.type === "status" && e.state === "stopped");
+
+  it("helper args over SpyServer have no RTL selector, rate, gain or ppm", async () => {
+    const args = tmpFile("args");
+    const { engine } = makeEngine({ FAKE_WB_ARGS_FILE: args }, { rtlSerial: "KIOSK01", ppm: 3 });
+    await engine.start(spyCfg());
+    await waitFor(() => lines(args).length >= 1, 1000);
+    await engine.stop();
+    const a = lines(args)[0] ?? "";
+    expect(a).toContain("--spyserver airspy.local:5555");
+    expect(a).toContain("--spyserver-digital-gain 32");
+    expect(a).toContain("--audio-buffer-ms 500");
+    expect(a).toContain("--lanes 32");
+    expect(a).not.toContain("--rtl-");
+    expect(a).not.toContain("--rate");
+    expect(a).not.toContain("--gain 30");
+    expect(a).not.toContain("--ppm");
+    expect(a).not.toContain("--spyserver-gain");
+  });
+
+  it("helper args without SpyServer are unchanged", async () => {
+    const args = tmpFile("args");
+    const { engine } = makeEngine({ FAKE_WB_ARGS_FILE: args }, { rtlSerial: "KIOSK01", ppm: 3 });
+    await engine.start(rtlCfg());
+    await waitFor(() => lines(args).length >= 1, 1000);
+    await engine.stop();
+    const a = lines(args)[0] ?? "";
+    expect(a).toContain("--rtl-serial KIOSK01");
+    expect(a).toContain("--rate 2500000");
+    expect(a).toContain("--gain 30");
+    expect(a).toContain("--ppm 3");
+    expect(a).not.toContain("spyserver");
+    expect(a).not.toContain("--audio-buffer-ms");
+  });
+
+  it("CB fits one window, centered in the empty 27.195 MHz slot so no channel sits on the spike", async () => {
+    const tunes = tmpFile("tunes");
+    const { engine } = makeEngine({ FAKE_WB_TUNES_FILE: tunes });
+    await engine.start(spyCfg());
+    await waitFor(() => lines(tunes).length >= 1, 1000);
+    await new Promise((r) => setTimeout(r, 300));   // past several dwell periods: a second group would hop
+    await engine.stop();
+    const all = lines(tunes).map((l) => JSON.parse(l) as { centerHz: number; channels: { freqHz: number }[] });
+    expect(new Set(all.map((t) => t.centerHz))).toEqual(new Set([27_195_000]));
+    expect(all[0]!.channels).toHaveLength(32);
+    for (const c of all[0]!.channels) {
+      expect(Math.abs(c.freqHz - 27_195_000)).toBeGreaterThanOrEqual(10_000);
+      expect(Math.abs(c.freqHz - 27_195_000)).toBeLessThanOrEqual(300_000);
+    }
+  });
+
+  it("a retune across sources replaces the helper, with no warm-up and no stopped state", async () => {
+    const args = tmpFile("args");
+    const tunes = tmpFile("tunes");
+    const { engine, events } = makeEngine({ FAKE_WB_ARGS_FILE: args, FAKE_WB_TUNES_FILE: tunes });
+    await engine.start(rtlCfg());
+    expect(await waitFor(() => events.some((e) => e.type === "warmup" && e.phase === "ready"), 4000)).toBe(true);
+    const mark = events.length;
+    await engine.retune(spyCfg());
+    expect(await waitFor(() => lines(args).length === 2 && lines(tunes).some((l) => l.includes("27195000")), 2000)).toBe(true);
+    await engine.retune(rtlCfg());
+    expect(await waitFor(() => lines(args).length === 3, 2000)).toBe(true);
+    await new Promise((r) => setTimeout(r, 1700));   // past the warm-up settle: nothing may fire late
+    expect(lines(args)[1]).toContain("--spyserver");
+    expect(lines(args)[2]).not.toContain("--spyserver");
+    expect(events.slice(mark).filter(isLoud)).toEqual([]);
+    await engine.stop();
+  });
+
+  it("a same-source retune still re-points without a respawn", async () => {
+    const args = tmpFile("args");
+    const tunes = tmpFile("tunes");
+    const { engine } = makeEngine({ FAKE_WB_ARGS_FILE: args, FAKE_WB_TUNES_FILE: tunes });
+    await engine.start(spyCfg());
+    await waitFor(() => lines(tunes).length >= 1, 1000);
+    await engine.retune(spyCfg({ channels: cbChannels([19]) }));
+    await waitFor(() => lines(tunes).some((l) => (JSON.parse(l) as { channels: unknown[] }).channels.length === 1), 1000);
+    await engine.stop();
+    expect(lines(args)).toHaveLength(1);
+  });
+
+  it("a retune across sources during restart backoff spawns now and cancels the timer", async () => {
+    const args = tmpFile("args");
+    const { engine, events } = makeEngine({ FAKE_WB_ARGS_FILE: args, FAKE_WB_MODE: "nodevice" }, { restartDelayMs: 300 });
+    await engine.start(spyCfg());
+    expect(await waitFor(() => events.some((e) => e.type === "status" && e.state === "starting"), 1000)).toBe(true);
+    const mark = events.length;
+    await engine.retune(rtlCfg());
+    expect(await waitFor(() => lines(args).length === 2, 100)).toBe(true);
+    expect(lines(args)[1]).not.toContain("--spyserver");
+    expect(events.slice(mark).filter(isLoud)).toEqual([]);
+    await engine.stop();
+    await new Promise((r) => setTimeout(r, 400));
+    expect(lines(args)).toHaveLength(2);   // the backoff timer didn't fire a third spawn
+  });
+
+  it("quick source switches leave one child, on the last source", async () => {
+    const args = tmpFile("args");
+    const pids = tmpFile("pids");
+    const { engine } = makeEngine({ FAKE_WB_ARGS_FILE: args, FAKE_WB_PID_FILE: pids });
+    await engine.start(spyCfg());
+    await waitFor(() => lines(args).length === 1, 1000);
+    await engine.retune(rtlCfg());
+    await engine.retune(spyCfg());
+    await waitFor(() => lines(args).length === 3, 1000);
+    await new Promise((r) => setTimeout(r, 800));   // past the 500 ms kill grace
+    const alive = lines(pids).filter((p) => { try { process.kill(Number(p), 0); return true; } catch { return false; } });
+    expect(alive).toHaveLength(1);
+    expect(alive[0]).toBe(lines(pids).at(-1));
+    expect(lines(args).at(-1)).toContain("--spyserver");
+    await engine.stop();
+  });
+
+  it("a SpyServer exit's reason reaches the error event", async () => {
+    const reason = "SpyServer: no control (another client holds the radio)";
+    const { engine, events } = makeEngine({ FAKE_WB_MODE: "crash", FAKE_WB_STDERR: reason });
+    await engine.start(spyCfg());
+    expect(await waitFor(() => events.some((e) => e.type === "error"), 2000)).toBe(true);
+    await engine.stop();
+    const err = events.find((e) => e.type === "error");
+    expect(err?.type === "error" && err.message).toContain("another client");
+  });
 });

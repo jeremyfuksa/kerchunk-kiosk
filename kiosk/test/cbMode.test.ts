@@ -246,3 +246,71 @@ describe("POST /api/test/tx cb_<n>", () => {
     expect((await request(server).post("/api/test/tx").send({ channelId: "cb_41" })).status).toBe(404);
   });
 });
+
+describe("CB over SpyServer", () => {
+  const spy = { host: "airspy.local", port: 5555, audioBufferMs: 500 };
+  const base = () => ({ ...defaultConfig(), weatherChannel: { id: "wx", freq: WX_FREQ, alphaTag: "NWR", mode: "nfm" as const, enabled: true } });
+
+  it("toScanConfig cb carries spyserver and a window inside the HF+'s 660 kHz", () => {
+    const s = toScanConfig({ ...base(), spyserver: spy }, "cb");
+    expect(s.spyserver).toEqual(spy);
+    expect(s.windowBandwidthHz).toBe(600_000);
+    expect(s.flatBandwidthHz).toBe(600_000);
+  });
+
+  it("toScanConfig scan and weather never carry spyserver", () => {
+    expect(toScanConfig({ ...base(), spyserver: spy }, "scan").spyserver).toBeUndefined();
+    expect(toScanConfig({ ...base(), spyserver: spy }, "weather").spyserver).toBeUndefined();
+  });
+
+  it("toScanConfig cb without spyserver is unchanged", () => {
+    const c = base();
+    c.scan.windowBandwidthHz = 2_000_000;
+    const s = toScanConfig(c, "cb");
+    expect("spyserver" in s).toBe(false);
+    expect(s.windowBandwidthHz).toBe(2_000_000);
+  });
+
+  it("config.spyserver validates, with port defaulting to 5555", () => {
+    const parsed = configSchema.parse({ ...defaultConfig(), spyserver: { host: "airspy.local" } });
+    expect(parsed.spyserver?.port).toBe(5555);
+    expect(parsed.spyserver?.audioBufferMs).toBeGreaterThan(0);
+    expect(configSchema.safeParse({ ...defaultConfig(), spyserver: { host: "" } }).success).toBe(false);
+    expect(configSchema.safeParse({ ...defaultConfig(), spyserver: { host: "a", digitalGain: 33 } }).success).toBe(false);
+    expect(configSchema.safeParse({ ...defaultConfig(), spyserver: { host: "a", audioBufferMs: 3001 } }).success).toBe(false);
+  });
+
+  it("a PUT changing config.spyserver in CB mode respawns the engine", async () => {
+    const { server, engine } = makeApp();
+    await request(server).post("/api/mode").send({ mode: "cb" });
+    const current = (await request(server).get("/api/config")).body;
+    const start = vi.spyOn(engine, "start");
+    const res = await request(server).put("/api/config").send({ ...current, spyserver: { host: "airspy.local" } });
+    expect(res.status).toBe(200);
+    expect(start).toHaveBeenCalledTimes(1);
+    expect(start.mock.calls[0]![0].spyserver?.host).toBe("airspy.local");
+  });
+
+  it("a break-in from CB drops spyserver, then restores it, holding breakIn in between", async () => {
+    const { server, engine } = makeApp();
+    await request(server).post("/api/channels").send({ freq: SCAN_FREQ, alphaTag: "SCAN", mode: "nfm", enabled: true });
+    await request(server).put("/api/weather-channel").send({ freq: WX_FREQ, alphaTag: "NWR", mode: "nfm", enabled: true });
+    const current = (await request(server).get("/api/config")).body;
+    await request(server).put("/api/config").send({ ...current, spyserver: { host: "airspy.local" } });
+    await request(server).post("/api/scan/start");
+    await request(server).post("/api/mode").send({ mode: "cb" });
+    expect(engine.retunes.at(-1)?.spyserver?.host).toBe("airspy.local");
+    vi.useFakeTimers();
+    engine.emitSame(TOR);
+    expect(engine.retunes.at(-1)?.spyserver).toBeUndefined();
+    expect(freqs(engine.retunes.at(-1))).toEqual([WX_FREQ]);
+    vi.useRealTimers();
+    expect((await request(server).get("/api/status")).body.breakIn).toBe(true);
+    vi.useFakeTimers();
+    engine.emitSame(EOM);
+    vi.advanceTimersByTime(9_000);
+    expect(engine.retunes.at(-1)?.spyserver?.host).toBe("airspy.local");
+    vi.useRealTimers();
+    expect((await request(server).get("/api/status")).body.breakIn).toBe(false);
+  });
+});
