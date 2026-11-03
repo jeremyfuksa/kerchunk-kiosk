@@ -299,7 +299,7 @@ export class ScheduleDb {
         ?? hfccSite;
       const power = aoki?.powerKw ?? hfcc?.powerKw;
       out.set(r.station, this.finish({
-        station: r.station, itu: r.hostItu, country: readme.countries.get(r.itu) ?? r.itu,
+        station: r.station, itu: r.hostItu, country: readme.countries.get(r.hostItu) ?? r.hostItu,
         language: readme.languages.get(r.language) ?? r.language,
         ...(power !== undefined ? { powerKw: power } : {}),
       }, place));

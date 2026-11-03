@@ -212,6 +212,11 @@ describe("ScheduleDb.candidates", () => {
     expect(c!.distanceKm).toBeLessThan(1900);
   });
 
+  it("a relay's label names the country it transmits from, beside that site", () => {
+    const [c] = db({ aoki: "", hfcc: "" }).candidates(9_395_000, utc(2, 11, 45));
+    expect(c).toMatchObject({ station: "Radio Slovakia Int.", site: "Okeechobee, FL", itu: "USA", country: "United States of America" });
+  });
+
   it("falls back to Aoki coordinates, then HFCC's site table", () => {
     const [a] = db({ eibi: "9395;0000-0030;;USA;Blues;E;NAm;;1;;" }).candidates(9_395_000, utc(4, 0, 15));
     expect(a!.site).toBe("Okeechobee6");
