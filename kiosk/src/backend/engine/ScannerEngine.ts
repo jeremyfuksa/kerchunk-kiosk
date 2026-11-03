@@ -37,6 +37,9 @@ export interface ScanConfig {
   // Set = the helper reads this SpyServer instead of the engine's RTL-SDR. It's
   // spawn-time state: crossing sources respawns the helper (WidebandEngine.retune).
   spyserver?: { host: string; port: number; gain?: number; digitalGain?: number; audioBufferMs: number };
+  // Park on exactly this center with exactly `channels`, which may be none: HF windows
+  // are chosen for the band, not fitted around channels.
+  fixedCenterHz?: number;
   // Flat part of the SDR passband for edge-aware grouping (see schema).
   flatBandwidthHz?: number;
   // kerchunk-dsp lane slots per group (--lanes; default 12) and front-end
@@ -132,6 +135,8 @@ export type EngineEvent =
   // tuned window. The server persists it as a disabled channel; any audio
   // from it arrives via normal active/audible events (synthesized channel).
   | { type: "closecall"; freqHz: number; ts: number }
+  // The helper's carrier survey of the live window (SpyServer helpers, about every 5 s).
+  | { type: "carriers"; centerHz: number; floorDb: number; carriers: Array<{ hz: number; db: number }>; ts: number }
   // Median received RF power over one closed transmission (helper telemetry)
   // — feeds the ERP estimator (channel.rfDb -> location.powerWatts).
   | { type: "rf"; channelId: string; db: number; ts: number }

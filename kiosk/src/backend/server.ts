@@ -1,4 +1,6 @@
 import type { ModeStore } from "./modeStore.js";
+import { HfController, type HfConfig } from "./hf/controller.js";
+import type { HfTune } from "./hf/sweep.js";
 import { createServer as httpCreateServer, type IncomingMessage, type ServerResponse, type Server } from "node:http";
 import { readFileSync, existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
@@ -11,7 +13,7 @@ import type { LookupProvider } from "./lookup.js";
 import type { NwsWeather } from "./weather.js";
 import type { HistoryStore } from "./history.js";
 import { WsHub } from "./ws.js";
-import type { EngineEvent, ScannerEngine, ScanConfig } from "./engine/ScannerEngine.js";
+import type { EngineEvent, ScannerEngine, ScanConfig, ScanChannel } from "./engine/ScannerEngine.js";
 import type { AircraftSource } from "./aircraft.js";
 import type { RadarSource } from "./radar/RadarFeed.js";
 import { setVolume as amixerVolume, setMuted as amixerMuted, type AmixerOpts } from "./audio.js";
@@ -86,22 +88,38 @@ const CLEARABLE_CHANNEL_FIELDS = ["ctcssHz", "dcsCode"] as const;
 // "cb" = CB-only listening (config.cb.channels); never mixed into the scan.
 const SPY_WINDOW_HZ = 600_000;
 const HF_TOP_HZ = 30_000_000;
-export type ScanMode = "scan" | "weather" | "monitor" | "cb";
+export type ScanMode = "scan" | "weather" | "monitor" | "cb" | "hf";
+
+/** The HF scanner's station: one AM lane the survey chose, held open while it's on the speaker. */
+function hfChannel(freq: number): ScanChannel {
+  return { id: `hf_${freq}`, freq, alphaTag: `${freq / 1000} kHz`, mode: "am", enabled: true, audible: true, tags: ["hf"] };
+}
+
+/** Shortwave stays out of the activity log and history: jeremyfuksa.com reads those, and it
+ *  has its own reception log. */
+export function isSharedActivity(ev: { channel: { tags?: readonly string[] } }): boolean {
+  return !ev.channel.tags?.includes("hf");
+}
 
 /** Close Call and sweeps are what a thermal restart sheds. CB never runs either. */
 export function nothingToShed(cfg: Config, mode: ScanMode): boolean {
-  return mode === "cb" || (cfg.scan.closeCall === false && (cfg.scan.sweepRanges?.length ?? 0) === 0);
+  return mode === "cb" || mode === "hf" || (cfg.scan.closeCall === false && (cfg.scan.sweepRanges?.length ?? 0) === 0);
 }
 
 export function toScanConfig(
   cfg: Config,
   mode: ScanMode,
   monitorChannel: Channel | null = null,
+  hfTune: HfTune | null = null,
 ): ScanConfig {
+  const hfHold = mode === "hf" && hfTune?.stage === "cb";
+  const hfWindow = mode === "hf" && !hfHold;
   const channels =
     mode === "weather"
       ? (cfg.weatherChannel ? [{ ...cfg.weatherChannel, enabled: true }] : [])
-      : mode === "cb"
+      : hfWindow
+        ? (hfTune?.listenHz ? [hfChannel(hfTune.listenHz)] : [])
+      : mode === "cb" || hfHold
         ? cbChannels(cfg.cb?.channels ?? cbDefaultChannels(cfg.scan.lanesPerGroup ?? DEFAULT_LANES_PER_GROUP, cfg.cb?.modes), cfg.cb?.names, cfg.cb)
       : mode === "monitor"
         // Deliberate listening is never family-gated: resolve audible
@@ -173,10 +191,10 @@ export function toScanConfig(
       limiterReleaseMs: cfg.audio.limiterReleaseMs,
     },
     // CB mode listens to its own window only: no band sweep, no Close Call.
-    sweepRanges: mode === "cb" ? [] : cfg.scan.sweepRanges,
+    sweepRanges: mode === "cb" || mode === "hf" ? [] : cfg.scan.sweepRanges,
     // Weather-only AND direct-tune both hold the lone channel open/audible
     // with no squelch — the operator chose to listen to exactly this.
-    monitor: mode === "weather" || mode === "monitor",
+    monitor: mode === "weather" || mode === "monitor" || hfWindow,
     // Close Call suppression covers everything already known about:
     // configured channels, filed discoveries, and permanent lockouts.
     knownHz: [
@@ -186,12 +204,13 @@ export function toScanConfig(
       ...(cfg.scan.lockoutHz ?? []),
     ],
     ...(mode === "scan" ? { ccAudibleHz: ccAudibleRanges(cfg.audio.audibleFamilies) } : {}),
-    closeCall: mode === "cb" ? false : cfg.scan.closeCall,
+    closeCall: mode === "cb" || mode === "hf" ? false : cfg.scan.closeCall,
     // CB and direct-tuned HF go through the HF+: the RTL radios can't hear below
     // 30 MHz. The window must fit inside SpyServer's 660 kHz.
-    ...((mode === "cb" || (mode === "monitor" && monitorChannel && monitorChannel.freq < HF_TOP_HZ)) && cfg.spyserver
+    ...((mode === "cb" || mode === "hf" || (mode === "monitor" && monitorChannel && monitorChannel.freq < HF_TOP_HZ)) && cfg.spyserver
       ? { spyserver: cfg.spyserver, windowBandwidthHz: SPY_WINDOW_HZ, flatBandwidthHz: SPY_WINDOW_HZ }
       : {}),
+    ...(hfWindow && hfTune ? { fixedCenterHz: hfTune.centerHz } : {}),
     closeCallDb: cfg.scan.closeCallDb,
     lockoutHz: cfg.scan.lockoutHz,
     // PCM tee gate: the helper builds --audio-fd when remote listening OR
@@ -262,12 +281,18 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
   let mode: ScanMode = savedMode
     && !(savedMode.mode === "monitor" && !savedMode.monitor)
     && !(savedMode.mode === "weather" && !config.weatherChannel)
+    && !(savedMode.mode === "hf" && !config.spyserver)
     ? savedMode.mode : "scan";
   let monitorChannel: Channel | null = mode === "monitor" ? savedMode?.monitor ?? null : null;
+  const hf = new HfController({
+    config: () => config.hf as HfConfig | undefined,
+    apply: () => { void switchMode(scanConfigFor("hf", null)).catch((e) => console.error(`[hf] retune failed: ${(e as Error).message}`)); },
+  });
+  engine.on((ev) => { if (mode === "hf") hf.onEngineEvent(ev); });
+  if (mode === "hf") hf.start();
   // Called only for the operator's own choices: a SAME break-in's "weather" is temporary.
   const saveMode = (): void => {
-    if (mode !== "scan" && mode !== "weather" && mode !== "cb" && mode !== "monitor") return;
-    try { deps.modeStore?.save({ mode, monitor: monitorChannel }); }
+        try { deps.modeStore?.save({ mode, monitor: monitorChannel }); }
     catch (e) { console.error(`[mode] save failed: ${(e as Error).message}`); }
   };
 
@@ -400,6 +425,7 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
     const history = deps.history;
     engine.on((ev) => {
       if (ev.type === "active") {
+        if (!isSharedActivity(ev)) return;
         history.record({
           ts: ev.ts, kind: "active", channelId: ev.channel.id,
           freq: ev.freq, alphaTag: ev.channel.alphaTag, mode: ev.channel.mode,
@@ -567,7 +593,7 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
   // restart-to-shed cut the audio with a cold-start chop.)
   let breakIn = false;
   // The mode a break-in preempted, so the revert resumes it (CB stays CB).
-  let breakInFrom: "scan" | "cb" = "scan";
+  let breakInFrom: "scan" | "cb" | "hf" = "scan";
   const sysStats = new SystemStats({
     helperPid: () => (engine as { helperPid?: number | null }).helperPid ?? null,
     openCount: () => openIds.size,
@@ -627,6 +653,7 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
     breakIn = false;                  // break-in over; thermal management resumes
     if (mode !== "weather") return;   // operator changed it; leave alone
     mode = breakInFrom;
+    if (mode === "hf") hf.resume();
     void switchMode(scanConfigFor(mode, null))
       .catch((e) => console.error(`[switchMode] revert-to-${mode} failed: ${(e as Error).message}`));
   };
@@ -668,8 +695,9 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
     // this timer is the safety net if no NNNN is decoded. Never preempts a
     // monitor. The helperless RtlFm path falls back to stop()+start() in
     // switchMode.
-    if (!test && (mode === "scan" || mode === "cb") && config.weatherChannel) {
+    if (!test && (mode === "scan" || mode === "cb" || mode === "hf") && config.weatherChannel) {
       breakInFrom = mode;
+      if (mode === "hf") hf.pause();
       mode = "weather";
       monitorChannel = null;
       breakIn = true;   // freeze safetyMode bounces until we revert
@@ -826,7 +854,7 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
     const base = safetyMode
       ? { ...config, scan: { ...config.scan, closeCall: false, sweepRanges: [] } }
       : config;
-    return toScanConfig(base, m, mc);
+    return toScanConfig(base, m, mc, m === "hf" ? hf.current() ?? hf.firstTune() : null);
   }
 
   async function persistAndReload(): Promise<void> {
@@ -1030,7 +1058,8 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
     if (method === "POST" && path === "/api/scan/skip") {
       const body = await readBody(req).catch(() => undefined);
       const holdoff = Number(body?.holdoffSeconds);
-      engine.skip?.(Number.isFinite(holdoff) && holdoff > 0 ? holdoff : undefined);
+      if (mode === "hf") hf.skip();
+      else engine.skip?.(Number.isFinite(holdoff) && holdoff > 0 ? holdoff : undefined);
       return json(res, 200, { ok: true });
     }
 
@@ -1142,12 +1171,15 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
     if (method === "POST" && path === "/api/mode") {
       const body = await readBody(req);
       const next = body?.mode;
-      if (next !== "scan" && next !== "weather" && next !== "cb") return json(res, 400, { error: "invalid mode" });
+      if (next !== "scan" && next !== "weather" && next !== "cb" && next !== "hf") return json(res, 400, { error: "invalid mode" });
+      if (next === "hf" && !config.spyserver) return json(res, 400, { error: "no SpyServer configured" });
       if (next === "weather" && !config.weatherChannel) {
         return json(res, 400, { error: "no weather channel configured" });
       }
+      hf.stop();
       mode = next;
       monitorChannel = null;
+      if (mode === "hf") hf.start();
       saveMode();
       await switchMode(scanConfigFor(mode, null));
       return json(res, 200, { mode, state: engine.state });
@@ -1173,6 +1205,7 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
         alphaTag: typeof body?.alphaTag === "string" ? body.alphaTag : (freq / 1e6).toFixed(4),
         mode: mode_, enabled: true,
       };
+      hf.stop();
       mode = "monitor";
       saveMode();
       await switchMode(scanConfigFor(mode, monitorChannel));
@@ -1180,6 +1213,7 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
     }
 
     if (method === "POST" && path === "/api/monitor/stop") {
+      hf.stop();
       mode = "scan";
       monitorChannel = null;
       saveMode();
@@ -1455,7 +1489,8 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
         state: engine.state, mode, monitor: monitorChannel,
         // How many channels the current mode actually scans — 0 with every
         // bank muted, where the kiosk should say "standby", not "scanning".
-        scanCount: toScanConfig(config, mode, monitorChannel).channels.length,
+        // (HF always has a window, with or without a station on it.)
+        scanCount: mode === "hf" ? 1 : toScanConfig(config, mode, monitorChannel).channels.length,
         // The kiosk shows a MUTED badge — mute doesn't restart the engine,
         // so the dashboard polls this instead of waiting for a WS event.
         muted: config.audio.muted,
@@ -1469,6 +1504,7 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
         // When this backend process started. The admin's system-action watcher
         // compares it across a restart/reboot to know a *new* process is up.
         startedAt: STARTED_AT,
+        ...(mode === "hf" && hf.current() ? { hf: hf.current() } : {}),
       });
     }
     if (method === "GET" && path === "/api/logs") return json(res, 200, activityLog.entries());

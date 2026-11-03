@@ -95,7 +95,7 @@ export function mountRadio(ctx: Ctx): void {
           ${key({ id: "kcListen", label: "Listen here", icon: "play", variant: "primary", wide: true })}
           ${key({ id: "kcSkip", label: "Skip", icon: "skip", title: "Force-close the current transmission" })}
           ${key({ id: "kcWeather", label: "Weather", icon: "weather", title: "Park the radio on the NOAA weather channel" })}
-          ${key({ id: "kcCb", label: "CB", icon: "cb", title: "Listen to CB only (the scan stops until you resume)" })}
+          ${key({ id: "kcCb", label: "HF", icon: "cb", title: "Sweep shortwave and CB on the HF radio (the scan stops until you resume)" })}
           ${key({ id: "kcPause", label: `Pause ${durationLabel(PAUSE_S)}`, icon: "pause", title: `Suppress this channel for ${durationLabel(PAUSE_S)} (clears on restart)` })}
           ${key({ id: "kcLock", label: "Lock out", icon: "lockout", variant: "danger", title: "Stop scanning this frequency and never Close-Call it" })}
         </div>
@@ -186,7 +186,7 @@ export function mountRadio(ctx: Ctx): void {
       face(weather, "weather", s.mode === "weather" ? "Resume scan" : "Weather");
       setDisabled(weather, s.mode !== "weather" && s.weatherChannel === null);
     }
-    if (s.mode === "cb") face(cb, "stop", "Resume scan"); else face(cb, "cb", "CB");
+    if (s.mode === "hf") face(cb, "stop", "Resume scan"); else face(cb, "cb", "HF");
     setDisabled(pause, !v.canLock);
     setDisabled(lock, !v.canLock);
     // Never fight the operator's thumb: the slider and its readout follow the
@@ -221,7 +221,7 @@ export function mountRadio(ctx: Ctx): void {
     void poller.tick("radio");
   });
   cb.addEventListener("click", async () => {
-    try { await poller.run(() => api.setMode(live.state.mode === "cb" ? "scan" : "cb")); } catch (e) { say(e); }
+    try { await poller.run(() => api.setMode(live.state.mode === "hf" ? "scan" : "hf")); } catch (e) { say(e); }
     live.requestResync();
     void poller.tick("radio");
   });

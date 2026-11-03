@@ -1,7 +1,7 @@
 import { readFileSync, renameSync, writeFileSync } from "node:fs";
 import type { Channel } from "./config/schema.js";
 
-export interface SavedMode { mode: "scan" | "weather" | "cb" | "monitor"; monitor: Channel | null }
+export interface SavedMode { mode: "scan" | "weather" | "cb" | "monitor" | "hf"; monitor: Channel | null }
 
 /** The operator's chosen mode, beside the config rather than in it: the admin PUTs whole
  *  configs, so a mode in there could be overwritten with a stale copy. */
@@ -11,7 +11,7 @@ export class ModeStore {
   load(): SavedMode {
     try {
       const raw = JSON.parse(readFileSync(this.path, "utf8")) as Partial<SavedMode>;
-      if (raw.mode === "scan" || raw.mode === "weather" || raw.mode === "cb" || raw.mode === "monitor") {
+      if (raw.mode === "scan" || raw.mode === "weather" || raw.mode === "cb" || raw.mode === "monitor" || raw.mode === "hf") {
         return { mode: raw.mode, monitor: raw.monitor ?? null };
       }
     } catch { /* absent or corrupt: scan */ }

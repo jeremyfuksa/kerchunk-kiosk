@@ -258,6 +258,12 @@ even with green checks.
   LSB channels: `config.cb.modes` (default `{"38":"lsb"}`, which takes channel 32's lane in
   the default set); SSB squelch `cb.ssbOpenDb` / `cb.ssbHangMs` (1500). LSB lanes squelch on
   sideband energy against their own floor, never the shared one (spec 2026-10-15).
+- **HF mode** (`POST /api/mode {mode:"hf"}`, needs `config.spyserver`): `hf/sweep.ts` decides (pure),
+  `hf/controller.ts` drives it. One window at a time on a fixed timer, playing one in-band carrier the
+  survey found, with the CB band as a stop on every pass and a hold there while CB is active. Shortwave
+  stays out of the activity log and history (`isSharedActivity`), so it doesn't reach jeremyfuksa.com.
+  Knobs: `config.hf` (`windowMs`, `cbStopMs`, `minListenDb`, `cooldownMs`, `fadeMs`, `cbOpenDb`, `cbOpenMs`,
+  `cbQuietMs`, `bands`). Mode survives restarts in `mode.json` beside the config.
 - **Engine abstraction.** Everything runs behind the `ScannerEngine` interface
   (`src/backend/engine/`), with three implementations: `WidebandEngine`
   (default; spawns the `kerchunk-dsp` C++ helper), `RtlFmEngine` (sequential
