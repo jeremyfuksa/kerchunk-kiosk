@@ -509,6 +509,14 @@ export class WidebandEngine implements ScannerEngine {
     if (this._state === "running" && this.spawnedShape && this.spawnedShape.source !== sourceOf(config)) {
       return this.respawnForSource(config);
     }
+    // Same SpyServer, down and in restart backoff: the sweep keeps moving, so just aim the helper
+    // that's coming. A start() here would clear the wall's error and defeat the backoff.
+    if (config.spyserver && this._state === "running" && this.restartTimer) {
+      this.config = config;
+      this.groups = this.groupsFor(config);
+      this.groupIndex = 0;
+      return;
+    }
     if (this._state !== "running" || !this.child?.stdin?.writable) {
       return this.start(config);
     }

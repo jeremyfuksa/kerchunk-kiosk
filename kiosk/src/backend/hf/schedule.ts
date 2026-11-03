@@ -110,7 +110,7 @@ export function parseEibiReadme(text: string): EibiReadme {
       const country = /^([A-Z]{1,3}):\s*(.*)$/.exec(line);
       if (country) { itu = country[1]!; line = country[2]!; }
       if (!itu || !line) continue;
-      const coded = /^([a-z0-9]{1,3})-(.+)$/.exec(line);
+      const coded = /^([a-z0-9]{1,3}|[A-Z0-9]{1,3})-(.+)$/.exec(line);
       if (coded) addSite(coded[1]!, coded[2]!);
       else addSite("", line);
     }

@@ -4,7 +4,7 @@ import { api, type HfStatus } from "../lib/api.js";
 import { fmtFreq, esc } from "../lib/format.js";
 import { alertTheme } from "./alertTheme.js";
 import { reloadOnMapFailure } from "./mapRetry.js";
-import { hfHtml, hfView, type HfHeard, type HfView } from "./hfView.js";
+import { hfHtml, hfView, mapShouldRun, type HfHeard, type HfView } from "./hfView.js";
 import { countrySelector } from "./ituCountry.js";
 import worldSvg from "./world.svg?raw";
 import { mountActivityMap } from "../map/map.js";
@@ -194,7 +194,7 @@ export function renderDashboard(root: HTMLElement): void {
         mapMounted = true;
         mapHandle = h;
         dashEl.classList.add("mapStage");
-        if (cbOn) h.pause(); // the page loaded in CB mode before the map mounted
+        if (!mapShouldRun(cbOn, hfOn)) h.pause(); // the page loaded under a stage before the map mounted
       }),
     () => location.reload(),
   );
@@ -249,6 +249,11 @@ export function renderDashboard(root: HTMLElement): void {
   const hfMapEl = root.querySelector<HTMLElement>("#hfMap")!;
   const hfContentEl = root.querySelector<HTMLElement>("#hfContent")!;
   let hfOn = false;
+  let hfMapKey = "";
+  let hfLit = -1;
+  function syncMap(): void {
+    if (mapShouldRun(cbOn, hfOn)) mapHandle?.resume(); else mapHandle?.pause();
+  }
   let hf: HfStatus | null = null;
   let hfCarriers: ReadonlyArray<{ hz: number; db: number }> = [];
   let hfHeard: HfHeard[] = [];
@@ -275,13 +280,13 @@ export function renderDashboard(root: HTMLElement): void {
     hfOn = on;
     dashEl.classList.toggle("hfStage", on);
     hfEl.setAttribute("aria-hidden", String(!on));
+    syncMap();
     if (on) {
       if (!hfMapEl.firstElementChild) hfMapEl.innerHTML = worldSvg;
-      mapHandle?.pause();
       poller.request("hfHeard");
     } else {
-      mapHandle?.resume();
       hfKey = "";
+      hfMapKey = "";
     }
   }
 
@@ -294,9 +299,14 @@ export function renderDashboard(root: HTMLElement): void {
       hfKey = v.key;
       hfContentEl.innerHTML = hfHtml(v);
       hfSegEls = Array.from(hfContentEl.querySelectorAll<HTMLElement>(".kc-hf__seg i"));
-      paintHfMap(v);
-    } else {
+      hfLit = v.lit;
+    } else if (v.lit !== hfLit) {
+      hfLit = v.lit;
       hfSegEls.forEach((el, k) => el.classList.toggle("on", k < v.lit));
+    }
+    if (v.mapKey !== hfMapKey) {
+      hfMapKey = v.mapKey;
+      paintHfMap(v);
     }
   }
 
@@ -319,12 +329,11 @@ export function renderDashboard(root: HTMLElement): void {
     cbOn = on;
     dashEl.classList.toggle("cbStage", on);
     cbEl.setAttribute("aria-hidden", String(!on));
+    syncMap();
     if (on) {
-      mapHandle?.pause();
       poller.request("cbHistory");
       cbTimer = setInterval(schedule, cbOpts.stepTickMs); // fade steps; paint skips if nothing moved
     } else {
-      mapHandle?.resume();
       if (cbTimer) { clearInterval(cbTimer); cbTimer = null; }
       cbKey = "";
       cbEl.innerHTML = "";

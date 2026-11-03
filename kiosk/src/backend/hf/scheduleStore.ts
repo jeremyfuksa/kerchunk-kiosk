@@ -7,6 +7,7 @@ import { parseAoki, parseEibi, parseEibiReadme, parseHfcc, parseHfccSites, Sched
 import type { Candidate } from "./receptionLog.js";
 
 const REFRESH_MS = 24 * 3_600_000;
+const RETRY_MS = 3_600_000;       // after a refresh that got nothing
 const FETCH_TIMEOUT_MS = 60_000;
 const AOKI_INDEX = "https://www1.s2.starcat.ne.jp/ndxc/nnk.htm";
 // The index names the zip's host, which changes, so a link is only followed to these.
@@ -66,7 +67,7 @@ export class ScheduleStore {
   candidates(hz: number, ts: number): Candidate[] { return this.db?.candidates(hz, ts) ?? []; }
 
   due(): boolean {
-    if (this.lastAttempt && this.now() - this.lastAttempt < REFRESH_MS) return false;
+    if (this.lastAttempt && this.now() - this.lastAttempt < RETRY_MS) return false;
     const stamp = join(this.deps.dir, "fetched");
     if (!existsSync(stamp)) return true;
     return !(this.now() - new Date(readFileSync(stamp, "latin1")).getTime() < REFRESH_MS);
@@ -88,13 +89,13 @@ export class ScheduleStore {
   async refresh(): Promise<void> {
     this.lastAttempt = this.now();
     const season = seasonCode(new Date(this.now()));
-    await this.source("EiBi", async () => {
+    const got = await Promise.resolve().then(async () => [await this.source("EiBi", async () => {
       const csv = await this.text(`http://www.eibispace.de/dx/sked-${season}.csv`);
       if (parseEibi(csv).length === 0) throw new Error("no rows");
       this.save("eibi.csv", csv);
-      this.save("eibi-readme.txt", await this.text("http://www.eibispace.de/dx/README.TXT"));
-    });
-    await this.source("Aoki", async () => {
+      const readme = await this.text("http://www.eibispace.de/dx/README.TXT");
+      if (parseEibiReadme(readme).languages.size > 0) this.save("eibi-readme.txt", readme);
+    }), await this.source("Aoki", async () => {
       const page = await this.text(AOKI_INDEX);
       // The page's labels are wrong and the path changes each season. Only the file name is reliable.
       const href = new RegExp(`href="([^"]*\\b[a-z]{2}${season}\\.zip)"`, "i").exec(page)?.[1];
@@ -106,8 +107,7 @@ export class ScheduleStore {
       const text = name ? files.get(name)!.toString("latin1") : "";
       if (parseAoki(text).length === 0) throw new Error("no rows");
       this.save("aoki.txt", text);
-    });
-    await this.source("HFCC", async () => {
+    }), await this.source("HFCC", async () => {
       const files = readZip(await this.bytes(`https://hfcc.org/data/${season}/${season}allx2.zip`));
       const name = [...files.keys()].find((n) => /all00\.txt$/i.test(n));
       const text = name ? files.get(name)!.toString("latin1") : "";
@@ -115,14 +115,15 @@ export class ScheduleStore {
       this.save("hfcc.txt", text);
       const sites = [...files.entries()].find(([n]) => /^site\.txt$/i.test(n))?.[1];
       if (sites) this.save("hfcc-sites.txt", sites.toString("latin1"));
-    });
+    })]);
+    if (!got.some(Boolean)) return;   // nothing new: no stamp, so it's tried again within the hour
     this.save("fetched", new Date(this.now()).toISOString());
     this.loadFromDisk();
   }
 
-  private async source(name: string, get: () => Promise<void>): Promise<void> {
-    try { await get(); this.log(`${name} updated`); }
-    catch (e) { this.log(`${name} fetch failed, keeping the last copy: ${(e as Error).message}`); }
+  private async source(name: string, get: () => Promise<void>): Promise<boolean> {
+    try { await get(); this.log(`${name} updated`); return true; }
+    catch (e) { this.log(`${name} fetch failed, keeping the last copy: ${(e as Error).message}`); return false; }
   }
 
   private async response(url: string): Promise<Response> {

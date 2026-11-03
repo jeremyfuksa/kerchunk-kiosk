@@ -26,6 +26,9 @@ const README = `
    IV) Transmitter site codes.
    USA: a-Andrews AFB, MD 38N48'39"-76W52'01"
    o-Okeechobee, FL 27N27-80W56
+   CHN: Beijing 39N54-116E23 except:
+   L-Lingshi "725" 36N52-111E40
+   a-Baoji 34N30-107E10
    UZB: Tashkent 41N13-69E09 except:
    ct-Cape Town 33S41-18E42
    V) Sources
@@ -80,6 +83,8 @@ describe("parsers", () => {
     expect(r.sites.get("USA-a")?.lon).toBeCloseTo(-(76 + 52 / 60 + 1 / 3600), 3);
     expect(r.sites.get("UZB-")?.name).toBe("Tashkent");
     expect(r.sites.get("UZB-ct")?.lat).toBeCloseTo(-33.683, 2);
+    expect(r.sites.get("CHN-")?.name).toBe("Beijing");   // an uppercase code isn't the default site
+    expect(r.sites.get("CHN-L")?.name).toBe('Lingshi "725"');
   });
   it("Aoki reads fixed columns; day 1 is Sunday", () => {
     const a = parseAoki(AOKI);

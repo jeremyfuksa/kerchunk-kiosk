@@ -290,13 +290,20 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
     && !(savedMode.mode === "hf" && !config.spyserver)
     ? savedMode.mode : "scan";
   let monitorChannel: Channel | null = mode === "monitor" ? savedMode?.monitor ?? null : null;
+  // This runs from the helper's event stream, with nothing above it: a bad database must not
+  // take the service down, and mode persistence would make that a crash loop.
+  const logSafely = (write: () => void): void => {
+    try { write(); } catch (e) { console.error(`[hf] reception log: ${(e as Error).message}`); }
+  };
   const hf = new HfController({
     config: () => config.hf as HfConfig | undefined,
     apply: (tune) => {
-      if (tune.listenHz !== null) deps.receptionLog?.markOnSpeaker(Date.now(), tune.listenHz);
+      if (tune.listenHz !== null) logSafely(() => deps.receptionLog?.markOnSpeaker(Date.now(), tune.listenHz!));
+      if (engine.state !== "running") return;   // an operator stop stays stopped
       void switchMode(scanConfigFor("hf", null)).catch((e) => console.error(`[hf] retune failed: ${(e as Error).message}`));
     },
-    onSurvey: (tune, carriers) => deps.receptionLog?.record(Date.now(), tune.band, carriers, deps.hfCandidates ?? (() => [])),
+    onSurvey: (tune, carriers) => logSafely(() => deps.receptionLog?.record(Date.now(), tune.band, carriers, deps.hfCandidates ?? (() => []))),
+    isCbChannel: (hz) => cbChannels(config.cb?.channels ?? cbDefaultChannels(config.scan.lanesPerGroup ?? DEFAULT_LANES_PER_GROUP, config.cb?.modes), config.cb?.names, config.cb).some((c) => c.freq === hz),
     ...(deps.hfCandidates ? { isMatched: (hz: number) => deps.hfCandidates!(hz, Date.now()).some((c) => !isUtility(c)) } : {}),
   });
   engine.on((ev) => { if (mode === "hf") hf.onEngineEvent(ev); });
@@ -1192,6 +1199,10 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
         return json(res, 400, { error: "no weather channel configured" });
       }
       hf.stop();
+      // The operator's choice replaces a break-in in progress, so its revert can't undo it.
+      if (sameRevertTimer) { clearTimeout(sameRevertTimer); sameRevertTimer = null; }
+      if (sameEomTimer) { clearTimeout(sameEomTimer); sameEomTimer = null; }
+      breakIn = false;
       mode = next;
       monitorChannel = null;
       if (mode === "hf") hf.start();

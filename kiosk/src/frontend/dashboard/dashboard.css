@@ -287,8 +287,9 @@ html[data-page="dashboard"] .kc-hf { display: none; }
 html[data-page="dashboard"] .dash.hfStage .kc-hf { display: block; position: absolute; inset: 0; z-index: 2; }
 html[data-page="dashboard"] .dash.hfStage .mapBase { visibility: hidden; }
 html[data-page="dashboard"] .dash.hfStage .kc-corner__slot,
-html[data-page="dashboard"] .dash.hfStage .kc-recent,
-html[data-page="dashboard"] .dash.hfStage .kc-corner { display: none; }
+html[data-page="dashboard"] .dash.hfStage .kc-recent { display: none; }
+/* The corner stays: it holds the alert banner. */
+html[data-page="dashboard"] .dash.hfStage .kc-corner { z-index: 3; bottom: 9.5rem; }
 html[data-page="dashboard"] .kc-hf__tag {
   position: absolute; top: 2.4rem; left: 2.2rem; color: var(--kc-mute); font-size: var(--kc-k-glass-meta);
   font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;

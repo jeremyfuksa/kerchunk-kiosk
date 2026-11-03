@@ -28,8 +28,14 @@ export interface HfReadout {
   meta: string; metaRight: string; headline: string; name: string; likely: string; details: string[];
 }
 
+/** A stage covers the map, so it must not draw underneath. */
+export function mapShouldRun(cbOn: boolean, hfOn: boolean): boolean {
+  return !cbOn && !hfOn;
+}
+
 export interface HfView {
   key: string;
+  mapKey: string;
   readout: HfReadout;
   heardTitle: string;
   rows: Array<{ label: string; when: string }>;
@@ -81,7 +87,7 @@ export function hfView(i: HfViewInput): HfView {
     ? polyline(greatCircle(i.home, place, PATH_SEGMENTS))
     : "";
 
-  const view: Omit<HfView, "key"> = {
+  const view: Omit<HfView, "key" | "mapKey"> = {
     readout,
     heardTitle: `Heard tonight · ${i.heardCount}`,
     rows: i.heard.map((h) => ({ label: `${kHz(h.freqHz)} ${h.station ?? "Unidentified"}`, when: i.fmtTime(h.lastTs) })),
@@ -93,7 +99,11 @@ export function hfView(i: HfViewInput): HfView {
   };
   // The meter moves by itself: it's outside the key, so signal ticks don't rebuild the stage.
   const { lit: _lit, ...keyed } = view;
-  return { ...view, key: JSON.stringify([keyed.readout, keyed.rows.map((r) => r.label), keyed.heardTitle, keyed.ticks, keyed.needle, keyed.map.tint, keyed.map.path]) };
+  return {
+    ...view,
+    key: JSON.stringify([keyed.readout, keyed.rows.map((r) => r.label), keyed.heardTitle, keyed.ticks, keyed.needle]),
+    mapKey: JSON.stringify([keyed.map.tint, keyed.map.path, keyed.map.dot]),
+  };
 }
 
 /** A long path can cross the map's edge at the antimeridian: break the line there, don't streak across. */

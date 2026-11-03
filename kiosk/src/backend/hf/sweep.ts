@@ -18,6 +18,7 @@ export interface HfOpts {
   cbOpenMs: number;       // ... continuously this long, to hold on CB
   cbQuietMs: number;      // CB silent this long = back to the sweep
   isMatched?: (hz: number) => boolean;   // has a schedule entry: plays ahead of the unidentified
+  isCbChannel?: (hz: number) => boolean; // a channel a CB hold would tune. Absent = all 40.
 }
 
 export const HF_DEFAULTS: HfOpts = {
@@ -127,6 +128,8 @@ export class HfSweep {
   resume(now: number): HfTune {
     this.stageAt = now;
     this.cbLastActive = now;
+    this.listenSeenAt = now;
+    this.cbSince = null;
     return this.current();
   }
 
@@ -146,7 +149,8 @@ export class HfSweep {
   }
 
   private cbSurvey(now: number, carriers: readonly HfCarrier[]): HfTune | null {
-    const open = carriers.some((c) => CB_HZ.has(c.hz) && c.db >= this.opts.cbOpenDb);
+    const tuned = this.opts.isCbChannel ?? ((hz: number) => CB_HZ.has(hz));
+    const open = carriers.some((c) => CB_HZ.has(c.hz) && tuned(c.hz) && c.db >= this.opts.cbOpenDb);
     if (!open) { this.cbSince = null; return null; }
     this.cbSince ??= now;
     if (now - this.cbSince < this.opts.cbOpenMs) return null;

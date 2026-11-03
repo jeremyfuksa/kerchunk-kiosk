@@ -169,6 +169,28 @@ describe("ScheduleStore", () => {
     expect(s.due()).toBe(true);
   });
 
+  it("a refresh where every source failed is retried within the hour, not tomorrow", async () => {
+    let t = NOW;
+    const { s } = store({}, () => t);
+    await s.refresh();
+    expect(s.due()).toBe(false);          // not hammering: a pause first
+    t += 3_600_000;
+    expect(s.due()).toBe(true);
+    const fresh = store({}, () => t);
+    expect(fresh.s.due()).toBe(true);     // and no stamp on disk to say otherwise
+  });
+
+  it("a README with no site table doesn't replace a good one", async () => {
+    const a = store();
+    await a.s.refresh();
+    const r = routes();
+    r["http://www.eibispace.de/dx/README.TXT"] = () => new Response("<html>maintenance</html>");
+    const b = store(r);
+    b.s.loadFromDisk();
+    await b.s.refresh();
+    expect(readFileSync(join(dir, "eibi-readme.txt"), "latin1")).toContain("Language codes");
+  });
+
   it("a corrupt file on disk doesn't stop the boot", () => {
     dir = mkdtempSync(join(tmpdir(), "ksch-"));
     writeFileSync(join(dir, "eibi.csv"), "garbage");

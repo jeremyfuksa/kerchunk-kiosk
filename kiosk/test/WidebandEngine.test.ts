@@ -1732,6 +1732,20 @@ describe("SpyServer source", () => {
     await engine.stop();
   });
 
+  it("an HF retune during a SpyServer outage waits for the backoff: no restart, no state change", async () => {
+    const args = tmpFile("args");
+    const hfTune = (centerHz: number) => cfg([], { spyserver: SPY, fixedCenterHz: centerHz, windowBandwidthHz: 600_000, flatBandwidthHz: 600_000 });
+    const { engine, events } = makeEngine({ FAKE_WB_ARGS_FILE: args, FAKE_WB_MODE: "nodevice" }, { restartDelayMs: 1_000 });
+    await engine.start(hfTune(5_952_500));
+    expect(await waitFor(() => events.filter((e) => e.type === "status" && e.state === "starting").length >= 2, 1000)).toBe(true);
+    const mark = events.length;
+    await engine.retune(hfTune(7_402_500));
+    await new Promise((r) => setTimeout(r, 200));
+    expect(lines(args)).toHaveLength(1);
+    expect(events.slice(mark).filter((e) => e.type === "status" || e.type === "warmup")).toEqual([]);
+    await engine.stop();
+  });
+
   it("a SpyServer exit's reason reaches the error event", async () => {
     const reason = "SpyServer: no control (another client holds the radio)";
     const { engine, events } = makeEngine({ FAKE_WB_MODE: "crash", FAKE_WB_STDERR: reason });

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { greatCircle, robinson } from "../src/frontend/dashboard/robinson.js";
 import { ituToIso2 } from "../src/frontend/dashboard/ituCountry.js";
-import { hfView, hfHtml, type HfViewInput } from "../src/frontend/dashboard/hfView.js";
+import { hfView, hfHtml, mapShouldRun, type HfViewInput } from "../src/frontend/dashboard/hfView.js";
 
 describe("robinson", () => {
   it("matches the calibration measured for this map", () => {
@@ -131,6 +131,27 @@ describe("hfView", () => {
     const a = hfView(base);
     expect(hfView({ ...base, fmtTime: () => "10:01" }).key).toBe(a.key);
     expect(hfView({ ...base, hf: { ...base.hf!, listenHz: 7_355_000 } }).key).not.toBe(a.key);
+  });
+
+  it("carrier ticks move the dial's key but not the map's, so the map isn't rebuilt every survey", () => {
+    const a = hfView(base);
+    const b = hfView({ ...base, carriers: [{ hz: 7_300_000, db: 20 }] });
+    expect(b.key).not.toBe(a.key);
+    expect(b.mapKey).toBe(a.mapKey);
+    expect(hfView({ ...base, hf: { ...base.hf!, listenHz: 7_355_000, candidate: { station: "X", itu: "G" } } }).mapKey).not.toBe(a.mapKey);
+  });
+
+  it("escapes every piece of schedule text", () => {
+    const x = "<b>x</b>";
+    const v = hfView({ ...base, heard: [{ freqHz: 1_000_000, station: x, lastTs: 1, onSpeaker: false }],
+      hf: { ...base.hf!, listenHz: 7_355_000, candidate: { station: x, language: x, site: x, country: x } } });
+    expect(hfHtml(v)).not.toContain(x);
+  });
+
+  it("the map runs only when neither stage covers it", () => {
+    expect(mapShouldRun(false, false)).toBe(true);
+    expect(mapShouldRun(true, false)).toBe(false);
+    expect(mapShouldRun(false, true)).toBe(false);
   });
 
   it("escapes schedule text", () => {
