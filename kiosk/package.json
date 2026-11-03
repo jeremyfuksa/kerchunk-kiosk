@@ -21,6 +21,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "h5wasm": "0.10.3",
     "lucide-static": "^1.17.0",
     "ws": "^8.18.0",
     "zod": "^3.23.8"
