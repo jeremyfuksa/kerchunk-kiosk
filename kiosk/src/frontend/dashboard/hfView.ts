@@ -3,11 +3,18 @@
 import { esc, hfLanguage } from "../lib/format.js";
 import { segmentsLit } from "../faceplate/lcd.js";
 import type { HfStatus } from "../lib/api.js";
-import { friendlyError, meterFill, METER_SEGMENTS } from "./cornerView.js";
+import { friendlyError, METER_SEGMENTS } from "./cornerView.js";
 import { ituToIso2 } from "./ituCountry.js";
 import { greatCircle, robinson, type LatLon } from "./robinson.js";
 
 const PATH_SEGMENTS = 48;
+// The HF+ measured about -55 to -17 dBFS on stations, night of 2026-11-03; the shared meter scale starts at -35.
+const HF_METER_DB = { floor: -55, ceil: -15 } as const;
+
+/** 0 dB is the helper's placeholder when a lane is opened by hand, not a level. */
+function hfMeterFill(db: number | null): number {
+  return db === null || db >= 0 ? 0 : (db - HF_METER_DB.floor) / (HF_METER_DB.ceil - HF_METER_DB.floor);
+}
 
 export interface HfHeard { freqHz: number; station: string | null; lastTs: number; onSpeaker: boolean }
 
@@ -95,7 +102,7 @@ export function hfView(i: HfViewInput): HfView {
     needle: !i.error && listen !== null ? pct(listen) : null,
     scale: { lo: lo === null ? "" : kHz(lo), hi: hi === null ? "" : kHz(hi) },
     map: { tint: !i.error && listen !== null ? ituToIso2(cand?.itu) : null, dot, home: homeXy, path },
-    lit: readout.state === "live" ? segmentsLit(meterFill(i.signalDb), METER_SEGMENTS) : 0,
+    lit: readout.state === "live" ? segmentsLit(hfMeterFill(i.signalDb), METER_SEGMENTS) : 0,
   };
   // The meter moves by itself: it's outside the key, so signal ticks don't rebuild the stage.
   const { lit: _lit, ...keyed } = view;

@@ -126,7 +126,9 @@ both with no drops (`docs/bench/2026-11-hf-proofs.md`).
   sweep timer doesn't change.
 - **Bands:** the broadcast bands from 120 m to 13 m, configurable, since the
   sweep can now run in daylight when the higher bands are open. A band wider
-  than 660 kHz takes several windows.
+  than 660 kHz takes several windows. Edges follow where Aoki and HFCC list
+  broadcasters, not the ITU allocations: 49 m starts at 5800, 41 m ends at 7800,
+  31 m runs 9260 to 9990 and 25 m ends at 12180.
 - **Demodulation:** AM for shortwave broadcasts.
 
 ### SAME break-ins
@@ -280,8 +282,8 @@ Measured from the server on 2026-11-02:
    mode is likely offline until this ships.
 4. **Heat.** The helper alone ran 27% of a core, and the box averaged 52 °C for an
    hour, but with the service stopped, so no wall updates and no weather helper. That
-   doesn't show HF runs cooler than map mode. A thermal A/B with the real wall stage
-   is still required.
+   doesn't show HF runs cooler than map mode. The A/B with the real wall stage ran
+   on 2026-11-03: HF peaked 51 °C against 64 °C for map mode (bench notes).
 5. **Audio gaps over Wi-Fi.** The link stays on Wi-Fi, per the operator on 2026-11-02. A
    500 ms speaker buffer removes the gaps from bursty arrival in the bench. One unexplained
    2 s stall also happened before the soak, so Node's respawn after exit 3 must stay graceful.
