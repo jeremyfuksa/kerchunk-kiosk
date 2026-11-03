@@ -145,6 +145,29 @@ inline constexpr int AGC_BLOCK = 32;               // gain decision every 32 sam
 inline constexpr double LIMITER_CEILING = 0.7;     // linear; must be <= RAIL
 inline constexpr double LIMITER_RELEASE_MS = 50;
 inline constexpr float AM_GAIN = 0.7f;
+// ---- SSB (LSB) lanes: CB 38 (spec docs/superpowers/specs/2026-10-15-cb-lsb-design.md).
+// The lower sideband sits SSB_LO_HZ..SSB_HI_HZ below the dial. SsbDemod shifts its centre to DC,
+// decimates by SSB_DECIM so the sharp channel filter is cheap, low-passes to half the sideband
+// width, interpolates back to LANE_RATE and shifts back.
+inline constexpr double SSB_LO_HZ = 300;
+inline constexpr double SSB_HI_HZ = 2850;
+inline constexpr double SSB_TRANSITION_HZ = 300;      // channel filter edge width, at SSB_RATE
+inline constexpr int SSB_DECIM = 4;
+inline constexpr int SSB_RATE = LANE_RATE / SSB_DECIM;   // 12.5 kHz
+// Decimate/interpolate low-pass. After the shift the band is +-1275 Hz, and only content within
+// 1275 Hz of a multiple of SSB_RATE (12.5 kHz) folds into it -- so the stopband need only start
+// ~10.7 kHz: a shallow 19-tap filter (the sharp edges are the channel filter's job at 12.5 kHz).
+inline constexpr double SSB_AA_CUTOFF_HZ = 6250;
+inline constexpr double SSB_AA_TRANSITION_HZ = 9000;
+// Speaker level: SSB has no carrier or deviation to normalize against, so its audio follows RF
+// level (~30 dB between stations, past the AGC's 15 dB). SsbLevel divides by a peak envelope.
+inline constexpr double SSB_ENV_ATTACK_MS = 5;
+inline constexpr double SSB_ENV_RELEASE_MS = 1000;
+inline constexpr float SSB_GAIN = 0.5f;               // x --ssb-gain-db, into the AGC
+// Speaker gate hold on LSB lanes: SSB has no carrier, so the 10 ms energy gate would chop every
+// syllable gap (and re-prime the level tracker + AGC each word). The gate stays open this long past
+// the last above-threshold poll; the lane's own hang (cb.ssbHangMs) still decides the close.
+inline constexpr double SSB_GATE_HOLD_MS = 400;
 inline constexpr float SPEAKER_S16_SCALE = 32767.f;
 inline constexpr float TEE_S16_SCALE = 28000.f;
 inline constexpr float SAME_S16_SCALE = 16384.f;
@@ -158,6 +181,13 @@ inline constexpr double CC_GUARD_HZ = 12500;
 inline constexpr double CC_DC_FRAC = 0.02;
 inline constexpr double CC_EDGE_FRAC = 0.10;
 inline constexpr double CC_DB_DEFAULT = 15.0;
+// Carrier survey (HF). Narrower guards than Close Call: every station in the window matters.
+inline constexpr int SURVEY_EVERY_POLLS = 500;       // a carriers event every 5 s
+inline constexpr double SURVEY_DB_DEFAULT = 10.0;    // dB above the window's median floor
+inline constexpr double SURVEY_USABLE_HZ = 330000;   // +/- from center: the HF+'s 660 kHz usable span
+inline constexpr double SURVEY_DC_GUARD_HZ = 1500;   // the receiver's center spike
+inline constexpr double SURVEY_RASTER_HZ = 5000;     // shortwave broadcast raster
+inline constexpr double SURVEY_PEAK_HZ = 7500;       // a carrier tops this neighbourhood either side
 
 // ---- Live I/O (P1c)
 inline constexpr int IQ_BLOCK_BYTES = 48000;       // max 10 ms of u8 IQ at 2.4 Msps (blocks are <= 10 ms at any rate)
@@ -169,6 +199,13 @@ inline constexpr int RETUNE_ATTEMPTS = 3;         // rtlsdr_set_center_freq trie
 inline constexpr int RETUNE_RETRY_MS = 5;          // pause between those tries
 inline constexpr double STALL_S = 2.0;             // no samples this long = SDR loss -> exit 3
 inline constexpr double BUSY_RETRY_S = 3.0;        // retry rtlsdr_open this long (previous helper releasing)
+inline constexpr double SPY_CONNECT_TIMEOUT_S = 3.0;   // SpyServer connect + handshake
+inline constexpr double SPY_IO_TIMEOUT_S = 0.5;        // socket I/O once streaming; a retune send can't wedge the DSP thread longer
+// SpyServer confirms nothing after a retune, but echoes the digital gain in every IQ frame's flags. A
+// retune also steps the gain within a small cycle, so the flip marks new-center data in stream order.
+inline constexpr int SPY_DIGITAL_GAIN_DEFAULT = 32;    // at the server's default u8 is nearly empty (docs/bench/2026-11-hf-proofs.md)
+inline constexpr int SPY_MARKER_STEPS = 3;             // gain cycle, about 1 dB per step
+inline constexpr int SPY_RETUNE_DROP_FRAMES = 2;       // the flip frame itself can still be old center (measured)
 inline constexpr int ALSA_PERIOD = 480;            // 10 ms at 48 kHz
 inline constexpr unsigned ALSA_LATENCY_US = 60000; // requested device buffer latency
 // A busy hw/plughw device makes a blocking snd_pcm_open sleep in the kernel indefinitely (and

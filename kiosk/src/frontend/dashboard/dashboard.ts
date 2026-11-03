@@ -1,8 +1,17 @@
 import type { EngineEvent } from "../../backend/engine/ScannerEngine.js";
 import { ReconnectingWs } from "../lib/wsClient.js";
-import { api } from "../lib/api.js";
+import { api, type HfStatus } from "../lib/api.js";
 import { fmtFreq, esc } from "../lib/format.js";
 import { alertTheme } from "./alertTheme.js";
+import { reloadOnMapFailure } from "./mapRetry.js";
+import { hfHtml, hfView, mapShouldRun, type HfHeard, type HfView } from "./hfView.js";
+import { countrySelector } from "./ituCountry.js";
+import worldSvg from "./world.svg?raw";
+import { atlasDots, atlasTraces, hitAction, traceKey, tracesSvg, type HitKey } from "./atlas.js";
+import { greylineDue, greylineSvg, skySvg, stagePx, STAGE_VIEWBOX } from "./greyline.js";
+import { atlasSnapshotSvg, paintSnapshot, runZoom, zoomFor, type ZoomDirection, hfLogWanted } from "./zoom.js";
+import { HF_WALL_DEFAULTS, HitAnimator } from "./hitAnim.js";
+import { robinson } from "./robinson.js";
 import { mountActivityMap } from "../map/map.js";
 import { fromDeg, setWind } from "../lib/wind.js";
 import { cornerView, sentenceCase, meterFill, METER_SEGMENTS } from "./cornerView.js";
@@ -19,6 +28,11 @@ import icoSnow from "lucide-static/icons/cloud-snow.svg?raw";
 import icoFog from "lucide-static/icons/cloud-fog.svg?raw";
 import icoWind from "lucide-static/icons/wind.svg?raw";
 import icoArrow from "lucide-static/icons/navigation-2.svg?raw";
+import { CB_EMPTY, cbReduce, cbSeed, type CbState, type CbHistoryRow } from "./cbDial.js";
+import { cbView, cbHtml, CB_VIEW_DEFAULTS } from "./cbView.js";
+import { CB_NAMES_DEFAULT, cbDefaultChannels } from "../../backend/config/cb.js";
+import { DEFAULT_LANES_PER_GROUP } from "../../backend/config/engineDefaults.js";
+import type { MapHandle } from "../map/map.js";
 import "./dashboard.css";
 
 export interface NowPlaying { freq: number; alphaTag: string; tags?: readonly string[]; }
@@ -137,6 +151,10 @@ function fmtTime(ts: number): string { return new Date(ts).toLocaleTimeString();
 // Re-exported for tests (kept stable from the pre-refactor public surface).
 export { esc } from "../lib/format.js";
 
+const GREYLINE_CHECK_MS = 30_000;
+const MAP_DRAW_WAIT_MS = 3_000;
+const ZOOM_TEXT_FADE_MS = 250;
+
 export function renderDashboard(root: HTMLElement): void {
   let state = initialState();
 
@@ -159,6 +177,10 @@ export function renderDashboard(root: HTMLElement): void {
         </div>
         <aside class="kc-recent"><h2>Recently heard</h2><ul id="logList"></ul></aside>
       </div>
+      <div id="cbStage" class="kc-cb" aria-hidden="true"></div>
+      <div id="hfStage" class="kc-hf" aria-hidden="true"><svg id="hfSky" class="kc-hf__layer" viewBox="${STAGE_VIEWBOX}"></svg><div id="hfLand" class="kc-hf__layer"></div><svg id="hfDots" class="kc-hf__layer" viewBox="${STAGE_VIEWBOX}"></svg><svg id="hfTraces" class="kc-hf__layer" viewBox="${STAGE_VIEWBOX}"></svg><svg id="hfLive" class="kc-hf__layer" viewBox="${STAGE_VIEWBOX}"></svg><div id="hfPulse" class="kc-hf__pulse"></div><div id="hfContent"></div></div>
+      <canvas id="hfSnap" class="kc-hf__snap" aria-hidden="true" hidden></canvas>
+      <div id="hfHaze" class="kc-hf__haze" aria-hidden="true"></div>
     </div>`;
   // ── Poll budget ─────────────────────────────────────────────────────────
   // Three independent timers (status 5 s, system 10 s, weather 10 min) used to
@@ -174,9 +196,18 @@ export function renderDashboard(root: HTMLElement): void {
   // True once the WebGL map mounts (the .mapStage layout). Under it, the Recent
   // log is display:none, so paint() skips rebuilding it.
   let mapMounted = false;
-  void mountActivityMap(root.querySelector<HTMLElement>("#mapBase")!, { interactive: false })
-    .then((mounted) => { if (mounted) { mapMounted = true; dashEl.classList.add("mapStage"); } })
-    .catch(() => { /* no map = classic dashboard, nothing lost */ });
+  let mapHandle: MapHandle | null = null;
+  void reloadOnMapFailure(
+    mountActivityMap(root.querySelector<HTMLElement>("#mapBase")!, { interactive: false })
+      .then((h) => {
+        if (!h) return;
+        mapMounted = true;
+        mapHandle = h;
+        dashEl.classList.add("mapStage");
+        if (!mapShouldRun(cbOn, hfOn)) h.pause(); // the page loaded under a stage before the map mounted
+      }),
+    () => location.reload(),
+  );
   let lastRiskSig = "";
   function paintRisk(): Promise<void> {
     return fetch("/api/system").then((r) => r.ok ? r.json() : null).then((s) => {
@@ -192,6 +223,295 @@ export function renderDashboard(root: HTMLElement): void {
   }
   poller.poll("risk", paintRisk, POLL_MS.risk);
 
+  // ── CB stage (spec 2026-10-14 "the dial"): in mode cb the map is hidden and
+  // paused and the dial takes the screen. The model folds every WS event in
+  // (cheap; non-CB events are ignored); the DOM is touched only while on.
+  let cb: CbState = CB_EMPTY;
+  let cbOn = false;
+  let cbTimer: ReturnType<typeof setInterval> | null = null;
+  let cbKey = "";
+  let cbSegEls: HTMLElement[] = [];
+  let cbDbEl: HTMLElement | null = null;
+  const cbEl = root.querySelector<HTMLElement>("#cbStage")!;
+  // How far back the entry backfill reaches (log rows can predate the fade).
+  const CB_HISTORY_MS = 24 * 60 * 60_000;
+  let cbOpts = {
+    names: CB_NAMES_DEFAULT as Readonly<Record<string, string>>,
+    monitored: cbDefaultChannels(DEFAULT_LANES_PER_GROUP) as readonly number[],
+    ...CB_VIEW_DEFAULTS,
+  };
+  // Same shared request the map's mount makes (api.getConfig dedupes it).
+  void api.getConfig().then((cfg) => {
+    cbOpts = {
+      names: cfg.cb?.names ?? CB_NAMES_DEFAULT,
+      monitored: cfg.cb?.channels ?? cbDefaultChannels(cfg.scan.lanesPerGroup ?? DEFAULT_LANES_PER_GROUP, cfg.cb?.modes),
+      ...CB_VIEW_DEFAULTS,
+      ...cfg.display?.cb,
+    };
+    // The stage may already be up on the defaults: re-arm the fade tick at the
+    // configured cadence and repaint with the real names/channels/rows.
+    if (cbTimer) { clearInterval(cbTimer); cbTimer = setInterval(schedule, cbOpts.stepTickMs); }
+    if (cbOn) { cbKey = ""; schedule(); }
+  }).catch(() => { /* defaults stand */ });
+
+  // ── HF's Atlas stage. The still layers mount once, and only the live layer moves.
+  const hfEl = root.querySelector<HTMLElement>("#hfStage")!;
+  const hfSkyEl = root.querySelector<SVGSVGElement>("#hfSky")!;
+  const hfLandEl = root.querySelector<HTMLElement>("#hfLand")!;
+  const hfDotsEl = root.querySelector<SVGSVGElement>("#hfDots")!;
+  const hfSnapEl = root.querySelector<HTMLCanvasElement>("#hfSnap")!;
+  const hfTracesEl = root.querySelector<SVGSVGElement>("#hfTraces")!;
+  const hfLiveEl = root.querySelector<SVGSVGElement>("#hfLive")!;
+  let hfOpts = HF_WALL_DEFAULTS;
+  const hitAnim = new HitAnimator(hfLiveEl, root.querySelector<HTMLElement>("#hfPulse")!, () => hfOpts);
+  const hfContentEl = root.querySelector<HTMLElement>("#hfContent")!;
+  let hfOn = false;
+  let hfDotsKey = "";
+  let hfTracesKey = "";
+  let hfGreylineAt = 0;
+  let hfGreylineTimer: ReturnType<typeof setInterval> | null = null;
+  let hfTintKey = "";
+  let hfHitKnown = false;
+  let hfHit: HitKey | null = null;
+  let hfFading: HitKey | null = null;
+  let hfLost: HitKey | null = null;      // the station a receiver error took off the wall
+  let hfTraceUnder = false;              // this station's site already had its trace when the hit began
+  let hfDrawn: ReadonlySet<string> = new Set();
+  let hfLogRev = 0;
+  let hfLayersKey = "";
+  let hfLit = -1;
+  function syncMap(): void {
+    if (mapShouldRun(cbOn, hfOn)) mapHandle?.resume(); else mapHandle?.pause();
+  }
+  let hf: HfStatus | null = null;
+  let hfCarriers: ReadonlyArray<{ hz: number; db: number }> = [];
+  let hfLog: HfHeard[] = [];
+  let hfBand = "";
+  let hfListenHz: number | null = null;
+  let hfKey = "";
+  let hfSegEls: HTMLElement[] = [];
+  let hfHome = { lat: 39.1, lon: -94.58 };
+  void api.getConfig().then((cfg) => {
+    hfHome = { lat: cfg.display?.weatherLat ?? hfHome.lat, lon: cfg.display?.weatherLon ?? hfHome.lon };
+    hfOpts = { ...HF_WALL_DEFAULTS, ...cfg.display?.hf };
+    hfTracesKey = "";
+    if (hfHit) hitAnim.hold(hfHit, hfHome);   // drawn from the default home, if the config came late
+    schedule();
+  }).catch(() => { /* default stands */ });
+  let hfLogLoaded = false;
+  poller.poll("hfHeard", () => {
+    if (!hfLogWanted(hfOn, hfLogLoaded)) return Promise.resolve();
+    return api.getHfLog(null).then((log) => {
+      hfLog = log.rows as HfHeard[];
+      hfLogRev++;
+      hfLogLoaded = true;
+      schedule();
+    }).catch(() => { /* the list fills next window */ });
+  }, Number.POSITIVE_INFINITY);
+
+  function redrawGreyline(): void {
+    const now = Date.now();
+    if (!greylineDue(hfGreylineAt, now, hfOpts.greylineStepMs)) return;
+    hfGreylineAt = now;
+    const group = hfSkyEl.querySelector("#hfGreyline");
+    if (group) group.innerHTML = greylineSvg(now);
+    schedule();
+  }
+
+  // The zoom moves a flat picture of the Atlas, never the live layers, which can't re-raster that fast. The real
+  // stage sits finished underneath and shows when the picture is hidden. A change of mind finishes it at once.
+  let zoomDone: (() => void) | null = null;
+  function finishZoom(): void {
+    const done = zoomDone;
+    zoomDone = null;
+    done?.();
+  }
+  function atlasPicture(): Promise<void> {
+    const css = getComputedStyle(root);
+    const color = (name: string): string => css.getPropertyValue(name).trim();
+    const home = robinson(hfHome.lat, hfHome.lon);
+    const { clientWidth: width, clientHeight: height } = hfEl;
+    const svg = atlasSnapshotSvg({
+      sky: skySvg(Date.now()), world: worldSvg, dots: atlasDots(hfLog), traces: atlasTraces(hfLog, hfHome, null, hfGreylineAt, hfOpts.traceFadeMs),
+      traceOpacity: hfOpts.traceOpacity, home, width, height, viewBox: STAGE_VIEWBOX,
+      colors: { land: color("--kc-hf-land"), border: color("--kc-hf-border"), dot: color("--kc-hf-dot"), glass: color("--kc-glass") },
+    });
+    return paintSnapshot(hfSnapEl, svg, width, height);
+  }
+  function startZoom(direction: ZoomDirection, after: () => void): void {
+    const origin = stagePx(robinson(hfHome.lat, hfHome.lon), hfEl.clientWidth);
+    hfSnapEl.hidden = false;
+    const run = runZoom(direction, hfSnapEl, root.querySelector<HTMLElement>("#mapBase")!, root.querySelector<HTMLElement>("#hfHaze")!, origin, hfOpts.zoomMs);
+    dashEl.classList.add("hfZoom");
+    const done = (): void => {
+      run.stop();
+      hfSnapEl.hidden = true;
+      dashEl.classList.remove("hfZoom");
+      after();
+    };
+    zoomDone = done;
+    void run.finished.then(() => { if (zoomDone === done) finishZoom(); });
+  }
+  /** Paints the picture, then zooms, unless something else has happened by then. No picture, no zoom. */
+  function zoomWhenReady(direction: ZoomDirection, ready: Promise<unknown>, after: () => void): void {
+    const pending = (): void => { after(); };
+    zoomDone = pending;
+    void Promise.all([atlasPicture(), ready]).then(
+      () => { if (zoomDone === pending) { zoomDone = null; startZoom(direction, after); } },
+      () => { if (zoomDone === pending) finishZoom(); },
+    );
+  }
+
+  function setHfStage(on: boolean, zoom: ZoomDirection | null): void {
+    if (on === hfOn) return;
+    finishZoom();
+    hfOn = on;
+    hfEl.setAttribute("aria-hidden", String(!on));
+    if (on) dashEl.classList.add("hfStage");
+    // Zooming in to HF, the map stays live until it's out of sight. Zooming back, it must be drawn first.
+    if (zoom !== "out") syncMap();
+    if (on) {
+      if (!hfSkyEl.firstElementChild) { hfGreylineAt = Date.now(); hfSkyEl.innerHTML = skySvg(hfGreylineAt); }
+      else redrawGreyline();
+      hfGreylineTimer ??= setInterval(redrawGreyline, GREYLINE_CHECK_MS);
+      if (!hfLandEl.firstElementChild) {
+        hfLandEl.innerHTML = worldSvg;
+        const svg = hfLandEl.querySelector("svg")!;
+        svg.setAttribute("viewBox", STAGE_VIEWBOX);
+        svg.removeAttribute("width");
+        svg.removeAttribute("height");
+      }
+      poller.request("hfHeard");
+      if (zoom === "out") {
+        dashEl.classList.add("hfZoomWait");   // the map stays up until the picture is ready
+        zoomWhenReady("out", Promise.resolve(), () => {
+          dashEl.classList.remove("hfZoomWait");
+          syncMap();
+          for (const el of [hfContentEl, hfLiveEl]) el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: ZOOM_TEXT_FADE_MS });
+        });
+      }
+    } else {
+      hfKey = "";
+      if (hfGreylineTimer) { clearInterval(hfGreylineTimer); hfGreylineTimer = null; }
+      hfTintKey = "";
+      hfHitKnown = false;
+      hfHit = null;
+      hfFading = null;
+      hfLost = null;
+      hfLayersKey = "";
+      // The picture has no text or live line, so those fade before it takes over.
+      let fades: Animation[] = [];
+      const leave = (): void => {
+        for (const f of fades) f.cancel();
+        hitAnim.clear();
+        dashEl.classList.remove("hfStage");
+      };
+      if (zoom === "in" && mapHandle) {
+        fades = [hfContentEl, hfLiveEl].map((el) => el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: ZOOM_TEXT_FADE_MS, fill: "forwards" }));
+        zoomWhenReady("in", Promise.all([mapHandle.whenDrawn(MAP_DRAW_WAIT_MS), ...fades.map((f) => f.finished)]), leave);
+      } else leave();
+    }
+  }
+
+  function paintHf(): void {
+    const v = hfView({ hf, carriers: hfCarriers, error: state.error, muted, signalDb: state.signalDb, log: hfLog });
+    if (v.key !== hfKey) {
+      hfKey = v.key;
+      hfEl.style.setProperty("--kc-hf-live", v.liveColor);
+      hfContentEl.innerHTML = hfHtml(v);
+      hfSegEls = Array.from(hfContentEl.querySelectorAll<HTMLElement>(".kc-hf__seg i"));
+      hfLit = v.lit;
+    } else if (v.lit !== hfLit) {
+      hfLit = v.lit;
+      hfSegEls.forEach((el, k) => el.classList.toggle("on", k < v.lit));
+    }
+    paintHfLayers(v);
+  }
+
+  /** Each layer repaints only when what it shows has changed. */
+  function paintHfLayers(v: HfView): void {
+    applyHit(v.liveStation);
+    // Traces age on the greyline's clock, so they only ever change on its slow step.
+    const live = hfTraceUnder ? null : v.liveStation ?? hfFading;
+    const layersKey = `${hfLogRev}|${hfGreylineAt}|${live ? traceKey(live) : ""}|${hfOpts.traceOpacity}|${hfOpts.traceFadeMs}|${hfHome.lat},${hfHome.lon}`;
+    if (layersKey !== hfLayersKey) {
+      hfLayersKey = layersKey;
+      paintStillLayers(live);
+    }
+    const tintKey = `${v.tint}|${v.liveColor}`;
+    if (tintKey !== hfTintKey) {
+      hfTintKey = tintKey;
+      hitAnim.tint(tintPaths(v.tint), v.liveColor);
+    }
+  }
+
+  function paintStillLayers(live: HitKey | null): void {
+    const dots = atlasDots(hfLog);
+    const dotsKey = JSON.stringify(dots);
+    if (dotsKey !== hfDotsKey) {
+      hfDotsKey = dotsKey;
+      hfDotsEl.innerHTML = dots.map((d) => `<circle cx="${d.x.toFixed(1)}" cy="${d.y.toFixed(1)}" r="${d.r.toFixed(1)}" opacity="${d.opacity.toFixed(2)}"/>`).join("");
+    }
+    const traces = atlasTraces(hfLog, hfHome, live, hfGreylineAt, hfOpts.traceFadeMs);
+    hfDrawn = new Set(traces.map((t) => t.key));
+    const tracesKey = `${hfOpts.traceOpacity}|${hfHome.lat},${hfHome.lon}|${traces.map((t) => `${t.key}@${t.level}`).join(";")}`;
+    if (tracesKey !== hfTracesKey) {
+      hfTracesKey = tracesKey;
+      const home = robinson(hfHome.lat, hfHome.lon);
+      hfTracesEl.innerHTML = tracesSvg(traces, hfOpts.traceOpacity)
+        + `<circle class="kc-hf__qth" cx="${home.x.toFixed(1)}" cy="${home.y.toFixed(1)}" r="6"/>`;
+    }
+  }
+
+  function applyHit(next: HitKey | null): void {
+    const action = hitAction(hfHitKnown, hfHit, next, hfLost);
+    const prev = hfHit;
+    hfHitKnown = true;
+    hfHit = next;
+    if (!state.error) hfLost = null;
+    else if (prev) hfLost = prev;
+    if (action === "hold" && next) { hfFading = null; hitAnim.hold(next, hfHome); }
+    if ((action === "start" || action === "replace") && next) {
+      const under = hfDrawn.has(traceKey(next));
+      hitAnim.start(next, hfHome);   // may finish a fade, whose callback clears hfTraceUnder
+      hfTraceUnder = under;
+    }
+    if (action === "end") {
+      hfFading = prev;
+      hitAnim.end(() => { hfFading = null; hfTraceUnder = false; schedule(); }, hfTraceUnder);
+    }
+  }
+
+  function tintPaths(iso: string | null): string[] {
+    if (!iso) return [];
+    return Array.from(hfLandEl.querySelectorAll(countrySelector(iso))).flatMap((p) => p.getAttribute("d") ?? []);
+  }
+
+  function setCbStage(on: boolean): void {
+    if (on === cbOn) return;        // idempotent: a break-in round trip can't stack timers
+    cbOn = on;
+    dashEl.classList.toggle("cbStage", on);
+    cbEl.setAttribute("aria-hidden", String(!on));
+    syncMap();
+    if (on) {
+      poller.request("cbHistory");
+      cbTimer = setInterval(schedule, cbOpts.stepTickMs); // fade steps; paint skips if nothing moved
+    } else {
+      if (cbTimer) { clearInterval(cbTimer); cbTimer = null; }
+      cbKey = "";
+      cbEl.innerHTML = "";
+    }
+    schedule();
+  }
+
+  // Runs once per CB entry (request()), through the sequential lane.
+  poller.poll("cbHistory", () => {
+    if (!cbOn) return Promise.resolve();
+    return api.getHistory<CbHistoryRow[]>({ tag: "cb", since: Date.now() - CB_HISTORY_MS, limit: 200 })
+      .then((rows) => { cb = cbSeed(cb, rows); schedule(); })
+      .catch(() => { /* the dial fills from live events */ });
+  }, Number.POSITIVE_INFINITY);
+
   const logEl = root.querySelector<HTMLElement>("#logList")!;
   // Coalesce repaints to one per animation frame: a burst of WS events in a
   // single frame collapses to ONE paint() instead of N full renders.
@@ -203,7 +523,8 @@ export function renderDashboard(root: HTMLElement): void {
   }
   // Mode and break-in come from /api/status (mode flips restart the engine, so
   // the status event re-polls); they name the pill and the glass's meta line.
-  let mode: "scan" | "weather" | "monitor" = "scan";
+  let mode: "scan" | "weather" | "monitor" | "cb" | "hf" = "scan";
+  let modeSeen = false;
   let breakIn = false;
   function paintStatus(): Promise<void> {
     return api.getStatus()
@@ -219,7 +540,18 @@ export function renderDashboard(root: HTMLElement): void {
         const wm = (!sawWarmupEvent && typeof s.warmed === "boolean") ? s.warmed : state.warmed;
         // The 5s poll usually reads identical values — only repaint on a change.
         const changed = s.mode !== mode || sc !== scanCount || mu !== muted || bi !== breakIn || wm !== state.warmed;
+        const zoom = matchMedia("(prefers-reduced-motion: reduce)").matches ? null : zoomFor(modeSeen ? mode : null, s.mode, bi, mapHandle !== null);
+        modeSeen = true;
+        // Finishes a zoom this change makes wrong; a zoom it starts begins below.
+        if (s.mode !== mode || bi !== breakIn) finishZoom();
         mode = s.mode; scanCount = sc; muted = mu; breakIn = bi;
+        setCbStage(s.mode === "cb");
+        setHfStage(s.mode === "hf", zoom);
+        const hfWas = JSON.stringify(hf);
+        hf = s.hf ?? null;
+        if (hf && hf.band !== hfBand) { hfBand = hf.band; hfCarriers = []; poller.request("hfHeard"); }
+        if ((hf?.listenHz ?? null) !== hfListenHz) { hfListenHz = hf?.listenHz ?? null; poller.request("hfHeard"); }
+        if (JSON.stringify(hf) !== hfWas) schedule();
         if (wm !== state.warmed) state = { ...state, warmed: wm };
         if (changed) schedule();
       })
@@ -336,6 +668,8 @@ export function renderDashboard(root: HTMLElement): void {
     pillHost.setAttribute("aria-hidden", String(v.show === "glass"));
     glassHost.setAttribute("aria-hidden", String(v.show === "pill"));
     paintLog();
+    if (cbOn) paintCb();
+    if (hfOn) paintHf();
   }
 
   // Under the full-screen map layout the Recent log is display:none — skip the
@@ -345,6 +679,21 @@ export function renderDashboard(root: HTMLElement): void {
     logEl.innerHTML = state.log
       .map((r) => `<li><span class="t">${fmtTime(r.ts)}</span> ${fmtFreq(r.freq)} ${esc(r.alphaTag)}</li>`)
       .join("");
+  }
+
+  function paintCb(): void {
+    const v = cbView({ cb, now: Date.now(), liveFreq: state.nowPlaying?.freq ?? null, error: state.error, muted, ...cbOpts });
+    if (v.key !== cbKey) {
+      cbKey = v.key;
+      cbEl.innerHTML = cbHtml(v, state.signalDb);
+      cbSegEls = Array.from(cbEl.querySelectorAll<HTMLElement>(".kc-cb__seg i"));
+      cbDbEl = cbEl.querySelector<HTMLElement>(".kc-cb__db");
+    } else if (v.readout.state === "live") {
+      // Signal ticks on the same channel only move the meter and the dB text.
+      const lit = segmentsLit(meterFill(state.signalDb), METER_SEGMENTS);
+      cbSegEls.forEach((el, k) => el.classList.toggle("on", k < lit));
+      if (cbDbEl) cbDbEl.textContent = dbText(state.signalDb);
+    }
   }
 
   // Clock: tick on the minute boundary (kiosk readout, no seconds noise).
@@ -413,10 +762,12 @@ export function renderDashboard(root: HTMLElement): void {
   new ReconnectingWs(`${proto}://${location.host}/ws`, (ev) => {
     if (ev.type === "reload") { location.reload(); return; }
     if (ev.type === "warmup") sawWarmupEvent = true; // WS now owns `warmed`
+    if (ev.type === "carriers" && hf && ev.centerHz === hf.centerHz) { hfCarriers = ev.carriers; schedule(); }
     state = reduce(state, ev);
+    cb = cbReduce(cb, ev);
     // Mode, mute and break-in can change on these: re-poll status through the
     // lane (a break-in is a retune, so only the alert announces it).
-    if (ev.type === "status" || ev.type === "alert") poller.request("status");
+    if (ev.type === "status" || ev.type === "alert" || ev.type === "statusChanged") poller.request("status");
     schedule(); // coalesce: a burst of events in one frame => one paint()
   }).connect();
   paint();

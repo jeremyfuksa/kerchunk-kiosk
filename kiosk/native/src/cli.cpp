@@ -47,11 +47,35 @@ bool parse_cli(int argc, const char* const* argv, Cli& c, std::string& err) {
     double d;
     int n;
     if (k == "--close-call") c.eng.close_call = true;
+    else if (k == "--survey") c.eng.survey = true;
+    else if (k == "--survey-db") { if (!ranged(v, 3, 60, c.eng.survey_db)) return false; }
     else if (k == "--same-enable") c.eng.same = true;
     else if (k == "--realtime") c.realtime = true;
     else if (k == "--sink") { if (!val(c.sink)) return false; }
     else if (k == "--gain") { if (!val(c.gain)) return false; if (c.gain != "auto" && !to_double(c.gain, d)) { err = "--gain must be auto or dB"; return false; } }
     else if (k == "--rtl-serial") { if (!val(c.rtl_serial)) return false; }
+    else if (k == "--spyserver") {
+      if (!val(v)) return false;
+      const size_t colon = v.rfind(':');
+      if (colon == std::string::npos || colon == 0 || !to_int(v.substr(colon + 1), n) || n < 1 || n > 65535) {
+        err = "--spyserver must be host:port";
+        return false;
+      }
+      c.spyserver_host = v.substr(0, colon);
+      c.spyserver_port = n;
+    }
+    else if (k == "--spyserver-gain") {
+      if (!val(v) || !to_int(v, n) || n < 0 || n > 32) { err = "--spyserver-gain must be an integer in [0, 32]"; return false; }
+      c.spyserver_gain = n;
+    }
+    else if (k == "--spyserver-digital-gain") {
+      if (!val(v) || !to_int(v, n) || n < 0 || n > 32) { err = "--spyserver-digital-gain must be an integer in [0, 32]"; return false; }
+      c.spyserver_digital_gain = n;
+    }
+    else if (k == "--audio-buffer-ms") {
+      if (!val(v) || !to_int(v, n) || n < 0 || n > 3000) { err = "--audio-buffer-ms must be an integer in [0, 3000]"; return false; }
+      c.audio_buffer_ms = n;
+    }
     else if (k == "--iq-file") { if (!val(c.iq_file)) return false; }
     else if (k == "--tune") { if (!val(c.tune_json)) return false; }
     else if (k == "--audio-out") { if (!val(c.audio_out)) return false; }
@@ -62,6 +86,10 @@ bool parse_cli(int argc, const char* const* argv, Cli& c, std::string& err) {
       c.eng.lanes = n;
     }
     else if (k == "--rtl-index") { if (!val(v) || !to_int(v, c.rtl_index) || c.rtl_index < 0) { err = "--rtl-index must be a non-negative integer"; return false; } }
+    else if (k == "--ppm") {
+      if (!val(v) || !to_int(v, n) || n < -200 || n > 200) { err = "--ppm must be an integer in [-200, 200]"; return false; }
+      c.ppm = n;
+    }
     else if (k == "--audio-fd") { if (!val(v) || !to_int(v, c.audio_fd)) { err = "--audio-fd must be an integer"; return false; } }
     else if (k == "--rate") {
       if (!val(v) || !to_int(v, n) || n <= 0 || n % LANE_RATE != 0) { err = "--rate must be a positive multiple of 50000"; return false; }
@@ -82,6 +110,10 @@ bool parse_cli(int argc, const char* const* argv, Cli& c, std::string& err) {
       if (!val(v) || !to_double(v, d) || !(d >= -30 && d <= 20)) { err = "--am-gain-db must be a number in [-30, 20]"; return false; }
       c.eng.am_gain_db = d;
     }
+    else if (k == "--ssb-gain-db") {
+      if (!val(v) || !to_double(v, d) || !(d >= -30 && d <= 20)) { err = "--ssb-gain-db must be a number in [-30, 20]"; return false; }
+      c.eng.ssb_gain_db = d;
+    }
     else if (k == "--agc-target-db") { if (!ranged(v, -40, -3, c.eng.agc.target_db)) return false; }
     else if (k == "--agc-max-gain-db") { if (!ranged(v, 0, 30, c.eng.agc.max_gain_db)) return false; }
     else if (k == "--agc-min-gain-db") { if (!ranged(v, -40, 0, c.eng.agc.min_gain_db)) return false; }
@@ -94,6 +126,10 @@ bool parse_cli(int argc, const char* const* argv, Cli& c, std::string& err) {
     }
     else if (k == "--limiter-release-ms") { if (!ranged(v, 5, 1000, c.eng.limiter_release_ms)) return false; }
     else { err = "unknown arg " + k; return false; }
+  }
+  if (!c.spyserver_host.empty()) {
+    if (!c.rtl_serial.empty() || c.rtl_index >= 0) { err = "--spyserver can't be combined with an RTL-SDR"; return false; }
+    c.eng.rate = 750'000;   // IqRateConverter::OUT_RATE; Channelizer needs a multiple of LANE_RATE
   }
   return true;
 }

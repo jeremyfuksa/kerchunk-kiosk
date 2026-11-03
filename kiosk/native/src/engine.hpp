@@ -12,6 +12,7 @@
 #include "ctcss.hpp"
 #include "dcs.hpp"
 #include "demod.hpp"
+#include "carrier_survey.hpp"
 #include "meters.hpp"
 #include "protocol.hpp"
 #include "scanner.hpp"
@@ -24,11 +25,15 @@ struct EngineOptions {
   Scanner::Params squelch{};
   bool close_call = false;
   bool same = false;
+  bool survey = false;                       // emit "carriers" events (CLI --survey)
+  double survey_db = SURVEY_DB_DEFAULT;      // CLI --survey-db
   double speaker_lpf_hz = SPEAKER_LPF_HZ;   // speaker audio LPF cutoff (CLI --audio-lpf-hz)
   double speaker_hpf_hz = SPEAKER_HPF_HZ;   // FM speaker HPF cutoff, 0 = off (CLI --audio-hpf-hz)
   double am_gain_db = 0.0;                   // AM speaker gain offset vs AM_GAIN, dB (CLI --am-gain-db;
                                              // balances airband loudness against FM by ear;
                                              // it is the AM pre-gain INTO the speaker AGC)
+  double ssb_gain_db = 0.0;                  // LSB speaker gain offset vs SSB_GAIN, dB (CLI --ssb-gain-db;
+                                             // the by-ear balance against AM, into the AGC)
   AgcParams agc{};                           // speaker AGC (CLI --agc-*)
   double limiter_ceiling = LIMITER_CEILING;        // speaker peak limiter (CLI --limiter-ceiling)
   double limiter_release_ms = LIMITER_RELEASE_MS;  // (CLI --limiter-release-ms)
@@ -68,6 +73,7 @@ class Engine {
   SpeakerPath spk_;
   SamePath same_path_;
   std::unique_ptr<CloseCall> cc_;
+  std::unique_ptr<CarrierSurvey> survey_;
   std::vector<ChunkPower> power_;
   std::vector<FmDiscriminator> disc_;
   std::vector<QuietingMeter> quiet_;
@@ -79,6 +85,10 @@ class Engine {
   std::vector<double> dcs_seen_;   // now() of the lane's last decoded DCS code (-1 = none since reset)
   std::vector<float> sub_buf_;   // one hop of SUBAUDIO_RATE samples (reused per lane)
   std::vector<std::vector<float>> disc_buf_;
+  std::vector<SsbDemod> ssb_;                 // LSB lanes only (stepped only while the lane is LSB)
+  std::vector<std::vector<cf>> ssb_buf_;      // one hop of sideband signal per lane
+  std::vector<double> disc_acc_;              // discriminator sum since the last poll -> LaneReading.disc_mean
+  std::vector<int> disc_n_;
   std::vector<LaneReading> readings_;
   std::vector<float> out48_;
   std::vector<int16_t> s16_, same16_;

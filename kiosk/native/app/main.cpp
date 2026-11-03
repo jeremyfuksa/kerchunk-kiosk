@@ -26,6 +26,7 @@
 #include "outputs.hpp"
 #include "rt.hpp"
 #include "rtl_source.hpp"
+#include "spyserver_source.hpp"
 
 static double cpu_seconds() {
   rusage u{};
@@ -145,7 +146,13 @@ static int run_live(const kc::Cli& c) {
     g_stop = true;   // EOF = parent went away (a flag, not a queued quit: can't be dropped)
   });
   in.detach();   // blocked in getline; process exit ends it
-  kc::RtlSource src({c.rtl_serial, c.rtl_index, c.eng.rate, c.gain}, log);
+  std::unique_ptr<kc::DeviceSource> srcp;
+  if (!c.spyserver_host.empty())
+    srcp = std::make_unique<kc::SpyServerSource>(
+        kc::SpyServerSource::Options{c.spyserver_host, c.spyserver_port, c.spyserver_gain, c.spyserver_digital_gain}, log);
+  else
+    srcp = std::make_unique<kc::RtlSource>(kc::RtlSource::Options{c.rtl_serial, c.rtl_index, c.eng.rate, c.gain, c.ppm}, log);
+  kc::DeviceSource& src = *srcp;
   std::string err;
   if (!src.open(err, [] { return g_stop.load(); })) {
     if (g_stop) return 0;   // asked to stop while waiting for the dongle: a clean exit, not an error
@@ -154,7 +161,7 @@ static int run_live(const kc::Cli& c) {
   }
   if (g_stop) return 0;
   if (c.sink != "none") {
-    alsa = std::make_unique<kc::AlsaSink>(c.sink, log);
+    alsa = std::make_unique<kc::AlsaSink>(c.sink, log, c.audio_buffer_ms);
     if (!alsa->open(err, [] { return g_stop.load(); })) {
       if (g_stop) return 0;   // asked to stop while waiting for a busy card: clean exit
       std::fprintf(stderr, "kerchunk-dsp: %s\n", err.c_str());

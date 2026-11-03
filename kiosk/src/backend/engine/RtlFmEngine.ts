@@ -120,7 +120,7 @@ export class RtlFmEngine implements ScannerEngine {
       "-f", String(channel.freq),
       // Honor the channel's demod mode: AM airband must not demodulate as FM
       // (rtl_fm supports -M am). fm/nfm both map to rtl_fm's "fm".
-      "-M", channel.mode === "am" ? "am" : "fm",
+      "-M", channel.mode === "am" ? "am" : channel.mode === "lsb" ? "lsb" : "fm",
       "-s", String(config.sampleRate),
       "-l", "0",
       "-t", "5",

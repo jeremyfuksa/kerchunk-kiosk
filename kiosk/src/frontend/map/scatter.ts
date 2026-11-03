@@ -46,6 +46,8 @@ export function isSilentHit(
   freqHz: number, tags: readonly string[] | undefined,
   channelAudible: boolean | undefined, audibleFamilies: readonly string[],
 ): boolean {
+  // CB-mode hits (tag "cb") stay off the map entirely — never scattered.
+  if (tags?.includes("cb")) return false;
   if (channelAudible !== undefined) return !channelAudible;
   const fam = familyFor(freqHz, tags);
   return fam !== "weather" && !audibleFamilies.includes(fam);

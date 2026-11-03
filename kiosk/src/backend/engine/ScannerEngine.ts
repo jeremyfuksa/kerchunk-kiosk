@@ -35,6 +35,12 @@ export interface ScanConfig {
   audioSink: string;
   // Wideband engine tuning (optional; RtlFmEngine/FakeEngine ignore these).
   windowBandwidthHz?: number;
+  // Set = the helper reads this SpyServer instead of the engine's RTL-SDR. It's
+  // spawn-time state: crossing sources respawns the helper (WidebandEngine.retune).
+  spyserver?: { host: string; port: number; gain?: number; digitalGain?: number; audioBufferMs: number };
+  // Park on exactly this center with exactly `channels`, which may be none: HF windows
+  // are chosen for the band, not fitted around channels.
+  fixedCenterHz?: number;
   // Flat part of the SDR passband for edge-aware grouping (see schema).
   flatBandwidthHz?: number;
   // kerchunk-dsp lane slots per group (--lanes; default 12) and front-end
@@ -54,6 +60,8 @@ export interface ScanConfig {
   nativeQuietDb?: number;
   // AM speaker gain offset in dB (see schema) — the AM pre-gain into the AGC.
   nativeAmGainDb?: number;
+  // LSB speaker gain offset in dB (see schema) — the SSB pre-gain into the AGC.
+  nativeSsbGainDb?: number;
   // FM speaker audio low-pass cutoff in Hz (see schema).
   fmAudioLpfHz?: number;
   // FM speaker high-pass cutoff in Hz, 0 = off (see schema).
@@ -128,6 +136,8 @@ export type EngineEvent =
   // tuned window. The server persists it as a disabled channel; any audio
   // from it arrives via normal active/audible events (synthesized channel).
   | { type: "closecall"; freqHz: number; ts: number }
+  // The helper's carrier survey of the live window (SpyServer helpers, about every 5 s).
+  | { type: "carriers"; centerHz: number; floorDb: number; carriers: Array<{ hz: number; db: number }>; ts: number }
   // Median received RF power over one closed transmission (helper telemetry)
   // — feeds the ERP estimator (channel.rfDb -> location.powerWatts).
   | { type: "rf"; channelId: string; db: number; ts: number }
@@ -171,6 +181,7 @@ export type EngineEvent =
   // themselves (fresh JS/CSS/map style without touching the display
   // service). Synthesized by the server, like "alert".
   | { type: "reload"; ts: number }
+  | { type: "statusChanged"; ts: number }
   | { type: "error"; code: string; message: string; ts: number };
 
 export type EngineListener = (event: EngineEvent) => void;

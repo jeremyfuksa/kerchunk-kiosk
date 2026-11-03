@@ -134,7 +134,10 @@ replays the warm-up overlay on the wall.
   knobs are `config.scan.nativeQuietDb` (`--quiet-db`) and
   `config.scan.nativeAmGainDb` (`--am-gain-db`, the AM pre-gain into the AGC),
   `config.scan.fmAudioLpfHz` (`--audio-lpf-hz`, FM weak-signal hiss),
-  `config.scan.fmAudioHpfHz` (`--audio-hpf-hz`, CTCSS hum; 0 = off).
+  `config.scan.fmAudioHpfHz` (`--audio-hpf-hz`, CTCSS hum; 0 = off),
+  `config.scan.nativeSsbGainDb` (`--ssb-gain-db`, the LSB pre-gain into the AGC).
+  Tuner correction: `config.radios[].ppm` (`--ppm`; boot-read, restart
+  `kerchunk-kiosk`).
   Group shape: `config.scan.lanesPerGroup` (`--lanes`, 12, 1…64) and
   `config.scan.sampleRateHz` (`--rate`, 2 400 000, 900k…3.2M in 50 kHz steps)
   with `windowBandwidthHz` (2 MHz, ≤ rate − 50 kHz — schema-enforced).
@@ -170,6 +173,10 @@ do not "simplify" them away:
 - **SAME break-in is a `retune()`, never `stop()+start()`.** The weather
   break-in re-points the live helper; a restart replays the warm-up
   overlay, chops audio, and wipes the alert banner.
+  One exception: from CB on SpyServer a retune can't change radios, so
+  `WidebandEngine.respawnForSource` respawns the helper. It must stay silent:
+  no warm-up events and no `stopped` state (about 1.0 s to NWR audio, operator
+  approved 2026-11-02; `docs/bench/2026-11-hf-proofs.md`).
 - **The `breakIn` guard in `server.ts` stays.** While a break-in holds the
   scanner on NWR, safetyMode logs temperature but must not bounce the engine —
   the restart cold-start spikes *caused* the overheating oscillation it tried
@@ -239,6 +246,35 @@ even with green checks.
 
 ## Architecture notes
 
+- **CB mode** (`POST /api/mode {mode:"cb"}`, PR #296): the scanner listens to CB only
+  (`config.cb.channels`, names `config.cb.names`), never in the scan rotation or on the
+  map. The kiosk swaps to the CB stage (`dashboard/cbDial.ts` model, `cbView.ts` view,
+  `.cbStage`), pausing the map via `MapHandle.pause()`. Knobs:
+  `display.cb.fadeStepsMin` / `stepTickMs` / `logRows`.
+  `config.spyserver` (`host`, `port` 5555, `gain`, `digitalGain`, `audioBufferMs` 500) puts CB on
+  the Airspy HF+: window 600 kHz, helper rate 750 kHz, 40 lanes (`SPY_LANES`, so all 40 channels), and
+  `--audio-buffer-ms` for Wi-Fi bursts, so audio plays about 500 ms behind the wall. Absent = CB on the scan radio.
+  `POST /api/monitor` below 30 MHz uses it too (no SAME break-in, as with any monitor).
+  LSB channels: `config.cb.modes` (default `{"38":"lsb"}`, which takes channel 32's lane in
+  the default set); SSB squelch `cb.ssbOpenDb` / `cb.ssbHangMs` (1500). LSB lanes squelch on
+  sideband energy against their own floor, never the shared one (spec 2026-10-15).
+- **HF mode** (`POST /api/mode {mode:"hf"}`, needs `config.spyserver`): `hf/sweep.ts` decides (pure),
+  `hf/controller.ts` drives it. One window at a time on a fixed timer, playing one in-band carrier the
+  survey found. It stays on shortwave until the operator changes mode: CB is its own manual mode, never
+  an automatic hop (operator, 2026-11-03). Shortwave
+  stays out of the activity log and history (`isSharedActivity`), so it doesn't reach jeremyfuksa.com.
+  Knobs: `config.hf` (`windowMs`, `minListenDb`, `cooldownMs`, `fadeMs`, `bands`). Mode survives restarts in `mode.json` beside the config.
+  The wall is the Atlas (spec 2026-11-03-hf-atlas): `dashboard/greyline.ts` (sky), `atlas.ts` (traces, dots, band colours, hit logic),
+  `hitAnim.ts` (the only moving layer), `hfView.ts` (text). Four stacked layers: sky, land and dots, traces, live. A hit must never repaint the
+  still ones. Knobs: `display.hf` (`greylineStepMs`, `traceOpacity`, `traceFadeMs`, `hit*Ms`, `zoomMs`), read at page load. The WS event `statusChanged`
+  makes the wall poll at once, because `/api/status` alone would make hits up to 5 s late.
+  Pulses on the live trace animate transforms and opacity only. The zoom to and from map mode (`dashboard/zoom.ts`) also animates
+  `filter: blur()`, only while it runs, and it moves one flat canvas picture of the Atlas, never the live layers: scaling those left
+  the landing part-painted. The zoom never moves the Google map's camera.
+  Reception log: `hf/receptionLog.ts`, its own `reception.db` (never pruned), admin Log tab, `GET /api/hf/log`.
+  Schedules: `hf/schedule.ts` + `scheduleStore.ts` fetch EiBi (HTTP only, its cert is expired), Aoki and HFCC
+  daily into `schedules/` beside the config, keeping the last good copy. Runtime only, never in the repo:
+  Aoki and HFCC state no redistribution terms. Station names are always "likely".
 - **Engine abstraction.** Everything runs behind the `ScannerEngine` interface
   (`src/backend/engine/`), with three implementations: `WidebandEngine`
   (default; spawns the `kerchunk-dsp` C++ helper), `RtlFmEngine` (sequential

@@ -52,6 +52,9 @@ export interface WidebandEngineOptions {
   /** RTL-SDR EEPROM serial (multi-SDR). Preferred over rtlIndex: the helper
    *  resolves it to the exact dongle regardless of enumeration order. */
   rtlSerial?: string;
+  /** Tuner frequency correction in ppm (config.radios[].ppm → --ppm). 0 or
+   *  absent sends nothing. */
+  ppm?: number;
   /** Front-end sample rate (Hz). Overrides config.sampleRateHz (the scanner's
    *  knob). A narrow rate (e.g. 250 kHz) makes a single-channel radio cheap —
    *  the front-end is the dominant cost. Must be a multiple of 50 kHz. */
@@ -116,6 +119,12 @@ export interface WidebandEngineOptions {
 // --lanes, and grouping splits oversized clusters at the same count so the
 // helper never truncates.
 const DEFAULT_WINDOW_HZ = DEFAULT_WINDOW_BANDWIDTH_HZ;
+// --spyserver forces this rate in the helper (IqRateConverter::OUT_RATE).
+const SPY_RATE_HZ = 750_000;
+// A 10 kHz raster has no 25 kHz gap to park the spike in. This is wide enough to
+// land in a skipped CB slot, 10 kHz from its neighbours, whenever one is in range.
+const SPY_DC_CLEAR_HZ = 6_000;
+const sourceOf = (c: ScanConfig): string => (c.spyserver ? `${c.spyserver.host}:${c.spyserver.port}` : "");
 // Hop-timer tick ceiling while activity-weighted dwell or priority revisit is
 // on: scaled dwells and 700 ms priority looks
 // aren't multiples of dwell/3, so the old dwell/3 tick (1 s at the 3 s
@@ -128,6 +137,9 @@ const QUIT_GRACE_MS = 500;
 // A helper alive this long is considered healthy; its eventual death starts
 // a fresh failure-escalation window instead of compounding an old one.
 const HEALTHY_AFTER_MS = 10_000;
+// A helper can say "ready" and then stall out (exit 3 after STALL_S, 2 s). It has to
+// outlast that before the UIs are told it recovered.
+export const READY_PROVEN_MS = 3_000;
 // Helper log forwarding: at most HELPER_LOG_BURST lines per window, so a
 // flapping condition can't flood the journal; the overflow is summarized.
 const HELPER_LOG_BURST = 10;
@@ -148,6 +160,9 @@ function defaultHelperCmd(): string[] {
 
 interface HelperEvent {
   ev: string;
+  center?: number;
+  floorDb?: number;
+  carriers?: Array<{ hz: number; db: number }>;
   id?: string | null;
   db?: number;
   freqHz?: number;
@@ -162,6 +177,8 @@ interface HelperEvent {
 // Fields of a helper txstat event copied verbatim into the JSONL record.
 const TXSTAT_FIELDS = [
   "mode", "opened", "polls", "quietP10", "quietP50", "quietP90", "aboveFloorP50",
+  // Carrier offset from the tuned frequency (Hz): the ppm calibration probe.
+  "offsetHz",
 ] as const;
 
 export class WidebandEngine implements ScannerEngine {
@@ -234,11 +251,16 @@ export class WidebandEngine implements ScannerEngine {
 
   private readonly rtlIndexResolver: (() => number | null) | undefined;
   private readonly rtlSerial: string | undefined;
+  private readonly ppm: number | undefined;
   private readonly sampleRateHz: number | undefined;
   private readonly lanesOverride: number | undefined;
   // Lane count + rate the LIVE helper was spawned with: a retune whose config
   // needs different ones must respawn (both are spawn-time helper args).
-  private spawnedShape: { lanes: number; rate: number } | null = null;
+  // Set when the UIs may be showing a helper error: the next "ready" reports
+  // "running", which clears it. Nothing else would on a quiet band.
+  private reportReady = false;
+  private readyProvenTimer: NodeJS.Timeout | null = null;
+  private spawnedShape: { lanes: number; rate: number; source: string } | null = null;
   private readonly centerOffsetHz: number;
   private readonly niceness: number | undefined;
   private readonly maxHoldMs: number;
@@ -255,6 +277,7 @@ export class WidebandEngine implements ScannerEngine {
   constructor(opts: WidebandEngineOptions = {}) {
     this.rtlIndexResolver = opts.rtlIndex;
     this.rtlSerial = opts.rtlSerial;
+    this.ppm = opts.ppm;
     this.sampleRateHz = opts.sampleRateHz;
     this.lanesOverride = opts.lanes;
     this.centerOffsetHz = opts.centerOffsetHz ?? 0;
@@ -329,11 +352,15 @@ export class WidebandEngine implements ScannerEngine {
     }
   }
 
+  /** What the live helper reads: "host:port" for SpyServer, "" for an RTL-SDR. */
+  get helperSource(): string | null { return this.spawnedShape?.source ?? null; }
+
   private lanesFor(config: ScanConfig): number {
     return this.lanesOverride ?? config.lanesPerGroup ?? DEFAULT_LANES_PER_GROUP;
   }
 
   private rateFor(config: ScanConfig): number {
+    if (config.spyserver) return SPY_RATE_HZ;
     return this.sampleRateHz ?? config.sampleRateHz ?? DEFAULT_SAMPLE_RATE_HZ;
   }
 
@@ -414,12 +441,7 @@ export class WidebandEngine implements ScannerEngine {
     }
 
     this.config = config;
-    this.groups = groupChannels(
-      config.channels,
-      config.windowBandwidthHz ?? DEFAULT_WINDOW_HZ,
-      this.lanesFor(config),
-      this.groupingOpts(config),
-    );
+    this.groups = this.groupsFor(config);
     this.groupIndex = 0;
     this.resetRevisit();
     // Band-sweep stops: empty windows Close Call hunts in, one per rotation.
@@ -470,14 +492,31 @@ export class WidebandEngine implements ScannerEngine {
   // Edge-aware placement (grouping.ts): keep channels in the flat passband and
   // off the DC spike. An engine with a fixed center offset (the weather radio,
   // parked 60 kHz off NWR) already dodges DC, so it skips the DC shift.
+  private groupsFor(config: ScanConfig): Array<ChannelGroup<ScanChannel>> {
+    if (config.fixedCenterHz !== undefined) return [{ centerHz: config.fixedCenterHz, channels: config.channels }];
+    return groupChannels(config.channels, config.windowBandwidthHz ?? DEFAULT_WINDOW_HZ, this.lanesFor(config), this.groupingOpts(config));
+  }
+
   private groupingOpts(config: ScanConfig): GroupingOptions {
     return {
       flatHz: config.flatBandwidthHz ?? DEFAULT_FLAT_BANDWIDTH_HZ,
+      ...(config.spyserver ? { dcClearHz: SPY_DC_CLEAR_HZ } : {}),
       ...(this.centerOffsetHz !== 0 ? { dcClearHz: 0 } : {}),
     };
   }
 
   async retune(config: ScanConfig): Promise<void> {
+    if (this._state === "running" && this.spawnedShape && this.spawnedShape.source !== sourceOf(config)) {
+      return this.respawnForSource(config);
+    }
+    // Same SpyServer, down and in restart backoff: the sweep keeps moving, so just aim the helper
+    // that's coming. A start() here would clear the wall's error and defeat the backoff.
+    if (config.spyserver && this._state === "running" && this.restartTimer) {
+      this.config = config;
+      this.groups = this.groupsFor(config);
+      this.groupIndex = 0;
+      return;
+    }
     if (this._state !== "running" || !this.child?.stdin?.writable) {
       return this.start(config);
     }
@@ -485,12 +524,7 @@ export class WidebandEngine implements ScannerEngine {
     if (!shape || shape.lanes !== this.lanesFor(config) || shape.rate !== this.rateFor(config)) {
       return this.start(config);
     }
-    const newGroups = groupChannels(
-      config.channels,
-      config.windowBandwidthHz ?? DEFAULT_WINDOW_HZ,
-      this.lanesFor(config),
-      this.groupingOpts(config),
-    );
+    const newGroups = this.groupsFor(config);
     // Slots fit every group: only an emptied channel set (release the SDR)
     // takes the full start() path.
     if (newGroups.length === 0) return this.start(config);
@@ -509,23 +543,61 @@ export class WidebandEngine implements ScannerEngine {
     this.startDwellTimer();  // re-arm the hop cadence (single group ⇒ parks)
   }
 
+  /**
+   * A retune can't change radios, so crossing between SpyServer and an RTL-SDR
+   * respawns the helper. It's the operator-approved exception for HF/CB to "a
+   * break-in is a retune" (spec 2026-11-02-hf-mode), and it keeps that rule's
+   * reasons: no warm-up events and no "stopped" state, so the wall shows no overlay
+   * and the alert banner stays up. A restart backoff is abandoned: the old source's
+   * outage says nothing about the new one.
+   */
+  private respawnForSource(config: ScanConfig): void {
+    const groups = this.groupsFor(config);
+    if (groups.length === 0) { void this.start(config); return; }
+    this.clearRestartTimer();
+    this.releaseOpenOnHop();
+    this.killChild();
+    this.alertUntil.clear();
+    this.audibleId = null;
+    this.holdStartedAt = 0;
+    this.exitFailures = 0;
+    // Already warm: the new helper's first tune must not replay the warm-up. If not,
+    // killChild just cancelled the settle timer, so the first tune must re-arm it.
+    this.firstTunedSeen = this.warmReadySeen;
+    this.config = config;
+    this.groups = groups;
+    this.groupIndex = 0;
+    this.resetRevisit();
+    this.sweeps = sweepCenters(config.sweepRanges ?? [], config.windowBandwidthHz ?? DEFAULT_WINDOW_HZ, this.groups);
+    this.sweepIndex = 0;
+    this.sweeping = false;
+    this.stopping = false;
+    this.spawnHelper();
+  }
+
   private helperArgs(): string[] {
     const cfg = this.config!;
+    const spy = cfg.spyserver;
     const args = [
       "--sink", cfg.audioSink,
       "--hang-ms", String(cfg.dwellMs),
+      ...(spy
+        ? ["--spyserver", `${spy.host}:${spy.port}`, "--survey", "--audio-buffer-ms", String(spy.audioBufferMs),
+          ...(spy.gain !== undefined ? ["--spyserver-gain", String(spy.gain)] : []),
+          ...(spy.digitalGain !== undefined ? ["--spyserver-digital-gain", String(spy.digitalGain)] : [])]
       // Prefer serial (deterministic); fall back to index resolved at spawn.
-      ...(this.rtlSerial
-        ? ["--rtl-serial", this.rtlSerial]
-        : this.rtlIndexResolver
-          ? (() => { const i = this.rtlIndexResolver!(); return i === null ? [] : ["--rtl-index", String(i)]; })()
-          : []),
+        : this.rtlSerial
+          ? ["--rtl-serial", this.rtlSerial]
+          : this.rtlIndexResolver
+            ? (() => { const i = this.rtlIndexResolver!(); return i === null ? [] : ["--rtl-index", String(i)]; })()
+            : []),
       "--open-db", String(cfg.openAboveFloorDb ?? 9),
     ];
     // Front-end rate + lane slots, always explicit. The weather radio pins a
     // narrow rate (10x cheaper — the front-end dominates the helper's cost)
     // and 2 lanes; the scanner takes config.scan.sampleRateHz / lanesPerGroup.
-    args.push("--rate", String(this.rateFor(cfg)), "--lanes", String(this.lanesFor(cfg)));
+    if (!spy) args.push("--rate", String(this.rateFor(cfg)));
+    args.push("--lanes", String(this.lanesFor(cfg)));
     // Close Call FFT: built on unless explicitly disabled (matches the per-tune
     // `closeCall ?? true`). Off => the helper skips the 2048-pt FFT entirely.
     // A closeCall config change respawns the helper, so this stays in sync.
@@ -542,11 +614,13 @@ export class WidebandEngine implements ScannerEngine {
     // toScanConfig; set true on the dedicated weather engine). Off => no
     // multimon-ng process and no last-lane tap.
     if (cfg.sameEnable) args.push("--same-enable");
-    if (cfg.gain !== "auto") args.push("--gain", String(cfg.gain));
+    if (!spy && cfg.gain !== "auto") args.push("--gain", String(cfg.gain));
     // Quieting squelch threshold on kerchunk-dsp's own dB scale (default -6).
     if (cfg.nativeQuietDb !== undefined) args.push("--quiet-db", String(cfg.nativeQuietDb));
     // AM vs FM loudness balance (airband ran hot vs FM, 2026-09-26).
     if (cfg.nativeAmGainDb !== undefined) args.push("--am-gain-db", String(cfg.nativeAmGainDb));
+    if (cfg.nativeSsbGainDb !== undefined) args.push("--ssb-gain-db", String(cfg.nativeSsbGainDb));
+    if (!spy && this.ppm) args.push("--ppm", String(this.ppm));
     // FM speaker audio low-pass (weak-signal hiss vs voice brightness).
     if (cfg.fmAudioLpfHz !== undefined) args.push("--audio-lpf-hz", String(cfg.fmAudioLpfHz));
     // FM speaker high-pass (CTCSS hum), 0 = off.
@@ -567,7 +641,7 @@ export class WidebandEngine implements ScannerEngine {
 
     this.clearWatchdogs(); // cheap insurance: no stale timer from a prior child
     this.lastSpawnAt = this.now();
-    this.spawnedShape = { lanes: this.lanesFor(this.config), rate: this.rateFor(this.config) };
+    this.spawnedShape = { lanes: this.lanesFor(this.config), rate: this.rateFor(this.config), source: sourceOf(this.config) };
     const base = [...this.helperCmd, ...this.helperArgs()];
     // Low-priority spawn (weather radio): `nice` execs the helper so all of its
     // threads inherit the nice value from birth. Lowering own priority needs
@@ -648,6 +722,14 @@ export class WidebandEngine implements ScannerEngine {
       case "ready":
         if (this.readyTimer) { clearTimeout(this.readyTimer); this.readyTimer = null; }
         if (this.child) this.armSilence(this.child);
+        if (this.reportReady) {
+          this.readyProvenTimer = setTimeout(() => {
+            this.readyProvenTimer = null;
+            this.reportReady = false;
+            this.emit({ type: "status", state: "running", ts: this.now() });
+          }, READY_PROVEN_MS);
+          this.readyProvenTimer.unref?.();
+        }
         this.resetRevisit();
         this.sendTune();
         this.startDwellTimer();
@@ -701,6 +783,11 @@ export class WidebandEngine implements ScannerEngine {
         }
         break;
       }
+      case "carriers":
+        if (typeof ev.center === "number" && typeof ev.floorDb === "number" && Array.isArray(ev.carriers)) {
+          this.emit({ type: "carriers", centerHz: ev.center, floorDb: ev.floorDb, carriers: ev.carriers, ts: this.now() });
+        }
+        break;
       case "same":
         if (typeof ev.raw === "string") {
           this.emit({ type: "same", raw: ev.raw, ts: this.now() });
@@ -1033,6 +1120,7 @@ export class WidebandEngine implements ScannerEngine {
   private clearWatchdogs(): void {
     if (this.readyTimer) { clearTimeout(this.readyTimer); this.readyTimer = null; }
     if (this.silenceTimer) { clearTimeout(this.silenceTimer); this.silenceTimer = null; }
+    if (this.readyProvenTimer) { clearTimeout(this.readyProvenTimer); this.readyProvenTimer = null; }
   }
 
   // A wedged helper (ALSA/USB stuck before "ready", or a hung DSP
@@ -1115,6 +1203,7 @@ export class WidebandEngine implements ScannerEngine {
       : `${exited}${this.autoRestart ? "; restarting" : ""}`;
 
     this.exitFailures += 1;
+    this.reportReady = true;
     // Journal every unexpected exit with its reason, soft path included: the
     // soft path emits only a "starting" status, so a one-off helper death used
     // to leave no trace of WHY (seen live 2026-09-26: an unexplained native

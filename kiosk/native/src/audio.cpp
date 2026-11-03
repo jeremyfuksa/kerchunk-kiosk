@@ -22,8 +22,9 @@ std::vector<float> speaker_lpf(double hz) {
 }  // namespace
 
 SpeakerPath::SpeakerPath(double lpf_hz, float am_gain, const AgcParams& agc, double limiter_ceiling,
-                         double limiter_release_ms, double hpf_hz)
+                         double limiter_release_ms, double hpf_hz, float ssb_gain)
     : am_gain_(am_gain),
+      ssb_gain_(ssb_gain),
       lpf_(speaker_lpf(lpf_hz)),
       hpf_(LANE_RATE, hpf_hz, SPEAKER_HPF_ORDER),
       agc_(agc, LANE_RATE),
@@ -41,9 +42,10 @@ static_assert((long long)FADE_SAMPLES * LANE_RATE < (long long)CHUNK_SAMPLES * A
 
 void SpeakerPath::apply_target(float t) {
   if (t == target_) return;
-  // AM re-prime on gate open: after silence the carrier tracker followed the noise, so the
-  // first ~40-100 ms of a new transmission would be hugely over-gained.
-  if (target_ == 0.f && t > 0.f && cur_am_) am_.reset();
+  // Level-tracker re-prime on gate open (AM carrier, SSB envelope): after silence the tracker
+  // followed the noise, so the first ~40-100 ms of a new transmission would be hugely over-gained.
+  if (target_ == 0.f && t > 0.f && cur_ == Demod::Am) am_.reset();
+  if (target_ == 0.f && t > 0.f && cur_ == Demod::Lsb) ssb_.reset();
   // New transmission: the AGC starts at 0 dB, never with the last talker's gain.
   if (target_ == 0.f && t > 0.f) agc_.reset();
   const bool edge = (gain_ == 0.f && t > 0.f) || t == 0.f;
@@ -62,10 +64,10 @@ void SpeakerPath::set_gain(float target) {
   if (!switching_) apply_target(target);
 }
 
-void SpeakerPath::set_source(int lane, bool am) {
-  if (lane == want_lane_ && am == want_am_) return;
+void SpeakerPath::set_source(int lane, Demod d) {
+  if (lane == want_lane_ && d == want_) return;
   want_lane_ = lane;
-  want_am_ = am;
+  want_ = d;
   if (gain_ > 0.f || ramp_left_ > 0) {
     switching_ = true;
     apply_target(0.f);   // fade the old source out first
@@ -76,12 +78,13 @@ void SpeakerPath::set_source(int lane, bool am) {
 
 void SpeakerPath::switch_now() {
   cur_lane_ = want_lane_;
-  cur_am_ = want_am_;
+  cur_ = want_;
   switching_ = false;
   de_.reset();
   lpf_.reset();
   hpf_.reset();
   am_.reset();
+  ssb_.reset();
   agc_.reset();
   lim_.reset();
   gain_ = target_ = 0.f;
@@ -91,7 +94,7 @@ void SpeakerPath::switch_now() {
 
 void SpeakerPath::reset() {
   want_lane_ = -1;
-  want_am_ = false;
+  want_ = Demod::Fm;
   want_target_ = 0.f;
   switch_now();
   rs_.reset();
@@ -114,7 +117,9 @@ void SpeakerPath::process(const cf* x, const float* disc, int n, std::vector<flo
   for (int i = 0; i < n; i++) {
     float a = 0.f;
     if (cur_lane_ >= 0 && x && disc) {
-      a = cur_am_ ? am_.step(x[i]) * am_gain_ : hpf_.step(lpf_.step(de_.step(disc[i])));
+      if (cur_ == Demod::Am) a = am_.step(x[i]) * am_gain_;
+      else if (cur_ == Demod::Lsb) a = ssb_.step(x[i]) * ssb_gain_;   // band-limited already: no FM filters
+      else a = hpf_.step(lpf_.step(de_.step(disc[i])));
       a = agc_.step(a, agc_frozen);
     }
     a50_[i] = a;

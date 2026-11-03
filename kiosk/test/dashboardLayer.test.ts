@@ -64,3 +64,15 @@ describe("map.css Layer Rule", () => {
     expect(KIOSK_FIT_PAD.bottom).toBeGreaterThanOrEqual(100);
   });
 });
+
+// CB stage (spec 2026-10-14, final review I1): the map is hidden in CB mode
+// but must keep its layout size. display:none left it 0×0, so a page loaded in
+// CB mode fit and captured its stage against nothing, and stayed mis-framed
+// after CB ended. The map is paused while hidden, so it draws nothing anyway.
+describe("CB stage hides the map without collapsing it", () => {
+  const rule = /html\[data-page="dashboard"\] \.dash\.cbStage \.mapBase \{([^}]*)\}/.exec(css);
+  it("uses visibility:hidden, never display:none", () => {
+    expect(rule?.[1]).toMatch(/visibility:\s*hidden/);
+    expect(css).not.toMatch(/\.dash\.cbStage \.mapBase[^{]*\{[^}]*display:\s*none/);
+  });
+});

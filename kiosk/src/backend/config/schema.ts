@@ -41,7 +41,8 @@ export const channelObjectSchema = z.object({
   id: z.string().min(1),
   freq: z.number().int().positive(),
   alphaTag: z.string(),
-  mode: z.enum(["fm", "nfm", "am"]),
+  // lsb: CB-generated channels only (config/cb.ts); the admin editor doesn't offer it.
+  mode: z.enum(["fm", "nfm", "am", "lsb"]),
   enabled: z.boolean(),
   // Audibility: an enabled channel with audible:false gets
   // a DSP lane (hits land in history/Recent/map) but never owns the speaker.
@@ -106,6 +107,9 @@ export {
   DEFAULT_WINDOW_BANDWIDTH_HZ, DEFAULT_LANES_PER_GROUP, DEFAULT_SAMPLE_RATE_HZ,
   DEFAULT_FLAT_BANDWIDTH_HZ, MAX_LANES_PER_GROUP, MIN_SAMPLE_RATE_HZ, MAX_SAMPLE_RATE_HZ,
 };
+
+// Speaker queue for network IQ. See docs/bench/2026-11-hf-proofs.md.
+export const DEFAULT_SPY_AUDIO_BUFFER_MS = 500;
 
 export const configSchema = z.object({
   version: z.literal(1),
@@ -197,6 +201,9 @@ export const configSchema = z.object({
     // ear (normalized AM audio vs de-emphasized FM don't naturally match).
     // Passed as --am-gain-db. Omitted = 0 dB (the helper's AM_GAIN).
     nativeAmGainDb: z.number().min(-30).max(20).optional(),
+    // LSB speaker gain offset (dB): the by-ear balance of CB SSB against AM.
+    // Passed as --ssb-gain-db. Omitted = 0 dB (the helper's SSB_GAIN).
+    nativeSsbGainDb: z.number().min(-30).max(20).optional(),
     // FM speaker audio low-pass cutoff (Hz). FM hiss rises with frequency, so
     // this is the weak-signal hiss knob: lower = less hiss, duller voice.
     // Passed as --audio-lpf-hz. Omitted = 2700 (GR nbfm_rx parity).
@@ -394,6 +401,22 @@ export const configSchema = z.object({
         h: z.number().positive().max(15).default(3),
       }).default({}),
     }).default({}),
+    // The HF wall (spec 2026-11-03-hf-atlas). Read at page load: PUT /api/config, then POST /api/kiosk/reload.
+    hf: z.object({
+      greylineStepMs: z.number().int().min(60_000).max(3_600_000).default(300_000),
+      traceOpacity: z.number().min(0.05).max(1).default(0.34),
+      // A faded trace is gone this long after its station last played. Noon still clears everything.
+      traceFadeMs: z.number().int().min(300_000).max(86_400_000).default(21_600_000),
+      hitGrowMs: z.number().int().min(100).max(5_000).default(900),
+      hitLineDelayMs: z.number().int().min(0).max(5_000).default(550),
+      hitLineMs: z.number().int().min(100).max(10_000).default(2_000),
+      hitPingMs: z.number().int().min(100).max(5_000).default(800),
+      hitFadeMs: z.number().int().min(100).max(5_000).default(700),
+      zoomMs: z.number().int().min(200).max(5_000).default(1_500),
+      // A dot running the live trace from transmitter to home. 0 = off.
+      pulseEveryMs: z.number().int().min(0).max(60_000).default(4_500),
+      pulseMs: z.number().int().min(300).max(20_000).default(2_000),
+    }).default({}),
     // Weather Glass layer (frontend/map/glassLayer.ts). Reaches the wall on
     // its next load: PUT /api/config, then POST /api/kiosk/reload.
     glass: z.object({
@@ -476,6 +499,17 @@ export const configSchema = z.object({
     camera: z.object({
       follow: z.boolean().default(false),
     }).default({}),
+    // CB wall (spec 2026-10-14 "the dial"). A heard channel's dial tick drops
+    // one level at each fadeStepsMin minute mark (4 ascending), recomputed every
+    // stepTickMs — the heat knob: the CB wall paints only on CB events and this
+    // tick. logRows = "Heard on CB" rows. Applies on kiosk/reload.
+    cb: z.object({
+      fadeStepsMin: z.array(z.number().positive()).length(4)
+        .refine((a) => a.every((v, i) => i === 0 || v > (a[i - 1] ?? 0)), { message: "fadeStepsMin must ascend" })
+        .default([2, 10, 20, 30]),
+      stepTickMs: z.number().int().min(5_000).default(60_000),
+      logRows: z.number().int().min(1).max(12).default(5),
+    }).default({}),
   }).optional(),
   // Aircraft overlay (network ADS-B): plots airborne targets near the QTH on
   // the kiosk map from the airplanes.live public feed (no SDR, no DSP). Off by
@@ -518,6 +552,7 @@ export const configSchema = z.object({
     port: z.string().min(1).optional(),            // e.g. "1-1.2" (fallback)
     role: z.enum(["scan", "weather", "adsb"]),
     label: z.string().optional(),
+    ppm: z.number().int().min(-200).max(200).optional(),   // tuner correction (--ppm); boot-read: restart to apply
   }).refine((r) => r.serial !== undefined || r.port !== undefined, {
     message: "radio needs a serial or a port",
   })).optional(),
@@ -535,6 +570,49 @@ export const configSchema = z.object({
     // land in the feed but only banner when sameTests is true.
     sameFips: z.array(z.string()).optional(),
     sameTests: z.boolean().optional(),
+  }).optional(),
+  // CB mode (POST /api/mode {mode:"cb"}): which of the 40 CB channels the
+  // scanner listens to while in CB-only mode. Absent = channels 1…lanesPerGroup
+  // (one helper window, no hopping). A list longer than lanesPerGroup works
+  // but splits into windows the scanner alternates between.
+  cb: z.object({
+    channels: z.array(z.number().int().min(1).max(40)).min(1).optional(),
+    // Channel number ("19") → name shown on the wall, admin and history
+    // ("CB 19 · Highway"). Absent = CB_NAMES_DEFAULT (6/9/19).
+    names: z.record(z.string().regex(/^([1-9]|[1-3]\d|40)$/), z.string().min(1).max(40)).optional(),
+    // Channel number → demod. Absent = CB_MODES_DEFAULT ({"38":"lsb"}); an
+    // explicit map replaces it (unlisted channels are AM). LSB channels get the
+    // SSB squelch below: open dB above the lane's own floor (absent = the
+    // scanner's --open-db) and hang (absent = CB_SSB_HANG_MS 1500).
+    modes: z.record(z.string().regex(/^([1-9]|[1-3]\d|40)$/), z.enum(["am", "lsb"])).optional(),
+    ssbOpenDb: z.number().positive().max(40).optional(),
+    ssbHangMs: z.number().int().min(0).max(10_000).optional(),
+  }).optional(),
+  // The Airspy HF+ on SpyServer. When set, CB mode listens through it instead of
+  // the scan radio (spec 2026-11-02-hf-mode). gain = the server's gain index,
+  // absent = the server's own; digitalGain absent = the helper's default, which
+  // the u8 stream needs (docs/bench/2026-11-hf-proofs.md). audioBufferMs = speaker
+  // queue, because network IQ arrives in bursts (--audio-buffer-ms).
+  spyserver: z.object({
+    // A bare hostname or IPv4 address: it becomes the helper's --spyserver host:port.
+    host: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9.-]*$/),
+    port: z.number().int().min(1).max(65535).default(5555),
+    gain: z.number().int().min(0).max(32).optional(),
+    digitalGain: z.number().int().min(0).max(32).optional(),
+    audioBufferMs: z.number().int().min(0).max(3000).default(DEFAULT_SPY_AUDIO_BUFFER_MS),
+  }).optional(),
+  // HF mode (spec 2026-11-02-hf-mode). Needs spyserver. Every absent knob takes its default
+  // from hf/sweep.ts. Applies live, except bands, which apply on entering HF mode.
+  hf: z.object({
+    windowMs: z.number().int().min(10_000).max(3_600_000).optional(),
+    minListenDb: z.number().min(10).max(60).optional(),
+    cooldownMs: z.number().int().min(0).max(24 * 3_600_000).optional(),
+    fadeMs: z.number().int().min(5_000).max(300_000).optional(),
+    bands: z.array(z.object({
+      name: z.string().min(1).max(20),
+      loHz: z.number().int().min(100_000).max(30_000_000),
+      hiHz: z.number().int().min(100_000).max(30_000_000),
+    }).refine((b) => b.hiHz > b.loHz, { message: "band needs hiHz above loHz" })).min(1).optional(),
   }).optional(),
   // RepeaterBook lookup (Close Call enrichment). userAgent must be the
   // string REGISTERED with RepeaterBook; states are full names ("Missouri").

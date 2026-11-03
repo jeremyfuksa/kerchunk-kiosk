@@ -21,14 +21,15 @@ class SpeakerPath {
   // agc / limiter_*: speaker loudness knobs (the engine applies --agc-* / --limiter-*).
   explicit SpeakerPath(double lpf_hz = SPEAKER_LPF_HZ, float am_gain = AM_GAIN, const AgcParams& agc = {},
                        double limiter_ceiling = LIMITER_CEILING, double limiter_release_ms = LIMITER_RELEASE_MS,
-                       double hpf_hz = SPEAKER_HPF_HZ);
-  void set_source(int lane, bool am);
+                       double hpf_hz = SPEAKER_HPF_HZ, float ssb_gain = SSB_GAIN);
+  void set_source(int lane, Demod d);
   void set_gain(float target);
   void reset();   // hard cut: drops the source and zeroes all state (the next sample may step)
   // Soft cut (retune): same end state as reset(), but the output ramps from the last emitted
   // sample to 0 over FADE_SAMPLES (held-sample decay) instead of stepping.
   void cut();
   int feeding_lane() const { return cur_lane_; }
+  Demod feeding_demod() const { return cur_; }
   void process(const cf* x, const float* disc, int n, std::vector<float>& out48);
   const Agc& agc() const { return agc_; }
 
@@ -36,16 +37,19 @@ class SpeakerPath {
   void apply_target(float t);
   void switch_now();
   int cur_lane_ = -1, want_lane_ = -1;
-  bool cur_am_ = false, want_am_ = false, switching_ = false;
+  Demod cur_ = Demod::Fm, want_ = Demod::Fm;
+  bool switching_ = false;
   float gain_ = 0, target_ = 0, want_target_ = 0, ramp_step_ = 0;
   int ramp_left_ = 0;
   float last_out_ = 0, hold_ = 0;   // last emitted sample; held value decaying after cut()
   int hold_left_ = 0;
   float am_gain_;
+  float ssb_gain_;
   Deemphasis de_;
   FirFilter lpf_;
   ButterHighpass hpf_;
   AmEnvelope am_;
+  SsbLevel ssb_;
   Agc agc_;
   Limiter lim_;
   Resampler rs_;

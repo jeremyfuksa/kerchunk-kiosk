@@ -40,6 +40,13 @@ describe("live reducer", () => {
 });
 
 describe("lcdView", () => {
+  it("cb mode: CB only, idle and live, never lockable", () => {
+    const idle = withStatus(initialLive, { mode: "cb", monitor: null });
+    expect(lcdView(idle)).toMatchObject({ state: "scanning", meta: "CB only", name: "Listening to CB…", canLock: false });
+    const cb19: Channel = { id: "cb_19", freq: 27_185_000, alphaTag: "CB 19", mode: "am", enabled: true, tags: ["cb"] };
+    const s = reduceEvent(idle, { type: "audible", channel: cb19, ts: 1 }).state;
+    expect(lcdView(s)).toMatchObject({ state: "live", meta: "CB only · AM", name: "CB 19", canLock: false });
+  });
   it("scanning when nothing is open", () => {
     const v = lcdView(initialLive);
     expect(v.state).toBe("scanning");
@@ -80,5 +87,13 @@ describe("startedAt", () => {
     expect(a.startedAt).toBe(111);
     expect(withStatus(a, { mode: "scan", monitor: null }).startedAt).toBe(111);
     expect(withStatus(a, { mode: "scan", monitor: null, startedAt: 222 }).startedAt).toBe(222);
+  });
+});
+
+describe("HF mode on the radio readout", () => {
+  it("shows the band while hunting, and CB during a hold", () => {
+    const hunting = withStatus(initialLive, { mode: "hf", hf: { band: "49m" }, monitor: null });
+    expect(hunting.hf?.band).toBe("49m");
+    expect(withStatus(hunting, { mode: "scan", monitor: null }).hf).toBeNull();
   });
 });

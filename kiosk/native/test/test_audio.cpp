@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cmath>
 #include <vector>
 
@@ -34,7 +35,7 @@ std::vector<float> run(kc::SpeakerPath& sp, const std::vector<sig::cf>& x, int l
 
 TEST(speaker_fm_level_and_rate) {
   kc::SpeakerPath sp = flat_path();
-  sp.set_source(0, false);
+  sp.set_source(0, kc::Demod::Fm);
   sp.set_gain(1.0f);
   auto x = sig::fm_tone(kc::LANE_RATE, kc::LANE_RATE, 0, 3000, 1000, 0.3);
   auto y = run(sp, x, 0);
@@ -45,7 +46,7 @@ TEST(speaker_fm_level_and_rate) {
 
 TEST(speaker_gain_ramps_on_open_and_limiter_caps) {
   kc::SpeakerPath sp = flat_path();
-  sp.set_source(0, false);
+  sp.set_source(0, kc::Demod::Fm);
   auto x = sig::tone(kc::LANE_RATE, kc::LANE_RATE / 2, 2500, 0.3);   // constant +0.5 discriminator output
   auto y0 = run(sp, x, 0);                                            // gain 0: silence
   CHECK(sig::rms(y0.data(), y0.size()) < 1e-6);
@@ -59,11 +60,11 @@ TEST(speaker_gain_ramps_on_open_and_limiter_caps) {
 
 TEST(speaker_source_switch_fades_out_first) {
   kc::SpeakerPath sp;
-  sp.set_source(0, false);
+  sp.set_source(0, kc::Demod::Fm);
   sp.set_gain(1.0f);
   auto x = sig::fm_tone(kc::LANE_RATE, kc::LANE_RATE / 5, 0, 3000, 1000, 0.3);
   run(sp, x, 0);
-  sp.set_source(1, false);
+  sp.set_source(1, kc::Demod::Fm);
   CHECK(sp.feeding_lane() == 0);                  // still fading the old source
   std::vector<float> out, disc(64, 0.f);
   int hops = 0;
@@ -84,7 +85,7 @@ TEST(speaker_am_reprimes_on_open) {
   // Long near-silence on an AM lane, then a strong 50%-modulated carrier as the gate opens:
   // without re-priming, env/carrier starts huge (carrier tracked the noise) and slams the rail.
   kc::SpeakerPath sp = flat_path();
-  sp.set_source(0, true);
+  sp.set_source(0, kc::Demod::Am);
   std::vector<sig::cf> x(kc::LANE_RATE);
   for (size_t i = 0; i < x.size(); i++) {
     double a = i < x.size() / 2 ? 0.0005 : 0.2 * (1 + 0.5 * std::sin(2 * M_PI * 1000 * i / kc::LANE_RATE));
@@ -124,7 +125,7 @@ TEST(to_s16_clamps_and_scales) {
 TEST(speaker_cut_ramps_held_sample_to_zero) {
   // Retune cut: GR faded out before a retune; a hard reset() would step from full scale to 0.
   kc::SpeakerPath sp = flat_path();
-  sp.set_source(0, false);
+  sp.set_source(0, kc::Demod::Fm);
   sp.set_gain(1.0f);
   auto x = sig::fm_tone(kc::LANE_RATE, kc::LANE_RATE / 2, 0, 3000, 1000, 0.3);
   auto y = run(sp, x, 0);
@@ -162,7 +163,7 @@ TEST(speaker_lpf_knob_passes_or_cuts_hf) {
     std::vector<float> disc(kc::LANE_RATE / 2);
     for (size_t i = 0; i < disc.size(); i++) disc[i] = 0.5f * (float)std::sin(2 * M_PI * hz * i / kc::LANE_RATE);
     std::vector<kc::cf> x(disc.size());
-    sp.set_source(0, false);
+    sp.set_source(0, kc::Demod::Fm);
     sp.set_gain(1.0f);
     std::vector<float> out;
     for (size_t i = 0; i + 64 <= disc.size(); i += 64) sp.process(&x[i], &disc[i], 64, out);
@@ -181,7 +182,7 @@ TEST(speaker_lpf_knob_passes_or_cuts_hf) {
 TEST(speaker_am_gain_scales_am_audio) {
   auto run_am = [](float am_gain) {
     kc::SpeakerPath sp = flat_path(kc::SPEAKER_LPF_HZ, am_gain);   // AGC would undo the pre-gain
-    sp.set_source(0, true);
+    sp.set_source(0, kc::Demod::Am);
     sp.set_gain(1.0f);
     std::vector<sig::cf> x(kc::LANE_RATE);
     for (size_t i = 0; i < x.size(); i++)
@@ -200,7 +201,7 @@ TEST(speaker_hpf_removes_sub_audible_tone) {
     std::vector<float> disc(kc::LANE_RATE);
     for (size_t i = 0; i < disc.size(); i++) disc[i] = 0.1f * (float)std::sin(2 * M_PI * hz * i / kc::LANE_RATE);
     std::vector<kc::cf> x(disc.size());
-    sp.set_source(0, false);
+    sp.set_source(0, kc::Demod::Fm);
     sp.set_gain(1.0f);
     std::vector<float> out;
     for (size_t i = 0; i + 64 <= disc.size(); i += 64) sp.process(&x[i], &disc[i], 64, out);
@@ -209,4 +210,41 @@ TEST(speaker_hpf_removes_sub_audible_tone) {
   kc::SpeakerPath on = flat_path();
   kc::SpeakerPath off0(kc::SPEAKER_LPF_HZ, kc::AM_GAIN, flat_agc(), kc::LIMITER_CEILING, kc::LIMITER_RELEASE_MS, 0);
   CHECK(rms_at(on, 100) < 0.02 * rms_at(off0, 100));   // >= 34 dB down with the default HPF
+}
+
+TEST(speaker_lsb_source_plays_the_real_part_not_the_discriminator) {
+  // LSB audio comes from x (the sideband signal), never disc. A weak station (0.01) must still be
+  // normalized up to a usable level; the same inputs on an FM source play disc (zeros) = silence.
+  auto x = sig::tone(kc::LANE_RATE, 50'000, -1000, 0.01);
+  std::vector<float> zeros(x.size(), 0.f);
+  auto run = [&](kc::Demod d) {
+    kc::SpeakerPath sp;
+    sp.set_source(0, d);
+    sp.set_gain(1.f);
+    std::vector<float> out;
+    for (size_t i = 0; i < x.size(); i += 64)
+      sp.process(x.data() + i, zeros.data() + i, (int)std::min<size_t>(64, x.size() - i), out);
+    return sig::rms(out.data() + out.size() / 2, out.size() / 2);
+  };
+  CHECK(run(kc::Demod::Lsb) > 0.05);
+  CHECK(run(kc::Demod::Fm) < 1e-4);
+}
+
+TEST(speaker_ssb_gain_scales_lsb_audio) {
+  auto x = sig::tone(kc::LANE_RATE, 50'000, -1000, 0.1);
+  std::vector<float> zeros(x.size(), 0.f);
+  auto run = [&](float g) {
+    kc::AgcParams flat;
+    flat.max_gain_db = 0;   // AGC pinned at 0 dB: the pre-gain shows through
+    flat.min_gain_db = 0;
+    kc::SpeakerPath sp(kc::SPEAKER_LPF_HZ, kc::AM_GAIN, flat, kc::LIMITER_CEILING, kc::LIMITER_RELEASE_MS,
+                       kc::SPEAKER_HPF_HZ, g);
+    sp.set_source(0, kc::Demod::Lsb);
+    sp.set_gain(1.f);
+    std::vector<float> out;
+    for (size_t i = 0; i < x.size(); i += 64)
+      sp.process(x.data() + i, zeros.data() + i, (int)std::min<size_t>(64, x.size() - i), out);
+    return sig::rms(out.data() + out.size() / 2, out.size() / 2);
+  };
+  CHECK_NEAR(20 * std::log10(run(0.25f) / run(0.5f)), -6.0, 0.5);
 }

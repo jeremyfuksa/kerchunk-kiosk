@@ -191,3 +191,162 @@ html[data-page="dashboard"] .kc-recent .t { color: var(--kc-mute); margin-right:
   /* The sweep holds still where it can be seen, not parked off-track. */
   html[data-page="dashboard"] .kc-pill__tick::after { transform: translateX(230%); }
 }
+
+/* ── CB stage (spec 2026-10-14 "the dial") ───────────────────────────────────
+   Mode cb: the map is hidden (and paused), the corner keeps only its alert
+   card, and the dial takes the screen. Static between events — no transition,
+   no animation, no backdrop-filter (thermal). After the .mapStage rules on
+   purpose: same specificity, later wins. */
+html[data-page="dashboard"] .kc-cb { display: none; }
+html[data-page="dashboard"] .dash.cbStage .kc-cb { display: block; position: absolute; inset: 0; z-index: 2; }
+/* The map keeps its layout size (visibility, not display): a page loaded in
+   CB mode still fits and captures its stage, so leaving CB shows it framed.
+   It is paused meanwhile (MapHandle.pause), so hidden costs no draws. */
+html[data-page="dashboard"] .dash.cbStage .mapBase { visibility: hidden; }
+html[data-page="dashboard"] .dash.cbStage .kc-corner__slot,
+html[data-page="dashboard"] .dash.cbStage .kc-recent { display: none; }
+html[data-page="dashboard"] .dash.cbStage .kc-corner { bottom: calc(var(--kc-k-cb-dial-h) + 3.6rem); }
+
+html[data-page="dashboard"] .kc-cb__tag {
+  position: absolute; top: 2.4rem; left: 2.2rem;
+  color: var(--kc-mute); font-size: var(--kc-k-glass-meta); font-weight: 600;
+  letter-spacing: 0.08em; text-transform: uppercase;
+}
+html[data-page="dashboard"] .kc-cb__readout {
+  position: absolute; left: 2.2rem; top: 6.6rem; width: min(52vw, 62rem); box-sizing: border-box;
+  padding: 2rem 2.6rem 2.2rem; border-radius: var(--kc-r-sheet);
+  background: var(--kc-well); box-shadow: var(--kc-well-shadow);
+}
+html[data-page="dashboard"] .kc-cb__meta {
+  display: flex; justify-content: space-between; gap: 2rem;
+  color: var(--kc-glass); opacity: 0.75; font-size: var(--kc-k-glass-meta); font-weight: 600;
+}
+html[data-page="dashboard"] .kc-cb__num {
+  margin-top: 0.6rem; font-size: var(--kc-k-cb-num); font-weight: 800; line-height: 0.9;
+  letter-spacing: -0.04em; font-variant-numeric: tabular-nums; color: var(--kc-glass);
+  text-shadow: 0 0 24px color-mix(in srgb, var(--kc-glass) 35%, transparent);
+}
+html[data-page="dashboard"] .kc-cb__sub { display: flex; justify-content: space-between; align-items: baseline; gap: 2rem; margin-top: 0.6rem; }
+html[data-page="dashboard"] .kc-cb__sub b { font-size: var(--kc-k-glass-name); font-weight: 700; color: var(--kc-glass-text); }
+html[data-page="dashboard"] .kc-cb__sub span { font-size: var(--kc-k-weather); color: var(--kc-glass); font-variant-numeric: tabular-nums; }
+html[data-page="dashboard"] .kc-cb__seg { display: flex; gap: 5px; height: 12px; margin-top: 1.6rem; }
+html[data-page="dashboard"] .kc-cb__seg i { flex: 1; border-radius: 2px; background: var(--kc-glass); opacity: 0.14; }
+html[data-page="dashboard"] .kc-cb__seg i.on { opacity: 1; }
+/* Idle: the last-heard channel stays up, dimmed — no glow. */
+html[data-page="dashboard"] .kc-cb__readout[data-state="idle"] .kc-cb__meta,
+html[data-page="dashboard"] .kc-cb__readout[data-state="never"] .kc-cb__meta { color: var(--kc-mute); opacity: 1; }
+html[data-page="dashboard"] .kc-cb__readout[data-state="idle"] .kc-cb__num { color: var(--kc-dim); opacity: 0.55; text-shadow: none; }
+html[data-page="dashboard"] .kc-cb__readout[data-state="idle"] .kc-cb__sub b,
+html[data-page="dashboard"] .kc-cb__readout[data-state="idle"] .kc-cb__sub span { color: var(--kc-dim); }
+html[data-page="dashboard"] .kc-cb__readout[data-state="idle"] .kc-cb__seg i,
+html[data-page="dashboard"] .kc-cb__readout[data-state="never"] .kc-cb__seg i,
+html[data-page="dashboard"] .kc-cb__readout[data-state="error"] .kc-cb__seg i { background: var(--kc-mute); opacity: 0.12; }
+html[data-page="dashboard"] .kc-cb__readout[data-state="error"] .kc-cb__meta { color: var(--kc-coral); opacity: 1; }
+html[data-page="dashboard"] .kc-cb__readout[data-state="error"] .kc-cb__sub b { color: var(--kc-ink); font-size: var(--kc-k-glass-error); }
+
+html[data-page="dashboard"] .kc-cb__log { position: absolute; right: 2.2rem; top: 17rem; width: min(30vw, 34rem); }
+html[data-page="dashboard"] .kc-cb__log h2 {
+  margin: 0 0 0.6rem; color: var(--kc-mute); font-size: var(--kc-k-date); font-weight: 600;
+  letter-spacing: 0.06em; text-transform: uppercase;
+}
+html[data-page="dashboard"] .kc-cb__row {
+  display: flex; justify-content: space-between; gap: 1.5rem; padding: 0.55rem 0;
+  border-top: 1px solid var(--kc-line); font-size: var(--kc-k-glass-meta);
+}
+html[data-page="dashboard"] .kc-cb__row i { font-style: normal; color: var(--kc-dim); font-variant-numeric: tabular-nums; }
+html[data-page="dashboard"] .kc-cb__row.is-live span { color: var(--kc-glass); font-weight: 700; }
+
+html[data-page="dashboard"] .kc-cb__dial {
+  position: absolute; left: 2.2rem; right: 2.2rem; bottom: 2.2rem; height: var(--kc-k-cb-dial-h);
+  box-sizing: border-box; padding: 1.6rem 2.4rem 3rem; border-radius: var(--kc-r-sheet);
+  background: var(--kc-well); box-shadow: var(--kc-well-shadow);
+}
+html[data-page="dashboard"] .kc-cb__scale { position: relative; height: 100%; border-bottom: 1px solid var(--kc-well-edge); }
+html[data-page="dashboard"] .kc-cb__tick {
+  position: absolute; bottom: 0; width: 4px; height: 22%; transform: translateX(-50%);
+  border-radius: 2px; background: var(--kc-mute); opacity: 0.45;
+}
+html[data-page="dashboard"] .kc-cb__tick.is-core { height: 46%; opacity: 0.9; background: var(--kc-ink); }
+html[data-page="dashboard"] .kc-cb__tick.is-off { background: transparent; box-shadow: inset 0 0 0 1px var(--kc-mute); opacity: 0.35; }
+html[data-page="dashboard"] .kc-cb__tick[data-step="1"] { background: var(--kc-glass); opacity: 0.3; height: 42%; }
+html[data-page="dashboard"] .kc-cb__tick[data-step="2"] { background: var(--kc-glass); opacity: 0.55; height: 56%; }
+html[data-page="dashboard"] .kc-cb__tick[data-step="3"] { background: var(--kc-glass); opacity: 0.8; height: 70%; }
+html[data-page="dashboard"] .kc-cb__tick[data-step="4"] { background: var(--kc-glass); opacity: 1; height: 88%; box-shadow: 0 0 16px var(--kc-glass); }
+html[data-page="dashboard"] .kc-cb__lab {
+  position: absolute; bottom: -2.2rem; transform: translateX(-50%);
+  font-size: var(--kc-k-date); font-weight: 500; color: var(--kc-mute); font-variant-numeric: tabular-nums;
+}
+html[data-page="dashboard"] .kc-cb__lab.is-core { color: var(--kc-ink); font-weight: 700; }
+html[data-page="dashboard"] .kc-cb__lab.is-hot { color: var(--kc-glass); font-weight: 800; }
+html[data-page="dashboard"] .kc-cb__needle {
+  position: absolute; top: -8%; bottom: -6%; width: 3px; transform: translateX(-50%); background: var(--kc-hay);
+}
+
+/* HF mode, "The Atlas" (spec 2026-11-03-hf-atlas). Sized for the wall's 1366×768. No blur. */
+html[data-page="dashboard"] .kc-hf { display: none; }
+html[data-page="dashboard"] .dash.hfStage .kc-hf { display: block; position: absolute; inset: 0; z-index: 2; }
+html[data-page="dashboard"] .dash.hfStage .mapBase { visibility: hidden; }
+/* During a zoom the order is: real stage (finished, underneath), map, picture of the Atlas, haze. */
+html[data-page="dashboard"] .dash.hfStage.hfZoom .mapBase,
+html[data-page="dashboard"] .dash.hfStage.hfZoomWait .mapBase { visibility: visible; z-index: 2; }
+html[data-page="dashboard"] .dash.hfStage.hfZoom .kc-hf,
+html[data-page="dashboard"] .dash.hfStage.hfZoomWait .kc-hf { z-index: 1; }
+html[data-page="dashboard"] .kc-hf__snap { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none; will-change: transform, opacity, filter; }
+html[data-page="dashboard"] .kc-hf__snap[hidden] { display: none; }
+/* The atmosphere the zoom passes through: a blue haze, with faint streaks radiating from home. Only exists mid-zoom. */
+html[data-page="dashboard"] .kc-hf__haze { display: none; }
+html[data-page="dashboard"] .dash.hfZoom .kc-hf__haze {
+  display: block; position: absolute; inset: 0; z-index: 2; opacity: 0; pointer-events: none; will-change: transform, opacity;
+  background:
+    repeating-conic-gradient(from 0deg at var(--kc-hf-zoom-at), transparent 0deg 2.2deg, var(--kc-hf-streak) 2.2deg 2.6deg, transparent 2.6deg 5.3deg),
+    radial-gradient(circle at var(--kc-hf-zoom-at), var(--kc-hf-haze), var(--kc-hf-haze-edge));
+}
+html[data-page="dashboard"] .dash.hfStage .kc-corner__slot,
+html[data-page="dashboard"] .dash.hfStage .kc-recent { display: none; }
+/* The corner stays: it holds the alert banner. */
+html[data-page="dashboard"] .dash.hfStage .kc-corner { z-index: 3; bottom: 300px; }
+html[data-page="dashboard"] .kc-hf__layer { position: absolute; inset: 0; width: 100%; height: 100%; will-change: transform; pointer-events: none; }
+html[data-page="dashboard"] #hfLand svg { display: block; width: 100%; height: 100%; }
+html[data-page="dashboard"] #hfLand svg path { fill: var(--kc-hf-land); fill-opacity: 0.72; stroke: var(--kc-hf-border); stroke-opacity: 0.2; stroke-width: 0.7; }
+html[data-page="dashboard"] #hfDots { fill: var(--kc-hf-dot); }
+html[data-page="dashboard"] .kc-hf__qth { fill: var(--kc-hf-dot); }
+html[data-page="dashboard"] .kc-hf__pulse {
+  position: absolute; left: -5px; top: -5px; width: 10px; height: 10px; border-radius: 50%; opacity: 0; pointer-events: none;
+  background: currentColor; box-shadow: 0 0 12px 3px currentColor; will-change: transform, opacity;
+}
+html[data-page="dashboard"] .kc-hf__tag {
+  position: absolute; top: 18px; left: 28px; color: var(--kc-dim); font-size: 15px;
+  font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+}
+html[data-page="dashboard"] .kc-hf__readout {
+  position: absolute; left: 28px; bottom: 66px; width: 430px; box-sizing: border-box; padding: 14px 16px 16px;
+  border-radius: 12px; background: var(--kc-hf-plate);
+}
+html[data-page="dashboard"] .kc-hf__meta { display: flex; justify-content: space-between; color: var(--kc-hf-live); font-size: 14px; font-weight: 600; }
+html[data-page="dashboard"] .kc-hf__freq { color: var(--kc-hf-live); font-size: 68px; line-height: 1; font-weight: 700; font-variant-numeric: tabular-nums; margin-top: 4px; }
+html[data-page="dashboard"] .kc-hf__freq small { font-size: 0.32em; margin-left: 0.3em; font-weight: 600; }
+html[data-page="dashboard"] .kc-hf__name { color: var(--kc-ink); font-size: 30px; font-weight: 700; margin-top: 2px; line-height: 1.15; }
+html[data-page="dashboard"] .kc-hf__details { color: var(--kc-hf-details); font-size: 15px; line-height: 1.35; margin-top: 6px; }
+html[data-page="dashboard"] .kc-hf__seg { display: flex; gap: 4px; height: 8px; margin-top: 12px; }
+html[data-page="dashboard"] .kc-hf__seg i { flex: 1; border-radius: 2px; background: var(--kc-hf-live); opacity: 0.16; }
+html[data-page="dashboard"] .kc-hf__seg i.on { opacity: 1; }
+html[data-page="dashboard"] .kc-hf__readout[data-state="hunting"] .kc-hf__meta { color: var(--kc-mute); }
+html[data-page="dashboard"] .kc-hf__readout[data-state="hunting"] .kc-hf__name { color: var(--kc-dim); }
+html[data-page="dashboard"] .kc-hf__readout[data-state="error"] .kc-hf__meta { color: var(--kc-coral); }
+html[data-page="dashboard"] .kc-hf__band { position: absolute; left: 0; right: 0; bottom: 0; padding: 8px 28px 12px; background: var(--kc-hf-bandbg); }
+html[data-page="dashboard"] .kc-hf__bandRow { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
+html[data-page="dashboard"] .kc-hf__legend { display: flex; gap: 9px; font-size: 13px; font-weight: 600; }
+html[data-page="dashboard"] .kc-hf__legend i { font-style: normal; opacity: 0.3; padding-bottom: 1px; border-bottom: 2px solid transparent; }
+html[data-page="dashboard"] .kc-hf__legend i.is-lit, html[data-page="dashboard"] .kc-hf__legend i.is-live { opacity: 1; }
+html[data-page="dashboard"] .kc-hf__legend i.is-live { border-bottom-color: currentColor; }
+html[data-page="dashboard"] .kc-hf__log { color: var(--kc-dim); font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; margin-left: 24px; }
+html[data-page="dashboard"] .kc-hf__log h2 { display: inline; margin: 0 12px 0 0; font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
+html[data-page="dashboard"] .kc-hf__scale { position: relative; height: 16px; border-bottom: 1px solid var(--kc-hf-hairline); }
+html[data-page="dashboard"] .kc-hf__tick { position: absolute; bottom: 0; width: 1px; height: 7px; background: var(--kc-dim); }
+html[data-page="dashboard"] .kc-hf__tick.is-strong { height: 11px; background: var(--kc-ink); }
+html[data-page="dashboard"] .kc-hf__needle { position: absolute; bottom: 0; width: 2px; height: 15px; background: var(--kc-hf-live); }
+/* The clock sits in the corner of space, clear of the globe's rim. */
+html[data-page="dashboard"] .dash.hfStage .kc-clock { top: 12px; right: 18px; }
+html[data-page="dashboard"] .dash.hfStage .kc-clock__time { font-size: 26px; }
+html[data-page="dashboard"] .dash.hfStage .kc-wx { font-size: 15px; margin-top: 2px; }
+html[data-page="dashboard"] .dash.hfStage .kc-clock__date { font-size: 12px; margin-top: 0; }

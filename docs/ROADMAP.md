@@ -942,13 +942,15 @@ throttling, which a bare CPU% gauge would hide.
   sweep windows across whole bands hunting for activity away from the
   programmed channels. Interacts with banks/profiles (sweep ranges per bank?)
   and costs scan coverage while sweeping — needs its own dwell policy.
-- **AM demod / CB band.** Tabled 2026-06-04 with a design sketch: the R820T
+- **AM demod / CB band — SHIPPED** (CB mode PR #296, CB wall spec 2026-10-14). Tabled 2026-06-04 with a design sketch: the R820T
   reaches 27 MHz (deaf-ish at its 24 MHz floor + antenna mismatch), all 40 CB
   channels fit ONE window, and `mode: "am"` has been in the schema since day
   one — no engine has ever honored it. Build shape: a per-lane AM path
   (magnitude → DC-block → audio) alongside the NBFM demod, keyed off
   channel.mode in the tune command. Airband (118–137 MHz AM) falls out of the
   same work and is the more rewarding listen.
+  **38 LSB — SHIPPED** (spec 2026-10-15-cb-lsb-design): a per-lane LSB demod +
+  energy-only squelch; `cb.modes` picks LSB channels (38 by default); `radios[].ppm`.
 - **Polyphase filter-bank channelizer.** Replace the per-channel
   freq-xlating FIRs with a PFB (the sdrtrunk model): one shared filter + FFT
   produces ALL channels in the window, so channel count becomes ~free

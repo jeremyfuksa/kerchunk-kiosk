@@ -32,7 +32,7 @@ What the scanner is doing right now.
 ```jsonc
 {
   "state": "running",        // EngineState: "stopped" | "starting" | "running" | "error"
-  "mode": "scan",            // "scan" | "weather" | "monitor"
+  "mode": "scan",            // "scan" | "weather" | "monitor" | "cb"
   "monitor": null,           // Channel object when mode is "monitor", else null
   "scanCount": 42,           // channels the current mode actually scans (0 = standby)
   "muted": false,            // speaker mute (doesn't restart the engine, so it's polled)
@@ -121,7 +121,7 @@ these appear under `GET /api/config`):
 | --- | --- | --- |
 | POST | `/api/scan/start` / `/api/scan/stop` | Start/stop the engine → `{ state }`. |
 | POST | `/api/scan/skip` | Hop off the current channel (optional `{ holdoffSeconds }`). |
-| POST | `/api/mode` | `{ mode: "scan" \| "weather" }` (weather requires a configured weather channel). |
+| POST | `/api/mode` | `{ mode: "scan" \| "weather" \| "cb" \| "hf" }` (weather requires a configured weather channel). `cb` = CB-only listening: the scanner tunes just the CB channels in `config.cb.channels` (default: as many as one window holds — `scan.lanesPerGroup` — with channels 6, 9 and 19 and every LSB channel of `config.cb.modes` — 38 by default — always in; AM except those LSB channels, always audible, no Close Call); hits land in history tagged `cb` with no location. `hf` sweeps shortwave through SpyServer until the mode changes (400 without `config.spyserver`); `/api/status` then adds `hf: { band, centerHz, loHz, hiHz, listenHz, candidate, others }` (candidate = likely station, from schedules), and `POST /api/scan/skip` moves on. With `config.spyserver` set, CB listens through the Airspy HF+ on SpyServer. A SAME break-in preempts CB and returns to CB. The chosen mode, including a direct tune, survives a restart (`mode.json` beside the config); a break-in is never saved. |
 | POST | `/api/monitor` | Park on one frequency: `{ freq, mode?, alphaTag? }` → monitor mode. |
 | POST | `/api/monitor/stop` | Back to scanning. |
 | POST | `/api/audio/volume` | `{ percent: 0–100 }` → amixer + persisted config. |
@@ -160,6 +160,7 @@ additionally removes orphans (recorded on a hit that never filed) and enforces
 | --- | --- | --- |
 | GET | `/api/system` | System stats snapshot + `safetyMode` + health verdict (`healthy`/`stressed`/`trouble`) + `coreCount` + `scanCoverage` (below). |
 | GET | `/api/status` | See above (external consumer). |
+| GET | `/api/hf/log` | HF reception log: `{ nights, night, rows }`, `?night=YYYY-MM-DD` (default latest). A row's `playedTs` is when it last played, `null` if never. |
 | GET | `/api/logs` | See above (external consumer). |
 | GET | `/api/weather` | See above (external consumer). |
 | GET | `/api/history` | Hit history; query params `since`, `until`, `freq`, `tag`, `kind`, `limit`. Labels resolved to current channel names. |
@@ -192,14 +193,14 @@ additionally removes orphans (recorded on a hit that never filed) and enforces
 | POST | `/api/backend/restart` | `202`, then the backend exits for systemd to respawn (`503` when unavailable, e.g. tests). |
 | POST | `/api/system/power` | `{ "action": "reboot" \| "poweroff" }` → `202`, then the helpers stop and `sudo systemctl <action>` runs (`400` unknown action, `503` when unavailable, e.g. tests). |
 | POST | `/api/test/alert` | Fire a canned SAME alert banner for design/verification (`{ alphaTag }`; `{ "clear": true }` dismisses). |
-| POST | `/api/test/tx` | Wall preview: play a synthetic transmission (`active` → `audible` → `signal`… → `release` → `audible(null)`) on a located channel over the WS only — no engine/audio/history. `{ channelId?, holdMs?, lat?, lon? }` (random located channel; hold 6000 ms, clamped 1000–60000; `lat`/`lon` override the broadcast location) → `{ ok, channelId, holdMs }`; `404` if none. |
+| POST | `/api/test/tx` | Wall preview: play a synthetic transmission (`active` → `audible` → `signal`… → `release` → `audible(null)`) on a located channel over the WS only — no engine/audio/history. `{ channelId?, holdMs?, lat?, lon? }` (random located channel; hold 6000 ms, clamped 1000–60000; `lat`/`lon` override the broadcast location). A `cb_<n>` channelId (1–40) previews a CB transmission (no location; drives the CB wall). → `{ ok, channelId, holdMs }`; `404` if none. |
 
 ### WebSocket `/ws`
 
 One JSON message per event, `EngineEvent` union
 (`kiosk/src/backend/engine/ScannerEngine.ts`): `active`, `audible`,
 `release`, `idle`, `closecall`, `rf`, `tone`, `same`, `signal`, `tuned`,
-`alert`, `aircraft`, `radar`, `lightning`, `status`, `warmup`, `reload`, `error`. `tone`
+`alert`, `aircraft`, `radar`, `lightning`, `status`, `statusChanged` (the mode or HF station changed: poll `/api/status`), `warmup`, `reload`, `error`. `tone`
 (`{ channelId, ctcssHz?, dcs? }`) is the CTCSS tone and/or DCS code heard on
 an open FM channel, once per transmission; `dcs` is in its on-air normal form
 (`"047N"` for a `023I` transmitter — the two are identical on air). The server

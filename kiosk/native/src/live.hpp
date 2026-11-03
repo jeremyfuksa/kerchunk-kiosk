@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <functional>
 #include <optional>
+#include <string>
 
 #include "constants.hpp"
 #include "engine.hpp"
@@ -37,6 +38,15 @@ class IqSource {
   virtual bool set_center(double hz) = 0;
   virtual uint32_t generation() const = 0;
   virtual uint64_t take_dropped() = 0;
+};
+
+// A real radio: the part of a source run_live drives that a test double doesn't need.
+class DeviceSource : public IqSource {
+ public:
+  virtual bool open(std::string& err, const std::function<bool()>& should_stop) = 0;
+  virtual void start() = 0;
+  virtual void stop() = 0;
+  virtual double seconds_since_rx() const = 0;
 };
 
 class LiveLoop {

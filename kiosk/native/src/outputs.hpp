@@ -41,9 +41,23 @@ class EventOut {
   std::thread t_;
 };
 
+// Speaker queue limits, in samples. Network IQ arrives in bursts, so a source that isn't USB asks
+// for a deeper queue: it plays that much later, and rides out a late burst instead of going silent
+// and then trimming the backlog. 0 ms is the USB tuning.
+struct AudioBuffer {
+  size_t target, trim_above, resume_at, ring;
+  static AudioBuffer for_ms(int ms) {
+    if (ms <= 0) return {(size_t)AUDIO_TARGET_LAT, (size_t)AUDIO_MAX_LAT, (size_t)(2 * ALSA_PERIOD), (size_t)AUDIO_RING};
+    const size_t target = (size_t)ms * AUDIO_RATE / 1000;
+    const size_t trim_above = target + AUDIO_RATE;   // a second of headroom before clock drift is trimmed
+    return {target, trim_above, target, trim_above + (size_t)AUDIO_RING};
+  }
+};
+
 struct JitterPolicy {
-  static size_t drop_for(size_t queued) {
-    return queued > (size_t)AUDIO_MAX_LAT ? queued - (size_t)AUDIO_TARGET_LAT : 0;
+  static size_t drop_for(size_t queued) { return drop_for(queued, AudioBuffer::for_ms(0)); }
+  static size_t drop_for(size_t queued, const AudioBuffer& b) {
+    return queued > b.trim_above ? queued - b.target : 0;
   }
 };
 
@@ -98,11 +112,11 @@ struct AlsaPolicy {
   // 0 < queued < ALSA_PERIOD. The caller owns the `underrun`/`waited_ms` state across calls; this
   // function only reads them and reports what they should become (Read clears underrun and resets
   // the wait clock, Silence sets underrun, Wait leaves both as-is for the caller to keep timing).
-  static Action decide(size_t queued, bool underrun, double waited_ms) {
+  static Action decide(size_t queued, bool underrun, double waited_ms, size_t resume_at = 2 * ALSA_PERIOD) {
     if (underrun) {
       // Don't resume until a full prebuffer exists -- resuming right at one period reopens the
       // underrun on the very next tick if the producer is still catching up.
-      return queued >= (size_t)(2 * ALSA_PERIOD) ? Action::Read : Action::Silence;
+      return queued >= resume_at ? Action::Read : Action::Silence;
     }
     if (queued >= (size_t)ALSA_PERIOD) return Action::Read;
     // 0 <= queued < ALSA_PERIOD while flowing (including an exact-zero ring): give the producer a
@@ -135,7 +149,8 @@ struct BusyRetry {
 
 class AlsaSink {
  public:
-  AlsaSink(std::string device, LogFn log) : device_(std::move(device)), log_(std::move(log)), ring_(AUDIO_RING) {}
+  AlsaSink(std::string device, LogFn log, int buffer_ms = 0)
+      : device_(std::move(device)), log_(std::move(log)), buffer_(AudioBuffer::for_ms(buffer_ms)), ring_(buffer_.ring) {}
   ~AlsaSink() { stop(); }
   // Non-blocking open with a bounded busy retry (see BusyRetry / ALSA_BUSY_RETRY_S); should_stop
   // aborts the wait (err = "aborted"). Writes stay blocking once open.
@@ -162,6 +177,7 @@ class AlsaSink {
   std::atomic<uint64_t> overflow_{0}, drift_{0}, underrun_{0}, xruns_{0};
   std::string device_;
   LogFn log_;
+  AudioBuffer buffer_;
   SpscRing<int16_t> ring_;
   snd_pcm_t* pcm_ = nullptr;
   std::atomic<bool> running_{false};

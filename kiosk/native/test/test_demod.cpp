@@ -1,4 +1,7 @@
+#include <algorithm>
 #include <cmath>
+#include <cstdio>
+#include <string>
 #include <vector>
 
 #include "check.hpp"
@@ -118,4 +121,61 @@ TEST(deemphasis_dc_and_corner) {
   for (int i = 0; i < 50'000; i++) out.push_back(d2.step((float)std::sin(2 * M_PI * 2122.1 * i / LR)));
   double g = sig::rms(out.data() + 5000, out.size() - 5000) / (1 / std::sqrt(2.0));
   CHECK_NEAR(20 * std::log10(g), -3.0, 0.6);
+}
+
+namespace {
+double ssb_out_rms(double tone_hz, double amp) {
+  auto x = sig::tone(LR, 50'000, tone_hz, amp);
+  kc::SsbDemod d;
+  std::vector<float> y;
+  for (auto v : x) y.push_back(d.step(v).real());
+  return sig::rms(y.data() + 5000, y.size() - 5000);   // skip the filters' settle
+}
+}  // namespace
+
+TEST(demod_for_maps_modes) {
+  CHECK(kc::demod_for("am") == kc::Demod::Am);
+  CHECK(kc::demod_for("lsb") == kc::Demod::Lsb);
+  CHECK(kc::demod_for("nfm") == kc::Demod::Fm && kc::demod_for("fm") == kc::Demod::Fm);
+  CHECK(std::string(kc::demod_name(kc::Demod::Lsb)) == "lsb");
+}
+
+TEST(ssb_demod_passes_lower_sideband) {
+  // 1 kHz below the dial = an LSB voice tone: comes out as a 1 kHz real tone at full level.
+  CHECK_NEAR(ssb_out_rms(-1000, 0.3), 0.3 / std::sqrt(2.0), 0.02);
+}
+
+TEST(ssb_demod_rejects_usb_carrier_and_adjacent_channels) {
+  const double pass = ssb_out_rms(-1000, 0.3);
+  // USB of 38, the dial itself, the far edge of its own lane, and 37's USB / 39's LSB (10 kHz away).
+  for (double f : {1000.0, 0.0, -5000.0, -8500.0, 8500.0}) {
+    const double rej = 20 * std::log10(ssb_out_rms(f, 0.3) / pass);
+    if (!(rej < -40)) std::fprintf(stderr, "  ssb rejection at %.0f Hz: %.1f dB\n", f, rej);
+    CHECK(rej < -40);
+  }
+}
+
+TEST(ssb_demod_reset_clears_history) {
+  kc::SsbDemod d;
+  for (auto v : sig::tone(LR, 10'000, -1000, 0.3)) d.step(v);
+  d.reset();
+  float worst = 0;
+  for (int i = 0; i < 1000; i++) worst = std::max(worst, std::abs(d.step(kc::cf(0, 0))));
+  CHECK(worst == 0.f);   // no ringing out of stale filter state
+}
+
+TEST(ssb_level_normalizes_weak_and_strong) {
+  for (double amp : {0.003, 0.3}) {   // 40 dB apart: both land at unit peak
+    kc::SsbLevel l;
+    std::vector<float> y;
+    for (auto v : sig::tone(LR, 50'000, -1000, amp)) y.push_back(l.step(v));
+    CHECK_NEAR(sig::rms(y.data() + 10'000, y.size() - 10'000), 1 / std::sqrt(2.0), 0.05);
+  }
+}
+
+TEST(ssb_level_reset_reprimes) {
+  kc::SsbLevel l;
+  for (int i = 0; i < 10'000; i++) l.step(kc::cf(0.5f, 0.f));
+  l.reset();
+  CHECK_NEAR(l.step(kc::cf(0.01f, 0.f)), 1.0, 1e-3);   // primes on the new level, not the stale 0.5
 }

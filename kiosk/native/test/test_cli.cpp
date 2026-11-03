@@ -22,6 +22,28 @@ TEST(cli_accepts_node_spawn_surface) {
   CHECK(c.eng.lanes == 12);
 }
 
+TEST(cli_spyserver_sets_rate_and_excludes_rtl) {
+  kc::Cli c;
+  std::string err;
+  CHECK(parse({"--spyserver", "airspy.local:5555", "--spyserver-gain", "3", "--spyserver-digital-gain", "4"}, c, err));
+  CHECK(c.spyserver_host == "airspy.local" && c.spyserver_port == 5555);
+  CHECK(c.spyserver_gain == 3 && c.spyserver_digital_gain == 4);
+  CHECK(c.eng.rate == 750000);
+  kc::Cli d;
+  CHECK(parse({"--rate", "2400000", "--spyserver", "h:1"}, d, err));
+  CHECK(d.eng.rate == 750000);
+  kc::Cli e;
+  CHECK(!parse({"--spyserver", "h:5555", "--rtl-serial", "KIOSK01"}, e, err));
+  kc::Cli g;
+  CHECK(!parse({"--spyserver", "no-port"}, g, err));
+  kc::Cli h;
+  CHECK(!parse({"--spyserver", "h:70000"}, h, err));
+  kc::Cli i;
+  CHECK(!parse({"--spyserver", "h:5555", "--spyserver-gain", "99"}, i, err));
+  kc::Cli j;
+  CHECK(parse({"--rtl-serial", "KIOSK01"}, j, err) && j.spyserver_host.empty() && j.spyserver_gain == -1 && j.spyserver_digital_gain == kc::SPY_DIGITAL_GAIN_DEFAULT);
+}
+
 TEST(cli_rejects_bad_values_and_unknown) {
   kc::Cli c;
   std::string err;
@@ -123,4 +145,34 @@ TEST(cli_lanes_range) {
     CHECK(!parse({"--lanes", v}, c, err));
     CHECK(err.find("--lanes") != std::string::npos);
   }
+}
+
+TEST(cli_ssb_gain_db_range) {
+  kc::Cli c;
+  std::string err;
+  CHECK(parse({"--ssb-gain-db", "-6"}, c, err));
+  CHECK_NEAR(c.eng.ssb_gain_db, -6, 0);
+  CHECK(!parse({"--ssb-gain-db", "25"}, c, err));
+  CHECK(!parse({"--ssb-gain-db", "x"}, c, err));
+}
+
+TEST(cli_ppm_integer_range) {
+  kc::Cli c;
+  std::string err;
+  CHECK(parse({"--ppm", "-12"}, c, err));
+  CHECK(c.ppm == -12);
+  CHECK(!parse({"--ppm", "201"}, c, err));
+  CHECK(!parse({"--ppm", "1.5"}, c, err));
+  CHECK(!parse({"--ppm"}, c, err));
+}
+
+TEST(cli_audio_buffer_ms_range) {
+  kc::Cli c;
+  std::string err;
+  CHECK(c.audio_buffer_ms == 0);
+  CHECK(parse({"--audio-buffer-ms", "3000"}, c, err) && c.audio_buffer_ms == 3000);
+  kc::Cli d;
+  CHECK(!parse({"--audio-buffer-ms", "3001"}, d, err));
+  kc::Cli e;
+  CHECK(!parse({"--audio-buffer-ms", "-1"}, e, err));
 }

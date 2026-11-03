@@ -75,6 +75,7 @@ export class GlassLayer {
   private redraws = 0;
   private smokeRenders = 0;
   private timerAt = 0; // Date.now() ms the armed timer fires
+  private paused = false; // CB stage: map hidden — reversible, unlike `off`
 
   /** True once the layer has given up (no WebGL2, shader failure): it is
    *  unmounted and draws nothing, so callers stop feeding it. */
@@ -115,6 +116,19 @@ export class GlassLayer {
     this.ov.setMap(null);
   }
 
+  /** CB stage (spec 2026-10-14): the map is hidden, so draw nothing and arm
+   *  nothing. Reversible, unlike `off`; resuming redraws once. */
+  setPaused(p: boolean): void {
+    if (this.off || p === this.paused) return;
+    this.paused = p;
+    if (p) {
+      if (this.timer) clearTimeout(this.timer);
+      this.timer = null;
+    } else this.poke();
+  }
+
+  get isPaused(): boolean { return this.paused; }
+
   // ── pacing (spec 2026-10-02): after every draw, the frame says when it will
   // next visibly change. Continuous (grow/dissolve/haze/radar fade) → fps
   // timer; a scheduled change → one timer to that moment; nothing → no timer.
@@ -125,14 +139,14 @@ export class GlassLayer {
     this.timerAt = Date.now() + delayMs;
     this.timer = setTimeout(() => {
       this.timer = null;
-      if (this.off) return;
+      if (this.off || this.paused) return;
       this.ov.requestRedraw();
       this.arm(KICK_MS);
     }, delayMs);
   }
 
   private reschedule(): void {
-    if (this.off) return;
+    if (this.off || this.paused) return;
     const f = this.lastFrame;
     if (!f) { this.arm(KICK_MS); return; }
     const delay = paceDelay(f, Date.now(), {
@@ -148,7 +162,7 @@ export class GlassLayer {
 
   /** An event changed the scene (key-up, release, signal step, seed): draw now. */
   poke(): void {
-    if (this.off) return;
+    if (this.off || this.paused) return;
     this.ov.requestRedraw();
     this.arm(KICK_MS);
   }
@@ -156,7 +170,7 @@ export class GlassLayer {
   /** A change is due at `at` (Date.now() ms) with no draw before it — e.g. a
    *  parked signal step (review I2). Never delays an earlier armed timer. */
   redrawAt(at: number): void {
-    if (this.off) return;
+    if (this.off || this.paused) return;
     const now = Date.now();
     if (at <= now) { this.poke(); return; }
     if (this.timer && this.timerAt <= at) return;

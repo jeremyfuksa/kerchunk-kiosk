@@ -1,8 +1,9 @@
+import { cbChannels, cbDefaultChannels } from "../src/backend/config/cb.js";
 import { describe, it, expect, beforeAll } from "vitest";
 import { join } from "node:path";
-import { chmodSync, mkdtempSync, readFileSync, existsSync } from "node:fs";
+import { chmodSync, mkdtempSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { WidebandEngine } from "../src/backend/engine/WidebandEngine.js";
+import { READY_PROVEN_MS, WidebandEngine } from "../src/backend/engine/WidebandEngine.js";
 import type { ScanConfig, EngineEvent } from "../src/backend/engine/ScannerEngine.js";
 import type { Channel } from "../src/backend/config/schema.js";
 
@@ -114,7 +115,7 @@ describe("WidebandEngine", () => {
     const path = tmpFile("txstats.jsonl");
     const { engine, events } = makeEngine({
       FAKE_WB_SCRIPT: [
-        `{"ev":"txstat","id":"${VHF_A.id}","mode":"fm","opened":true,"polls":57,"quietP10":-21.5,"quietP50":-18.2,"quietP90":-12.0,"aboveFloorP50":19.4}`,
+        `{"ev":"txstat","id":"${VHF_A.id}","mode":"fm","opened":true,"polls":57,"quietP10":-21.5,"quietP50":-18.2,"quietP90":-12.0,"aboveFloorP50":19.4,"offsetHz":-41.5}`,
         `{"ev":"txstat","id":"cc_463562500","mode":"fm","opened":false,"polls":12,"aboveFloorP50":11.1}`,
         `{"ev":"txstat","id":"nope","mode":"am","opened":false,"polls":30,"quietP50":-2.5,"quietP10":-3,"quietP90":-1,"aboveFloorP50":9.5}`,
       ].join("\n"),
@@ -127,7 +128,7 @@ describe("WidebandEngine", () => {
     expect(recs).toHaveLength(3);
     expect(recs[0]).toMatchObject({
       id: VHF_A.id, freqHz: VHF_A.freq, mode: "fm", opened: true, polls: 57,
-      quietP10: -21.5, quietP50: -18.2, quietP90: -12.0, aboveFloorP50: 19.4,
+      quietP10: -21.5, quietP50: -18.2, quietP90: -12.0, aboveFloorP50: 19.4, offsetHz: -41.5,
     });
     expect(Number.isNaN(Date.parse(recs[0]!.t as string))).toBe(false);
     expect(recs[1]).toMatchObject({ id: "cc_463562500", freqHz: 463_562_500, opened: false });
@@ -533,6 +534,36 @@ describe("WidebandEngine", () => {
       const narrow = await groupsSeen(12);
       expect(narrow.centers).toBe(3);
       expect(Math.max(...narrow.sizes)).toBe(12);
+    });
+
+    it("forwards nativeSsbGainDb as --ssb-gain-db; omits it when unset", async () => {
+      const args = tmpFile("args");
+      const { engine } = makeEngine({ FAKE_WB_ARGS_FILE: args });
+      await engine.start(cfg([VHF_A], { nativeSsbGainDb: -6 }));
+      await waitFor(() => lines(args).length >= 1, 1000);
+      await engine.stop();
+      expect(lines(args)[0] ?? "").toContain("--ssb-gain-db -6");
+      const plainArgs = tmpFile("args");
+      const plain = makeEngine({ FAKE_WB_ARGS_FILE: plainArgs });
+      await plain.engine.start(cfg([VHF_A]));
+      await waitFor(() => lines(plainArgs).length >= 1, 1000);
+      await plain.engine.stop();
+      expect(lines(plainArgs)[0] ?? "").not.toContain("--ssb-gain-db");
+    });
+
+    it("passes the radio's ppm as --ppm; omits it when 0 or unset", async () => {
+      const args = tmpFile("args");
+      const { engine } = makeEngine({ FAKE_WB_ARGS_FILE: args }, { ppm: -12 });
+      await engine.start(cfg([VHF_A]));
+      await waitFor(() => lines(args).length >= 1, 1000);
+      await engine.stop();
+      expect(lines(args)[0] ?? "").toContain("--ppm -12");
+      const zeroArgs = tmpFile("args");
+      const zero = makeEngine({ FAKE_WB_ARGS_FILE: zeroArgs }, { ppm: 0 });
+      await zero.engine.start(cfg([VHF_A]));
+      await waitFor(() => lines(zeroArgs).length >= 1, 1000);
+      await zero.engine.stop();
+      expect(lines(zeroArgs)[0] ?? "").not.toContain("--ppm");
     });
 
     it("forwards nativeAmGainDb as --am-gain-db; omits it when unset", async () => {
@@ -1466,4 +1497,262 @@ describe("priority revisit (scan.priorityRevisit)", () => {
     await engine.stop();
   });
 
+});
+
+describe("SpyServer source", () => {
+  const SPY = { host: "airspy.local", port: 5555, digitalGain: 32, audioBufferMs: 500 };
+  const CB = cbChannels(cbDefaultChannels(32));
+  const spyCfg = (over: Partial<ScanConfig> = {}) =>
+    cfg(CB, { spyserver: SPY, windowBandwidthHz: 600_000, flatBandwidthHz: 600_000, gain: 30, lanesPerGroup: 32, ...over });
+  const rtlCfg = (over: Partial<ScanConfig> = {}) => cfg([VHF_A], { gain: 30, lanesPerGroup: 32, ...over });
+  const isLoud = (e: EngineEvent) => e.type === "warmup" || (e.type === "status" && e.state === "stopped");
+
+  it("helper args over SpyServer have no RTL selector, rate, gain or ppm", async () => {
+    const args = tmpFile("args");
+    const { engine } = makeEngine({ FAKE_WB_ARGS_FILE: args }, { rtlSerial: "KIOSK01", ppm: 3 });
+    await engine.start(spyCfg());
+    await waitFor(() => lines(args).length >= 1, 1000);
+    await engine.stop();
+    const a = lines(args)[0] ?? "";
+    expect(a).toContain("--spyserver airspy.local:5555");
+    expect(a).toContain("--spyserver-digital-gain 32");
+    expect(a).toContain("--audio-buffer-ms 500");
+    expect(a).toContain("--lanes 32");
+    expect(a).not.toContain("--rtl-");
+    expect(a).not.toContain("--rate");
+    expect(a).not.toContain("--gain 30");
+    expect(a).not.toContain("--ppm");
+    expect(a).not.toContain("--spyserver-gain");
+  });
+
+  it("helper args without SpyServer are unchanged", async () => {
+    const args = tmpFile("args");
+    const { engine } = makeEngine({ FAKE_WB_ARGS_FILE: args }, { rtlSerial: "KIOSK01", ppm: 3 });
+    await engine.start(rtlCfg());
+    await waitFor(() => lines(args).length >= 1, 1000);
+    await engine.stop();
+    const a = lines(args)[0] ?? "";
+    expect(a).toContain("--rtl-serial KIOSK01");
+    expect(a).toContain("--rate 2500000");
+    expect(a).toContain("--gain 30");
+    expect(a).toContain("--ppm 3");
+    expect(a).not.toContain("spyserver");
+    expect(a).not.toContain("--audio-buffer-ms");
+  });
+
+  it("CB fits one window, centered in the empty 27.195 MHz slot so no channel sits on the spike", async () => {
+    const tunes = tmpFile("tunes");
+    const { engine } = makeEngine({ FAKE_WB_TUNES_FILE: tunes });
+    await engine.start(spyCfg());
+    await waitFor(() => lines(tunes).length >= 1, 1000);
+    await new Promise((r) => setTimeout(r, 300));   // past several dwell periods: a second group would hop
+    await engine.stop();
+    const all = lines(tunes).map((l) => JSON.parse(l) as { centerHz: number; channels: { freqHz: number }[] });
+    expect(new Set(all.map((t) => t.centerHz))).toEqual(new Set([27_195_000]));
+    expect(all[0]!.channels).toHaveLength(32);
+    for (const c of all[0]!.channels) {
+      expect(Math.abs(c.freqHz - 27_195_000)).toBeGreaterThanOrEqual(10_000);
+      expect(Math.abs(c.freqHz - 27_195_000)).toBeLessThanOrEqual(300_000);
+    }
+  });
+
+  it("a retune across sources replaces the helper, with no warm-up and no stopped state", async () => {
+    const args = tmpFile("args");
+    const tunes = tmpFile("tunes");
+    const { engine, events } = makeEngine({ FAKE_WB_ARGS_FILE: args, FAKE_WB_TUNES_FILE: tunes });
+    await engine.start(rtlCfg());
+    expect(await waitFor(() => events.some((e) => e.type === "warmup" && e.phase === "ready"), 4000)).toBe(true);
+    const mark = events.length;
+    await engine.retune(spyCfg());
+    expect(await waitFor(() => lines(args).length === 2 && lines(tunes).some((l) => l.includes("27195000")), 2000)).toBe(true);
+    await engine.retune(rtlCfg());
+    expect(await waitFor(() => lines(args).length === 3, 2000)).toBe(true);
+    await new Promise((r) => setTimeout(r, 1700));   // past the warm-up settle: nothing may fire late
+    expect(lines(args)[1]).toContain("--spyserver");
+    expect(lines(args)[2]).not.toContain("--spyserver");
+    expect(events.slice(mark).filter(isLoud)).toEqual([]);
+    await engine.stop();
+  });
+
+  it("a retune across sources during the warm-up settle still finishes warming up", async () => {
+    const { engine, events } = makeEngine({});
+    await engine.start(rtlCfg());
+    expect(await waitFor(() => events.some((e) => e.type === "warmup" && e.phase === "tuned"), 1000)).toBe(true);
+    await engine.retune(spyCfg());
+    expect(await waitFor(() => events.some((e) => e.type === "warmup" && e.phase === "ready"), 3500)).toBe(true);
+    await engine.stop();
+  });
+
+  it("a same-source retune still re-points without a respawn", async () => {
+    const args = tmpFile("args");
+    const tunes = tmpFile("tunes");
+    const { engine } = makeEngine({ FAKE_WB_ARGS_FILE: args, FAKE_WB_TUNES_FILE: tunes });
+    await engine.start(spyCfg());
+    await waitFor(() => lines(tunes).length >= 1, 1000);
+    await engine.retune(spyCfg({ channels: cbChannels([19]) }));
+    await waitFor(() => lines(tunes).some((l) => (JSON.parse(l) as { channels: unknown[] }).channels.length === 1), 1000);
+    await engine.stop();
+    expect(lines(args)).toHaveLength(1);
+  });
+
+  it("a retune across sources during restart backoff spawns now and cancels the timer", async () => {
+    const args = tmpFile("args");
+    const { engine, events } = makeEngine({ FAKE_WB_ARGS_FILE: args, FAKE_WB_MODE: "nodevice" }, { restartDelayMs: 1500 });
+    await engine.start(spyCfg());
+    // start() itself reports "starting" once; the second one is the exit going into backoff.
+    expect(await waitFor(() => events.filter((e) => e.type === "status" && e.state === "starting").length >= 2, 1000)).toBe(true);
+    const mark = events.length;
+    await engine.retune(rtlCfg());
+    expect(await waitFor(() => lines(args).length === 2, 700)).toBe(true);
+    expect(lines(args)[1]).not.toContain("--spyserver");
+    expect(events.slice(mark).filter(isLoud)).toEqual([]);
+    await engine.stop();
+    await new Promise((r) => setTimeout(r, 400));
+    expect(lines(args)).toHaveLength(2);   // the backoff timer didn't fire a third spawn
+  });
+
+  it("quick source switches leave one child, on the last source", async () => {
+    const args = tmpFile("args");
+    const pids = tmpFile("pids");
+    const { engine } = makeEngine({ FAKE_WB_ARGS_FILE: args, FAKE_WB_PID_FILE: pids });
+    await engine.start(spyCfg());
+    await waitFor(() => lines(args).length === 1, 1000);
+    await engine.retune(rtlCfg());
+    await engine.retune(spyCfg());
+    await waitFor(() => lines(pids).length === 3, 1000);
+    const living = () => lines(pids).filter((p) => { try { process.kill(Number(p), 0); return true; } catch { return false; } });
+    expect(await waitFor(() => living().length === 1, 3000)).toBe(true);   // the old ones go within the kill grace
+    // Children start close together, so the files' order isn't spawn order: ask the engine.
+    expect(living()).toEqual([String(engine.helperPid)]);
+    expect(lines(args).filter((l) => l.includes("--spyserver"))).toHaveLength(2);
+    expect(engine.helperSource).toBe("airspy.local:5555");
+    await engine.stop();
+  });
+
+  it("recovering from an outage reports running once the helper is ready, clearing the wall's error", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "wb-"));
+    const up = join(dir, "up");
+    const wrapper = join(dir, "helper.sh");
+    writeFileSync(wrapper, `#!/bin/bash\n[ -f "${up}" ] || { echo "failed to open SpyServer" >&2; exit 1; }\nexec "${FAKE}" "$@"\n`, { mode: 0o755 });
+    const { engine, events } = makeEngine({}, { helperCmd: [wrapper], restartDelayMs: 20, maxRestartDelayMs: 40 });
+    await engine.start(spyCfg());
+    expect(await waitFor(() => events.some((e) => e.type === "error"), 2000)).toBe(true);
+    const mark = events.length;
+    const running = () => events.slice(mark).some((e) => e.type === "status" && e.state === "running");
+    await new Promise((r) => setTimeout(r, 100));
+    expect(running()).toBe(false);   // still down: the error stays up
+    writeFileSync(up, "");
+    expect(await waitFor(running, READY_PROVEN_MS + 2000)).toBe(true);
+    await engine.stop();
+  });
+
+  it("a retune across sources clears an old source's error once the new helper is ready", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "wb-"));
+    const wrapper = join(dir, "helper.sh");
+    writeFileSync(wrapper, `#!/bin/bash\ncase "$*" in *--spyserver*) echo "failed to open SpyServer" >&2; exit 1;; esac\nexec "${FAKE}" "$@"\n`, { mode: 0o755 });
+    const { engine, events } = makeEngine({}, { helperCmd: [wrapper], restartDelayMs: 20, maxRestartDelayMs: 40 });
+    await engine.start(spyCfg());
+    expect(await waitFor(() => events.some((e) => e.type === "error"), 2000)).toBe(true);
+    const mark = events.length;
+    await engine.retune(rtlCfg());
+    expect(await waitFor(() => events.slice(mark).some((e) => e.type === "status" && e.state === "running"), READY_PROVEN_MS + 2000)).toBe(true);
+    // It never got warm, so its first warm-up may finish. It must not restart.
+    expect(events.slice(mark).filter((e) => (e.type === "warmup" && e.phase === "booting") || (e.type === "status" && e.state === "stopped"))).toEqual([]);
+    await engine.stop();
+  });
+
+  it("a helper that says ready and then dies doesn't report running, so the error doesn't blink", async () => {
+    const { engine, events } = makeEngine({ FAKE_WB_MODE: "crash" }, { restartDelayMs: 20, maxRestartDelayMs: 40 });
+    await engine.start(spyCfg());
+    expect(await waitFor(() => events.some((e) => e.type === "error"), 2000)).toBe(true);
+    const mark = events.length;
+    await new Promise((r) => setTimeout(r, 800));
+    await engine.stop();
+    expect(events.slice(mark).filter((e) => e.type === "status" && e.state === "running")).toEqual([]);
+  });
+
+  it("a healthy retune across sources sends no status, so a playing channel stays on the wall", async () => {
+    const args = tmpFile("args");
+    const { engine, events } = makeEngine({ FAKE_WB_ARGS_FILE: args });
+    await engine.start(rtlCfg());
+    await waitFor(() => lines(args).length === 1, 1000);
+    const mark = events.length;
+    await engine.retune(spyCfg());
+    await waitFor(() => lines(args).length === 2, 1000);
+    await new Promise((r) => setTimeout(r, READY_PROVEN_MS + 200));
+    await engine.stop();
+    expect(events.slice(mark).filter((e) => e.type === "status" && e.state === "running")).toEqual([]);
+  });
+
+  it("the old source's backoff timer can't fire a second helper after a retune across sources", async () => {
+    const args = tmpFile("args");
+    const dir = mkdtempSync(join(tmpdir(), "wb-"));
+    const wrapper = join(dir, "helper.sh");
+    writeFileSync(wrapper, `#!/bin/bash\ncase "$*" in *--spyserver*) exit 1;; esac\nexec "${FAKE}" "$@"\n`, { mode: 0o755 });
+    const { engine, events } = makeEngine({ FAKE_WB_ARGS_FILE: args }, { helperCmd: [wrapper], restartDelayMs: 200 });
+    await engine.start(spyCfg());
+    expect(await waitFor(() => events.filter((e) => e.type === "status" && e.state === "starting").length >= 2, 1000)).toBe(true);
+    await engine.retune(rtlCfg());
+    await waitFor(() => lines(args).length === 1, 500);
+    await new Promise((r) => setTimeout(r, 500));   // well past the 200 ms backoff, engine still running
+    expect(lines(args)).toHaveLength(1);
+    await engine.stop();
+  });
+
+  it("the new source's first failure is soft even after the old source failed repeatedly", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "wb-"));
+    const flag = join(dir, "rtl-fails");
+    const wrapper = join(dir, "helper.sh");
+    writeFileSync(wrapper, `#!/bin/bash\ncase "$*" in *--spyserver*) exit 1;; esac\n[ -f "${flag}" ] && exit 1\nexec "${FAKE}" "$@"\n`, { mode: 0o755 });
+    writeFileSync(flag, "");
+    const { engine, events } = makeEngine({}, { helperCmd: [wrapper], restartDelayMs: 300 });
+    await engine.start(spyCfg());
+    expect(await waitFor(() => events.some((e) => e.type === "error"), 2000)).toBe(true);
+    const mark = events.length;
+    await engine.retune(rtlCfg());
+    expect(await waitFor(() => events.slice(mark).some((e) => e.type === "status" && e.state === "starting"), 1000)).toBe(true);
+    expect(events.slice(mark).filter((e) => e.type === "error")).toEqual([]);
+    await engine.stop();
+  });
+
+  it("a warm engine crossing sources during backoff replays no warm-up", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "wb-"));
+    const up = join(dir, "up");
+    const wrapper = join(dir, "helper.sh");
+    writeFileSync(wrapper, `#!/bin/bash\ncase "$*" in *--spyserver*) exit 1;; esac\nexec "${FAKE}" "$@"\n`, { mode: 0o755 });
+    const { engine, events } = makeEngine({ UP: up }, { helperCmd: [wrapper], restartDelayMs: 300 });
+    await engine.start(rtlCfg());
+    expect(await waitFor(() => events.some((e) => e.type === "warmup" && e.phase === "ready"), 4000)).toBe(true);
+    await engine.retune(spyCfg());
+    expect(await waitFor(() => events.some((e) => e.type === "status" && e.state === "starting"), 1000)).toBe(true);
+    const mark = events.length;
+    await engine.retune(rtlCfg());
+    await new Promise((r) => setTimeout(r, 1800));
+    expect(events.slice(mark).filter((e) => e.type === "warmup")).toEqual([]);
+    await engine.stop();
+  });
+
+  it("an HF retune during a SpyServer outage waits for the backoff: no restart, no state change", async () => {
+    const args = tmpFile("args");
+    const hfTune = (centerHz: number) => cfg([], { spyserver: SPY, fixedCenterHz: centerHz, windowBandwidthHz: 600_000, flatBandwidthHz: 600_000 });
+    const { engine, events } = makeEngine({ FAKE_WB_ARGS_FILE: args, FAKE_WB_MODE: "nodevice" }, { restartDelayMs: 1_000 });
+    await engine.start(hfTune(5_952_500));
+    expect(await waitFor(() => events.filter((e) => e.type === "status" && e.state === "starting").length >= 2, 1000)).toBe(true);
+    const mark = events.length;
+    await engine.retune(hfTune(7_402_500));
+    await new Promise((r) => setTimeout(r, 200));
+    expect(lines(args)).toHaveLength(1);
+    expect(events.slice(mark).filter((e) => e.type === "status" || e.type === "warmup")).toEqual([]);
+    await engine.stop();
+  });
+
+  it("a SpyServer exit's reason reaches the error event", async () => {
+    const reason = "SpyServer: no control (another client holds the radio)";
+    const { engine, events } = makeEngine({ FAKE_WB_MODE: "crash", FAKE_WB_STDERR: reason });
+    await engine.start(spyCfg());
+    expect(await waitFor(() => events.some((e) => e.type === "error"), 2000)).toBe(true);
+    await engine.stop();
+    const err = events.find((e) => e.type === "error");
+    expect(err?.type === "error" && err.message).toContain("another client");
+  });
 });
