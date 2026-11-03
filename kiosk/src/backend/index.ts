@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createServer, isSharedActivity } from "./server.js";
 import { ModeStore } from "./modeStore.js";
+import { ReceptionLog } from "./hf/receptionLog.js";
 import { ConfigStore } from "./config/ConfigStore.js";
 import { ActivityLog } from "./activityLog.js";
 import { WsHub } from "./ws.js";
@@ -292,6 +293,7 @@ let wallWatchdog: WallWatchdog | undefined;
 
 const { server, getConfig, bootScanConfig } = createServer({
   modeStore: new ModeStore(join(dirname(CONFIG_PATH), "mode.json")),
+  receptionLog: new ReceptionLog({ path: join(dirname(CONFIG_PATH), "reception.db") }),
   configStore, engine, weatherEngine, activityLog, wsHub, staticDir: STATIC_DIR,
   lookup, weather, history, aircraftFeed, radar,
   ccSampleDir: join(dirname(CONFIG_PATH), "cc-samples"),

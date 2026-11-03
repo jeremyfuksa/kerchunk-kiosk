@@ -12,6 +12,7 @@ import { mountRadio } from "./radio.js";
 import { mountTune } from "./tune.js";
 import { mountLibrary } from "./library.js";
 import { mountSystem } from "./system.js";
+import { mountHfLog } from "./hfLog.js";
 import { hrefFor, resolveLegacy } from "./route.js";
 import { esc } from "../lib/format.js";
 
@@ -85,6 +86,7 @@ export function renderAdmin(root: HTMLElement): void {
   mountRadio(ctx);
   mountTune(ctx);
   mountLibrary(ctx);
+  mountHfLog(ctx);
   mountSystem(ctx);
 
   live.connect();

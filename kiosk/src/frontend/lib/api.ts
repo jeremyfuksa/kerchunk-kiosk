@@ -116,6 +116,8 @@ export const api = {
   getLogs: () => fetch("/api/logs").then(j<{ freq: number; alphaTag: string; ts: number }[]>),
   getSystem: <T = unknown>() => fetch("/api/system").then(j<T>),
   getStats: <T = unknown>(sinceMs: number) => fetch(`/api/stats?since=${sinceMs}`).then(j<T>),
+  getHfLog: (night: string | null) =>
+    fetch(`/api/hf/log${night ? `?night=${encodeURIComponent(night)}` : ""}`).then(j<{ nights: Array<{ night: string; count: number }>; night: string | null; rows: unknown[] }>),
   getHistory: <T = unknown>(q: Record<string, string | number>) =>
     fetch(`/api/history?${new URLSearchParams(Object.entries(q).map(([k, v]) => [k, String(v)]))}`).then(j<T>),
 };

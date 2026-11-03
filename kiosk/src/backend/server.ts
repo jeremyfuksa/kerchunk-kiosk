@@ -1,6 +1,7 @@
 import type { ModeStore } from "./modeStore.js";
 import { HfController, type HfConfig } from "./hf/controller.js";
 import type { HfTune } from "./hf/sweep.js";
+import type { Candidate, ReceptionLog } from "./hf/receptionLog.js";
 import { createServer as httpCreateServer, type IncomingMessage, type ServerResponse, type Server } from "node:http";
 import { readFileSync, existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
@@ -31,6 +32,10 @@ import { CcRecorder } from "./ccRecorder.js";
 import { isLoopback } from "./wallWatchdog.js";
 
 export interface ServerDeps {
+  /** HF mode's record of what it heard. Absent = HF still runs, but nothing is logged. */
+  receptionLog?: ReceptionLog;
+  /** Likely stations for a frequency and time, likeliest first. */
+  hfCandidates?: (hz: number, ts: number) => readonly Candidate[];
   /** Keeps the operator's mode across restarts. Absent = always boot in scan. */
   modeStore?: ModeStore;
   /** Optional identification chain — enriches Close Call channel names. */
@@ -286,7 +291,12 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
   let monitorChannel: Channel | null = mode === "monitor" ? savedMode?.monitor ?? null : null;
   const hf = new HfController({
     config: () => config.hf as HfConfig | undefined,
-    apply: () => { void switchMode(scanConfigFor("hf", null)).catch((e) => console.error(`[hf] retune failed: ${(e as Error).message}`)); },
+    apply: (tune) => {
+      if (tune.listenHz !== null) deps.receptionLog?.markOnSpeaker(Date.now(), tune.listenHz);
+      void switchMode(scanConfigFor("hf", null)).catch((e) => console.error(`[hf] retune failed: ${(e as Error).message}`));
+    },
+    onSurvey: (tune, carriers) => deps.receptionLog?.record(Date.now(), tune.band, carriers, deps.hfCandidates ?? (() => [])),
+    ...(deps.hfCandidates ? { isMatched: (hz: number) => deps.hfCandidates!(hz, Date.now()).length > 0 } : {}),
   });
   engine.on((ev) => { if (mode === "hf") hf.onEngineEvent(ev); });
   if (mode === "hf") hf.start();
@@ -1506,6 +1516,13 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
         startedAt: STARTED_AT,
         ...(mode === "hf" && hf.current() ? { hf: hf.current() } : {}),
       });
+    }
+    if (method === "GET" && path === "/api/hf/log") {
+      const nights = deps.receptionLog?.nights() ?? [];
+      const asked = new URL(req.url ?? "/", "http://localhost").searchParams.get("night");
+      if (asked !== null && !/^\d{4}-\d{2}-\d{2}$/.test(asked)) return json(res, 400, { error: "invalid night" });
+      const night = asked ?? nights[0]?.night ?? null;
+      return json(res, 200, { nights, night, rows: night && deps.receptionLog ? deps.receptionLog.rows(night) : [] });
     }
     if (method === "GET" && path === "/api/logs") return json(res, 200, activityLog.entries());
 
