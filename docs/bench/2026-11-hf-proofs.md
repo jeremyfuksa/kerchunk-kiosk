@@ -199,3 +199,16 @@ This used the mode API. A real SAME header can't be produced on demand, so the b
 ## 8-bit after dark
 
 The same comparison at 23:50 local, the check owed above. Clipping was again 0.000% in every window at gains 24 and 32. Gain 32 missed at most one carrier per window, all under +15 dB. The strongest night signals don't clip, so the default of 32 stands. One night, 4 s per capture.
+
+## HF mode on the live wall
+
+Night of 2026-11-02, speaker muted.
+
+- Full pass: every window on its 60 s timer, then the 30 s CB stop, then wrapping to 120 m. No false CB hold.
+- Helper 24% of a core and 55 °C over the first few minutes with the real stage. Measured before the map-pause and redraw fixes, so see the thermal comparison.
+- Schedules: EiBi, Aoki and HFCC all downloaded on the kiosk. The log named WWV, WWCR Nashville and Radio Rebelde plausibly. None was confirmed by ear.
+- Test alert banner shown over the stage.
+- Dead SpyServer address: "Receiver offline" held steady across windows, with six helper exits in 75 s of backoff. It returned to a station within 30 s of restoring the address, with no restart.
+
+Not proven: a real CB hold (the band was quiet), a real SAME alert from HF, and audio by ear.
+

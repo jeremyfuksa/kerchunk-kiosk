@@ -141,7 +141,7 @@ export function reduce(s: DashState, ev: EngineEvent): DashState {
   }
 }
 
-const HF_HEARD_ROWS = 5;
+const HF_HEARD_ROWS = 3;
 function fmtTime(ts: number): string { return new Date(ts).toLocaleTimeString(); }
 
 // Re-exported for tests (kept stable from the pre-refactor public surface).
