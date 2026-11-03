@@ -248,8 +248,8 @@ even with green checks.
 
 - **CB mode** (`POST /api/mode {mode:"cb"}`, PR #296): the scanner listens to CB only
   (`config.cb.channels`, names `config.cb.names`), never in the scan rotation or on the
-  map. The kiosk swaps to the CB stage (`dashboard/cbDial.ts` model, `cbView.ts` view,
-  `.cbStage`), pausing the map via `MapHandle.pause()`. Knobs:
+  map. The kiosk swaps to the CB stage, The Horizon (spec 2026-11-03-cb-horizon: `dashboard/cbDial.ts` model,
+  `cbView.ts` text, `cbHorizon.ts` sky and masts, `cbRings.ts` the only moving layer, `.cbStage`), pausing the map via `MapHandle.pause()`. Knobs:
   `display.cb.fadeStepsMin` / `stepTickMs` / `logRows`.
   `config.spyserver` (`host`, `port` 5555, `gain`, `digitalGain`, `audioBufferMs` 500) puts CB on
   the Airspy HF+: window 600 kHz, helper rate 750 kHz, 40 lanes (`SPY_LANES`, so all 40 channels), and
