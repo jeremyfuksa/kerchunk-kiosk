@@ -1,6 +1,7 @@
 // The Log tab: what HF mode heard, night by night.
 import { api } from "../lib/api.js";
 import type { Ctx } from "./ctx.js";
+import { esc } from "../lib/format.js";
 import { emptyState } from "./ui/kit.js";
 import { logRows, sortRows, type HfLogRow, type HfLogSort } from "./hfLogModel.js";
 import "./hfLog.css";
@@ -12,7 +13,6 @@ const COLUMNS: Array<{ label: string; sort?: HfLogSort; num?: boolean }> = [
   { label: "Passes", sort: "passes", num: true }, { label: "First" }, { label: "Last", sort: "lastTs" }, { label: "Speaker" },
 ];
 
-const esc = (s: string): string => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 const clock = (ts: number): string => new Date(ts).toISOString().slice(11, 16);
 
 export function mountHfLog(ctx: Ctx): void {

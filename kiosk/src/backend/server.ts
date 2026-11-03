@@ -300,6 +300,10 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
   });
   engine.on((ev) => { if (mode === "hf") hf.onEngineEvent(ev); });
   if (mode === "hf") hf.start();
+  const hfStatus = (t: HfTune) => {
+    const cands = t.listenHz !== null ? deps.hfCandidates?.(t.listenHz, Date.now()) ?? [] : [];
+    return { ...t, candidate: cands[0] ?? null, others: cands.slice(1).map((c) => c.station) };
+  };
   // Called only for the operator's own choices: a SAME break-in's "weather" is temporary.
   const saveMode = (): void => {
         try { deps.modeStore?.save({ mode, monitor: monitorChannel }); }
@@ -1514,7 +1518,7 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
         // When this backend process started. The admin's system-action watcher
         // compares it across a restart/reboot to know a *new* process is up.
         startedAt: STARTED_AT,
-        ...(mode === "hf" && hf.current() ? { hf: hf.current() } : {}),
+        ...(mode === "hf" && hf.current() ? { hf: hfStatus(hf.current()!) } : {}),
       });
     }
     if (method === "GET" && path === "/api/hf/log") {

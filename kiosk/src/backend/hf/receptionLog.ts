@@ -8,6 +8,7 @@ const NEW_PASS_MS = 5 * 60_000;
 
 export interface Candidate {
   station: string;
+  itu?: string;        // ITU code of the transmitter's country
   country?: string;
   language?: string;
   site?: string;

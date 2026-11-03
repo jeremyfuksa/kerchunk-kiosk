@@ -264,6 +264,10 @@ even with green checks.
   stays out of the activity log and history (`isSharedActivity`), so it doesn't reach jeremyfuksa.com.
   Knobs: `config.hf` (`windowMs`, `cbStopMs`, `minListenDb`, `cooldownMs`, `fadeMs`, `cbOpenDb`, `cbOpenMs`,
   `cbQuietMs`, `bands`). Mode survives restarts in `mode.json` beside the config.
+  Reception log: `hf/receptionLog.ts`, its own `reception.db` (never pruned), admin Log tab, `GET /api/hf/log`.
+  Schedules: `hf/schedule.ts` + `scheduleStore.ts` fetch EiBi (HTTP only, its cert is expired), Aoki and HFCC
+  daily into `schedules/` beside the config, keeping the last good copy. Runtime only, never in the repo:
+  Aoki and HFCC state no redistribution terms. Station names are always "likely".
 - **Engine abstraction.** Everything runs behind the `ScannerEngine` interface
   (`src/backend/engine/`), with three implementations: `WidebandEngine`
   (default; spawns the `kerchunk-dsp` C++ helper), `RtlFmEngine` (sequential
