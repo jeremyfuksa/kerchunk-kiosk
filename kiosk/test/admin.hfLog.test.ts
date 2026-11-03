@@ -12,6 +12,9 @@ describe("HF log view", () => {
     expect(a).toMatchObject({ freq: "5950", station: "VOA", likely: true, others: "BBC", where: "Greenville, USA", power: "250 kW", distance: "1,700 km", peak: "+30.0" });
     expect(b).toMatchObject({ station: "Unidentified", likely: false, others: "", where: "", power: "", distance: "" });
   });
+  it("shows a utility mode code as a word", () => {
+    expect(logRows([row({ station: "WWV", language: "-TS" })])[0]?.language).toBe("Utility");
+  });
   it("shows fractional frequencies only when they exist", () => {
     expect(logRows([row({ freqHz: 5_952_500 })])[0]?.freq).toBe("5952.5");
   });

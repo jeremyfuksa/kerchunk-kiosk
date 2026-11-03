@@ -305,9 +305,14 @@ const refreshSchedules = (): void => {
 setTimeout(refreshSchedules, 120_000).unref();
 setInterval(refreshSchedules, 3_600_000).unref();
 
+// A corrupt log must not stop the radio, SAME included.
+let receptionLog: ReceptionLog | undefined;
+try { receptionLog = new ReceptionLog({ path: join(dirname(CONFIG_PATH), "reception.db") }); }
+catch (e) { console.error(`[hf] reception log unavailable: ${(e as Error).message}`); }
+
 const { server, getConfig, bootScanConfig } = createServer({
   modeStore: new ModeStore(join(dirname(CONFIG_PATH), "mode.json")),
-  receptionLog: new ReceptionLog({ path: join(dirname(CONFIG_PATH), "reception.db") }),
+  ...(receptionLog ? { receptionLog } : {}),
   hfCandidates: (hz, ts) => schedules.candidates(hz, ts),
   configStore, engine, weatherEngine, activityLog, wsHub, staticDir: STATIC_DIR,
   lookup, weather, history, aircraftFeed, radar,

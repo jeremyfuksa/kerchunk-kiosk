@@ -4,7 +4,7 @@
 .kc-log__night select { font: inherit; color: var(--kc-ink); background: none; border: 1px solid var(--kc-line); border-radius: 8px; padding: 6px 8px; }
 .kc-log__note { margin: 4px 0 12px; color: var(--kc-mute); font-size: var(--kc-t-small); }
 .kc-log__scroll { overflow-x: auto; }
-.kc-log__table { width: 100%; border-collapse: collapse; font-size: var(--kc-t-small); white-space: nowrap; }
+.kc-log__table { width: 100%; border-collapse: collapse; font-size: var(--kc-t-small); }
 .kc-log__table th { text-align: left; color: var(--kc-mute); font-weight: 600; padding: 8px 12px 8px 0; }
 .kc-log__table td { border-top: 1px solid var(--kc-line); padding: 8px 12px 8px 0; color: var(--kc-ink); }
 .kc-log__table .is-num { text-align: right; font-variant-numeric: tabular-nums; }
@@ -13,3 +13,5 @@
 .kc-log__table button { all: unset; cursor: pointer; }
 .kc-log__table button[aria-pressed="true"] { color: var(--kc-ink); }
 .kc-log__table button:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+.kc-log__table th, .kc-log__table td { white-space: nowrap; }
+.kc-log__table td.kc-log__wrap { white-space: normal; min-width: 12rem; }

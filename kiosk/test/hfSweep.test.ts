@@ -27,7 +27,7 @@ describe("hfWindows", () => {
 
 describe("HfSweep windows", () => {
   it("starts on the first window with nothing playing", () => {
-    expect(new HfSweep(opts(), W, 0).current()).toEqual({ stage: "sweep", centerHz: W[0]!.centerHz, listenHz: null, band: "49m" });
+    expect(new HfSweep(opts(), W, 0).current()).toMatchObject({ stage: "sweep", centerHz: W[0]!.centerHz, listenHz: null, band: "49m", loHz: W[0]!.loHz, hiHz: W[0]!.hiHz });
   });
 
   it("moves on when the window timer ends, whatever is playing", () => {
@@ -150,6 +150,12 @@ describe("HfSweep CB", () => {
     expect(s.onCarriers(135_000, CB_CENTER, [car(CH19, 30)])).toBeNull();
   });
 
+  it("a carrier on a channel the hold wouldn't tune doesn't count", () => {
+    const s = atCbStop({ cbOpenMs: 0, isCbChannel: (hz) => hz === CH19 });
+    expect(s.onCarriers(125_000, CB_CENTER, [car(27_255_000, 40)])).toBeNull();
+    expect(s.onCarriers(125_001, CB_CENTER, [car(CH19, 40)])?.stage).toBe("cb");
+  });
+
   it("carriers off the CB channels and weak ones don't count", () => {
     const s = atCbStop({ cbOpenMs: 10_000 });
     s.onCarriers(125_000, CB_CENTER, [car(27_195_000, 40), car(CH19, opts().cbOpenDb - 1)]);
@@ -177,6 +183,18 @@ describe("HfSweep CB", () => {
     s.onCarriers(125_000, CB_CENTER, [car(CH19, 30)]);
     expect(s.onCarriers(130_000, CB_CENTER, [car(CH19, 30)])).toBeNull();
     expect(s.current().stage).toBe("cb");
+  });
+
+  it("resume gives the playing station a fresh fade, and CB a fresh clock", () => {
+    const center = W[0]!.centerHz;
+    const s = new HfSweep(opts({ fadeMs: 10_000 }), W, 0);
+    s.onCarriers(5_000, center, [car(5_950_000, 40)]);
+    s.resume(500_000);
+    expect(s.onCarriers(500_001, center, [])).toBeNull();
+    const c = atCbStop({ cbOpenMs: 10_000 });
+    c.onCarriers(125_000, CB_CENTER, [car(CH19, 30)]);
+    c.resume(400_000);
+    expect(c.onCarriers(400_001, CB_CENTER, [car(CH19, 30)])).toBeNull();
   });
 
   it("resume after a break-in keeps the window and restarts its timer", () => {

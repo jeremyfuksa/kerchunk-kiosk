@@ -7,12 +7,20 @@ import { parseAoki, parseEibi, parseEibiReadme, parseHfcc, parseHfccSites, Sched
 import type { Candidate } from "./receptionLog.js";
 
 const REFRESH_MS = 24 * 3_600_000;
+const RETRY_MS = 3_600_000;       // after a refresh that got nothing
 const FETCH_TIMEOUT_MS = 60_000;
-const AOKI_INDEX = "http://www1.s2.starcat.ne.jp/ndxc/nnk.htm";
+const AOKI_INDEX = "https://www1.s2.starcat.ne.jp/ndxc/nnk.htm";
+// The index names the zip's host, which changes, so a link is only followed to these.
+const AOKI_HOSTS = /^[a-z0-9.-]+\.(starcat|mediacat)\.ne\.jp$/;
+// The real files are about 1 MB zipped and 1 MB inside. These caps are generous for that, and
+// stop a bad or spoofed response from filling memory. EiBi has to come over plain HTTP.
+const MAX_DOWNLOAD_BYTES = 16 * 1024 * 1024;
+const MAX_INFLATED_BYTES = 32 * 1024 * 1024;
 
 /** The few fields of a zip this needs. Node has no zip reader, and these files are simple. */
-export function readZip(zip: Buffer): Map<string, Buffer> {
+export function readZip(zip: Buffer, maxBytes = MAX_INFLATED_BYTES): Map<string, Buffer> {
   const out = new Map<string, Buffer>();
+  let total = 0;
   let end = -1;
   for (let i = zip.length - 22; i >= 0 && end < 0; i--) if (zip.readUInt32LE(i) === 0x06054b50) end = i;
   if (end < 0) return out;
@@ -25,7 +33,10 @@ export function readZip(zip: Buffer): Map<string, Buffer> {
     const name = zip.toString("latin1", p + 46, p + 46 + nameLen);
     const start = local + 30 + zip.readUInt16LE(local + 26) + zip.readUInt16LE(local + 28);
     const body = zip.subarray(start, start + size);
-    out.set(name, method === 8 ? inflateRawSync(body) : Buffer.from(body));
+    const data = method === 8 ? inflateRawSync(body, { maxOutputLength: maxBytes - total }) : Buffer.from(body);
+    total += data.length;
+    if (total > maxBytes) throw new Error("zip too large");
+    out.set(name, data);
     p += 46 + nameLen + zip.readUInt16LE(p + 30) + zip.readUInt16LE(p + 32);
   }
   return out;
@@ -56,7 +67,7 @@ export class ScheduleStore {
   candidates(hz: number, ts: number): Candidate[] { return this.db?.candidates(hz, ts) ?? []; }
 
   due(): boolean {
-    if (this.lastAttempt && this.now() - this.lastAttempt < REFRESH_MS) return false;
+    if (this.lastAttempt && this.now() - this.lastAttempt < RETRY_MS) return false;
     const stamp = join(this.deps.dir, "fetched");
     if (!existsSync(stamp)) return true;
     return !(this.now() - new Date(readFileSync(stamp, "latin1")).getTime() < REFRESH_MS);
@@ -78,24 +89,25 @@ export class ScheduleStore {
   async refresh(): Promise<void> {
     this.lastAttempt = this.now();
     const season = seasonCode(new Date(this.now()));
-    await this.source("EiBi", async () => {
+    const got = await Promise.resolve().then(async () => [await this.source("EiBi", async () => {
       const csv = await this.text(`http://www.eibispace.de/dx/sked-${season}.csv`);
       if (parseEibi(csv).length === 0) throw new Error("no rows");
       this.save("eibi.csv", csv);
-      this.save("eibi-readme.txt", await this.text("http://www.eibispace.de/dx/README.TXT"));
-    });
-    await this.source("Aoki", async () => {
+      const readme = await this.text("http://www.eibispace.de/dx/README.TXT");
+      if (parseEibiReadme(readme).languages.size > 0) this.save("eibi-readme.txt", readme);
+    }), await this.source("Aoki", async () => {
       const page = await this.text(AOKI_INDEX);
       // The page's labels are wrong and the path changes each season. Only the file name is reliable.
       const href = new RegExp(`href="([^"]*\\b[a-z]{2}${season}\\.zip)"`, "i").exec(page)?.[1];
       if (!href) throw new Error(`no ${season} zip on the index`);
-      const files = readZip(await this.bytes(new URL(href, AOKI_INDEX).href));
+      const url = new URL(href, AOKI_INDEX);
+      if (url.protocol !== "https:" || !AOKI_HOSTS.test(url.hostname)) throw new Error(`refusing ${url.href}`);
+      const files = readZip(await this.bytes(url.href));
       const name = [...files.keys()].find((n) => new RegExp(`${season}\\.txt$`, "i").test(n));
       const text = name ? files.get(name)!.toString("latin1") : "";
       if (parseAoki(text).length === 0) throw new Error("no rows");
       this.save("aoki.txt", text);
-    });
-    await this.source("HFCC", async () => {
+    }), await this.source("HFCC", async () => {
       const files = readZip(await this.bytes(`https://hfcc.org/data/${season}/${season}allx2.zip`));
       const name = [...files.keys()].find((n) => /all00\.txt$/i.test(n));
       const text = name ? files.get(name)!.toString("latin1") : "";
@@ -103,14 +115,15 @@ export class ScheduleStore {
       this.save("hfcc.txt", text);
       const sites = [...files.entries()].find(([n]) => /^site\.txt$/i.test(n))?.[1];
       if (sites) this.save("hfcc-sites.txt", sites.toString("latin1"));
-    });
+    })]);
+    if (!got.some(Boolean)) return;   // nothing new: no stamp, so it's tried again within the hour
     this.save("fetched", new Date(this.now()).toISOString());
     this.loadFromDisk();
   }
 
-  private async source(name: string, get: () => Promise<void>): Promise<void> {
-    try { await get(); this.log(`${name} updated`); }
-    catch (e) { this.log(`${name} fetch failed, keeping the last copy: ${(e as Error).message}`); }
+  private async source(name: string, get: () => Promise<void>): Promise<boolean> {
+    try { await get(); this.log(`${name} updated`); return true; }
+    catch (e) { this.log(`${name} fetch failed, keeping the last copy: ${(e as Error).message}`); return false; }
   }
 
   private async response(url: string): Promise<Response> {
@@ -118,7 +131,17 @@ export class ScheduleStore {
     if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`);
     return res;
   }
-  private async bytes(url: string): Promise<Buffer> { return Buffer.from(await (await this.response(url)).arrayBuffer()); }
+  private async bytes(url: string): Promise<Buffer> {
+    const res = await this.response(url);
+    const chunks: Uint8Array[] = [];
+    let size = 0;
+    for await (const chunk of res.body ?? []) {
+      size += chunk.length;
+      if (size > MAX_DOWNLOAD_BYTES) throw new Error(`${url}: too large`);
+      chunks.push(chunk);
+    }
+    return Buffer.concat(chunks);
+  }
   private async text(url: string): Promise<string> { return (await this.bytes(url)).toString("latin1"); }
 
   private save(name: string, text: string): void {

@@ -63,6 +63,8 @@ export class ReceptionLog {
   /** One survey of one window. `candidates` lists the schedule matches, likeliest first. */
   record(ts: number, band: string, carriers: ReadonlyArray<{ hz: number; db: number }>, candidates: (hz: number, ts: number) => readonly Candidate[]): void {
     const night = nightOf(ts);
+    this.db.exec("BEGIN");
+    try {
     for (const c of carriers) {
       const cands = candidates(c.hz, ts);
       const top = cands[0] ?? null;
@@ -84,6 +86,11 @@ export class ReceptionLog {
         `).run(night, ts, ts, c.hz, band, c.db, top?.station ?? null, top?.country ?? null, top?.language ?? null, top?.site ?? null,
           top?.lat ?? null, top?.lon ?? null, top?.powerKw ?? null, top?.distanceKm ?? null, JSON.stringify(others));
       }
+    }
+    this.db.exec("COMMIT");
+    } catch (e) {
+      this.db.exec("ROLLBACK");
+      throw e;
     }
   }
 

@@ -181,8 +181,9 @@ starts. Unidentified carriers key on night + frequency.
 - **Downloads** run on a schedule on the appliance and keep the last good copy
   when a fetch fails. An expired certificate on eibispace.de was observed on
   2026-11-02, so this case is real.
-- **Licensing is unresolved.** EiBi's terms could not be found, so schedule data
-  is fetched at runtime and not committed to the repo until they are checked.
+- **Licensing.** EiBi's README allows free use, copying and use in third-party software.
+  Aoki and HFCC state no redistribution terms, so schedule data is fetched at runtime
+  and not committed to the repo.
 
 ## Wall
 
