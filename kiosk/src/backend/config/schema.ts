@@ -551,6 +551,23 @@ export const configSchema = z.object({
     digitalGain: z.number().int().min(0).max(32).optional(),
     audioBufferMs: z.number().int().min(0).max(3000).default(DEFAULT_SPY_AUDIO_BUFFER_MS),
   }).optional(),
+  // HF mode (spec 2026-11-02-hf-mode). Needs spyserver. Every absent knob takes its default
+  // from hf/sweep.ts. Applies live, except bands, which apply on entering HF mode.
+  hf: z.object({
+    windowMs: z.number().int().min(10_000).max(3_600_000).optional(),
+    cbStopMs: z.number().int().min(10_000).max(600_000).optional(),
+    minListenDb: z.number().min(10).max(60).optional(),
+    cooldownMs: z.number().int().min(0).max(24 * 3_600_000).optional(),
+    fadeMs: z.number().int().min(5_000).max(300_000).optional(),
+    cbOpenDb: z.number().min(10).max(60).optional(),
+    cbOpenMs: z.number().int().min(0).max(600_000).optional(),
+    cbQuietMs: z.number().int().min(60_000).max(6 * 3_600_000).optional(),
+    bands: z.array(z.object({
+      name: z.string().min(1).max(20),
+      loHz: z.number().int().min(100_000).max(30_000_000),
+      hiHz: z.number().int().min(100_000).max(30_000_000),
+    }).refine((b) => b.hiHz > b.loHz, { message: "band needs hiHz above loHz" })).min(1).optional(),
+  }).optional(),
   // RepeaterBook lookup (Close Call enrichment). userAgent must be the
   // string REGISTERED with RepeaterBook; states are full names ("Missouri").
   lookup: z.object({

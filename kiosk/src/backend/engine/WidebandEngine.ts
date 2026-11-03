@@ -160,6 +160,9 @@ function defaultHelperCmd(): string[] {
 
 interface HelperEvent {
   ev: string;
+  center?: number;
+  floorDb?: number;
+  carriers?: Array<{ hz: number; db: number }>;
   id?: string | null;
   db?: number;
   freqHz?: number;
@@ -438,12 +441,7 @@ export class WidebandEngine implements ScannerEngine {
     }
 
     this.config = config;
-    this.groups = groupChannels(
-      config.channels,
-      config.windowBandwidthHz ?? DEFAULT_WINDOW_HZ,
-      this.lanesFor(config),
-      this.groupingOpts(config),
-    );
+    this.groups = this.groupsFor(config);
     this.groupIndex = 0;
     this.resetRevisit();
     // Band-sweep stops: empty windows Close Call hunts in, one per rotation.
@@ -494,6 +492,11 @@ export class WidebandEngine implements ScannerEngine {
   // Edge-aware placement (grouping.ts): keep channels in the flat passband and
   // off the DC spike. An engine with a fixed center offset (the weather radio,
   // parked 60 kHz off NWR) already dodges DC, so it skips the DC shift.
+  private groupsFor(config: ScanConfig): Array<ChannelGroup<ScanChannel>> {
+    if (config.fixedCenterHz !== undefined) return [{ centerHz: config.fixedCenterHz, channels: config.channels }];
+    return groupChannels(config.channels, config.windowBandwidthHz ?? DEFAULT_WINDOW_HZ, this.lanesFor(config), this.groupingOpts(config));
+  }
+
   private groupingOpts(config: ScanConfig): GroupingOptions {
     return {
       flatHz: config.flatBandwidthHz ?? DEFAULT_FLAT_BANDWIDTH_HZ,
@@ -513,12 +516,7 @@ export class WidebandEngine implements ScannerEngine {
     if (!shape || shape.lanes !== this.lanesFor(config) || shape.rate !== this.rateFor(config)) {
       return this.start(config);
     }
-    const newGroups = groupChannels(
-      config.channels,
-      config.windowBandwidthHz ?? DEFAULT_WINDOW_HZ,
-      this.lanesFor(config),
-      this.groupingOpts(config),
-    );
+    const newGroups = this.groupsFor(config);
     // Slots fit every group: only an emptied channel set (release the SDR)
     // takes the full start() path.
     if (newGroups.length === 0) return this.start(config);
@@ -546,12 +544,7 @@ export class WidebandEngine implements ScannerEngine {
    * outage says nothing about the new one.
    */
   private respawnForSource(config: ScanConfig): void {
-    const groups = groupChannels(
-      config.channels,
-      config.windowBandwidthHz ?? DEFAULT_WINDOW_HZ,
-      this.lanesFor(config),
-      this.groupingOpts(config),
-    );
+    const groups = this.groupsFor(config);
     if (groups.length === 0) { void this.start(config); return; }
     this.clearRestartTimer();
     this.releaseOpenOnHop();
@@ -581,7 +574,7 @@ export class WidebandEngine implements ScannerEngine {
       "--sink", cfg.audioSink,
       "--hang-ms", String(cfg.dwellMs),
       ...(spy
-        ? ["--spyserver", `${spy.host}:${spy.port}`, "--audio-buffer-ms", String(spy.audioBufferMs),
+        ? ["--spyserver", `${spy.host}:${spy.port}`, "--survey", "--audio-buffer-ms", String(spy.audioBufferMs),
           ...(spy.gain !== undefined ? ["--spyserver-gain", String(spy.gain)] : []),
           ...(spy.digitalGain !== undefined ? ["--spyserver-digital-gain", String(spy.digitalGain)] : [])]
       // Prefer serial (deterministic); fall back to index resolved at spawn.
@@ -782,6 +775,11 @@ export class WidebandEngine implements ScannerEngine {
         }
         break;
       }
+      case "carriers":
+        if (typeof ev.center === "number" && typeof ev.floorDb === "number" && Array.isArray(ev.carriers)) {
+          this.emit({ type: "carriers", centerHz: ev.center, floorDb: ev.floorDb, carriers: ev.carriers, ts: this.now() });
+        }
+        break;
       case "same":
         if (typeof ev.raw === "string") {
           this.emit({ type: "same", raw: ev.raw, ts: this.now() });

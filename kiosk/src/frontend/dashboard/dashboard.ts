@@ -276,7 +276,7 @@ export function renderDashboard(root: HTMLElement): void {
   }
   // Mode and break-in come from /api/status (mode flips restart the engine, so
   // the status event re-polls); they name the pill and the glass's meta line.
-  let mode: "scan" | "weather" | "monitor" | "cb" = "scan";
+  let mode: "scan" | "weather" | "monitor" | "cb" | "hf" = "scan";
   let breakIn = false;
   function paintStatus(): Promise<void> {
     return api.getStatus()
@@ -293,7 +293,7 @@ export function renderDashboard(root: HTMLElement): void {
         // The 5s poll usually reads identical values — only repaint on a change.
         const changed = s.mode !== mode || sc !== scanCount || mu !== muted || bi !== breakIn || wm !== state.warmed;
         mode = s.mode; scanCount = sc; muted = mu; breakIn = bi;
-        setCbStage(s.mode === "cb");
+        setCbStage(s.mode === "cb" || s.hf?.stage === "cb");
         if (wm !== state.warmed) state = { ...state, warmed: wm };
         if (changed) schedule();
       })

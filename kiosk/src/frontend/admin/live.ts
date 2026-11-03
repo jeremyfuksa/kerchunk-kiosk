@@ -9,7 +9,8 @@ import { fmtFreq } from "../lib/format.js";
 export interface Tuned { freq: number; alphaTag: string; mode?: Channel["mode"] }
 
 export interface LiveState {
-  mode: "scan" | "weather" | "monitor" | "cb";
+  mode: "scan" | "weather" | "monitor" | "cb" | "hf";
+  hf: { stage: "sweep" | "cbStop" | "cb"; band: string } | null;
   breakIn: boolean;
   monitoring: Tuned | null;
   nowPlaying: Tuned | null;
@@ -25,7 +26,7 @@ export interface LiveState {
 }
 
 export const initialLive: LiveState = {
-  mode: "scan", breakIn: false, monitoring: null, nowPlaying: null, audibleDriven: false,
+  mode: "scan", hf: null, breakIn: false, monitoring: null, nowPlaying: null, audibleDriven: false,
   weatherChannel: null, muted: false, volume: 100, remoteListening: false, dbfs: null,
   startedAt: null,
 };
@@ -53,10 +54,11 @@ export function reduceEvent(s: LiveState, ev: EngineEvent): { state: LiveState; 
   }
 }
 
-export function withStatus(s: LiveState, st: { mode: LiveState["mode"]; monitor: Channel | null; breakIn?: boolean; startedAt?: number }): LiveState {
+export function withStatus(s: LiveState, st: { mode: LiveState["mode"]; hf?: LiveState["hf"]; monitor: Channel | null; breakIn?: boolean; startedAt?: number }): LiveState {
   return {
     ...s,
     mode: st.mode,
+    hf: st.hf ?? null,
     breakIn: st.breakIn === true,
     monitoring: st.mode === "monitor" && st.monitor ? tuned(st.monitor) : null,
     startedAt: typeof st.startedAt === "number" ? st.startedAt : s.startedAt,
@@ -94,6 +96,12 @@ export function lcdView(s: LiveState): LcdView {
       freq: wx ? fmtFreq(wx.freq) : "",
       silent, canLock: false,
     };
+  }
+  if (s.mode === "hf") {
+    const where = s.hf?.stage === "sweep" ? s.hf.band : "CB";
+    return s.nowPlaying
+      ? { state: "live", meta: `HF · ${where}${modeTag(s.nowPlaying)}`, name: label(s.nowPlaying), freq: fmtFreq(s.nowPlaying.freq), silent, canLock: false }
+      : { state: "scanning", meta: `HF · ${where}`, name: s.hf?.stage === "cb" ? "Holding on CB…" : "Hunting…", freq: "", silent, canLock: false };
   }
   if (s.mode === "cb") {
     // CB-only listening: no lockouts or pauses — the set is the CB band itself.

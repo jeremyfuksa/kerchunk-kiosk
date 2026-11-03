@@ -2,7 +2,7 @@ import { WebSocketServer } from "ws";
 import { spawn, execFile } from "node:child_process";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createServer } from "./server.js";
+import { createServer, isSharedActivity } from "./server.js";
 import { ModeStore } from "./modeStore.js";
 import { ConfigStore } from "./config/ConfigStore.js";
 import { ActivityLog } from "./activityLog.js";
@@ -172,7 +172,7 @@ function startWeatherLane(): void {
 
 engine.on((ev: EngineEvent) => {
   if (ev.type === "active") {
-    activityLog.add({ freq: ev.freq, alphaTag: ev.channel.alphaTag, ts: ev.ts });
+    if (isSharedActivity(ev)) activityLog.add({ freq: ev.freq, alphaTag: ev.channel.alphaTag, ts: ev.ts });
   }
   // Bring weather up only after the main scanner helper is up and tuning.
   if (!weatherStarted && ev.type === "tuned") {
