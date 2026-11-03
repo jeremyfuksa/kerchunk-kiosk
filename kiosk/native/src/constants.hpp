@@ -188,6 +188,12 @@ inline constexpr double SURVEY_USABLE_HZ = 330000;   // +/- from center: the HF+
 inline constexpr double SURVEY_DC_GUARD_HZ = 1500;   // the receiver's center spike
 inline constexpr double SURVEY_RASTER_HZ = 5000;     // shortwave broadcast raster
 inline constexpr double SURVEY_PEAK_HZ = 7500;       // a carrier tops this neighbourhood either side
+// Unless it's a line beside a stronger station one raster away. Near = under the raster by more than
+// the window's main lobe (+/-4 bins, 1465 Hz), so a neighbour's search doesn't reach the stronger lobe.
+inline constexpr double SURVEY_NEAR_HZ = 3500;
+inline constexpr int SURVEY_LINE_BINS = 5;           // just past the main lobe, 1831 Hz
+inline constexpr double SURVEY_LINE_DB = 6.0;        // above both sides of it; 100 averaged frames vary about 0.4 dB
+inline constexpr double SURVEY_IMAGE_DB = 45.0;      // an edge bin this far under the bin one image outward is the image (filter worst 50.9 dB, test_iq_rate)
 
 // ---- Live I/O (P1c)
 inline constexpr int IQ_BLOCK_BYTES = 48000;       // max 10 ms of u8 IQ at 2.4 Msps (blocks are <= 10 ms at any rate)

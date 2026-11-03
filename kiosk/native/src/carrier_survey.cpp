@@ -4,6 +4,8 @@
 #include <cmath>
 #include <map>
 
+#include "iq_rate.hpp"
+
 namespace kc {
 
 CarrierSurvey::CarrierSurvey(int rate)
@@ -64,15 +66,36 @@ std::vector<Carrier> CarrierSurvey::take(double min_db, double* floor_db_out) {
   const int span = std::min(dc - 1, (int)(SURVEY_USABLE_HZ / binw));
   const int dcw = (int)std::ceil(SURVEY_DC_GUARD_HZ / binw);
   const int peak_w = (int)std::lround(SURVEY_PEAK_HZ / binw);
+  const int near_w = (int)std::lround(SURVEY_NEAR_HZ / binw);
+  const double image_hz = IqRateConverter::IN_RATE - IqRateConverter::OUT_RATE;
+  const int image_w = (int)std::lround(image_hz / binw);
+  const int image_from = (int)((SURVEY_USABLE_HZ - image_hz) / binw);
 
   std::map<long long, double> best;   // one entry per raster channel
   for (int k = dc - span; k <= dc + span; k++) {
     if (std::abs(k - dc) <= dcw || db[k] - floor < min_db) continue;
     // A carrier is the top of its neighbourhood, so an AM station's sidebands don't count as stations.
-    bool top = true;
-    for (int j = std::max(0, k - peak_w); j <= std::min(CC_FFT - 1, k + peak_w) && top; j++)
-      if (std::abs(j - dc) > dcw && db[j] > db[k]) top = false;   // the center spike isn't a neighbour
+    // Past SURVEY_NEAR_HZ a stronger station can be a neighbour on the raster, so there it takes a
+    // line standing clear of what's around it: a modulation skirt is a smooth slope.
+    bool top = true, beside_stronger = false;
+    for (int j = std::max(0, k - peak_w); j <= std::min(CC_FFT - 1, k + peak_w) && top; j++) {
+      if (std::abs(j - dc) <= dcw || db[j] <= db[k]) continue;   // the center spike isn't a neighbour
+      if (std::abs(j - k) <= near_w) top = false;
+      else beside_stronger = true;
+    }
     if (!top) continue;
+    if (beside_stronger) {
+      bool line = true;
+      for (const int j : {k - SURVEY_LINE_BINS, k + SURVEY_LINE_BINS})
+        if (std::abs(j - dc) > dcw && db[k] - db[j] < SURVEY_LINE_DB) line = false;
+      if (!line) continue;
+    }
+    // IqRateConverter's image of a carrier just past the span edge lands image_w inward, where the
+    // filter is weakest. Further in, an image would take a carrier well over any seen so far.
+    if (std::abs(k - dc) >= image_from) {
+      const int out = k + (k > dc ? image_w : -image_w);
+      if (std::max({db[out - 1], db[out], db[out + 1]}) - db[k] >= SURVEY_IMAGE_DB) continue;
+    }
     const double hz = center_ + (k - dc) * binw;
     const long long snapped = std::llround(hz / SURVEY_RASTER_HZ) * (long long)SURVEY_RASTER_HZ;
     auto it = best.find(snapped);
