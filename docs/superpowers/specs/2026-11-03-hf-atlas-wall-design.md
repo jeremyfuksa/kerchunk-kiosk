@@ -65,7 +65,7 @@ A hit is the speaker moving to a new station that has a location: `hf.listenHz` 
 2. A ring grows out of it over 900 ms, eased, with a bright rim and two fading rings behind it, then holds still. This mirrors the UHF front in `map/glassShaders.ts`, but it's drawn in SVG, because the HF stage doesn't load Google's map or its GL context.
 3. From 550 ms, the line leaves the ring and travels the great-circle path to home over 2000 ms, eased. A path crossing the antimeridian draws its two parts one after the other, and the total duration stays the same.
 4. It lands with a small ring at home, about 800 ms.
-5. The line and source ring stay bright and still while the station plays. The meter is the only thing moving.
+5. The line and source ring stay bright and still while the station plays. Slight pulses run along the line from the transmitter to home, the operator's idea: a soft dot in the band's colour, a 2 s trip every 4.5 s (`display.hf.pulseEveryMs`, 0 = off; `pulseMs`). It's a small compositor layer, so nothing repaints, and it needs a heat comparison against the plain Atlas.
 6. **When the scan moves on,** meaning `listenHz` changes or clears or the window ends, the ring fades out and the line fades over about 700 ms to a faded trace.
 
 If the next hit arrives during a fade, finish it immediately and start the hit.

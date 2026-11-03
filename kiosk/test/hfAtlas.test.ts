@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { atlasDots, atlasTraces, bandColor, hitAction, hitChange, legend, tracePath, HF_BANDS_ORDER, type AtlasRow, type HitKey } from "../src/frontend/dashboard/atlas.js";
 import { readFileSync } from "node:fs";
-import { lineKeyframes, tracesSvg } from "../src/frontend/dashboard/atlas.js";
+import { lineKeyframes, pulseFrames, tracePoints, tracesSvg } from "../src/frontend/dashboard/atlas.js";
 import { configSchema, defaultConfig } from "../src/backend/config/schema.js";
 
 const HOME = { lat: 39.1, lon: -94.58 };
@@ -81,6 +81,37 @@ describe("still layers", () => {
   });
 });
 
+describe("pulseFrames", () => {
+  const seg = (...xs: number[]) => xs.map((x) => ({ x, y: 0 }));
+  const toPx = (p: { x: number; y: number }) => ({ x: p.x * 2, y: p.y });
+  it("travels start to end, invisible at both ends", () => {
+    const f = pulseFrames([seg(0, 50, 100)], toPx);
+    expect(f[0]).toMatchObject({ offset: 0, opacity: 0, transform: "translate(0.0px,0.0px)" });
+    expect(f.at(-1)).toMatchObject({ offset: 1, opacity: 0, transform: "translate(200.0px,0.0px)" });
+    expect(f.some((k) => (k.opacity as number) > 0.5)).toBe(true);
+  });
+  it("only animates what the compositor can move on its own", () => {
+    for (const k of pulseFrames([seg(0, 100)], toPx)) {
+      expect(Object.keys(k).sort()).toEqual(["offset", "opacity", "transform"]);
+    }
+  });
+  it("offsets never go backwards", () => {
+    const o = pulseFrames([seg(0, 40), seg(500, 560)], toPx).map((k) => k.offset as number);
+    for (let i = 1; i < o.length; i++) expect(o[i]!).toBeGreaterThanOrEqual(o[i - 1]!);
+  });
+  it("crossing the antimeridian, it's invisible during the jump", () => {
+    const f = pulseFrames([seg(0, 100), seg(1000, 1100)], toPx);
+    const jump = f.findIndex((k) => k.transform === "translate(2000.0px,0.0px)");
+    expect(f[jump]!.opacity).toBe(0);
+    expect(f[jump - 1]!.opacity).toBe(0);
+    expect(f[jump - 1]!.offset).toBe(f[jump]!.offset);
+  });
+  it("tracePoints splits where tracePath does", () => {
+    expect(tracePoints({ lat: -38.8, lon: 176.4 }, HOME)).toHaveLength(2);
+    expect(tracePoints({ lat: 44.75, lon: 26.1 }, HOME)).toHaveLength(1);
+  });
+});
+
 describe("legend", () => {
   it("legend_lights_bands_with_traces_and_marks_live", () => {
     const l = legend([row({})], "41m");
@@ -148,8 +179,11 @@ describe("display.hf", () => {
   const base = () => ({ ...defaultConfig(), display: { weatherLat: 39.1, weatherLon: -94.58 } });
   it("display_hf_defaults", () => {
     expect(configSchema.parse(base()).display!.hf).toEqual({
-      greylineStepMs: 300_000, traceOpacity: 0.34, hitGrowMs: 900, hitLineDelayMs: 550, hitLineMs: 2000, hitPingMs: 800, hitFadeMs: 700, zoomMs: 1500,
+      greylineStepMs: 300_000, traceOpacity: 0.34, hitGrowMs: 900, hitLineDelayMs: 550, hitLineMs: 2000, hitPingMs: 800, hitFadeMs: 700, zoomMs: 1500, pulseEveryMs: 4500, pulseMs: 2000,
     });
+  });
+  it("pulses can be turned off", () => {
+    expect(configSchema.parse({ ...base(), display: { ...base().display, hf: { pulseEveryMs: 0 } } }).display!.hf.pulseEveryMs).toBe(0);
   });
   it("rejects a trace opacity above 1", () => {
     expect(() => configSchema.parse({ ...base(), display: { ...base().display, hf: { traceOpacity: 1.5 } } })).toThrow();

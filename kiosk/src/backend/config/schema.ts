@@ -396,6 +396,9 @@ export const configSchema = z.object({
       hitPingMs: z.number().int().min(100).max(5_000).default(800),
       hitFadeMs: z.number().int().min(100).max(5_000).default(700),
       zoomMs: z.number().int().min(200).max(5_000).default(1_500),
+      // A dot running the live trace from transmitter to home. 0 = off.
+      pulseEveryMs: z.number().int().min(0).max(60_000).default(4_500),
+      pulseMs: z.number().int().min(300).max(20_000).default(2_000),
     }).default({}),
     glass: z.object({
       maxFps: z.number().int().min(1).max(60).default(30),        // steady redraw rate

@@ -175,7 +175,7 @@ export function renderDashboard(root: HTMLElement): void {
         <aside class="kc-recent"><h2>Recently heard</h2><ul id="logList"></ul></aside>
       </div>
       <div id="cbStage" class="kc-cb" aria-hidden="true"></div>
-      <div id="hfStage" class="kc-hf" aria-hidden="true"><svg id="hfSky" class="kc-hf__layer" viewBox="${STAGE_VIEWBOX}"></svg><div id="hfLand" class="kc-hf__layer"></div><svg id="hfDots" class="kc-hf__layer" viewBox="${STAGE_VIEWBOX}"></svg><svg id="hfTraces" class="kc-hf__layer" viewBox="${STAGE_VIEWBOX}"></svg><svg id="hfLive" class="kc-hf__layer" viewBox="${STAGE_VIEWBOX}"></svg><div id="hfContent"></div></div>
+      <div id="hfStage" class="kc-hf" aria-hidden="true"><svg id="hfSky" class="kc-hf__layer" viewBox="${STAGE_VIEWBOX}"></svg><div id="hfLand" class="kc-hf__layer"></div><svg id="hfDots" class="kc-hf__layer" viewBox="${STAGE_VIEWBOX}"></svg><svg id="hfTraces" class="kc-hf__layer" viewBox="${STAGE_VIEWBOX}"></svg><svg id="hfLive" class="kc-hf__layer" viewBox="${STAGE_VIEWBOX}"></svg><div id="hfPulse" class="kc-hf__pulse"></div><div id="hfContent"></div></div>
     </div>`;
   // ── Poll budget ─────────────────────────────────────────────────────────
   // Three independent timers (status 5 s, system 10 s, weather 10 min) used to
@@ -256,7 +256,7 @@ export function renderDashboard(root: HTMLElement): void {
   const hfDotsEl = root.querySelector<SVGSVGElement>("#hfDots")!;
   const hfTracesEl = root.querySelector<SVGSVGElement>("#hfTraces")!;
   let hfOpts = HF_WALL_DEFAULTS;
-  const hitAnim = new HitAnimator(root.querySelector<SVGSVGElement>("#hfLive")!, () => hfOpts);
+  const hitAnim = new HitAnimator(root.querySelector<SVGSVGElement>("#hfLive")!, root.querySelector<HTMLElement>("#hfPulse")!, () => hfOpts);
   const hfContentEl = root.querySelector<HTMLElement>("#hfContent")!;
   let hfOn = false;
   let hfDotsKey = "";

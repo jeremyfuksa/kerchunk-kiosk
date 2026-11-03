@@ -1,6 +1,7 @@
 // The live layer of the Atlas: the station's ring, its line home and its country (spec
 // 2026-11-03-hf-atlas). Only this layer moves, so a hit never repaints the map under it.
-import { bandColor, lineKeyframes, tracePath, type HitKey } from "./atlas.js";
+import { bandColor, lineKeyframes, pulseFrames, tracePath, tracePoints, type HitKey } from "./atlas.js";
+import { stagePx } from "./greyline.js";
 import { robinson, type LatLon } from "./robinson.js";
 
 const NS = "http://www.w3.org/2000/svg";
@@ -11,7 +12,7 @@ const LINE_STEPS = 40;
 const EASE_OUT = "cubic-bezier(.33,1,.68,1)";
 
 export const HF_WALL_DEFAULTS = {
-  greylineStepMs: 300_000, traceOpacity: 0.34, hitGrowMs: 900, hitLineDelayMs: 550, hitLineMs: 2_000, hitPingMs: 800, hitFadeMs: 700, zoomMs: 1_500,
+  greylineStepMs: 300_000, traceOpacity: 0.34, hitGrowMs: 900, hitLineDelayMs: 550, hitLineMs: 2_000, hitPingMs: 800, hitFadeMs: 700, zoomMs: 1_500, pulseEveryMs: 4_500, pulseMs: 2_000,
 };
 export type HfWallOpts = typeof HF_WALL_DEFAULTS;
 
@@ -23,8 +24,10 @@ export class HitAnimator {
   private lines: SVGElement[] = [];
   private glows: SVGElement[] = [];
   private rings: { rim: SVGElement; halo: SVGElement; core: SVGElement } | null = null;
+  private pulseTimer: ReturnType<typeof setInterval> | null = null;
+  private pulseAnim: Animation | null = null;
 
-  constructor(svg: SVGSVGElement, private readonly opts: () => HfWallOpts) {
+  constructor(svg: SVGSVGElement, private readonly pulse: HTMLElement, private readonly opts: () => HfWallOpts) {
     this.tintGroup = document.createElementNS(NS, "g");
     this.hitGroup = document.createElementNS(NS, "g");
     svg.append(this.tintGroup, this.hitGroup);
@@ -46,6 +49,29 @@ export class HitAnimator {
   private stopAnims(): void {
     for (const a of this.anims) a.cancel();
     this.anims = [];
+    this.stopPulses();
+  }
+
+  private stopPulses(): void {
+    if (this.pulseTimer) clearInterval(this.pulseTimer);
+    this.pulseTimer = null;
+    this.pulseAnim?.cancel();
+    this.pulseAnim = null;
+  }
+
+  /** A dot on its own small layer, so a pulse moves on the compositor and repaints nothing. */
+  private startPulses(s: HitKey, home: LatLon): void {
+    this.stopPulses();
+    const o = this.opts();
+    if (o.pulseEveryMs <= 0 || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    this.pulse.style.color = bandColor(s.band);
+    const frames = pulseFrames(tracePoints({ lat: s.lat, lon: s.lon }, home), (p) => stagePx(p, this.pulse.parentElement!.clientWidth));
+    const send = (): void => {
+      this.pulseAnim?.cancel();
+      this.pulseAnim = this.pulse.animate(frames, { duration: o.pulseMs, easing: "linear" });
+    };
+    send();
+    this.pulseTimer = setInterval(send, Math.max(o.pulseEveryMs, o.pulseMs));
   }
 
   /** Ends a fade right now, handing its line to the traces. */
@@ -88,6 +114,7 @@ export class HitAnimator {
   hold(s: HitKey, home: LatLon): void {
     this.fading = null;
     this.build(s, home);
+    this.startPulses(s, home);
   }
 
   start(s: HitKey, home: LatLon): void {
@@ -139,6 +166,7 @@ export class HitAnimator {
       if (this.anims !== running) return;
       this.stopAnims();
       for (const e of extras) e.remove();
+      this.startPulses(s, home);
     });
   }
 

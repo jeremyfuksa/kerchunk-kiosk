@@ -40,19 +40,22 @@ export function atlasDots(rows: readonly AtlasRow[]): AtlasDot[] {
   });
 }
 
-/** One SVG path per side of the antimeridian, from the first point to the second. */
-export function tracePath(from: LatLon, to: LatLon): string[] {
-  const out: string[] = [];
-  let d = "";
+export interface MapPoint { x: number; y: number }
+
+/** The great circle in map units, one run per side of the antimeridian, from the first point to the second. */
+export function tracePoints(from: LatLon, to: LatLon): MapPoint[][] {
+  const out: MapPoint[][] = [[]];
   let prev: LatLon | null = null;
   for (const p of greatCircle(from, to, PATH_SEGMENTS)) {
-    if (prev !== null && Math.abs(p.lon - prev.lon) > 180) { out.push(d); d = ""; }
-    const { x, y } = robinson(p.lat, p.lon);
-    d += `${d ? "L" : "M"}${x.toFixed(1)} ${y.toFixed(1)}`;
+    if (prev !== null && Math.abs(p.lon - prev.lon) > 180) out.push([]);
+    out.at(-1)!.push(robinson(p.lat, p.lon));
     prev = p;
   }
-  out.push(d);
   return out;
+}
+
+export function tracePath(from: LatLon, to: LatLon): string[] {
+  return tracePoints(from, to).map((run) => `M${run.map((p) => `${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join("L")}`);
 }
 
 export function atlasTraces(rows: readonly AtlasRow[], home: LatLon, live: HitKey | null): AtlasTrace[] {
@@ -106,4 +109,26 @@ export function lineKeyframes(lengths: readonly number[], steps: number): number
       return 1 - Math.max(0, Math.min(1, (done - from) / len));
     });
   });
+}
+
+const PULSE_OPACITY = 0.9;
+const PULSE_FADE = 0.08;   // of the trip, at each end
+
+/** Keyframes for a dot travelling the path: transform and opacity only, so the compositor can run it alone. */
+export function pulseFrames(runs: readonly MapPoint[][], toPx: (p: MapPoint) => MapPoint): Array<{ offset: number; opacity: number; transform: string }> {
+  const seglen = (run: readonly MapPoint[], i: number): number => Math.hypot(run[i]!.x - run[i - 1]!.x, run[i]!.y - run[i - 1]!.y);
+  const total = runs.reduce((sum, run) => sum + run.slice(1).reduce((n, _, i) => n + seglen(run, i + 1), 0), 0) || 1;
+  const frames: Array<{ offset: number; opacity: number; transform: string }> = [];
+  let done = 0;
+  runs.forEach((run, r) => {
+    run.forEach((p, i) => {
+      if (i > 0) done += seglen(run, i);
+      const offset = Math.min(1, done / total);
+      const atJump = (r > 0 && i === 0) || (r < runs.length - 1 && i === run.length - 1);
+      const opacity = atJump ? 0 : PULSE_OPACITY * Math.min(1, offset / PULSE_FADE, (1 - offset) / PULSE_FADE);
+      const px = toPx(p);
+      frames.push({ offset, opacity, transform: `translate(${px.x.toFixed(1)}px,${px.y.toFixed(1)}px)` });
+    });
+  });
+  return frames;
 }
