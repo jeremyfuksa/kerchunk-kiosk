@@ -165,3 +165,14 @@ TEST(cli_ppm_integer_range) {
   CHECK(!parse({"--ppm", "1.5"}, c, err));
   CHECK(!parse({"--ppm"}, c, err));
 }
+
+TEST(cli_audio_buffer_ms_range) {
+  kc::Cli c;
+  std::string err;
+  CHECK(c.audio_buffer_ms == 0);
+  CHECK(parse({"--audio-buffer-ms", "3000"}, c, err) && c.audio_buffer_ms == 3000);
+  kc::Cli d;
+  CHECK(!parse({"--audio-buffer-ms", "3001"}, d, err));
+  kc::Cli e;
+  CHECK(!parse({"--audio-buffer-ms", "-1"}, e, err));
+}

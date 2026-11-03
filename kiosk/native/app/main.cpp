@@ -161,7 +161,7 @@ static int run_live(const kc::Cli& c) {
   }
   if (g_stop) return 0;
   if (c.sink != "none") {
-    alsa = std::make_unique<kc::AlsaSink>(c.sink, log);
+    alsa = std::make_unique<kc::AlsaSink>(c.sink, log, c.audio_buffer_ms);
     if (!alsa->open(err, [] { return g_stop.load(); })) {
       if (g_stop) return 0;   // asked to stop while waiting for a busy card: clean exit
       std::fprintf(stderr, "kerchunk-dsp: %s\n", err.c_str());

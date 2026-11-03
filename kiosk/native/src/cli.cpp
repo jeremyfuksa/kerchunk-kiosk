@@ -72,6 +72,10 @@ bool parse_cli(int argc, const char* const* argv, Cli& c, std::string& err) {
       if (!val(v) || !to_int(v, n) || n < 0 || n > 32) { err = "--spyserver-digital-gain must be an integer in [0, 32]"; return false; }
       c.spyserver_digital_gain = n;
     }
+    else if (k == "--audio-buffer-ms") {
+      if (!val(v) || !to_int(v, n) || n < 0 || n > 3000) { err = "--audio-buffer-ms must be an integer in [0, 3000]"; return false; }
+      c.audio_buffer_ms = n;
+    }
     else if (k == "--iq-file") { if (!val(c.iq_file)) return false; }
     else if (k == "--tune") { if (!val(c.tune_json)) return false; }
     else if (k == "--audio-out") { if (!val(c.audio_out)) return false; }
