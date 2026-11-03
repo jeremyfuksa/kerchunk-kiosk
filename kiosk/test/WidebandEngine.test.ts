@@ -1708,7 +1708,7 @@ exit 3
     const wrapper = join(dir, "helper.sh");
     writeFileSync(wrapper, `#!/bin/bash\n[ -f "${up}" ] || exit 1\nexec "${FAKE}" "$@"\n`, { mode: 0o755 });
     const script = `sleep:${READY_PROVEN_MS + 200}\n{"ev":"open","id":"${VHF_A.id}","db":-3}\n{"ev":"audible","id":"${VHF_A.id}"}`;
-    const { engine, events } = makeEngine({ FAKE_WB_SCRIPT: script }, { helperCmd: [wrapper], restartDelayMs: 20, maxRestartDelayMs: 40 });
+    const { engine, events } = makeEngine({ FAKE_WB_SCRIPT: script }, { helperCmd: [wrapper], restartDelayMs: 20, maxRestartDelayMs: 40, silenceTimeoutMs: READY_PROVEN_MS + 5000 });
     await engine.start(cfg([VHF_A]));
     expect(await waitFor(() => events.some((e) => e.type === "error"), 2000)).toBe(true);
     writeFileSync(up, "");
@@ -1716,7 +1716,7 @@ exit 3
     await engine.stop();
     const active = events.find((e) => e.type === "active")!;
     expect(reduce({ ...initialState(), error: "stale" }, active).error).toBeNull();
-  }, READY_PROVEN_MS + 8_000);
+  }, READY_PROVEN_MS + 5000);
 
   it("a first start's traffic isn't marked unproven", async () => {
     const script = `{"ev":"open","id":"${VHF_A.id}","db":-3}`;
