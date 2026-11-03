@@ -318,3 +318,33 @@ describe("CB over SpyServer", () => {
     expect((await request(server).get("/api/status")).body.breakIn).toBe(false);
   });
 });
+
+describe("direct tune below 30 MHz", () => {
+  const spy = { host: "airspy.local", port: 5555, audioBufferMs: 500 };
+  const mon = (freq: number) => ({ id: "mon_direct", freq, alphaTag: "x", mode: "am" as const, enabled: true });
+
+  it("goes through SpyServer when it's configured", () => {
+    const s = toScanConfig({ ...defaultConfig(), spyserver: spy }, "monitor", mon(5_000_000));
+    expect(s.spyserver).toEqual(spy);
+    expect(s.windowBandwidthHz).toBe(600_000);
+    expect(s.monitor).toBe(true);
+    expect(freqs(s)).toEqual([5_000_000]);
+  });
+
+  it("stays on the RTL radio at 30 MHz and up, or with no SpyServer", () => {
+    expect(toScanConfig({ ...defaultConfig(), spyserver: spy }, "monitor", mon(30_000_000)).spyserver).toBeUndefined();
+    expect(toScanConfig({ ...defaultConfig(), spyserver: spy }, "monitor", mon(162_550_000)).spyserver).toBeUndefined();
+    expect(toScanConfig(defaultConfig(), "monitor", mon(5_000_000)).spyserver).toBeUndefined();
+  });
+
+  it("POST /api/monitor reaches the engine with SpyServer and AM", async () => {
+    const { server, engine } = makeApp();
+    const current = (await request(server).get("/api/config")).body;
+    await request(server).put("/api/config").send({ ...current, spyserver: { host: "airspy.local" } });
+    await request(server).post("/api/scan/start");
+    const res = await request(server).post("/api/monitor").send({ freq: 9_650_000, mode: "am" });
+    expect(res.status).toBe(200);
+    expect(engine.retunes.at(-1)?.spyserver?.host).toBe("airspy.local");
+    expect(engine.retunes.at(-1)?.channels[0]?.mode).toBe("am");
+  });
+});

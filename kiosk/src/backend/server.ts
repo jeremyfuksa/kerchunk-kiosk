@@ -82,6 +82,7 @@ const CLEARABLE_CHANNEL_FIELDS = ["ctcssHz", "dcsCode"] as const;
 
 // "cb" = CB-only listening (config.cb.channels); never mixed into the scan.
 const SPY_WINDOW_HZ = 600_000;
+const HF_TOP_HZ = 30_000_000;
 export type ScanMode = "scan" | "weather" | "monitor" | "cb";
 
 export function toScanConfig(
@@ -178,8 +179,9 @@ export function toScanConfig(
     ],
     ...(mode === "scan" ? { ccAudibleHz: ccAudibleRanges(cfg.audio.audibleFamilies) } : {}),
     closeCall: mode === "cb" ? false : cfg.scan.closeCall,
-    // CB through the HF+: the window must fit inside SpyServer's 660 kHz.
-    ...(mode === "cb" && cfg.spyserver
+    // CB and direct-tuned HF go through the HF+: the RTL radios can't hear below
+    // 30 MHz. The window must fit inside SpyServer's 660 kHz.
+    ...((mode === "cb" || (mode === "monitor" && monitorChannel && monitorChannel.freq < HF_TOP_HZ)) && cfg.spyserver
       ? { spyserver: cfg.spyserver, windowBandwidthHz: SPY_WINDOW_HZ, flatBandwidthHz: SPY_WINDOW_HZ }
       : {}),
     closeCallDb: cfg.scan.closeCallDb,

@@ -254,6 +254,7 @@ even with green checks.
   `config.spyserver` (`host`, `port` 5555, `gain`, `digitalGain`, `audioBufferMs` 500) puts CB on
   the Airspy HF+: window 600 kHz, helper rate 750 kHz, and `--audio-buffer-ms` for Wi-Fi bursts, so
   audio plays about 500 ms behind the wall. Absent = CB on the scan radio.
+  `POST /api/monitor` below 30 MHz uses it too (no SAME break-in, as with any monitor).
   LSB channels: `config.cb.modes` (default `{"38":"lsb"}`, which takes channel 32's lane in
   the default set); SSB squelch `cb.ssbOpenDb` / `cb.ssbHangMs` (1500). LSB lanes squelch on
   sideband energy against their own floor, never the shared one (spec 2026-10-15).
