@@ -251,5 +251,7 @@ Bar: under map mode's 64 °C. It passes, and it's no hotter than the old HF wall
 
 Seen on the live wall: a hit in flight, a held station, hunting, a test alert above the panel, and a trip to weather and back with traces intact. The greyline matched the time of day, and 16 date and time combinations across four seasons show no flat band edge. A lone trace measured 34% brightness from the wall's pixels.
 
+With pulses on the live trace, 11:56 to 12:26 local, against that run: 53 °C peak, 49.9 °C mean, helper 23.1%, Chromium 12.0% mean and 42.2% max. A station was playing for 38% of the samples, in daylight. So pulses cost about 1 °C at peak and 2% of a core here; a night that plays nearly all the time might cost closer to 5%. That's an extrapolation, not a measurement.
+
 Not proven live yet: noon clearing the traces, because no noon has passed on this code.
 
