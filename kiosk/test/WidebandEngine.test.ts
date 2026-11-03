@@ -3,7 +3,7 @@ import { describe, it, expect, beforeAll } from "vitest";
 import { join } from "node:path";
 import { chmodSync, mkdtempSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { WidebandEngine } from "../src/backend/engine/WidebandEngine.js";
+import { READY_PROVEN_MS, WidebandEngine } from "../src/backend/engine/WidebandEngine.js";
 import type { ScanConfig, EngineEvent } from "../src/backend/engine/ScannerEngine.js";
 import type { Channel } from "../src/backend/config/schema.js";
 
@@ -1625,6 +1625,7 @@ describe("SpyServer source", () => {
     // Children start close together, so the files' order isn't spawn order: ask the engine.
     expect(living()).toEqual([String(engine.helperPid)]);
     expect(lines(args).filter((l) => l.includes("--spyserver"))).toHaveLength(2);
+    expect(engine.helperSource).toBe("airspy.local:5555");
     await engine.stop();
   });
 
@@ -1641,7 +1642,7 @@ describe("SpyServer source", () => {
     await new Promise((r) => setTimeout(r, 100));
     expect(running()).toBe(false);   // still down: the error stays up
     writeFileSync(up, "");
-    expect(await waitFor(running, 2000)).toBe(true);
+    expect(await waitFor(running, READY_PROVEN_MS + 2000)).toBe(true);
     await engine.stop();
   });
 
@@ -1654,9 +1655,80 @@ describe("SpyServer source", () => {
     expect(await waitFor(() => events.some((e) => e.type === "error"), 2000)).toBe(true);
     const mark = events.length;
     await engine.retune(rtlCfg());
-    expect(await waitFor(() => events.slice(mark).some((e) => e.type === "status" && e.state === "running"), 2000)).toBe(true);
+    expect(await waitFor(() => events.slice(mark).some((e) => e.type === "status" && e.state === "running"), READY_PROVEN_MS + 2000)).toBe(true);
     // It never got warm, so its first warm-up may finish. It must not restart.
     expect(events.slice(mark).filter((e) => (e.type === "warmup" && e.phase === "booting") || (e.type === "status" && e.state === "stopped"))).toEqual([]);
+    await engine.stop();
+  });
+
+  it("a helper that says ready and then dies doesn't report running, so the error doesn't blink", async () => {
+    const { engine, events } = makeEngine({ FAKE_WB_MODE: "crash" }, { restartDelayMs: 20, maxRestartDelayMs: 40 });
+    await engine.start(spyCfg());
+    expect(await waitFor(() => events.some((e) => e.type === "error"), 2000)).toBe(true);
+    const mark = events.length;
+    await new Promise((r) => setTimeout(r, 800));
+    await engine.stop();
+    expect(events.slice(mark).filter((e) => e.type === "status" && e.state === "running")).toEqual([]);
+  });
+
+  it("a healthy retune across sources sends no status, so a playing channel stays on the wall", async () => {
+    const args = tmpFile("args");
+    const { engine, events } = makeEngine({ FAKE_WB_ARGS_FILE: args });
+    await engine.start(rtlCfg());
+    await waitFor(() => lines(args).length === 1, 1000);
+    const mark = events.length;
+    await engine.retune(spyCfg());
+    await waitFor(() => lines(args).length === 2, 1000);
+    await new Promise((r) => setTimeout(r, READY_PROVEN_MS + 200));
+    await engine.stop();
+    expect(events.slice(mark).filter((e) => e.type === "status" && e.state === "running")).toEqual([]);
+  });
+
+  it("the old source's backoff timer can't fire a second helper after a retune across sources", async () => {
+    const args = tmpFile("args");
+    const dir = mkdtempSync(join(tmpdir(), "wb-"));
+    const wrapper = join(dir, "helper.sh");
+    writeFileSync(wrapper, `#!/bin/bash\ncase "$*" in *--spyserver*) exit 1;; esac\nexec "${FAKE}" "$@"\n`, { mode: 0o755 });
+    const { engine, events } = makeEngine({ FAKE_WB_ARGS_FILE: args }, { helperCmd: [wrapper], restartDelayMs: 200 });
+    await engine.start(spyCfg());
+    expect(await waitFor(() => events.filter((e) => e.type === "status" && e.state === "starting").length >= 2, 1000)).toBe(true);
+    await engine.retune(rtlCfg());
+    await waitFor(() => lines(args).length === 1, 500);
+    await new Promise((r) => setTimeout(r, 500));   // well past the 200 ms backoff, engine still running
+    expect(lines(args)).toHaveLength(1);
+    await engine.stop();
+  });
+
+  it("the new source's first failure is soft even after the old source failed repeatedly", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "wb-"));
+    const flag = join(dir, "rtl-fails");
+    const wrapper = join(dir, "helper.sh");
+    writeFileSync(wrapper, `#!/bin/bash\ncase "$*" in *--spyserver*) exit 1;; esac\n[ -f "${flag}" ] && exit 1\nexec "${FAKE}" "$@"\n`, { mode: 0o755 });
+    writeFileSync(flag, "");
+    const { engine, events } = makeEngine({}, { helperCmd: [wrapper], restartDelayMs: 300 });
+    await engine.start(spyCfg());
+    expect(await waitFor(() => events.some((e) => e.type === "error"), 2000)).toBe(true);
+    const mark = events.length;
+    await engine.retune(rtlCfg());
+    expect(await waitFor(() => events.slice(mark).some((e) => e.type === "status" && e.state === "starting"), 1000)).toBe(true);
+    expect(events.slice(mark).filter((e) => e.type === "error")).toEqual([]);
+    await engine.stop();
+  });
+
+  it("a warm engine crossing sources during backoff replays no warm-up", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "wb-"));
+    const up = join(dir, "up");
+    const wrapper = join(dir, "helper.sh");
+    writeFileSync(wrapper, `#!/bin/bash\ncase "$*" in *--spyserver*) exit 1;; esac\nexec "${FAKE}" "$@"\n`, { mode: 0o755 });
+    const { engine, events } = makeEngine({ UP: up }, { helperCmd: [wrapper], restartDelayMs: 300 });
+    await engine.start(rtlCfg());
+    expect(await waitFor(() => events.some((e) => e.type === "warmup" && e.phase === "ready"), 4000)).toBe(true);
+    await engine.retune(spyCfg());
+    expect(await waitFor(() => events.some((e) => e.type === "status" && e.state === "starting"), 1000)).toBe(true);
+    const mark = events.length;
+    await engine.retune(rtlCfg());
+    await new Promise((r) => setTimeout(r, 1800));
+    expect(events.slice(mark).filter((e) => e.type === "warmup")).toEqual([]);
     await engine.stop();
   });
 

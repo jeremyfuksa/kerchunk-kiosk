@@ -85,6 +85,11 @@ const SPY_WINDOW_HZ = 600_000;
 const HF_TOP_HZ = 30_000_000;
 export type ScanMode = "scan" | "weather" | "monitor" | "cb";
 
+/** Close Call and sweeps are what a thermal restart sheds. CB never runs either. */
+export function nothingToShed(cfg: Config, mode: ScanMode): boolean {
+  return mode === "cb" || (cfg.scan.closeCall === false && (cfg.scan.sweepRanges?.length ?? 0) === 0);
+}
+
 export function toScanConfig(
   cfg: Config,
   mode: ScanMode,
@@ -198,7 +203,10 @@ export function toScanConfig(
     // weather channel directly (monitor mode only matches if the operator tuned
     // NWR itself). So "this helper's channels include the weather frequency" is
     // exactly "this helper demodulates NWR".
+    // A dedicated weather radio already decodes full-time: a break-in's scanner is
+    // only there for the audio.
     sameEnable: !!cfg.weatherChannel
+      && !cfg.radios?.some((r) => r.role === "weather")
       && channels.some((c) => c.freq === cfg.weatherChannel!.freq),
   };
 }
@@ -564,9 +572,7 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
       // config. With Close Call already off and no sweeps there is NOTHING to
       // shed, so a restart would just re-show the kiosk "WARMING UP" overlay and
       // add heat on every thermal blip — exactly the wrong move near the limit.
-      const nothingToShed = config.scan.closeCall === false
-        && (config.scan.sweepRanges?.length ?? 0) === 0;
-      if (nothingToShed) return;
+      if (nothingToShed(config, mode)) return;
       safetyTransition = true;
       void engine.stop().then(() => engine.start(scanConfigFor(mode, monitorChannel)))
         // Contained, not rethrown: this chain runs from the stats sampler with

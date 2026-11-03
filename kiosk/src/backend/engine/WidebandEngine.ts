@@ -137,6 +137,9 @@ const QUIT_GRACE_MS = 500;
 // A helper alive this long is considered healthy; its eventual death starts
 // a fresh failure-escalation window instead of compounding an old one.
 const HEALTHY_AFTER_MS = 10_000;
+// A helper can say "ready" and then stall out (exit 3 after STALL_S, 2 s). It has to
+// outlast that before the UIs are told it recovered.
+export const READY_PROVEN_MS = 3_000;
 // Helper log forwarding: at most HELPER_LOG_BURST lines per window, so a
 // flapping condition can't flood the journal; the overflow is summarized.
 const HELPER_LOG_BURST = 10;
@@ -253,6 +256,7 @@ export class WidebandEngine implements ScannerEngine {
   // Set when the UIs may be showing a helper error: the next "ready" reports
   // "running", which clears it. Nothing else would on a quiet band.
   private reportReady = false;
+  private readyProvenTimer: NodeJS.Timeout | null = null;
   private spawnedShape: { lanes: number; rate: number; source: string } | null = null;
   private readonly centerOffsetHz: number;
   private readonly niceness: number | undefined;
@@ -344,6 +348,9 @@ export class WidebandEngine implements ScannerEngine {
       this.warmupReadyTimer = null;
     }
   }
+
+  /** What the live helper reads: "host:port" for SpyServer, "" for an RTL-SDR. */
+  get helperSource(): string | null { return this.spawnedShape?.source ?? null; }
 
   private lanesFor(config: ScanConfig): number {
     return this.lanesOverride ?? config.lanesPerGroup ?? DEFAULT_LANES_PER_GROUP;
@@ -553,7 +560,6 @@ export class WidebandEngine implements ScannerEngine {
     this.audibleId = null;
     this.holdStartedAt = 0;
     this.exitFailures = 0;
-    this.reportReady = true;
     // Already warm: the new helper's first tune must not replay the warm-up. If not,
     // killChild just cancelled the settle timer, so the first tune must re-arm it.
     this.firstTunedSeen = this.warmReadySeen;
@@ -716,8 +722,12 @@ export class WidebandEngine implements ScannerEngine {
         if (this.readyTimer) { clearTimeout(this.readyTimer); this.readyTimer = null; }
         if (this.child) this.armSilence(this.child);
         if (this.reportReady) {
-          this.reportReady = false;
-          this.emit({ type: "status", state: "running", ts: this.now() });
+          this.readyProvenTimer = setTimeout(() => {
+            this.readyProvenTimer = null;
+            this.reportReady = false;
+            this.emit({ type: "status", state: "running", ts: this.now() });
+          }, READY_PROVEN_MS);
+          this.readyProvenTimer.unref?.();
         }
         this.resetRevisit();
         this.sendTune();
@@ -1104,6 +1114,7 @@ export class WidebandEngine implements ScannerEngine {
   private clearWatchdogs(): void {
     if (this.readyTimer) { clearTimeout(this.readyTimer); this.readyTimer = null; }
     if (this.silenceTimer) { clearTimeout(this.silenceTimer); this.silenceTimer = null; }
+    if (this.readyProvenTimer) { clearTimeout(this.readyProvenTimer); this.readyProvenTimer = null; }
   }
 
   // A wedged helper (ALSA/USB stuck before "ready", or a hung DSP
