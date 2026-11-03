@@ -1,5 +1,7 @@
 // The zoom between map mode and HF (spec 2026-11-03-hf-atlas): a staged illusion, because the two pictures are
 // far apart in scale. Only transforms, opacity and filter, for under two seconds, and the Google map's camera never moves.
+import { tracesSvg, type AtlasDot, type AtlasTrace } from "./atlas.js";
+
 export type ZoomDirection = "out" | "in";
 type Mode = "scan" | "weather" | "monitor" | "cb" | "hf";
 
@@ -57,4 +59,43 @@ export function runZoom(direction: ZoomDirection, stageEl: HTMLElement, mapEl: H
     finished: Promise.allSettled(anims.map((a) => a.finished)).then(() => undefined),
     stop: () => { for (const a of anims) a.cancel(); },
   };
+}
+
+export interface SnapshotInput {
+  sky: string;
+  world: string;
+  dots: readonly AtlasDot[];
+  traces: readonly AtlasTrace[];
+  traceOpacity: number;
+  home: { x: number; y: number };
+  width: number;
+  height: number;
+  viewBox: string;
+  colors: { land: string; border: string; dot: string; glass: string };
+}
+
+/** The Atlas as one self-contained image. An image can't see the page's CSS, so everything is spelled out. */
+export function atlasSnapshotSvg(i: SnapshotInput): string {
+  const land = [...i.world.matchAll(/<path\b[^>]*?\bd="([^"]+)"/g)].map((m) => m[1]).join(" ");
+  const dots = i.dots.map((d) => `<circle cx="${d.x.toFixed(1)}" cy="${d.y.toFixed(1)}" r="${d.r.toFixed(1)}" opacity="${d.opacity.toFixed(2)}"/>`).join("");
+  const traces = tracesSvg(i.traces, i.traceOpacity).replaceAll("var(--kc-glass)", i.colors.glass);
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${i.width}" height="${i.height}" viewBox="${i.viewBox}">${i.sky}`
+    + `<path d="${land}" fill="${i.colors.land}" fill-opacity="0.72" stroke="${i.colors.border}" stroke-opacity="0.2" stroke-width="0.7"/>`
+    + `<g fill="${i.colors.dot}">${dots}</g>${traces}`
+    + `<circle cx="${i.home.x.toFixed(1)}" cy="${i.home.y.toFixed(1)}" r="6" fill="${i.colors.dot}"/></svg>`;
+}
+
+/** Paints that image into a canvas. Scaling a canvas moves one finished texture, so nothing re-rasters mid-zoom. */
+export async function paintSnapshot(canvas: HTMLCanvasElement, svg: string, width: number, height: number): Promise<void> {
+  const url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
+  try {
+    const img = new Image();
+    img.src = url;
+    await img.decode();
+    canvas.width = width;
+    canvas.height = height;
+    canvas.getContext("2d")!.drawImage(img, 0, 0, width, height);
+  } finally {
+    URL.revokeObjectURL(url);
+  }
 }

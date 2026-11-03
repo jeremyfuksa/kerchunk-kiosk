@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { zoomFor, zoomFrames } from "../src/frontend/dashboard/zoom.js";
+import { atlasSnapshotSvg, zoomFor, zoomFrames } from "../src/frontend/dashboard/zoom.js";
 
 describe("zoomFor", () => {
   it("zoom_out_only_from_scan_to_hf", () => {
@@ -71,5 +71,30 @@ describe("zoomFrames", () => {
       expect(h.at(-1)!.opacity).toBe(0);
       expect(Math.max(...h.map((k) => k.opacity))).toBeGreaterThanOrEqual(0.8);
     }
+  });
+});
+
+describe("atlasSnapshotSvg", () => {
+  const world = '<svg><path class="A" d="M1 1L2 2Z"/>\n<path d="M3 3L4 4Z" id="B"/></svg>';
+  const input = {
+    sky: '<rect fill="url(#x)"/>', world, dots: [{ x: 5, y: 6, r: 3, opacity: 0.5 }],
+    traces: [{ key: "k", color: "var(--kc-glass)", segments: ["M7 7L8 8"] }], traceOpacity: 0.34,
+    home: { x: 9, y: 9 }, width: 1366, height: 768, viewBox: "0 0 10 10",
+    colors: { land: "#111111", border: "#222222", dot: "#333333", glass: "#5fd4c3" },
+  };
+  it("is a self-contained image: sized, namespaced, and needing no page CSS", () => {
+    const svg = atlasSnapshotSvg(input);
+    expect(svg).toMatch(/^<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg"/);
+    expect(svg).toContain('width="1366" height="768" viewBox="0 0 10 10"');
+    expect(svg).not.toContain("var(");
+    expect(svg).toContain('stroke="#5fd4c3"');
+  });
+  it("draws sky, then every land path, then dots, then traces, then home", () => {
+    const svg = atlasSnapshotSvg(input);
+    const order = ['url(#x)', 'M1 1L2 2Z M3 3L4 4Z', 'cx="5.0"', 'M7 7L8 8', 'cx="9.0"'].map((t) => svg.indexOf(t));
+    expect(order.every((v) => v >= 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+    expect(svg).toContain('fill="#111111"');
+    expect(svg).toContain('stroke="#222222"');
   });
 });

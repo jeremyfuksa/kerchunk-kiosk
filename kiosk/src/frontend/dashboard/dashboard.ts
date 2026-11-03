@@ -9,7 +9,7 @@ import { countrySelector } from "./ituCountry.js";
 import worldSvg from "./world.svg?raw";
 import { atlasDots, atlasTraces, hitAction, tracesSvg, type HitKey } from "./atlas.js";
 import { greylineDue, greylineSvg, skySvg, stagePx, STAGE_VIEWBOX } from "./greyline.js";
-import { runZoom, zoomFor, type ZoomDirection } from "./zoom.js";
+import { atlasSnapshotSvg, paintSnapshot, runZoom, zoomFor, type ZoomDirection } from "./zoom.js";
 import { HF_WALL_DEFAULTS, HitAnimator } from "./hitAnim.js";
 import { robinson } from "./robinson.js";
 import { mountActivityMap } from "../map/map.js";
@@ -178,6 +178,7 @@ export function renderDashboard(root: HTMLElement): void {
       </div>
       <div id="cbStage" class="kc-cb" aria-hidden="true"></div>
       <div id="hfStage" class="kc-hf" aria-hidden="true"><svg id="hfSky" class="kc-hf__layer" viewBox="${STAGE_VIEWBOX}"></svg><div id="hfLand" class="kc-hf__layer"></div><svg id="hfDots" class="kc-hf__layer" viewBox="${STAGE_VIEWBOX}"></svg><svg id="hfTraces" class="kc-hf__layer" viewBox="${STAGE_VIEWBOX}"></svg><svg id="hfLive" class="kc-hf__layer" viewBox="${STAGE_VIEWBOX}"></svg><div id="hfPulse" class="kc-hf__pulse"></div><div id="hfContent"></div></div>
+      <canvas id="hfSnap" class="kc-hf__snap" aria-hidden="true" hidden></canvas>
       <div id="hfHaze" class="kc-hf__haze" aria-hidden="true"></div>
     </div>`;
   // ── Poll budget ─────────────────────────────────────────────────────────
@@ -257,6 +258,7 @@ export function renderDashboard(root: HTMLElement): void {
   const hfSkyEl = root.querySelector<SVGSVGElement>("#hfSky")!;
   const hfLandEl = root.querySelector<HTMLElement>("#hfLand")!;
   const hfDotsEl = root.querySelector<SVGSVGElement>("#hfDots")!;
+  const hfSnapEl = root.querySelector<HTMLCanvasElement>("#hfSnap")!;
   const hfTracesEl = root.querySelector<SVGSVGElement>("#hfTraces")!;
   let hfOpts = HF_WALL_DEFAULTS;
   const hitAnim = new HitAnimator(root.querySelector<SVGSVGElement>("#hfLive")!, root.querySelector<HTMLElement>("#hfPulse")!, () => hfOpts);
@@ -304,20 +306,48 @@ export function renderDashboard(root: HTMLElement): void {
     if (group) group.innerHTML = greylineSvg(now);
   }
 
-  // The stage swap lands when the zoom does; a change of mind mid-zoom finishes it at once.
+  // The zoom moves a flat picture of the Atlas, never the live layers, which can't re-raster that fast. The real
+  // stage sits finished underneath and shows when the picture fades. A change of mind finishes it at once.
   let zoomDone: (() => void) | null = null;
   function finishZoom(): void {
     const done = zoomDone;
     zoomDone = null;
     done?.();
   }
+  function atlasPicture(): Promise<void> {
+    const css = getComputedStyle(root);
+    const color = (name: string): string => css.getPropertyValue(name).trim();
+    const home = robinson(hfHome.lat, hfHome.lon);
+    const { clientWidth: width, clientHeight: height } = hfEl;
+    const svg = atlasSnapshotSvg({
+      sky: skySvg(Date.now()), world: worldSvg, dots: atlasDots(hfLog), traces: atlasTraces(hfLog, hfHome, null),
+      traceOpacity: hfOpts.traceOpacity, home, width, height, viewBox: STAGE_VIEWBOX,
+      colors: { land: color("--kc-hf-land"), border: color("--kc-hf-border"), dot: color("--kc-hf-dot"), glass: color("--kc-glass") },
+    });
+    return paintSnapshot(hfSnapEl, svg, width, height);
+  }
   function startZoom(direction: ZoomDirection, after: () => void): void {
-    dashEl.classList.add("hfZoom");
     const origin = stagePx(robinson(hfHome.lat, hfHome.lon), hfEl.clientWidth);
-    const run = runZoom(direction, hfEl, root.querySelector<HTMLElement>("#mapBase")!, root.querySelector<HTMLElement>("#hfHaze")!, origin, hfOpts.zoomMs);
-    const done = (): void => { run.stop(); dashEl.classList.remove("hfZoom"); after(); };
+    hfSnapEl.hidden = false;
+    const run = runZoom(direction, hfSnapEl, root.querySelector<HTMLElement>("#mapBase")!, root.querySelector<HTMLElement>("#hfHaze")!, origin, hfOpts.zoomMs);
+    dashEl.classList.add("hfZoom");
+    const done = (): void => {
+      run.stop();
+      hfSnapEl.hidden = true;
+      dashEl.classList.remove("hfZoom");
+      after();
+    };
     zoomDone = done;
     void run.finished.then(() => { if (zoomDone === done) finishZoom(); });
+  }
+  /** Paints the picture, then zooms, unless something else has happened by then. No picture, no zoom. */
+  function zoomWhenReady(direction: ZoomDirection, ready: Promise<unknown>, after: () => void): void {
+    const pending = (): void => { after(); };
+    zoomDone = pending;
+    void Promise.all([atlasPicture(), ready]).then(
+      () => { if (zoomDone === pending) { zoomDone = null; startZoom(direction, after); } },
+      () => { if (zoomDone === pending) finishZoom(); },
+    );
   }
 
   function setHfStage(on: boolean, zoom: ZoomDirection | null): void {
@@ -340,7 +370,10 @@ export function renderDashboard(root: HTMLElement): void {
         svg.removeAttribute("height");
       }
       poller.request("hfHeard");
-      if (zoom === "out") startZoom("out", syncMap);
+      if (zoom === "out") {
+        dashEl.classList.add("hfZoomWait");   // the map stays up until the picture is ready
+        zoomWhenReady("out", Promise.resolve(), () => { dashEl.classList.remove("hfZoomWait"); syncMap(); });
+      }
     } else {
       hfKey = "";
       if (hfGreylineTimer) { clearInterval(hfGreylineTimer); hfGreylineTimer = null; }
@@ -349,16 +382,9 @@ export function renderDashboard(root: HTMLElement): void {
       hfHit = null;
       hfFading = null;
       hitAnim.clear();
-      const leave = (): void => { dashEl.classList.remove("hfStage", "hfZoom"); };
-      if (zoom === "in" && mapHandle) {
-        dashEl.classList.add("hfZoom");
-        zoomDone = leave;
-        void mapHandle.whenDrawn(MAP_DRAW_WAIT_MS).then(() => {
-          if (zoomDone !== leave) return;
-          zoomDone = null;
-          startZoom("in", leave);
-        });
-      } else leave();
+      const leave = (): void => { dashEl.classList.remove("hfStage"); };
+      if (zoom === "in" && mapHandle) zoomWhenReady("in", mapHandle.whenDrawn(MAP_DRAW_WAIT_MS), leave);
+      else leave();
     }
   }
 

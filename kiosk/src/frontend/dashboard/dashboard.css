@@ -284,10 +284,15 @@ html[data-page="dashboard"] .kc-cb__needle {
 
 /* HF mode, "The Atlas" (spec 2026-11-03-hf-atlas). Sized for the wall's 1366×768. No blur. */
 html[data-page="dashboard"] .kc-hf { display: none; }
-/* Its own layer always: dropping it when a zoom ends makes every layer inside re-raster, a visible flash. */
-html[data-page="dashboard"] .dash.hfStage .kc-hf { display: block; position: absolute; inset: 0; z-index: 2; will-change: transform, opacity, filter; }
+html[data-page="dashboard"] .dash.hfStage .kc-hf { display: block; position: absolute; inset: 0; z-index: 2; }
 html[data-page="dashboard"] .dash.hfStage .mapBase { visibility: hidden; }
-html[data-page="dashboard"] .dash.hfStage.hfZoom .mapBase { visibility: visible; }
+/* During a zoom the order is: real stage (finished, underneath), map, picture of the Atlas, haze. */
+html[data-page="dashboard"] .dash.hfStage.hfZoom .mapBase,
+html[data-page="dashboard"] .dash.hfStage.hfZoomWait .mapBase { visibility: visible; z-index: 2; }
+html[data-page="dashboard"] .dash.hfStage.hfZoom .kc-hf,
+html[data-page="dashboard"] .dash.hfStage.hfZoomWait .kc-hf { z-index: 1; }
+html[data-page="dashboard"] .kc-hf__snap { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none; will-change: transform, opacity, filter; }
+html[data-page="dashboard"] .kc-hf__snap[hidden] { display: none; }
 /* The atmosphere the zoom passes through: a blue haze, with faint streaks radiating from home. Only exists mid-zoom. */
 html[data-page="dashboard"] .kc-hf__haze { display: none; }
 html[data-page="dashboard"] .dash.hfZoom .kc-hf__haze {
