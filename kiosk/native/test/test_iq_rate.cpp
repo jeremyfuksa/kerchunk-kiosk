@@ -1,8 +1,8 @@
 #include <algorithm>
-#include <chrono>
 #include <cmath>
 #include <complex>
 #include <cstdint>
+#include <ctime>
 #include <vector>
 
 #include "check.hpp"
@@ -66,9 +66,13 @@ TEST(iq_rate_passband_edge_within_1db) {
 }
 
 TEST(iq_rate_rejects_images_that_would_land_in_the_usable_span) {
-  // A +340 kHz input has an upsampling image at 340 - 768 = -428 kHz, which the 750 kHz output
-  // folds to -428 + 750 = +322 kHz, inside the 660 kHz usable span.
-  CHECK(output_db(340000, 340000) - output_db(340000, 322000) > 40);
+  // A carrier at f has an upsampling image at f - 768 kHz, which the 750 kHz output folds to
+  // f - 18 kHz (mirrored for negative f). It lands in the +/-330 kHz span up to f = 348 kHz, where
+  // it first meets the filter's 420 kHz stopband edge. carrier_survey's image rule relies on this.
+  for (double f = 330000; f <= 348000; f += 1000) {
+    CHECK(output_db(f, f) - output_db(f, f - 18000) > 50);
+    CHECK(output_db(-f, -f) - output_db(-f, -f + 18000) > 50);
+  }
 }
 
 TEST(iq_rate_reset_clears_history) {
@@ -94,8 +98,8 @@ TEST(iq_rate_never_writes_past_capacity) {
 TEST(iq_rate_cpu_is_realtime) {
   kc::IqRateConverter c;
   auto in = u8_tone(50000, 768000);
-  const auto t0 = std::chrono::steady_clock::now();
+  // CPU time, not wall clock: the appliance runs this beside a live helper, and preemption isn't cost.
+  const std::clock_t t0 = std::clock();
   for (int i = 0; i < 10; i++) convert(c, in);
-  const double s = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
-  CHECK(s < 1.0);
+  CHECK((double)(std::clock() - t0) / CLOCKS_PER_SEC < 1.0);
 }

@@ -71,6 +71,8 @@ struct FakeSource : kc::IqSource {
   bool set_center(double hz) override { centers.push_back(hz); if (refuse) return false; gen++; return true; }
   uint32_t generation() const override { return gen; }
   uint64_t take_dropped() override { auto d = dropped; dropped = 0; return d; }
+  uint64_t discarded = 0;
+  uint64_t take_discarded() override { auto d = discarded; discarded = 0; return d; }
 };
 
 struct Rig {
@@ -140,6 +142,23 @@ TEST(live_drops_advance_clock_and_report) {
   CHECK(drop_events == 1);          // drops_since_power_ is reset on report -- exactly one power event carries it
   CHECK(r.count("log") == 1);       // rate-limited overrun log
   CHECK_NEAR(r.e->now(), 0.48, 0.0015);   // 7 + 1 (gap) + 40 blocks
+}
+
+TEST(live_source_discard_feeds_the_speaker_without_counting_as_a_drop) {
+  Rig r;
+  r.send(TUNE);
+  r.src.add(SETTLE_BLOCKS + 1, 1);
+  r.run();
+  const long long spk0 = r.spk;
+  const double t0 = r.e->now();
+  r.src.discarded = RATE / 10;      // 100 ms the source threw away
+  r.loop->step();
+  CHECK_NEAR((double)(r.spk - spk0), 0.1 * kc::AUDIO_RATE, 150);
+  CHECK_NEAR(r.e->now() - t0, 0.1, 0.0015);
+  r.src.add(40, 1);
+  r.run();
+  for (auto& j : r.ev) CHECK(!(j["ev"] == "power" && j.contains("drops")));
+  CHECK(r.count("log") == 0);
 }
 
 TEST(live_retune_mid_stream_discards_old_generation) {

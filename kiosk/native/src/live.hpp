@@ -33,11 +33,14 @@ class IqSource {
  public:
   virtual ~IqSource() = default;
   virtual bool consume(const std::function<void(const IqBlock&)>& use) = 0;
-  // false = the device refused the new center (after its own retries): the loop fails rather than
-  // demodulate the old window as if it were the new one.
+  // false = the new center didn't take (RTL: refused after retries; SpyServer: the send failed): the
+  // loop fails rather than demodulate the old window as if it were the new one.
   virtual bool set_center(double hz) = 0;
   virtual uint32_t generation() const = 0;
   virtual uint64_t take_dropped() = 0;
+  // IQ samples the source itself threw away at a retune since the last call, at the DSP rate. Not an
+  // overrun, but wall time all the same: the speaker has to be fed through it.
+  virtual uint64_t take_discarded() { return 0; }
 };
 
 // A real radio: the part of a source run_live drives that a test double doesn't need.
@@ -47,6 +50,7 @@ class DeviceSource : public IqSource {
   virtual void start() = 0;
   virtual void stop() = 0;
   virtual double seconds_since_rx() const = 0;
+  virtual double stall_limit_s() const { return STALL_S; }   // no samples this long = lost radio, exit 3
 };
 
 class LiveLoop {

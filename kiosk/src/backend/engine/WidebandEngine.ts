@@ -137,9 +137,9 @@ const QUIT_GRACE_MS = 500;
 // A helper alive this long is considered healthy; its eventual death starts
 // a fresh failure-escalation window instead of compounding an old one.
 const HEALTHY_AFTER_MS = 10_000;
-// A helper can say "ready" and then stall out (exit 3 after STALL_S, 2 s). It has to
-// outlast that before the UIs are told it recovered.
-export const READY_PROVEN_MS = 3_000;
+// A helper can say "ready" and then stall out (exit 3 after STALL_S, 2 s; SPY_STALL_S, 4 s,
+// on SpyServer). It has to outlast that before the UIs are told it recovered.
+export const READY_PROVEN_MS = 5_000;
 // Helper log forwarding: at most HELPER_LOG_BURST lines per window, so a
 // flapping condition can't flood the journal; the overflow is summarized.
 const HELPER_LOG_BURST = 10;

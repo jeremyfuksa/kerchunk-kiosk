@@ -39,6 +39,7 @@ bool LiveLoop::step() {
     }
   }
   if (const uint64_t d = src_.take_dropped()) eng_.note_gap((long long)d, true);
+  if (const uint64_t d = src_.take_discarded()) eng_.note_gap((long long)d, false);
   return src_.consume([this](const IqBlock& b) {
     // Defensive clamp: never trust a producer's block size blindly (a garbled/stale block should
     // degrade to "fewer samples", never read past `data`, and never leave n odd -- 2 bytes/sample).

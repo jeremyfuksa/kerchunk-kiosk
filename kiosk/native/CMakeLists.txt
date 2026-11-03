@@ -35,6 +35,9 @@ target_link_libraries(kerchunk-dsp-tests PRIVATE kcdsp Threads::Threads)
 
 add_executable(kerchunk-dsp ${CMAKE_CURRENT_SOURCE_DIR}/app/main.cpp)
 target_link_libraries(kerchunk-dsp PRIVATE kcdsp Threads::Threads)
+# The stall exit lives in the helper's main loop, so its test runs the real binary.
+add_dependencies(kerchunk-dsp-tests kerchunk-dsp)
+target_compile_definitions(kerchunk-dsp-tests PRIVATE KC_DSP_BIN="$<TARGET_FILE:kerchunk-dsp>")
 
 if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/tools/cost_bench.cpp)
   add_executable(kc-cost-bench ${CMAKE_CURRENT_SOURCE_DIR}/tools/cost_bench.cpp)
