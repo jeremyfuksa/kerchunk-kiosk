@@ -39,8 +39,8 @@ export function mountHfLog(ctx: Ctx): void {
       `<th class="${c.num ? "is-num" : ""}">${c.sort ? `<button type="button" data-sort="${c.sort}" aria-pressed="${sort === c.sort}">${c.label}</button>` : c.label}</th>`).join("")}</tr></thead>
       <tbody>${logRows(sortRows(rows, sort)).map((r) => `<tr>
         <td class="is-num">${esc(r.freq)}</td><td>${esc(r.band)}</td>
-        <td class="${r.likely ? "" : "is-dim"}">${esc(r.station)}${r.others ? `<small>or ${esc(r.others)}</small>` : ""}</td>
-        <td>${esc(r.language)}</td><td>${esc(r.where)}</td><td class="is-num">${esc(r.power)}</td><td class="is-num">${esc(r.distance)}</td>
+        <td class="kc-log__wrap ${r.likely ? "" : "is-dim"}">${esc(r.station)}${r.others ? `<small>or ${esc(r.others)}</small>` : ""}</td>
+        <td>${esc(r.language)}</td><td class="kc-log__wrap">${esc(r.where)}</td><td class="is-num">${esc(r.power)}</td><td class="is-num">${esc(r.distance)}</td>
         <td class="is-num">${esc(r.peak)}</td><td class="is-num">${r.passes}</td><td>${clock(r.first)}</td><td>${clock(r.last)}</td><td>${r.onSpeaker ? "Yes" : ""}</td>
       </tr>`).join("")}</tbody></table>`;
   }

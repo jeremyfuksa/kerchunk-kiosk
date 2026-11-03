@@ -81,6 +81,11 @@ describe("hfView", () => {
     expect(html).toContain("Radio Marti");
   });
 
+  it("shows a utility mode code as a word", () => {
+    const v = hfView({ ...base, hf: { ...base.hf!, listenHz: 5_000_000, candidate: { station: "WWV", language: "-TS" } } });
+    expect(v.readout.details).toEqual(["Utility"]);
+  });
+
   it("unidentified: plain, with no name claimed and no map path", () => {
     const v = hfView({ ...base, hf: { ...base.hf!, listenHz: 7_355_000, candidate: null } });
     expect(v.readout).toMatchObject({ state: "live", headline: "7355", name: "Unidentified station", likely: "" });

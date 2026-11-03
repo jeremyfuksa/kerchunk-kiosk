@@ -1,4 +1,6 @@
 // The HF reception log, as the Log tab shows it. Names come from schedules, so they're only ever "likely".
+import { hfLanguage } from "../lib/format.js";
+
 export interface HfLogRow {
   night: string; firstTs: number; lastTs: number; freqHz: number; band: string; peakDb: number; passes: number; onSpeaker: boolean;
   station: string | null; country: string | null; language: string | null; site: string | null;
@@ -28,7 +30,7 @@ export function logRows(rows: readonly HfLogRow[]): HfLogLine[] {
     station: r.station ?? "Unidentified",
     likely: r.station !== null,
     others: r.others.join(", "),
-    language: r.language ?? "",
+    language: hfLanguage(r.language),
     where: [r.site, r.country].filter(Boolean).join(", "),
     power: r.powerKw === null ? "" : `${r.powerKw} kW`,
     distance: r.distanceKm === null ? "" : `${Math.round(r.distanceKm).toLocaleString("en-US")} km`,

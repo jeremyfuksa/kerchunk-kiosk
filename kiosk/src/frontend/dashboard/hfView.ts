@@ -1,6 +1,6 @@
 // The wall's "Station first" stage for HF mode (spec 2026-11-02-hf-mode). Pure, like cbView. The key
 // holds everything drawn, so the stage redraws only when something changes: no standing animation.
-import { esc } from "../lib/format.js";
+import { esc, hfLanguage } from "../lib/format.js";
 import { segmentsLit } from "../faceplate/lcd.js";
 import type { HfStatus } from "../lib/api.js";
 import { friendlyError, meterFill, METER_SEGMENTS } from "./cornerView.js";
@@ -55,7 +55,7 @@ export function hfView(i: HfViewInput): HfView {
       state: "live", meta: `${where} · AM · Live`, metaRight: i.muted ? "Muted" : "", headline: kHz(listen),
       name: cand?.station ?? "Unidentified station", likely: cand ? "Likely · from schedule" : "",
       details: cand ? [
-        cand.language, [cand.site, cand.country].filter(Boolean).join(", "),
+        hfLanguage(cand.language), [cand.site, cand.country].filter(Boolean).join(", "),
         cand.powerKw !== undefined ? `${cand.powerKw} kW` : "",
         cand.distanceKm !== undefined ? `${cand.distanceKm.toLocaleString("en-US")} km` : "",
       ].filter((d): d is string => !!d) : [],
