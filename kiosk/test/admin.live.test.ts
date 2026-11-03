@@ -89,3 +89,11 @@ describe("startedAt", () => {
     expect(withStatus(a, { mode: "scan", monitor: null, startedAt: 222 }).startedAt).toBe(222);
   });
 });
+
+describe("HF mode on the radio readout", () => {
+  it("shows the band while hunting, and CB during a hold", () => {
+    const hunting = withStatus(initialLive, { mode: "hf", hf: { band: "49m" }, monitor: null });
+    expect(hunting.hf?.band).toBe("49m");
+    expect(withStatus(hunting, { mode: "scan", monitor: null }).hf).toBeNull();
+  });
+});

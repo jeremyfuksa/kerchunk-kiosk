@@ -12,6 +12,7 @@
 #include "ctcss.hpp"
 #include "dcs.hpp"
 #include "demod.hpp"
+#include "carrier_survey.hpp"
 #include "meters.hpp"
 #include "protocol.hpp"
 #include "scanner.hpp"
@@ -24,6 +25,8 @@ struct EngineOptions {
   Scanner::Params squelch{};
   bool close_call = false;
   bool same = false;
+  bool survey = false;                       // emit "carriers" events (CLI --survey)
+  double survey_db = SURVEY_DB_DEFAULT;      // CLI --survey-db
   double speaker_lpf_hz = SPEAKER_LPF_HZ;   // speaker audio LPF cutoff (CLI --audio-lpf-hz)
   double speaker_hpf_hz = SPEAKER_HPF_HZ;   // FM speaker HPF cutoff, 0 = off (CLI --audio-hpf-hz)
   double am_gain_db = 0.0;                   // AM speaker gain offset vs AM_GAIN, dB (CLI --am-gain-db;
@@ -70,6 +73,7 @@ class Engine {
   SpeakerPath spk_;
   SamePath same_path_;
   std::unique_ptr<CloseCall> cc_;
+  std::unique_ptr<CarrierSurvey> survey_;
   std::vector<ChunkPower> power_;
   std::vector<FmDiscriminator> disc_;
   std::vector<QuietingMeter> quiet_;

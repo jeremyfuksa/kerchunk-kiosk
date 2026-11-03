@@ -12,3 +12,8 @@ export function esc(s: string): string {
   return s.replace(/[&<>"']/g, (c) =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 }
+
+/** EiBi's language column holds a mode code ("-TS", "-CW") for utility stations. */
+export function hfLanguage(code: string | null | undefined): string {
+  return code?.startsWith("-") ? "Utility" : code ?? "";
+}

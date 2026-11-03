@@ -181,6 +181,13 @@ inline constexpr double CC_GUARD_HZ = 12500;
 inline constexpr double CC_DC_FRAC = 0.02;
 inline constexpr double CC_EDGE_FRAC = 0.10;
 inline constexpr double CC_DB_DEFAULT = 15.0;
+// Carrier survey (HF). Narrower guards than Close Call: every station in the window matters.
+inline constexpr int SURVEY_EVERY_POLLS = 500;       // a carriers event every 5 s
+inline constexpr double SURVEY_DB_DEFAULT = 10.0;    // dB above the window's median floor
+inline constexpr double SURVEY_USABLE_HZ = 330000;   // +/- from center: the HF+'s 660 kHz usable span
+inline constexpr double SURVEY_DC_GUARD_HZ = 1500;   // the receiver's center spike
+inline constexpr double SURVEY_RASTER_HZ = 5000;     // shortwave broadcast raster
+inline constexpr double SURVEY_PEAK_HZ = 7500;       // a carrier tops this neighbourhood either side
 
 // ---- Live I/O (P1c)
 inline constexpr int IQ_BLOCK_BYTES = 48000;       // max 10 ms of u8 IQ at 2.4 Msps (blocks are <= 10 ms at any rate)
@@ -192,6 +199,13 @@ inline constexpr int RETUNE_ATTEMPTS = 3;         // rtlsdr_set_center_freq trie
 inline constexpr int RETUNE_RETRY_MS = 5;          // pause between those tries
 inline constexpr double STALL_S = 2.0;             // no samples this long = SDR loss -> exit 3
 inline constexpr double BUSY_RETRY_S = 3.0;        // retry rtlsdr_open this long (previous helper releasing)
+inline constexpr double SPY_CONNECT_TIMEOUT_S = 3.0;   // SpyServer connect + handshake
+inline constexpr double SPY_IO_TIMEOUT_S = 0.5;        // socket I/O once streaming; a retune send can't wedge the DSP thread longer
+// SpyServer confirms nothing after a retune, but echoes the digital gain in every IQ frame's flags. A
+// retune also steps the gain within a small cycle, so the flip marks new-center data in stream order.
+inline constexpr int SPY_DIGITAL_GAIN_DEFAULT = 32;    // at the server's default u8 is nearly empty (docs/bench/2026-11-hf-proofs.md)
+inline constexpr int SPY_MARKER_STEPS = 3;             // gain cycle, about 1 dB per step
+inline constexpr int SPY_RETUNE_DROP_FRAMES = 2;       // the flip frame itself can still be old center (measured)
 inline constexpr int ALSA_PERIOD = 480;            // 10 ms at 48 kHz
 inline constexpr unsigned ALSA_LATENCY_US = 60000; // requested device buffer latency
 // A busy hw/plughw device makes a blocking snd_pcm_open sleep in the kernel indefinitely (and

@@ -35,6 +35,11 @@ export const ALERT_COUNT = 25;
 export const PAUSE_S = 1800;
 
 /** "30 min", "1 h", "1 h 30 min" for a whole-minute duration. */
+/** The HF and CB keys: on from anywhere, and off back to the scan. */
+export function modeKeyTarget(current: string, key: "hf" | "cb"): "hf" | "cb" | "scan" {
+  return current === key ? "scan" : key;
+}
+
 export function durationLabel(s: number): string {
   const m = Math.round(s / 60);
   const h = Math.floor(m / 60);
@@ -95,7 +100,8 @@ export function mountRadio(ctx: Ctx): void {
           ${key({ id: "kcListen", label: "Listen here", icon: "play", variant: "primary", wide: true })}
           ${key({ id: "kcSkip", label: "Skip", icon: "skip", title: "Force-close the current transmission" })}
           ${key({ id: "kcWeather", label: "Weather", icon: "weather", title: "Park the radio on the NOAA weather channel" })}
-          ${key({ id: "kcCb", label: "CB", icon: "cb", title: "Listen to CB only (the scan stops until you resume)" })}
+          ${key({ id: "kcHf", label: "HF", icon: "hf", title: "Sweep shortwave on the HF radio until you change it (the scan stops)" })}
+          ${key({ id: "kcCb", label: "CB", icon: "cb", title: "Listen to CB until you change it (the scan stops)" })}
           ${key({ id: "kcPause", label: `Pause ${durationLabel(PAUSE_S)}`, icon: "pause", title: `Suppress this channel for ${durationLabel(PAUSE_S)} (clears on restart)` })}
           ${key({ id: "kcLock", label: "Lock out", icon: "lockout", variant: "danger", title: "Stop scanning this frequency and never Close-Call it" })}
         </div>
@@ -124,6 +130,7 @@ export function mountRadio(ctx: Ctx): void {
   const lcdHost = $("#kcLcd");
   const listen = $<HTMLButtonElement>("#kcListen");
   const weather = $<HTMLButtonElement>("#kcWeather");
+  const hfKey = $<HTMLButtonElement>("#kcHf");
   const cb = $<HTMLButtonElement>("#kcCb");
   const pause = $<HTMLButtonElement>("#kcPause");
   const lock = $<HTMLButtonElement>("#kcLock");
@@ -186,6 +193,7 @@ export function mountRadio(ctx: Ctx): void {
       face(weather, "weather", s.mode === "weather" ? "Resume scan" : "Weather");
       setDisabled(weather, s.mode !== "weather" && s.weatherChannel === null);
     }
+    if (s.mode === "hf") face(hfKey, "stop", "Resume scan"); else face(hfKey, "hf", "HF");
     if (s.mode === "cb") face(cb, "stop", "Resume scan"); else face(cb, "cb", "CB");
     setDisabled(pause, !v.canLock);
     setDisabled(lock, !v.canLock);
@@ -220,11 +228,13 @@ export function mountRadio(ctx: Ctx): void {
     live.requestResync();
     void poller.tick("radio");
   });
-  cb.addEventListener("click", async () => {
-    try { await poller.run(() => api.setMode(live.state.mode === "cb" ? "scan" : "cb")); } catch (e) { say(e); }
-    live.requestResync();
-    void poller.tick("radio");
-  });
+  for (const [btn, target] of [[hfKey, "hf"], [cb, "cb"]] as const) {
+    btn.addEventListener("click", async () => {
+      try { await poller.run(() => api.setMode(modeKeyTarget(live.state.mode, target))); } catch (e) { say(e); }
+      live.requestResync();
+      void poller.tick("radio");
+    });
+  }
   pause.addEventListener("click", async () => {
     try {
       await poller.run(() => api.skip(PAUSE_S));

@@ -2,7 +2,10 @@ import { WebSocketServer } from "ws";
 import { spawn, execFile } from "node:child_process";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createServer, toScanConfig } from "./server.js";
+import { createServer, isSharedActivity } from "./server.js";
+import { ModeStore } from "./modeStore.js";
+import { ReceptionLog } from "./hf/receptionLog.js";
+import { ScheduleStore } from "./hf/scheduleStore.js";
 import { ConfigStore } from "./config/ConfigStore.js";
 import { ActivityLog } from "./activityLog.js";
 import { WsHub } from "./ws.js";
@@ -171,7 +174,7 @@ function startWeatherLane(): void {
 
 engine.on((ev: EngineEvent) => {
   if (ev.type === "active") {
-    activityLog.add({ freq: ev.freq, alphaTag: ev.channel.alphaTag, ts: ev.ts });
+    if (isSharedActivity(ev)) activityLog.add({ freq: ev.freq, alphaTag: ev.channel.alphaTag, ts: ev.ts });
   }
   // Bring weather up only after the main scanner helper is up and tuning.
   if (!weatherStarted && ev.type === "tuned") {
@@ -289,7 +292,28 @@ const radar = config.display && radarCfg?.enabled
 // Bound after createServer (it needs getConfig); beats before then are dropped.
 let wallWatchdog: WallWatchdog | undefined;
 
-const { server, getConfig } = createServer({
+// Shortwave schedules: fetched at runtime, a while after boot so they don't pile onto the
+// cold start, and checked hourly after that. A failed fetch keeps the last good copy.
+const schedules = new ScheduleStore({
+  dir: join(dirname(CONFIG_PATH), "schedules"),
+  home: { lat: config.display?.weatherLat ?? 39.1, lon: config.display?.weatherLon ?? -94.58 },
+});
+schedules.loadFromDisk();
+const refreshSchedules = (): void => {
+  if (schedules.due()) void schedules.refresh().catch((e) => console.error(`[schedule] ${(e as Error).message}`));
+};
+setTimeout(refreshSchedules, 120_000).unref();
+setInterval(refreshSchedules, 3_600_000).unref();
+
+// A corrupt log must not stop the radio, SAME included.
+let receptionLog: ReceptionLog | undefined;
+try { receptionLog = new ReceptionLog({ path: join(dirname(CONFIG_PATH), "reception.db") }); }
+catch (e) { console.error(`[hf] reception log unavailable: ${(e as Error).message}`); }
+
+const { server, getConfig, bootScanConfig } = createServer({
+  modeStore: new ModeStore(join(dirname(CONFIG_PATH), "mode.json")),
+  ...(receptionLog ? { receptionLog } : {}),
+  hfCandidates: (hz, ts) => schedules.candidates(hz, ts),
   configStore, engine, weatherEngine, activityLog, wsHub, staticDir: STATIC_DIR,
   lookup, weather, history, aircraftFeed, radar,
   ccSampleDir: join(dirname(CONFIG_PATH), "cc-samples"),
@@ -357,7 +381,7 @@ server.listen(PORT, () => {
   // getConfig() is the server's migrated config (legacy cc_ channels moved to
   // discoveries), not the pre-migration snapshot loaded above — so boot starts
   // the engine from the same source of truth the API path uses.
-  engine.start(toScanConfig(getConfig(), "scan"))
+  engine.start(bootScanConfig())
     // Re-apply persisted volume/mute to the hardware mixer on boot, so the saved
     // setting actually takes effect instead of inheriting the OS mixer state.
     // Direct audio.js calls WITH the configured mixer card/control — the same
