@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { subsolar, sunAltitude } from "../src/frontend/dashboard/sun.js";
 import { robinson } from "../src/frontend/dashboard/robinson.js";
-import { greylineDue, STAGE_VIEWBOX, GREYLINE_BANDS, nightEdges, nightBandPath, nightInterval, skySvg, greylineSvg, globeOutline } from "../src/frontend/dashboard/greyline.js";
+import { greylineDue, STAGE_VIEWBOX, GREYLINE_BANDS, nightEdges, nightBandPath, nightInterval, skySvg, greylineSvg, globeOutline, limbMaskSvg, LIMB_MASK } from "../src/frontend/dashboard/greyline.js";
 
 const NOV = Date.UTC(2026, 10, 3, 9, 11);
 const JUNE = Date.UTC(2026, 5, 21, 12, 0);
@@ -115,5 +115,20 @@ describe("greylineDue", () => {
   it("greyline_redraws_only_when_the_step_passes", () => {
     expect(greylineDue(1_000, 1_000 + 299_999, 300_000)).toBe(false);
     expect(greylineDue(1_000, 1_000 + 300_000, 300_000)).toBe(true);
+  });
+});
+
+describe("limb mask", () => {
+  it("shows everything on the globe, and fades what's past the rim", () => {
+    const m = limbMaskSvg();
+    expect(m).toContain(`<mask id="hfLimb"`);
+    expect(LIMB_MASK).toBe('mask="url(#hfLimb)"');
+    expect(m).toMatch(/<rect [^>]*fill="#000"/);
+    expect(m).toContain(`<path d="${globeOutline()}" fill="#fff"/>`);
+    expect(m).toContain('stroke="#fff"');
+    expect(m.lastIndexOf(`fill="#fff"`)).toBeGreaterThan(m.lastIndexOf('stroke="#fff"'));
+  });
+  it("is the same string every call, so a layer never repaints for it", () => {
+    expect(limbMaskSvg()).toBe(limbMaskSvg());
   });
 });

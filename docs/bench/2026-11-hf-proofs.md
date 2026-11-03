@@ -260,3 +260,7 @@ Not proven live yet: noon clearing the traces, because no noon has passed on thi
 Final version, which moves a flat picture. Six zooms on the wall, 25 s apart, 2026-11-03 at about 13:10 local: 53 °C before, 58 °C peak, 50 °C within two minutes of the last one. An earlier version that scaled the live layers peaked at 62 °C.
 
 Landing, checked by comparing frames with the settled wall over the top 470 px, three trips from a fresh load: 0% different right after landing, with no late repaint.
+
+## Lightning feed
+
+First reading with `display.lightning.enabled` on (PR #295), 2026-11-03, 3 minutes in HF: backend 4.4% of a core, 184 MB resident, 48 °C. No before-number for the backend, and the scan radio was offline at the time, so this isn't a comparison. The feed downloads about 1–2.5 GB a day by its own schema note.
