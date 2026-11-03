@@ -1,22 +1,22 @@
-// The wall's "Station first" stage for HF mode (spec 2026-11-02-hf-mode). Pure, like cbView. The key
-// holds everything drawn, so the stage redraws only when something changes: no standing animation.
+// The Atlas's text: the station panel and the reception band (spec 2026-11-03-hf-atlas). Pure, like
+// cbView. The key holds everything drawn, so the text redraws only when something changes.
 import { esc, hfLanguage } from "../lib/format.js";
 import { segmentsLit } from "../faceplate/lcd.js";
 import type { HfStatus } from "../lib/api.js";
+import { bandColor, legend, type AtlasRow, type HitKey, type LegendEntry } from "./atlas.js";
 import { friendlyError, METER_SEGMENTS } from "./cornerView.js";
 import { ituToIso2 } from "./ituCountry.js";
-import { greatCircle, robinson, type LatLon } from "./robinson.js";
 
-const PATH_SEGMENTS = 48;
 // The HF+ measured about -59 to -9 dBFS on stations, night of 2026-11-03; the shared meter scale starts at -35.
 const HF_METER_DB = { floor: -60, ceil: -10 } as const;
+const HEARD_ROWS = 3;
 
 /** 0 dB is the helper's placeholder when a lane is opened by hand, not a level. */
 function hfMeterFill(db: number | null): number {
   return db === null || db >= 0 ? 0 : (db - HF_METER_DB.floor) / (HF_METER_DB.ceil - HF_METER_DB.floor);
 }
 
-export interface HfHeard { freqHz: number; station: string | null; lastTs: number; onSpeaker: boolean }
+export interface HfHeard extends AtlasRow { station: string | null; lastTs: number }
 
 export interface HfViewInput {
   hf: HfStatus | null;
@@ -24,10 +24,8 @@ export interface HfViewInput {
   error: string | null;
   muted: boolean;
   signalDb: number | null;
-  heardCount: number;
-  heard: readonly HfHeard[];
-  home: LatLon;
-  fmtTime: (ts: number) => string;
+  /** Everything in tonight's log. */
+  log: readonly HfHeard[];
 }
 
 export interface HfReadout {
@@ -42,14 +40,18 @@ export function mapShouldRun(cbOn: boolean, hfOn: boolean): boolean {
 
 export interface HfView {
   key: string;
-  mapKey: string;
+  tag: string;
   readout: HfReadout;
   heardTitle: string;
-  rows: Array<{ label: string; when: string }>;
+  rows: string[];
+  legend: LegendEntry[];
   ticks: Array<{ x: number; strong: boolean }>;
   needle: number | null;
-  scale: { lo: string; hi: string };
-  map: { tint: string | null; dot: { x: number; y: number } | null; home: { x: number; y: number }; path: string };
+  liveColor: string;
+  /** The station to draw a ring and line for. Null without a place to draw them. */
+  liveStation: HitKey | null;
+  /** ISO code of the country to tint, which a station can have without coordinates. */
+  tint: string | null;
   lit: number;
 }
 
@@ -66,7 +68,7 @@ export function hfView(i: HfViewInput): HfView {
   } else if (listen !== null) {
     readout = {
       state: "live", meta: `${where} · AM · Live`, metaRight: i.muted ? "Muted" : "", headline: kHz(listen),
-      name: cand?.station ?? "Unidentified station", likely: cand ? "Likely · from schedule" : "",
+      name: cand?.station ?? "Unidentified station", likely: cand ? "Likely" : "",
       details: cand ? [
         hfLanguage(cand.language), [cand.site, cand.country].filter(Boolean).join(", "),
         cand.powerKw !== undefined ? `${cand.powerKw} kW` : "",
@@ -87,60 +89,44 @@ export function hfView(i: HfViewInput): HfView {
     const x = pct(c.hz);
     return x === null ? [] : [{ x, strong: c.db >= 30 }];
   });
-  const place = !i.error && listen !== null && cand?.lat !== undefined && cand.lon !== undefined ? { lat: cand.lat, lon: cand.lon } : null;
-  const homeXy = robinson(i.home.lat, i.home.lon);
-  const dot = place ? robinson(place.lat, place.lon) : null;
-  const path = place
-    ? polyline(greatCircle(i.home, place, PATH_SEGMENTS))
-    : "";
+  const live = readout.state === "live";
+  const place = live && listen !== null && hf && cand?.lat !== undefined && cand.lon !== undefined
+    ? { hz: listen, lat: cand.lat, lon: cand.lon, band: hf.band }
+    : null;
 
-  const view: Omit<HfView, "key" | "mapKey"> = {
+  const view: Omit<HfView, "key"> = {
+    tag: hf ? `HF · ${hf.band}` : "HF",
     readout,
-    heardTitle: `Heard tonight · ${i.heardCount}`,
-    rows: i.heard.map((h) => ({ label: `${kHz(h.freqHz)} ${h.station ?? "Unidentified"}`, when: i.fmtTime(h.lastTs) })),
+    heardTitle: `Heard tonight ${i.log.length}`,
+    rows: [...i.log].sort((a, b) => b.lastTs - a.lastTs).slice(0, HEARD_ROWS).map((h) => `${kHz(h.freqHz)} ${h.station ?? "Unidentified"}`),
+    legend: legend(i.log, live ? hf?.band ?? null : null),
     ticks,
     needle: !i.error && listen !== null ? pct(listen) : null,
-    scale: { lo: lo === null ? "" : kHz(lo), hi: hi === null ? "" : kHz(hi) },
-    map: { tint: !i.error && listen !== null ? ituToIso2(cand?.itu) : null, dot, home: homeXy, path },
-    lit: readout.state === "live" ? segmentsLit(hfMeterFill(i.signalDb), METER_SEGMENTS) : 0,
+    liveColor: live ? bandColor(hf?.band ?? null) : bandColor(null),
+    liveStation: place,
+    tint: live ? ituToIso2(cand?.itu) : null,
+    lit: live ? segmentsLit(hfMeterFill(i.signalDb), METER_SEGMENTS) : 0,
   };
-  // The meter moves by itself: it's outside the key, so signal ticks don't rebuild the stage.
-  const { lit: _lit, ...keyed } = view;
-  return {
-    ...view,
-    key: JSON.stringify([keyed.readout, keyed.rows.map((r) => r.label), keyed.heardTitle, keyed.ticks, keyed.needle]),
-    mapKey: JSON.stringify([keyed.map.tint, keyed.map.path, keyed.map.dot]),
-  };
-}
-
-/** A long path can cross the map's edge at the antimeridian: break the line there, don't streak across. */
-function polyline(points: readonly LatLon[]): string {
-  let d = "";
-  let prev: LatLon | null = null;
-  for (const p of points) {
-    const { x, y } = robinson(p.lat, p.lon);
-    const jump = prev !== null && Math.abs(p.lon - prev.lon) > 180;
-    d += `${prev === null || jump ? "M" : "L"}${x.toFixed(1)} ${y.toFixed(1)}`;
-    prev = p;
-  }
-  return d;
+  // The meter moves by itself: it's outside the key, so signal ticks don't rebuild the text.
+  const { lit: _lit, liveStation: _s, tint: _t, ...keyed } = view;
+  return { ...view, key: JSON.stringify(keyed) };
 }
 
 export function hfHtml(v: HfView): string {
   const r = v.readout;
   const seg = Array.from({ length: METER_SEGMENTS }, (_, k) => `<i${k < v.lit ? ' class="on"' : ""}></i>`).join("");
+  const line = [r.likely, ...r.details].filter((d) => d !== "");
   const readout = `<div class="kc-hf__readout" data-state="${r.state}">`
     + `<div class="kc-hf__meta"><span>${esc(r.meta)}</span><span class="kc-hf__db">${esc(r.metaRight)}</span></div>`
     + (r.headline ? `<div class="kc-hf__freq">${esc(r.headline)}<small>kHz</small></div>` : "")
     + `<div class="kc-hf__name">${esc(r.name)}</div>`
-    + (r.likely ? `<div class="kc-hf__likely">${esc(r.likely)}</div>` : "")
-    + (r.details.length ? `<div class="kc-hf__details">${r.details.map((d) => `<span>${esc(d)}</span>`).join("")}</div>` : "")
+    + (line.length ? `<div class="kc-hf__details">${line.map((d) => esc(d)).join(" · ")}</div>` : "")
     + `<div class="kc-hf__seg" aria-hidden="true">${seg}</div></div>`;
-  const rows = v.rows.map((l) => `<div class="kc-hf__row"><span>${esc(l.label)}</span><i>${esc(l.when)}</i></div>`).join("");
+  const key = v.legend.map((l) => `<i class="${l.lit ? "is-lit" : ""}${l.live ? " is-live" : ""}" style="color:${l.color}">${esc(l.label)}</i>`).join("");
   const ticks = v.ticks.map((t) => `<i class="kc-hf__tick${t.strong ? " is-strong" : ""}" style="left:${t.x.toFixed(2)}%"></i>`).join("");
   const needle = v.needle === null ? "" : `<i class="kc-hf__needle" style="left:${v.needle.toFixed(2)}%"></i>`;
-  return `<div class="kc-hf__tag">HF mode · Shortwave</div>${readout}`
-    + `<section class="kc-hf__log"><h2>${esc(v.heardTitle)}</h2>${rows}</section>`
-    + `<div class="kc-hf__dial" aria-hidden="true"><div class="kc-hf__scale">${ticks}${needle}</div>`
-    + `<div class="kc-hf__ends"><span>${esc(v.scale.lo)}</span><span>${esc(v.scale.hi)}</span></div></div>`;
+  return `<div class="kc-hf__tag">${esc(v.tag)}</div>${readout}<div class="kc-hf__band">`
+    + `<div class="kc-hf__bandRow"><div class="kc-hf__legend" aria-hidden="true">${key}</div>`
+    + `<section class="kc-hf__log"><h2>${esc(v.heardTitle)}</h2><span>${v.rows.map((l) => esc(l)).join(" · ")}</span></section></div>`
+    + `<div class="kc-hf__scale" aria-hidden="true">${ticks}${needle}</div></div>`;
 }

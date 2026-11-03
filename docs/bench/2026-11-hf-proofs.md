@@ -238,3 +238,18 @@ Rerun after both fixes, 02:30 to 03:00 local, with the meter moving:
 - 30 minutes in HF: 54 °C peak, 47.9 °C mean, helper 23.0% of a core mean. The meter's redraws add no measurable heat.
 - 9395 (WRMI, +49 dB) and 9965 (Hope Radio 5, +24 dB) played and were logged. 5850, 7730 and 7780 (WRMI) were logged. The wider 41 m also logs some non-broadcast carriers: 7755 and 7800 unidentified, 7795 JMH Japan Meteo Fax.
 - A strong station can stay silent on alternate passes: 9395 at +46 dB played nothing on the second pass, because a pass takes about 15 minutes and `config.hf.cooldownMs` is 30. It is still logged.
+
+## The Atlas wall
+
+2026-11-03, 11:11 to 11:41 local, in daylight, on the branch at `26075a4`, with the real wall and the speaker on. Same sampling as above, plus Chromium's CPU summed across its processes.
+
+| | Peak | Mean | Helper mean | Chromium mean | Chromium max |
+|---|---|---|---|---|---|
+| Atlas | 52 °C | 49.5 °C | 23.2% of a core | 10.0% | 34.7% |
+
+Bar: under map mode's 64 °C. It passes, and it's no hotter than the old HF wall (54 °C peak, 47.9 °C mean at night). Chromium's CPU has no earlier number to compare with, so this is the baseline for the pulses and the zoom. Daytime bands give fewer hits than a night does, so a night's number could be a little higher.
+
+Seen on the live wall: a hit in flight, a held station, hunting, a test alert above the panel, and a trip to weather and back with traces intact. The greyline matched the time of day, and 16 date and time combinations across four seasons show no flat band edge. A lone trace measured 34% brightness from the wall's pixels.
+
+Not proven live yet: noon clearing the traces, because no noon has passed on this code.
+

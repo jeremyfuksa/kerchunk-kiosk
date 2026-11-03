@@ -282,51 +282,52 @@ html[data-page="dashboard"] .kc-cb__needle {
   position: absolute; top: -8%; bottom: -6%; width: 3px; transform: translateX(-50%); background: var(--kc-hay);
 }
 
-/* HF mode, "Station first" (spec 2026-11-02-hf-mode). Static between events: no animation, no blur. */
+/* HF mode, "The Atlas" (spec 2026-11-03-hf-atlas). Sized for the wall's 1366×768. No blur. */
 html[data-page="dashboard"] .kc-hf { display: none; }
 html[data-page="dashboard"] .dash.hfStage .kc-hf { display: block; position: absolute; inset: 0; z-index: 2; }
 html[data-page="dashboard"] .dash.hfStage .mapBase { visibility: hidden; }
 html[data-page="dashboard"] .dash.hfStage .kc-corner__slot,
 html[data-page="dashboard"] .dash.hfStage .kc-recent { display: none; }
 /* The corner stays: it holds the alert banner. */
-html[data-page="dashboard"] .dash.hfStage .kc-corner { z-index: 3; bottom: 9.5rem; }
+html[data-page="dashboard"] .dash.hfStage .kc-corner { z-index: 3; bottom: 300px; }
+html[data-page="dashboard"] .kc-hf__layer { position: absolute; inset: 0; width: 100%; height: 100%; will-change: transform; pointer-events: none; }
+html[data-page="dashboard"] #hfLand svg { display: block; width: 100%; height: 100%; }
+html[data-page="dashboard"] #hfLand svg path { fill: var(--kc-hf-land); fill-opacity: 0.72; stroke: var(--kc-hf-border); stroke-opacity: 0.2; stroke-width: 0.7; }
+html[data-page="dashboard"] #hfDots { fill: var(--kc-hf-dot); }
+html[data-page="dashboard"] .kc-hf__qth { fill: var(--kc-hf-dot); }
 html[data-page="dashboard"] .kc-hf__tag {
-  position: absolute; top: 2.4rem; left: 2.2rem; color: var(--kc-mute); font-size: var(--kc-k-glass-meta);
+  position: absolute; top: 18px; left: 28px; color: var(--kc-dim); font-size: 15px;
   font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
 }
 html[data-page="dashboard"] .kc-hf__readout {
-  position: absolute; left: 2.2rem; top: 5.6rem; width: 44vw; box-sizing: border-box; padding: 1.8rem 2.4rem;
-  border-radius: var(--kc-r-sheet); background: var(--kc-well); box-shadow: var(--kc-well-shadow);
+  position: absolute; left: 28px; bottom: 66px; width: 430px; box-sizing: border-box; padding: 14px 16px 16px;
+  border-radius: 12px; background: var(--kc-hf-plate);
 }
-html[data-page="dashboard"] .kc-hf__meta { display: flex; justify-content: space-between; color: var(--kc-glass); font-size: var(--kc-k-glass-meta); font-weight: 600; }
-html[data-page="dashboard"] .kc-hf__freq { color: var(--kc-glass); font-size: 6.4rem; line-height: 1.1; font-weight: 700; font-variant-numeric: tabular-nums; margin-top: 0.4rem; }
-html[data-page="dashboard"] .kc-hf__freq small { font-size: 0.32em; margin-left: 0.4em; font-weight: 600; }
-html[data-page="dashboard"] .kc-hf__name { color: var(--kc-ink); font-size: var(--kc-k-glass-name); font-weight: 700; margin-top: 0.4rem; }
-html[data-page="dashboard"] .kc-hf__likely { color: var(--kc-mute); font-size: var(--kc-k-date); margin-top: 0.2rem; }
-html[data-page="dashboard"] .kc-hf__details { display: flex; flex-wrap: wrap; gap: 0.2rem 1.4rem; color: var(--kc-dim); font-size: var(--kc-k-glass-meta); margin-top: 0.8rem; }
-html[data-page="dashboard"] .kc-hf__seg { display: flex; gap: 5px; height: 12px; margin-top: 1.4rem; }
-html[data-page="dashboard"] .kc-hf__seg i { flex: 1; border-radius: 2px; background: var(--kc-glass); opacity: 0.14; }
+html[data-page="dashboard"] .kc-hf__meta { display: flex; justify-content: space-between; color: var(--kc-hf-live); font-size: 14px; font-weight: 600; }
+html[data-page="dashboard"] .kc-hf__freq { color: var(--kc-hf-live); font-size: 68px; line-height: 1; font-weight: 700; font-variant-numeric: tabular-nums; margin-top: 4px; }
+html[data-page="dashboard"] .kc-hf__freq small { font-size: 0.32em; margin-left: 0.3em; font-weight: 600; }
+html[data-page="dashboard"] .kc-hf__name { color: var(--kc-ink); font-size: 30px; font-weight: 700; margin-top: 2px; line-height: 1.15; }
+html[data-page="dashboard"] .kc-hf__details { color: var(--kc-hf-details); font-size: 15px; line-height: 1.35; margin-top: 6px; }
+html[data-page="dashboard"] .kc-hf__seg { display: flex; gap: 4px; height: 8px; margin-top: 12px; }
+html[data-page="dashboard"] .kc-hf__seg i { flex: 1; border-radius: 2px; background: var(--kc-hf-live); opacity: 0.16; }
 html[data-page="dashboard"] .kc-hf__seg i.on { opacity: 1; }
 html[data-page="dashboard"] .kc-hf__readout[data-state="hunting"] .kc-hf__meta { color: var(--kc-mute); }
 html[data-page="dashboard"] .kc-hf__readout[data-state="hunting"] .kc-hf__name { color: var(--kc-dim); }
 html[data-page="dashboard"] .kc-hf__readout[data-state="error"] .kc-hf__meta { color: var(--kc-coral); }
-html[data-page="dashboard"] .kc-hf__map { position: absolute; right: 2.2rem; top: 12rem; width: 40vw; }
-html[data-page="dashboard"] .kc-hf__map svg { display: block; width: 100%; height: auto; }
-html[data-page="dashboard"] .kc-hf__map svg path { fill: color-mix(in srgb, var(--kc-ink) 16%, transparent); stroke: none; }
-html[data-page="dashboard"] .kc-hf__map svg path.is-tx { fill: color-mix(in srgb, var(--kc-glass) 55%, transparent); }
-html[data-page="dashboard"] .kc-hf__map svg path.kc-hf__path { fill: none; stroke: var(--kc-glass); stroke-width: 3; }
-html[data-page="dashboard"] .kc-hf__qth { fill: var(--kc-ink); }
-html[data-page="dashboard"] .kc-hf__tx { fill: var(--kc-glass); }
-html[data-page="dashboard"] .kc-hf__log { position: absolute; right: 2.2rem; top: 27.5rem; width: 46vw; }
-html[data-page="dashboard"] .kc-hf__log h2 { margin: 0 0 0.4rem; color: var(--kc-mute); font-size: var(--kc-k-date); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
-html[data-page="dashboard"] .kc-hf__row { display: flex; justify-content: space-between; gap: 1.5rem; padding: 0.35rem 0; border-top: 1px solid var(--kc-line); font-size: var(--kc-k-date); }
-html[data-page="dashboard"] .kc-hf__row i { font-style: normal; color: var(--kc-dim); font-variant-numeric: tabular-nums; }
-html[data-page="dashboard"] .kc-hf__dial {
-  position: absolute; left: 2.2rem; right: 2.2rem; bottom: 2.2rem; box-sizing: border-box; padding: 1.2rem 2.4rem 1rem;
-  border-radius: var(--kc-r-sheet); background: var(--kc-well); box-shadow: var(--kc-well-shadow);
-}
-html[data-page="dashboard"] .kc-hf__scale { position: relative; height: 3.2rem; border-bottom: 1px solid var(--kc-line); }
-html[data-page="dashboard"] .kc-hf__tick { position: absolute; bottom: 0; width: 2px; height: 1rem; background: var(--kc-dim); }
-html[data-page="dashboard"] .kc-hf__tick.is-strong { height: 1.8rem; background: var(--kc-ink); }
-html[data-page="dashboard"] .kc-hf__needle { position: absolute; bottom: 0; top: 0; width: 3px; background: var(--kc-glass); }
-html[data-page="dashboard"] .kc-hf__ends { display: flex; justify-content: space-between; color: var(--kc-mute); font-size: var(--kc-k-date); margin-top: 0.3rem; font-variant-numeric: tabular-nums; }
+html[data-page="dashboard"] .kc-hf__band { position: absolute; left: 0; right: 0; bottom: 0; padding: 8px 28px 12px; background: var(--kc-hf-bandbg); }
+html[data-page="dashboard"] .kc-hf__bandRow { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
+html[data-page="dashboard"] .kc-hf__legend { display: flex; gap: 9px; font-size: 13px; font-weight: 600; }
+html[data-page="dashboard"] .kc-hf__legend i { font-style: normal; opacity: 0.3; padding-bottom: 1px; border-bottom: 2px solid transparent; }
+html[data-page="dashboard"] .kc-hf__legend i.is-lit, html[data-page="dashboard"] .kc-hf__legend i.is-live { opacity: 1; }
+html[data-page="dashboard"] .kc-hf__legend i.is-live { border-bottom-color: currentColor; }
+html[data-page="dashboard"] .kc-hf__log { color: var(--kc-dim); font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; margin-left: 24px; }
+html[data-page="dashboard"] .kc-hf__log h2 { display: inline; margin: 0 12px 0 0; font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
+html[data-page="dashboard"] .kc-hf__scale { position: relative; height: 16px; border-bottom: 1px solid var(--kc-hf-hairline); }
+html[data-page="dashboard"] .kc-hf__tick { position: absolute; bottom: 0; width: 1px; height: 7px; background: var(--kc-dim); }
+html[data-page="dashboard"] .kc-hf__tick.is-strong { height: 11px; background: var(--kc-ink); }
+html[data-page="dashboard"] .kc-hf__needle { position: absolute; bottom: 0; width: 2px; height: 15px; background: var(--kc-hf-live); }
+/* The clock sits in the corner of space, clear of the globe's rim. */
+html[data-page="dashboard"] .dash.hfStage .kc-clock { top: 12px; right: 18px; }
+html[data-page="dashboard"] .dash.hfStage .kc-clock__time { font-size: 26px; }
+html[data-page="dashboard"] .dash.hfStage .kc-wx { font-size: 15px; margin-top: 2px; }
+html[data-page="dashboard"] .dash.hfStage .kc-clock__date { font-size: 12px; margin-top: 0; }

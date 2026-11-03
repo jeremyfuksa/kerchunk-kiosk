@@ -38,6 +38,15 @@ describe("ReceptionLog", () => {
     expect(rows[0]).toMatchObject({ freqHz: 5_950_000, band: "49m", peakDb: 35, firstTs: at(22), lastTs: at(22, 2), station: null });
   });
 
+  it("marks the newest row for a frequency, even in the same millisecond as the last", () => {
+    const l = log();
+    const ts = at(22);
+    l.record(ts, "49m", [{ hz: 5_950_000, db: 30 }], () => []);
+    l.record(ts, "49m", [{ hz: 5_950_000, db: 30 }], () => [{ station: "Radio X" }]);
+    l.markOnSpeaker(ts, 5_950_000);
+    expect(l.rows("2026-11-02").find((r) => r.station === "Radio X")?.onSpeaker).toBe(true);
+  });
+
   it("counts passes, not sightings", () => {
     const l = log();
     for (const m of [0, 0.1, 0.2, 0.5]) survey(l, at(22) + m * 60_000, 5_950_000, 20);
@@ -115,14 +124,14 @@ describe("HF mode logging", () => {
   let dir: string;
   afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
-  async function app() {
+  async function app(hfCandidates?: (hz: number, ts: number) => Candidate[]) {
     dir = mkdtempSync(join(tmpdir(), "krl-"));
     const engine = new FakeEngine();
     const receptionLog = log();
     const history = new HistoryStore({ path: ":memory:" });
     const { server } = createServer({
       configStore: new ConfigStore(join(dir, "config.json")), engine, activityLog: new ActivityLog(10),
-      wsHub: new WsHub(), staticDir: dir, receptionLog, history,
+      wsHub: new WsHub(), staticDir: dir, receptionLog, history, ...(hfCandidates ? { hfCandidates } : {}),
     });
     const c = (await request(server).get("/api/config")).body;
     await request(server).put("/api/config").send({ ...c, spyserver: { host: "airspy.local" } });
@@ -142,6 +151,18 @@ describe("HF mode logging", () => {
     expect(res.body.rows.map((r: { freqHz: number }) => r.freqHz).sort()).toEqual([2_350_000, 2_400_000]);
     expect(res.body.rows.find((r: { freqHz: number }) => r.freqHz === 2_350_000).onSpeaker).toBe(true);
     expect(res.body.rows.find((r: { freqHz: number }) => r.freqHz === 2_400_000).onSpeaker).toBe(false);
+    await request(server).post("/api/mode").send({ mode: "scan" });
+  });
+
+  it("a station whose schedule row appears after it took the speaker still counts as played", async () => {
+    let cands: Candidate[] = [];
+    const { server, engine } = await app(() => cands);
+    const center = engine.tunes.at(-1)!.fixedCenterHz!;
+    engine.emitCarriers(center, [{ hz: 2_350_000, db: 40 }]);
+    cands = [{ station: "Radio X", lat: 45, lon: 26 } as Candidate];   // a schedule slot turns over, or the list arrives
+    engine.emitCarriers(center, [{ hz: 2_350_000, db: 40 }]);
+    const rows = (await request(server).get("/api/hf/log")).body.rows as Array<{ station: string | null; onSpeaker: boolean }>;
+    expect(rows.find((r) => r.station === "Radio X")?.onSpeaker).toBe(true);
     await request(server).post("/api/mode").send({ mode: "scan" });
   });
 

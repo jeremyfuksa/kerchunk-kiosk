@@ -53,6 +53,15 @@
   --kc-dim: #a4acb7;
   --kc-mute: #8d96a3;
   --kc-glass: #5fd4c3;       /* LIVE — the emphasis budget */
+  /* The HF wall's Atlas (spec 2026-11-03-hf-atlas) */
+  --kc-hf-live: var(--kc-glass);    /* the live band's colour; dashboard.ts sets it per station */
+  --kc-hf-land: #07080f;
+  --kc-hf-border: #c9cfd8;
+  --kc-hf-dot: #f2efe6;
+  --kc-hf-plate: rgba(14, 14, 42, 0.74);
+  --kc-hf-bandbg: rgba(9, 9, 28, 0.86);
+  --kc-hf-details: #ccd1d9;
+  --kc-hf-hairline: rgba(230, 233, 238, 0.22);
   --kc-glass-ink: #08231f;   /* text on glass */
   --kc-glass-text: #d9f5f0;  /* LCD channel name */
   --kc-coral: #f29b8f;       /* destructive */

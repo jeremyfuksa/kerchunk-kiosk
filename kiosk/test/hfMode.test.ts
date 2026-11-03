@@ -24,9 +24,10 @@ async function app(withSpy = true) {
   dir = mkdtempSync(join(tmpdir(), "khf-"));
   const engine = new FakeEngine();
   history = new HistoryStore({ path: ":memory:" });
+  const wsHub = new WsHub();
   const { server, bootScanConfig } = createServer({
     configStore: new ConfigStore(join(dir, "config.json")), engine, activityLog: new ActivityLog(100),
-    wsHub: new WsHub(), staticDir: dir, modeStore: new ModeStore(join(dir, "mode.json")), history,
+    wsHub, staticDir: dir, modeStore: new ModeStore(join(dir, "mode.json")), history,
   });
   const c = (await request(server).get("/api/config")).body;
   await request(server).put("/api/config").send({
@@ -35,7 +36,7 @@ async function app(withSpy = true) {
   });
   await request(server).post("/api/channels").send({ freq: 145_130_000, alphaTag: "SCAN", mode: "nfm", enabled: true });
   await request(server).post("/api/scan/start");
-  return { server, engine, bootScanConfig };
+  return { server, engine, bootScanConfig, wsHub };
 }
 const last = (e: FakeEngine) => e.tunes.at(-1)!;
 afterEach(() => { vi.useRealTimers(); if (dir) rmSync(dir, { recursive: true, force: true }); });
@@ -219,6 +220,23 @@ describe("POST /api/mode hf", () => {
     expect(engine.tunes.length).toBe(n);
     expect(engine.state).toBe("stopped");
     vi.useRealTimers();
+  });
+
+  it("mode_change_broadcasts_status_changed", async () => {
+    const { server, wsHub } = await app();
+    const spy = vi.spyOn(wsHub, "broadcast");
+    await request(server).post("/api/mode").send({ mode: "hf" });
+    expect(spy.mock.calls.some(([e]) => (e as { type: string }).type === "statusChanged")).toBe(true);
+    await request(server).post("/api/mode").send({ mode: "scan" });
+  });
+
+  it("hf_tune_broadcasts_status_changed", async () => {
+    const { server, wsHub } = await app();
+    await request(server).post("/api/mode").send({ mode: "hf" });
+    const spy = vi.spyOn(wsHub, "broadcast");
+    await request(server).post("/api/scan/skip");
+    expect(spy.mock.calls.some(([e]) => (e as { type: string }).type === "statusChanged")).toBe(true);
+    await request(server).post("/api/mode").send({ mode: "scan" });
   });
 
   it("CB activity never takes HF mode off shortwave", async () => {

@@ -177,6 +177,7 @@ export type EngineEvent =
   // themselves (fresh JS/CSS/map style without touching the display
   // service). Synthesized by the server, like "alert".
   | { type: "reload"; ts: number }
+  | { type: "statusChanged"; ts: number }
   | { type: "error"; code: string; message: string; ts: number };
 
 export type EngineListener = (event: EngineEvent) => void;

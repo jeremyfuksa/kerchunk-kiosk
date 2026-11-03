@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { greatCircle, robinson } from "../src/frontend/dashboard/robinson.js";
 import { ituToIso2 } from "../src/frontend/dashboard/ituCountry.js";
-import { hfView, hfHtml, mapShouldRun, type HfViewInput } from "../src/frontend/dashboard/hfView.js";
+import { hfView, hfHtml, mapShouldRun, type HfHeard, type HfViewInput } from "../src/frontend/dashboard/hfView.js";
 
 describe("robinson", () => {
   it("matches the calibration measured for this map", () => {
@@ -55,29 +55,29 @@ describe("ituToIso2", () => {
 
 const base: HfViewInput = {
   hf: { band: "41m", centerHz: 7_402_500, listenHz: null, loHz: 7_200_000, hiHz: 7_600_000 },
-  carriers: [], error: null, muted: false, signalDb: null, heardCount: 0, heard: [], home: { lat: 39.1, lon: -94.58 }, fmtTime: () => "10:00",
+  carriers: [], error: null, muted: false, signalDb: null, log: [],
 };
+const row = (freqHz: number, station: string | null, lastTs: number): HfHeard => ({ freqHz, station, lastTs, onSpeaker: true, band: "41m", peakDb: 20 });
 
 describe("hfView", () => {
   it("hunting: the band and no station", () => {
     const v = hfView(base);
     expect(v.readout).toMatchObject({ state: "hunting", meta: "41m · Hunting", headline: "", name: "Listening for a station" });
-    expect(v.map.dot).toBeNull();
+    expect(v.liveStation).toBeNull();
     expect(v.needle).toBeNull();
   });
 
-  it("identified: frequency as headline, name marked likely, details, map dot and path", () => {
+  it("identified: frequency as headline, name marked likely, details, and a place on the map", () => {
     const v = hfView({ ...base, signalDb: -20, hf: { ...base.hf!, listenHz: 7_355_000, candidate: {
       station: "Radio Marti", itu: "USA", country: "United States of America", language: "Spanish", site: "Greenville, NC", lat: 35.47, lon: -77.2, powerKw: 250, distanceKm: 1587,
     } } });
-    expect(v.readout).toMatchObject({ state: "live", meta: "41m · AM · Live", headline: "7355", name: "Radio Marti", likely: "Likely · from schedule" });
+    expect(v.readout).toMatchObject({ state: "live", meta: "41m · AM · Live", headline: "7355", name: "Radio Marti", likely: "Likely" });
     expect(v.readout.details).toEqual(["Spanish", "Greenville, NC, United States of America", "250 kW", "1,587 km"]);
-    expect(v.map.tint).toBe("US");
-    expect(v.map.dot).not.toBeNull();
-    expect(v.map.path.length).toBeGreaterThan(0);
+    expect(v.tint).toBe("US");
+    expect(v.liveStation).toEqual({ hz: 7_355_000, lat: 35.47, lon: -77.2, band: "41m" });
     expect(v.needle).toBeCloseTo(((7_355_000 - 7_200_000) / 400_000) * 100, 3);
     const html = hfHtml(v);
-    expect(html).toContain("Likely · from schedule");
+    expect(html).toContain("Likely");
     expect(html).toContain("Radio Marti");
   });
 
@@ -94,18 +94,17 @@ describe("hfView", () => {
     expect(v.readout.details).toEqual(["Utility"]);
   });
 
-  it("unidentified: plain, with no name claimed and no map path", () => {
+  it("unidentified_station_has_no_live_station", () => {
     const v = hfView({ ...base, hf: { ...base.hf!, listenHz: 7_355_000, candidate: null } });
     expect(v.readout).toMatchObject({ state: "live", headline: "7355", name: "Unidentified station", likely: "" });
-    expect(v.map.dot).toBeNull();
-    expect(v.map.path).toBe("");
-    expect(v.map.tint).toBeNull();
+    expect(v.liveStation).toBeNull();
+    expect(v.tint).toBeNull();
   });
 
-  it("a candidate with no coordinates has no path, but still tints", () => {
+  it("a candidate with no coordinates has no place, but still tints", () => {
     const v = hfView({ ...base, hf: { ...base.hf!, listenHz: 7_355_000, candidate: { station: "X", itu: "G" } } });
-    expect(v.map.dot).toBeNull();
-    expect(v.map.tint).toBe("GB");
+    expect(v.liveStation).toBeNull();
+    expect(v.tint).toBe("GB");
   });
 
   it("offline: the error, and no live claim", () => {
@@ -113,6 +112,8 @@ describe("hfView", () => {
     expect(v.readout.state).toBe("error");
     expect(v.readout.meta).toBe("Receiver offline");
     expect(v.needle).toBeNull();
+    expect(v.liveStation).toBeNull();
+    expect(v.liveColor).toBe("var(--kc-glass)");
   });
 
   it("dial: carriers in the band become ticks, others are dropped", () => {
@@ -121,32 +122,49 @@ describe("hfView", () => {
     expect(v.ticks[0]!.x).toBeCloseTo(25, 3);
   });
 
-  it("heard tonight: count and the latest rows, unidentified shown by frequency", () => {
-    const v = hfView({ ...base, heardCount: 12, heard: [
-      { freqHz: 7_355_000, station: "Radio Marti", lastTs: 1, onSpeaker: true }, { freqHz: 5_950_000, station: null, lastTs: 2, onSpeaker: false },
-    ] });
-    expect(v.heardTitle).toBe("Heard tonight · 12");
-    expect(v.rows[0]).toEqual({ label: "7355 Radio Marti", when: "10:00" });
-    expect(v.rows[1]).toEqual({ label: "5950 Unidentified", when: "10:00" });
+  it("rows_are_the_last_three_with_no_times", () => {
+    const v = hfView({ ...base, log: [row(7_355_000, "Radio Marti", 4), row(5_950_000, null, 3), row(9_600_000, "A", 2), row(9_700_000, "B", 1)] });
+    expect(v.heardTitle).toBe("Heard tonight 4");
+    expect(v.rows).toEqual(["7355 Radio Marti", "5950 Unidentified", "9600 A"]);
   });
 
-  it("the key ignores a clock change but not a station change, so redraws stay event-paced", () => {
+  it("live_color_follows_the_band", () => {
+    expect(hfView({ ...base, hf: { ...base.hf!, listenHz: 7_355_000 } }).liveColor).toBe("oklch(.8 .14 135)");
+  });
+
+  it("live_color_is_teal_when_hunting_and_on_error", () => {
+    expect(hfView(base).liveColor).toBe("var(--kc-glass)");
+  });
+
+  it("html_keeps_likely_muted_and_meter", () => {
+    const html = hfHtml(hfView({ ...base, muted: true, signalDb: -35, hf: { ...base.hf!, listenHz: 7_355_000, candidate: { station: "X" } } }));
+    expect(html).toContain("Likely");
+    expect(html).toContain("Muted");
+    expect(html.match(/class="on"/g)).toHaveLength(6);
+  });
+
+  it("html_has_legend_and_reception_band", () => {
+    const html = hfHtml(hfView({ ...base, log: [row(7_355_000, "Radio Marti", 4)], carriers: [{ hz: 7_300_000, db: 20 }] }));
+    expect(html).toContain("kc-hf__band");
+    expect(html).toContain("kc-hf__legend");
+    expect(html).toContain("kc-hf__tick");
+    expect(html).toContain("7355 Radio Marti");
+  });
+
+  it("the tag names the band", () => {
+    expect(hfHtml(hfView(base))).toContain("HF · 41m");
+  });
+
+  it("the key follows the station and a new log row, so redraws stay event-paced", () => {
     const a = hfView(base);
-    expect(hfView({ ...base, fmtTime: () => "10:01" }).key).toBe(a.key);
+    expect(hfView({ ...base }).key).toBe(a.key);
     expect(hfView({ ...base, hf: { ...base.hf!, listenHz: 7_355_000 } }).key).not.toBe(a.key);
-  });
-
-  it("carrier ticks move the dial's key but not the map's, so the map isn't rebuilt every survey", () => {
-    const a = hfView(base);
-    const b = hfView({ ...base, carriers: [{ hz: 7_300_000, db: 20 }] });
-    expect(b.key).not.toBe(a.key);
-    expect(b.mapKey).toBe(a.mapKey);
-    expect(hfView({ ...base, hf: { ...base.hf!, listenHz: 7_355_000, candidate: { station: "X", itu: "G" } } }).mapKey).not.toBe(a.mapKey);
+    expect(hfView({ ...base, log: [row(7_355_000, "X", 1)] }).key).not.toBe(a.key);
   });
 
   it("escapes every piece of schedule text", () => {
     const x = "<b>x</b>";
-    const v = hfView({ ...base, heard: [{ freqHz: 1_000_000, station: x, lastTs: 1, onSpeaker: false }],
+    const v = hfView({ ...base, log: [{ freqHz: 1_000_000, station: x, lastTs: 1, onSpeaker: false, band: "41m", peakDb: 1 }],
       hf: { ...base.hf!, listenHz: 7_355_000, candidate: { station: x, language: x, site: x, country: x } } });
     expect(hfHtml(v)).not.toContain(x);
   });
