@@ -118,14 +118,13 @@ export function toScanConfig(
   monitorChannel: Channel | null = null,
   hfTune: HfTune | null = null,
 ): ScanConfig {
-  const hfHold = mode === "hf" && hfTune?.stage === "cb";
-  const hfWindow = mode === "hf" && !hfHold;
+  const hfWindow = mode === "hf";
   const channels =
     mode === "weather"
       ? (cfg.weatherChannel ? [{ ...cfg.weatherChannel, enabled: true }] : [])
       : hfWindow
         ? (hfTune?.listenHz ? [hfChannel(hfTune.listenHz)] : [])
-      : mode === "cb" || hfHold
+      : mode === "cb"
         ? cbChannels(cfg.cb?.channels ?? cbDefaultChannels(cfg.scan.lanesPerGroup ?? DEFAULT_LANES_PER_GROUP, cfg.cb?.modes), cfg.cb?.names, cfg.cb)
       : mode === "monitor"
         // Deliberate listening is never family-gated: resolve audible
@@ -303,7 +302,6 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
       void switchMode(scanConfigFor("hf", null)).catch((e) => console.error(`[hf] retune failed: ${(e as Error).message}`));
     },
     onSurvey: (tune, carriers) => logSafely(() => deps.receptionLog?.record(Date.now(), tune.band, carriers, deps.hfCandidates ?? (() => []))),
-    isCbChannel: (hz) => cbChannels(config.cb?.channels ?? cbDefaultChannels(config.scan.lanesPerGroup ?? DEFAULT_LANES_PER_GROUP, config.cb?.modes), config.cb?.names, config.cb).some((c) => c.freq === hz),
     ...(deps.hfCandidates ? { isMatched: (hz: number) => deps.hfCandidates!(hz, Date.now()).some((c) => !isUtility(c)) } : {}),
   });
   engine.on((ev) => { if (mode === "hf") hf.onEngineEvent(ev); });

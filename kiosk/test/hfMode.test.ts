@@ -43,7 +43,7 @@ afterEach(() => { vi.useRealTimers(); if (dir) rmSync(dir, { recursive: true, fo
 describe("toScanConfig hf", () => {
   const cfg = { ...defaultConfig(), spyserver: spy };
   it("a sweep window has no channels until a station is chosen", () => {
-    const s = toScanConfig(cfg, "hf", null, { stage: "sweep", centerHz: FIRST, listenHz: null, band: "120m" });
+    const s = toScanConfig(cfg, "hf", null, { centerHz: FIRST, listenHz: null, band: "120m" });
     expect(s.channels).toEqual([]);
     expect(s.fixedCenterHz).toBe(FIRST);
     expect(s.spyserver).toEqual(spy);
@@ -52,17 +52,11 @@ describe("toScanConfig hf", () => {
     expect(s.sameEnable).toBe(false);
   });
   it("a chosen station is one AM channel held open, tagged hf", () => {
-    const s = toScanConfig(cfg, "hf", null, { stage: "sweep", centerHz: FIRST, listenHz: 2_350_000, band: "120m" });
+    const s = toScanConfig(cfg, "hf", null, { centerHz: FIRST, listenHz: 2_350_000, band: "120m" });
     expect(s.monitor).toBe(true);
     expect(s.channels).toHaveLength(1);
     expect(s.channels[0]).toMatchObject({ freq: 2_350_000, mode: "am", audible: true, tags: ["hf"], alphaTag: "2350 kHz" });
     expect(s.fixedCenterHz).toBe(FIRST);
-  });
-  it("a CB hold is CB, with no fixed center", () => {
-    const s = toScanConfig(cfg, "hf", null, { stage: "cb", centerHz: 27_195_000, listenHz: null, band: "CB" });
-    expect(s.channels[0]?.tags).toEqual(["cb"]);
-    expect(s.fixedCenterHz).toBeUndefined();
-    expect(s.monitor).toBe(false);
   });
   it("has nothing to shed when overheated", () => {
     const c = defaultConfig();
@@ -89,7 +83,7 @@ describe("POST /api/mode hf", () => {
     expect(last(engine).fixedCenterHz).toBe(FIRST);
     const s = (await request(server).get("/api/status")).body;
     expect(s.mode).toBe("hf");
-    expect(s.hf).toMatchObject({ stage: "sweep", band: "120m", centerHz: FIRST, listenHz: null });
+    expect(s.hf).toMatchObject({ band: "120m", centerHz: FIRST, listenHz: null });
   });
 
   it("status has no hf block outside HF mode", async () => {
@@ -227,16 +221,21 @@ describe("POST /api/mode hf", () => {
     vi.useRealTimers();
   });
 
-  it("a CB hold only triggers on the channels it would tune", async () => {
+  it("CB activity never takes HF mode off shortwave", async () => {
     const { server, engine } = await app();
     const c = (await request(server).get("/api/config")).body;
-    await request(server).put("/api/config").send({ ...c, cb: { channels: [19] }, hf: { cbOpenMs: 0, bands: [{ name: "49m", loHz: 5_900_000, hiHz: 6_200_000 }] } });
+    await request(server).put("/api/config").send({ ...c, hf: { windowMs: 60_000, bands: [{ name: "49m", loHz: 5_900_000, hiHz: 6_200_000 }, { name: "41m", loHz: 7_200_000, hiHz: 7_800_000 }] } });
     await request(server).post("/api/mode").send({ mode: "hf" });
-    await request(server).post("/api/scan/skip");
-    engine.emitCarriers(27_195_000, [{ hz: 27_255_000, db: 40 }]);
-    expect((await request(server).get("/api/status")).body.hf.stage).toBe("cbStop");
-    engine.emitCarriers(27_195_000, [{ hz: 27_185_000, db: 40 }]);
-    expect((await request(server).get("/api/status")).body.hf.stage).toBe("cb");
+    const bands = new Set<string>();
+    for (let i = 0; i < 4; i++) {
+      await request(server).post("/api/scan/skip");
+      const st = (await request(server).get("/api/status")).body;
+      bands.add(st.hf.band);
+      engine.emitCarriers(st.hf.centerHz, [{ hz: 27_185_000, db: 60 }]);
+      expect((await request(server).get("/api/status")).body.mode).toBe("hf");
+      expect((await request(server).get("/api/status")).body.hf.listenHz).toBeNull();
+    }
+    expect([...bands].sort()).toEqual(["41m", "49m"]);
     await request(server).post("/api/mode").send({ mode: "scan" });
   });
 

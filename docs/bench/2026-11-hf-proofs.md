@@ -202,7 +202,7 @@ The same comparison at 23:50 local, the check owed above. Clipping was again 0.0
 
 ## HF mode on the live wall
 
-Night of 2026-11-02, speaker muted.
+Night of 2026-11-02, speaker muted. The CB stop and hold described here were removed on 2026-11-03: HF and CB are now separate manual modes.
 
 - Full pass: every window on its 60 s timer, then the 30 s CB stop, then wrapping to 120 m. No false CB hold.
 - Helper 24% of a core and 55 °C over the first few minutes with the real stage. Measured before the map-pause and redraw fixes, so see the thermal comparison.
