@@ -119,13 +119,14 @@ describe("greylineDue", () => {
 });
 
 describe("limb mask", () => {
-  it("fades what's under it towards the globe's rim", () => {
+  it("shows everything on the globe, and fades what's past the rim", () => {
     const m = limbMaskSvg();
     expect(m).toContain(`<mask id="hfLimb"`);
     expect(LIMB_MASK).toBe('mask="url(#hfLimb)"');
-    expect(m).toContain(globeOutline());
-    expect(m).toContain('fill="#fff"');
-    expect(m).toContain('stroke="#000"');
+    expect(m).toMatch(/<rect [^>]*fill="#000"/);
+    expect(m).toContain(`<path d="${globeOutline()}" fill="#fff"/>`);
+    expect(m).toContain('stroke="#fff"');
+    expect(m.lastIndexOf(`fill="#fff"`)).toBeGreaterThan(m.lastIndexOf('stroke="#fff"'));
   });
   it("is the same string every call, so a layer never repaints for it", () => {
     expect(limbMaskSvg()).toBe(limbMaskSvg());
