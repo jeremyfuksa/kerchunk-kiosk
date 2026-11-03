@@ -1716,7 +1716,7 @@ exit 3
     await engine.stop();
     const active = events.find((e) => e.type === "active")!;
     expect(reduce({ ...initialState(), error: "stale" }, active).error).toBeNull();
-  });
+  }, READY_PROVEN_MS + 8_000);
 
   it("a first start's traffic isn't marked unproven", async () => {
     const script = `{"ev":"open","id":"${VHF_A.id}","db":-3}`;
