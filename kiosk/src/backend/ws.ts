@@ -7,7 +7,7 @@ interface Sendable { readyState: number; OPEN: number; send(data: string): void;
 // before the keepalive notices) never drains bufferedAmount, and the 4 Hz
 // signal stream would grow it without bound. Events are ephemeral state —
 // drop them for a stuck client; the replay slots in add() recover the picture
-// if it ever drains and reconnects. /stream.wav applies the same principle.
+// if it ever drains and reconnects.
 const MAX_BUFFERED_BYTES = 512 * 1024;
 
 export class WsHub {

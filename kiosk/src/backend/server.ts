@@ -192,7 +192,7 @@ export function toScanConfig(
     fmAudioHpfHz: cfg.scan.fmAudioHpfHz,
     // Speaker AGC + limiter knobs (config.audio). In the scan config so the
     // PUT handler's scanChanged diff respawns the helper when one changes —
-    // the same path audio.remoteListening takes. Volume/mute are NOT here, so
+    // like recordCloseCalls. Volume/mute are NOT here, so
     // they stay live (amixer) with no respawn.
     speakerAgc: {
       agcTargetDb: cfg.audio.agcTargetDb,
@@ -227,11 +227,10 @@ export function toScanConfig(
     ...(hfWindow && hfTune ? { fixedCenterHz: hfTune.centerHz } : {}),
     closeCallDb: cfg.scan.closeCallDb,
     lockoutHz: cfg.scan.lockoutHz,
-    // PCM tee gate: the helper builds --audio-fd when remote listening OR
-    // close call recording wants it. recordCloseCalls is deliberately part of
+    // PCM tee gate: the helper builds --audio-fd when close call recording
+    // wants it. recordCloseCalls is deliberately part of
     // scan config (not audio) so the PUT handler's scanChanged diff restarts
     // the engine when the operator flips it — required to (re)build the tee.
-    remoteListening: cfg.audio.remoteListening,
     recordCloseCalls: cfg.scan.recordCloseCalls === true,
     // SAME gate: decode only on a helper that actually carries NWR. toScanConfig
     // injects the wx_same background channel into the main scan only when there
@@ -911,7 +910,7 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
   // (helper teardown/spawn on hardware) mid-request, and a second
   // mutation landing inside that window can interleave stop/start into two
   // concurrent start() calls — two helpers contending for the SDR. GETs
-  // (including the long-lived /stream.wav) stay concurrent.
+  // stay concurrent.
   let mutation: Promise<unknown> = Promise.resolve();
 
   const server = httpCreateServer(async (req, res) => {
@@ -1357,35 +1356,6 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
       const freq = discoveryFreq(decodeURIComponent(sampleDel[1]));
       if (freq === null || !ccStore.delete(freq)) return json(res, 404, { error: "no sample" });
       return json(res, 200, { ok: true });
-    }
-
-    if (method === "GET" && path === "/api/stream.wav") {
-      // Remote listening (ROADMAP stretch): the live speaker feed as an
-      // endless WAV. 48 kHz mono s16 = ~94 KB/s — trivial on the LAN.
-      if (!config.audio.remoteListening) {
-        return json(res, 404, { error: "remote listening disabled" });
-      }
-      const onAudio = (engine as { onAudio?: (l: (c: Buffer) => void) => () => void }).onAudio?.bind(engine);
-      if (!onAudio) return json(res, 404, { error: "engine has no audio tee" });
-      const hdr = Buffer.alloc(44);
-      hdr.write("RIFF", 0); hdr.writeUInt32LE(0xffffffff, 4); hdr.write("WAVE", 8);
-      hdr.write("fmt ", 12); hdr.writeUInt32LE(16, 16); hdr.writeUInt16LE(1, 20);
-      hdr.writeUInt16LE(1, 22); hdr.writeUInt32LE(48000, 24);
-      hdr.writeUInt32LE(48000 * 2, 28); hdr.writeUInt16LE(2, 32); hdr.writeUInt16LE(16, 34);
-      hdr.write("data", 36); hdr.writeUInt32LE(0xffffffff, 40);
-      res.writeHead(200, {
-        "Content-Type": "audio/wav",
-        "Cache-Control": "no-store",
-        Connection: "close",
-      });
-      res.write(hdr);
-      const unsub = onAudio((chunk) => {
-        // Slow client: drop chunks rather than buffer unboundedly — live
-        // audio has no business being seconds behind.
-        if (res.writableLength < 256 * 1024) res.write(chunk);
-      });
-      req.on("close", unsub);
-      return;
     }
 
     if (method === "POST" && path === "/api/kiosk/reload") {

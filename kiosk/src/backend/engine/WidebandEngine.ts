@@ -606,10 +606,7 @@ export class WidebandEngine implements ScannerEngine {
     // Off => the helper's --audio-fd default (-1) builds no tee, skipping the
     // continuous float->s16 + fd-write. A change respawns the helper
     // (toScanConfig diff), so the tee appears/disappears in lockstep.
-    // Either consumer wants the tee: remote listening drains it live over
-    // /api/stream.wav, Close Call recording drains it into clips. One tee
-    // serves both — the helper has no notion of who is listening.
-    if (cfg.remoteListening || cfg.recordCloseCalls) args.push("--audio-fd", "3");
+    if (cfg.recordCloseCalls) args.push("--audio-fd", "3");
     // SAME decoder: spawn it only on a helper that carries NWR (derived in
     // toScanConfig; set true on the dedicated weather engine). Off => no
     // multimon-ng process and no last-lane tap.
@@ -1261,7 +1258,7 @@ export class WidebandEngine implements ScannerEngine {
   }
 
   /** Subscribe to the live speaker feed (48 kHz mono s16le). Returns an
-   *  unsubscribe. Used by the /stream.wav route for remote listening. */
+   *  unsubscribe. Used by the Close Call recorder. */
   onAudio(listener: (chunk: Buffer) => void): () => void {
     this.audioListeners.add(listener);
     return () => this.audioListeners.delete(listener);

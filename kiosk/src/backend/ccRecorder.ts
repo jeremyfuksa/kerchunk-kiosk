@@ -48,7 +48,7 @@ export function decimate48kTo8k(pcm: Buffer): Buffer {
 }
 
 /** Canonical 44-byte RIFF/WAVE header for 8 kHz mono s16, followed by the data.
- *  Lengths are real (not the 0xffffffff the endless /stream.wav uses) so the
+ *  Lengths are real, not the 0xffffffff of an endless stream, so the
  *  browser's <audio> can show a duration and seek. */
 export function encodeWav8k(pcm8k: Buffer): Buffer {
   const header = Buffer.alloc(44);

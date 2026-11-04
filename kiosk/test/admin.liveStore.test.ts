@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { LiveStore } from "../src/frontend/admin/liveStore.js";
 
-// connect()/toggleStream() touch browser globals (WebSocket, Audio, location)
+// connect() touches browser globals (WebSocket, location)
 // that don't exist under the node test environment — covered by the
 // on-hardware/screenshot proof instead. requestResync() and the initial
 // flag are pure state, so they're covered here.

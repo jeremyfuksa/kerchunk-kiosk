@@ -89,13 +89,9 @@ export interface ScanConfig {
   // Close Call speaker gate (spec 2026-10-13): audible [lo, hi] Hz ranges,
   // sent on every tune. Absent = every CC hit audible.
   ccAudibleHz?: Array<[number, number]>;
-  // Remote listening: when true the wideband helper builds the PCM streaming
-  // tee (--audio-fd) that /api/stream.wav drains. Off => no tee, no idle cost.
-  remoteListening?: boolean;
-  // Close Call sample recording: when true the wideband helper builds the same
-  // fd-3 PCM tee remote listening uses, so the server can record a clip at each
-  // Close Call hit. Independent of remoteListening — recording must not require
-  // exposing /api/stream.wav.
+  // Close Call sample recording: when true the wideband helper builds the
+  // fd-3 PCM tee, so the server can record a clip at each Close Call hit.
+  // Off => no tee, no idle cost.
   recordCloseCalls?: boolean;
   // SAME decode wanted on THIS helper: true exactly when it carries NWR
   // (derived in toScanConfig / set by the dedicated weather engine). Gates the

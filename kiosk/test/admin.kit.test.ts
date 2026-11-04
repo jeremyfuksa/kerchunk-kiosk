@@ -27,8 +27,8 @@ describe("slider / switchRow", () => {
   });
   it("slider and switchRow honour disabled", () => {
     expect(slider({ id: "a", label: "A", min: 0, max: 1, step: 1, value: 0, unit: "", ends: ["x", "y"], disabled: true })).toContain(" disabled");
-    const s = switchRow({ id: "kcRemote", label: "Remote listening", hint: "Stream it", checked: true, disabled: true });
-    expect(s).toContain('<input id="kcRemote" type="checkbox" role="switch" checked disabled');
+    const s = switchRow({ id: "kcSwitch", label: "A switch", hint: "Does it", checked: true, disabled: true });
+    expect(s).toContain('<input id="kcSwitch" type="checkbox" role="switch" checked disabled');
     expect(s).toContain('class="kc-switchRow"');
   });
 });

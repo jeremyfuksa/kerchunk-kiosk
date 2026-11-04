@@ -18,7 +18,7 @@ describe("configSchema", () => {
     const cfg = {
       version: 1,
       scan: { sampleRate: 12000, squelchLevel: 150, gain: "auto", dwellMs: 2000 },
-      audio: { sink: "hdmi:CARD=vc4hdmi0", volume: 70, muted: false, remoteListening: false, audibleFamilies: ["air", "rail", "marine", "ham", "gmrs"] },
+      audio: { sink: "hdmi:CARD=vc4hdmi0", volume: 70, muted: false, audibleFamilies: ["air", "rail", "marine", "ham", "gmrs"] },
       channels: [
         { id: "ch_001", freq: 145130000, alphaTag: "KC0KW", mode: "nfm", enabled: true },
       ],
@@ -427,6 +427,15 @@ describe("lookup.radioReference config", () => {
       radioReference: { appKey: "k", username: "u", password: "p", countyIds: [1310] },
     };
     expect(configSchema.safeParse(cfg).success).toBe(true);
+  });
+});
+
+describe("retired audio.remoteListening", () => {
+  it("still loads a config that has it, and drops it", () => {
+    const c = defaultConfig();
+    const parsed = configSchema.safeParse({ ...c, audio: { ...c.audio, remoteListening: true } });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect("remoteListening" in parsed.data.audio).toBe(false);
   });
 });
 

@@ -55,7 +55,6 @@ html[data-page="admin"] :focus-visible { outline: 2px solid var(--kc-glass); out
 .kc-mini__name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 16em; }
 .kc-mini__freq { color: var(--kc-glass); font-variant-numeric: tabular-nums; font-size: var(--kc-t-small); }
 .kc-mini__key { background: var(--kc-key); color: var(--kc-ink); border: 0; border-radius: 8px; padding: 6px 8px; box-shadow: var(--kc-key-shadow); cursor: pointer; display: inline-flex; }
-.kc-mini__key:disabled { opacity: 0.45; box-shadow: none; cursor: not-allowed; }
 .kc-skipLink { position: absolute; left: 8px; top: -60px; z-index: 40; }
 .kc-skipLink:focus { top: 8px; }
 

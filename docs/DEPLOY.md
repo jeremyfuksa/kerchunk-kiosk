@@ -163,7 +163,7 @@ Notes:
 
   They reach the scanner helper only (the weather helper has no speaker).
   Changing any of them via `PUT /api/config` respawns only the scanner helper,
-  like `audio.remoteListening`; volume/mute stay live with no respawn.
+  like `scan.recordCloseCalls`; volume/mute stay live with no respawn.
   Setting `agcMaxGainDb` and `agcMinGainDb` both to 0 pins the AGC at unity
   (effectively off). `scan.nativeAmGainDb` remains the AM pre-gain into it.
 - The two liveness watchdogs (no `"ready"` within `readyTimeoutMs`, and no

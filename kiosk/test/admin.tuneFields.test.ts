@@ -8,7 +8,7 @@ import {
 const base = (): Config => ({
   version: 1,
   scan: { dwellMs: 2000 },
-  audio: { sink: "plughw:CARD=PCH,DEV=0", volume: 50, muted: false, remoteListening: false },
+  audio: { sink: "plughw:CARD=PCH,DEV=0", volume: 50, muted: false },
   channels: [],
 } as unknown as Config);
 

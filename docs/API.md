@@ -81,7 +81,7 @@ the cache has gone stale (>2 h):
 
 Verified against the route registrations in `server.ts`. Errors are JSON
 (`{ "error": "..." }`); unknown `/api/` paths 404. Non-GET requests run one
-at a time (mutation chain); GETs — including the long-lived `/api/stream.wav`
+at a time (mutation chain); GETs
 — run concurrently.
 
 ### Config & channels
@@ -126,15 +126,13 @@ these appear under `GET /api/config`):
 | POST | `/api/monitor/stop` | Back to scanning. |
 | POST | `/api/audio/volume` | `{ percent: 0–100 }` → amixer + persisted config. |
 | POST | `/api/audio/mute` | `{ muted: boolean }`. |
-| GET | `/api/stream.wav` | Endless 48 kHz mono s16 WAV of the live speaker feed. **Gated:** `404` unless `config.audio.remoteListening` is true. Slow clients get chunks dropped, not buffered. |
 
 ### Close Call audio samples
 
 A short clip of each Close Call hit, so a discovery can be triaged by ear
 instead of by retuning the live radio at a frequency that is usually quiet.
-Recording is gated on `config.scan.recordCloseCalls` (default off) — which,
-like `audio.remoteListening`, makes the helper build its fd-3 PCM tee, so
-flipping it restarts the engine. Either flag alone is enough to build the tee.
+Recording is gated on `config.scan.recordCloseCalls` (default off), which makes
+the helper build its fd-3 PCM tee, so flipping it restarts the engine.
 
 Clips are stored on disk keyed by **frequency** (`<stateDir>/cc-samples/<freqHz>.wav`),
 because a frequency's first hit is recorded before it has earned a discovery

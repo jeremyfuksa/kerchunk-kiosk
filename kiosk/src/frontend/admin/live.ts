@@ -18,7 +18,6 @@ export interface LiveState {
   weatherChannel: Tuned | null;
   muted: boolean;
   volume: number;
-  remoteListening: boolean;
   dbfs: number | null;
   /** Backend process start (from /api/status) — uptime, and the
    *  system-action watcher's baseline. */
@@ -27,7 +26,7 @@ export interface LiveState {
 
 export const initialLive: LiveState = {
   mode: "scan", hf: null, breakIn: false, monitoring: null, nowPlaying: null, audibleDriven: false,
-  weatherChannel: null, muted: false, volume: 100, remoteListening: false, dbfs: null,
+  weatherChannel: null, muted: false, volume: 100, dbfs: null,
   startedAt: null,
 };
 
@@ -65,8 +64,8 @@ export function withStatus(s: LiveState, st: { mode: LiveState["mode"]; hf?: Liv
   };
 }
 
-export function withAudio(s: LiveState, a: { volume: number; muted: boolean; remoteListening?: boolean }): LiveState {
-  return { ...s, volume: a.volume, muted: a.muted, remoteListening: a.remoteListening ?? false };
+export function withAudio(s: LiveState, a: { volume: number; muted: boolean }): LiveState {
+  return { ...s, volume: a.volume, muted: a.muted };
 }
 
 export interface LcdView {

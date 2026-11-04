@@ -61,21 +61,6 @@ export class LiveStore {
     try { this.set(withStatus(this.state, await api.getStatus())); } catch { /* transient */ }
   }
 
-  // In-browser listening: one <audio> on the endless-WAV stream, recreated per
-  // press (reusing a stalled element resumes seconds in the past). Shared by
-  // the Radio key and the mini-player.
-  private stream: HTMLAudioElement | null = null;
-  get streaming(): boolean { return this.stream !== null; }
-  toggleStream(): void {
-    if (this.stream) { this.stream.pause(); this.stream.src = ""; this.stream = null; }
-    else if (this.state.remoteListening) {
-      const a = new Audio(`/api/stream.wav?t=${Date.now()}`);
-      this.stream = a;
-      void a.play().catch(() => { if (this.stream === a) { this.stream = null; this.set({}); } });
-    }
-    this.set({});
-  }
-
   async loadWeatherChannel(): Promise<void> {
     try {
       const { weatherChannel: w } = await api.getWeatherChannel();

@@ -192,8 +192,8 @@ do not "simplify" them away:
   against the backend and its helper — and writes its default
   route volume (0.064 → −23.5 dB) over the ALSA `Master` control the backend
   owns, so the admin volume slider and the hardware disagree after every boot.
-- **The engine must always drain the helper's fd-3 audio tee** (feeds
-  `/api/stream.wav`) or the helper blocks.
+- **The engine must always drain the helper's fd-3 audio tee** (feeds Close
+  Call recording) or the helper blocks.
 - **Wideband hold-through is capped** (PR #194) so a stuck-open lane can't
   park the scanner on one window forever.
 - **No `backdrop-filter` blur or full-screen overlays above the animating
@@ -309,10 +309,6 @@ even with green checks.
   Roles bind in `config.radios` (`scan`/`weather`/`adsb`). During a SAME
   break-in, EOM (`NNNN`) resumes scanning after an 8 s grace window
   (`server.ts`), ending the alert hold early when the broadcast stops.
-- **Remote listening is a gate, not just a route.** `/api/stream.wav` 404s
-  unless `config.audio.remoteListening` is true, and the helper only builds
-  its `--audio-fd` PCM tee when it's on — flipping the flag is an engine
-  restart, not just an API change.
 - **Identification chain** for naming discoveries: RepeaterBook (dormant,
   token pending) → MyGMRS → RadioReference → FccProx → BusinessGuess (Google
   Places, deliberately last — it only guesses when the authoritative
