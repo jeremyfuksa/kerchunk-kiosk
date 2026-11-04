@@ -18,21 +18,22 @@ export const HF_DEFAULTS: HfOpts = {
   windowMs: 60_000, minListenDb: 15, cooldownMs: 30 * 60_000, fadeMs: 15_000,
 };
 
-// Broadcast bands, 120 m to 13 m.
+// Broadcast bands, 120 m to 13 m, minus where they overlap US ham bands: hams overlap each other there,
+// and SSB has no carrier or raster for the survey to find. That drops all of 75 m and 41 m up to 7300 kHz,
+// and the edge channels of both 41 m and 13 m (a ham peak can snap to them).
 export const HF_BANDS_DEFAULT: HfBand[] = [
   { name: "120m", loHz: 2_300_000, hiHz: 2_495_000 },
   { name: "90m", loHz: 3_200_000, hiHz: 3_400_000 },
-  { name: "75m", loHz: 3_900_000, hiHz: 4_000_000 },
   { name: "60m", loHz: 4_750_000, hiHz: 5_060_000 },
   { name: "49m", loHz: 5_800_000, hiHz: 6_200_000 },
-  { name: "41m", loHz: 7_200_000, hiHz: 7_800_000 },
+  { name: "41m", loHz: 7_305_000, hiHz: 7_800_000 },
   { name: "31m", loHz: 9_260_000, hiHz: 9_990_000 },
   { name: "25m", loHz: 11_600_000, hiHz: 12_180_000 },
   { name: "22m", loHz: 13_570_000, hiHz: 13_870_000 },
   { name: "19m", loHz: 15_100_000, hiHz: 15_800_000 },
   { name: "16m", loHz: 17_480_000, hiHz: 17_900_000 },
   { name: "15m", loHz: 18_900_000, hiHz: 19_020_000 },
-  { name: "13m", loHz: 21_450_000, hiHz: 21_850_000 },
+  { name: "13m", loHz: 21_455_000, hiHz: 21_850_000 },
 ];
 
 const WINDOW_HZ = 600_000;

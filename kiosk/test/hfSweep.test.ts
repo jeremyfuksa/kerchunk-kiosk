@@ -145,3 +145,16 @@ describe("HfSweep resume", () => {
     expect(s.tick(560_000)).not.toBeNull();
   });
 });
+
+describe("default bands stay out of US ham bands", () => {
+  const US_HAM_KHZ = [[1800, 2000], [3500, 4000], [5330, 5407], [7000, 7300], [10100, 10150], [14000, 14350], [18068, 18168], [21000, 21450], [24890, 24990], [28000, 29700]] as const;
+  const RASTER_KHZ = 5;   // a peak just inside a ham band can snap to the channel at its edge
+
+  it("no default band touches one, or the raster channel on its edge", () => {
+    for (const b of HF_BANDS_DEFAULT) {
+      for (const [lo, hi] of US_HAM_KHZ) {
+        expect(b.hiHz < (lo - RASTER_KHZ) * 1000 || b.loHz >= (hi + RASTER_KHZ) * 1000, `${b.name} vs ${lo}-${hi}`).toBe(true);
+      }
+    }
+  });
+});

@@ -259,6 +259,7 @@ even with green checks.
   the default set); SSB squelch `cb.ssbOpenDb` / `cb.ssbHangMs` (1500). LSB lanes squelch on
   sideband energy against their own floor, never the shared one (spec 2026-10-15).
 - **HF mode** (`POST /api/mode {mode:"hf"}`, needs `config.spyserver`): `hf/sweep.ts` decides (pure),
+  and its default bands stay out of US ham bands (operator, 2026-11-03; a test holds them to it).
   `hf/controller.ts` drives it. One window at a time on a fixed timer, playing one in-band carrier the
   survey found. It stays on shortwave until the operator changes mode: CB is its own manual mode, never
   an automatic hop (operator, 2026-11-03). Shortwave
