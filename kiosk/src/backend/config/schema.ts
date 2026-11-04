@@ -376,8 +376,8 @@ export const configSchema = z.object({
       spanDeg: z.object({
         w: z.number().positive().max(20).default(4),
         h: z.number().positive().max(15).default(3),
-      }).default({}),
-    }).default({}),
+      }).prefault({}),
+    }).prefault({}),
     // GLM lightning feed for the Weather Glass (backend/lightning/, spec
     // 2026-10-13 glass lightning). NOAA GOES-19 on public S3: one ~400 KB
     // file per 20 s, the whole hemisphere every time (~1–2.5 GB/day). Read at
@@ -393,8 +393,8 @@ export const configSchema = z.object({
       spanDeg: z.object({
         w: z.number().positive().max(20).default(4),
         h: z.number().positive().max(15).default(3),
-      }).default({}),
-    }).default({}),
+      }).prefault({}),
+    }).prefault({}),
     // The HF wall (spec 2026-11-03-hf-atlas). Read at page load: PUT /api/config, then POST /api/kiosk/reload.
     hf: z.object({
       greylineStepMs: z.number().int().min(60_000).max(3_600_000).default(300_000),
@@ -410,7 +410,7 @@ export const configSchema = z.object({
       // A dot running the live trace from transmitter to home. 0 = off.
       pulseEveryMs: z.number().int().min(0).max(60_000).default(4_500),
       pulseMs: z.number().int().min(300).max(20_000).default(2_000),
-    }).default({}),
+    }).prefault({}),
     // Weather Glass layer (frontend/map/glassLayer.ts). Reaches the wall on
     // its next load: PUT /api/config, then POST /api/kiosk/reload.
     glass: z.object({
@@ -453,7 +453,7 @@ export const configSchema = z.object({
       scatter: z.object({
         enabled: z.boolean().default(true),
         marginPx: z.number().int().min(0).max(400).default(80),
-      }).default({}),
+      }).prefault({}),
       // Live sparks: while a transmission is on the air its transmit point
       // throws embers that reshuffle every liveSparkStepMs — a redraw per step,
       // ONLY while a front is live (quiet band = zero redraws). 0 = off.
@@ -474,8 +474,8 @@ export const configSchema = z.object({
         bloomIntensity: z.number().min(0).max(1.5).default(0.75),
         bloomScale: z.number().min(0.2).max(3).default(1),
         maxBlooms: z.number().int().min(1).max(64).default(32),
-      }).default({}),
-    }).default({}),
+      }).prefault({}),
+    }).prefault({}),
     // Persistent site markers. With the glass carrying colour and motion, the
     // marker only has to say "a transmitter lives here": "pin" = the service
     // teardrop (the pre-glass look, 19), "dot" = a service-colour dot cut
@@ -485,14 +485,14 @@ export const configSchema = z.object({
     pins: z.object({
       style: z.enum(["pin", "dot"]).default("dot"),
       sizePx: z.number().min(3).max(40).default(9),
-    }).default({}),
+    }).prefault({}),
     // Kiosk camera (spec 2026-10-02 "fixed stage"): the wall frames once and
     // never moves on its own — camera moves made Google re-lay-out the vector
     // map on CPU at every hit. follow: true restores the old push toward the
     // audible site + pull-back (escape hatch). Applies on kiosk/reload.
     camera: z.object({
       follow: z.boolean().default(false),
-    }).default({}),
+    }).prefault({}),
     // CB wall (spec 2026-10-14 "the dial"). A heard channel's dial tick drops
     // one level at each fadeStepsMin minute mark (4 ascending), recomputed every
     // stepTickMs — the heat knob: the CB wall paints only on CB events and this
@@ -503,7 +503,7 @@ export const configSchema = z.object({
         .default([2, 10, 20, 30]),
       stepTickMs: z.number().int().min(5_000).default(60_000),
       logRows: z.number().int().min(1).max(12).default(5),
-    }).default({}),
+    }).prefault({}),
   }).optional(),
   // Aircraft overlay (network ADS-B): plots airborne targets near the QTH on
   // the kiosk map from the airplanes.live public feed (no SDR, no DSP). Off by
