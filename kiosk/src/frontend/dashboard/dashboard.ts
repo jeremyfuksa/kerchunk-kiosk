@@ -170,6 +170,7 @@ export function renderDashboard(root: HTMLElement): void {
         <div id="clock" class="kc-clock__time"></div>
         <div id="wx" class="kc-wx"></div>
         <div id="clockDate" class="kc-clock__date"></div>
+        <div id="sameDown" class="kc-clock__sameDown" hidden>SAME alerts off: weather radio down</div>
       </header>
       <div class="kc-stage">
         <div id="corner" class="kc-corner">
@@ -546,6 +547,7 @@ export function renderDashboard(root: HTMLElement): void {
         const sc = s.scanCount ?? -1;
         const mu = s.muted ?? false;
         const bi = s.breakIn ?? false;
+        root.querySelector<HTMLElement>("#sameDown")!.hidden = !s.sameDown;
         // Late-load correction ONLY: a page that opened after warm-up never sees
         // the WS warmup events, so trust the server flag. But once we've observed
         // the live WS warmup stream, IT is authoritative — otherwise an in-flight

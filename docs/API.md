@@ -38,6 +38,7 @@ What the scanner is doing right now.
   "muted": false,            // speaker mute (doesn't restart the engine, so it's polled)
   "warmed": true,            // false until the engine's first warm sweep completes
   "breakIn": false,          // true only while a SAME break-in holds the scanner on NWR
+  "sameDown": false,         // true while the weather radio's helper keeps failing: no SAME alerts in any mode
   "startedAt": 1753480000000 // epoch ms this backend *process* started
 }
 ```

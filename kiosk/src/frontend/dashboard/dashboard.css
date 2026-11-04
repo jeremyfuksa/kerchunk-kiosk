@@ -50,6 +50,8 @@ html[data-page="dashboard"] .kc-wx {
 html[data-page="dashboard"] .kc-wx:empty { display: none; }
 html[data-page="dashboard"] .kc-wx__icon { color: var(--kc-ink); }
 html[data-page="dashboard"] .kc-clock__date { margin-top: 0.4rem; font-size: var(--kc-k-date); font-weight: 500; color: var(--kc-dim); }
+html[data-page="dashboard"] .kc-clock__sameDown { margin-top: .3rem; font-size: var(--kc-t-small, .9rem); font-weight: 700; color: #f2b84b; text-align: right; }
+html[data-page="dashboard"] .kc-clock__sameDown[hidden] { display: none; }
 html[data-page="dashboard"] .kc-wx__icon svg, html[data-page="dashboard"] .kc-wx__arrow svg { width: 1.15em; height: 1.15em; display: block; }
 html[data-page="dashboard"] .kc-wx__arrow { display: inline-block; }
 html[data-page="dashboard"] .kc-wx__wind { display: inline-flex; align-items: center; gap: 0.15em; margin-left: 0.25em; font-size: 0.7em; }

@@ -445,10 +445,16 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
   // The dedicated weather engine's failures feed the SAME health signal — a
   // crash-looping SAME/NWR helper is a weather-safety problem and must not stay
   // invisible while /api/system otherwise reads healthy.
+  // With a weather radio configured the scanner doesn't decode SAME, so this helper down means no
+  // alerts in any mode. "running" only comes once a respawned helper has proven itself.
+  let sameDown = false;
   deps.weatherEngine?.on((ev) => {
     if (ev.type === "error") {
+      sameDown = true;
       recentErrors.push(ev.ts);
       console.error(`[weather-engine] ${ev.message ?? ev.code ?? "error"}`);
+    } else if (ev.type === "status" && (ev.state === "running" || ev.state === "stopped")) {
+      sameDown = false;
     }
   });
   function helperRestartsRecent(nowMs: number): number {
@@ -1280,6 +1286,7 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
             warmed,
             safetyMode,
             helperRestartsRecent: helperRestartsRecent(nowMs),
+            sameDown,
             msSinceStart: nowMs - engineStartedAt,
           })
         : // Near-unreachable: SystemStats.start() takes a synchronous first sample
@@ -1528,6 +1535,8 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
         // warns before a reboot. `mode === "weather"` can't tell a break-in
         // from an operator-selected weather mode.
         breakIn,
+        // The weather radio's helper keeps failing, so no SAME alerts in any mode.
+        sameDown,
         // When this backend process started. The admin's system-action watcher
         // compares it across a restart/reboot to know a *new* process is up.
         startedAt: STARTED_AT,

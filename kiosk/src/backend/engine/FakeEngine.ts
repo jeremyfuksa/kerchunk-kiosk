@@ -77,6 +77,12 @@ export class FakeEngine implements ScannerEngine {
   emitCarriers(centerHz: number, carriers: Array<{ hz: number; db: number; peakHz?: number; steadyDb?: number }>, floorDb = -10): void {
     this.emit({ type: "carriers", centerHz, floorDb, carriers, ts: nextTs() });
   }
+  emitError(message: string): void {
+    this.emit({ type: "error", code: "HELPER_EXIT", message, ts: nextTs() });
+  }
+  emitRunning(): void {
+    this.emit({ type: "status", state: "running", ts: nextTs() });
+  }
   emitSame(raw: string): void {
     this.emit({ type: "same", raw, ts: nextTs() });
   }

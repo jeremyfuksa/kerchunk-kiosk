@@ -97,6 +97,12 @@ describe("classifyHealth", () => {
     helperRestartsRecent: 0, msSinceStart: 120_000, ...over,
   });
 
+  it("a dead weather radio is TROUBLE, and says SAME alerts are off", () => {
+    const h = classifyHealth(input({ sameDown: true }));
+    expect(h.verdict).toBe("trouble");
+    expect(h.reason).toMatch(/SAME alerts are off/);
+  });
+
   it("a hot, busy, scanning box is HEALTHY (hot by design)", () => {
     const h = classifyHealth(input({ now: sample({ tempC: 83, helperCpuPct: 300 }) }));
     expect(h.verdict).toBe("healthy");
