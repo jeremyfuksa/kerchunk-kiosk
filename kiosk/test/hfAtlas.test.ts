@@ -176,7 +176,7 @@ describe("display.hf", () => {
   const base = () => ({ ...defaultConfig(), display: { weatherLat: 39.1, weatherLon: -94.58 } });
   it("display_hf_defaults", () => {
     expect(configSchema.parse(base()).display!.hf).toEqual({
-      greylineStepMs: 300_000, traceOpacity: 0.34, traceFadeMs: 21_600_000, hitGrowMs: 900, hitLineDelayMs: 550, hitLineMs: 2000, hitPingMs: 800, hitFadeMs: 700, zoomMs: 1500, pulseEveryMs: 4500, pulseMs: 2000,
+      spaceWeatherMs: 1_800_000, spaceWeatherShow: true, spaceWeatherFairKp: 4, spaceWeatherPoorKp: 7, spaceWeatherFairFlux: 80, greylineStepMs: 300_000, traceOpacity: 0.34, traceFadeMs: 21_600_000, hitGrowMs: 900, hitLineDelayMs: 550, hitLineMs: 2000, hitPingMs: 800, hitFadeMs: 700, zoomMs: 1500, pulseEveryMs: 4500, pulseMs: 2000,
     });
   });
   it("pulses can be turned off", () => {
