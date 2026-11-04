@@ -87,6 +87,20 @@ describe("POST /api/mode hf", () => {
     expect(s.hf).toMatchObject({ band: "120m", centerHz: FIRST, listenHz: null });
   });
 
+  it("status says when the weather radio is down, until it's proven back", async () => {
+    dir = mkdtempSync(join(tmpdir(), "khf-"));
+    const weatherEngine = new FakeEngine();
+    const { server } = createServer({
+      configStore: new ConfigStore(join(dir, "config.json")), engine: new FakeEngine(), weatherEngine,
+      activityLog: new ActivityLog(10), wsHub: new WsHub(), staticDir: dir,
+    });
+    expect((await request(server).get("/api/status")).body.sameDown).toBe(false);
+    weatherEngine.emitError("failed to open RTL-SDR");
+    expect((await request(server).get("/api/status")).body.sameDown).toBe(true);
+    weatherEngine.emitRunning();
+    expect((await request(server).get("/api/status")).body.sameDown).toBe(false);
+  });
+
   it("status has no hf block outside HF mode", async () => {
     const { server } = await app();
     expect((await request(server).get("/api/status")).body.hf).toBeUndefined();
