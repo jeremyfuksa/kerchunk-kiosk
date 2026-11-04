@@ -102,6 +102,10 @@ bool parse_cli(int argc, const char* const* argv, Cli& c, std::string& err) {
       if (!val(v) || !to_double(v, d) || !(d >= 1000 && d <= 24000)) { err = "--audio-lpf-hz must be a number in [1000, 24000]"; return false; }
       c.eng.speaker_lpf_hz = d;
     }
+    else if (k == "--am-audio-lpf-hz") {
+      if (!val(v) || !to_double(v, d) || !(d == 0 || (d >= 1000 && d <= 24000))) { err = "--am-audio-lpf-hz must be 0 (off) or a number in [1000, 24000]"; return false; }
+      c.eng.am_audio_lpf_hz = d;
+    }
     else if (k == "--audio-hpf-hz") {
       if (!val(v) || !to_double(v, d) || !(d == 0 || (d >= 50 && d <= 1000))) { err = "--audio-hpf-hz must be 0 (off) or a number in [50, 1000]"; return false; }
       c.eng.speaker_hpf_hz = d;

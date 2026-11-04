@@ -28,6 +28,7 @@ struct EngineOptions {
   bool survey = false;                       // emit "carriers" events (CLI --survey)
   double survey_db = SURVEY_DB_DEFAULT;      // CLI --survey-db
   double speaker_lpf_hz = SPEAKER_LPF_HZ;   // speaker audio LPF cutoff (CLI --audio-lpf-hz)
+  double am_audio_lpf_hz = 0;                // AM speaker audio LPF cutoff, 0 = none (CLI --am-audio-lpf-hz)
   double speaker_hpf_hz = SPEAKER_HPF_HZ;   // FM speaker HPF cutoff, 0 = off (CLI --audio-hpf-hz)
   double am_gain_db = 0.0;                   // AM speaker gain offset vs AM_GAIN, dB (CLI --am-gain-db;
                                              // balances airband loudness against FM by ear;

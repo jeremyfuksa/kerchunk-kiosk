@@ -308,3 +308,18 @@ Two 30-minute runs on the kiosk around local noon, one after the other, on the A
 Dead in daytime: 120 m, 90 m, 49 m, 41 m, 15 m and 13 m. Helper at 28.5% of a core at the end of the second run, no helper exits, and speaker underrun in the range already noted above.
 
 Result: **partial.** It's measurably faster and plays more. These are different half-hours, so the lower named count isn't explained: the schedule shifts, and noon fell in the first run. Windows with only cooled-down stations also leave at 20 s, which means fewer surveys on those. The issue asks for a dead-band evening, which this isn't. Next: compare a full night's rows in `reception.db` with the earlier nights (991 on 2026-11-03).
+
+## AM audio low-pass (#328), 2026-11-04
+
+Blind, by ear on the kiosk's speaker, on 9395 kHz (WRMI, about 27 dB over the floor). Six one-minute blocks in a shuffled order, three with `spyserver.amAudioLpfHz` at 4500 and three with it off, with the helper's arguments logged in each block. The order wasn't opened until the operator had answered.
+
+| Block | 1 | 2 | 3 | 4 | 5 | 6 |
+| --- | --- | --- | --- | --- | --- | --- |
+| Filter | off | 4500 | 4500 | off | 4500 | off |
+| Operator's pick | | clearest | clearest | | clearest | |
+
+All six right, which chance gives 1 time in 20. The operator described the unfiltered blocks as having a high-pitched noise the others didn't.
+
+An earlier, unblinded run that day was void: a config write during a direct tune didn't restart the helper (#363), so both sides were the same audio, and the operator still reported "slightly better". Check the helper's arguments, and blind anything judged by ear.
+
+One station and one cutoff only. CB on the HF+ shares the helper and hasn't been judged by ear. A synchronous detector and noise reduction weren't tried.

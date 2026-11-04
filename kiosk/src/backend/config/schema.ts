@@ -602,6 +602,9 @@ export const configSchema = z.object({
     gain: z.number().int().min(0).max(32).optional(),
     digitalGain: z.number().int().min(0).max(32).optional(),
     audioBufferMs: z.number().int().min(0).max(3000).default(DEFAULT_SPY_AUDIO_BUFFER_MS),
+    // AM speaker low-pass for everything heard through SpyServer (shortwave and CB). The RTL helper,
+    // and so air band, never gets it. Absent = none, which passes audio to about 8 kHz.
+    amAudioLpfHz: z.number().int().min(1000).max(24000).optional(),
   }).optional(),
   // HF mode (spec 2026-11-02-hf-mode). Needs spyserver. Every absent knob takes its default
   // from hf/sweep.ts. Applies live, except bands, which apply on entering HF mode.

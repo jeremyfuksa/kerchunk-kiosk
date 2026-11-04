@@ -37,7 +37,7 @@ export interface ScanConfig {
   windowBandwidthHz?: number;
   // Set = the helper reads this SpyServer instead of the engine's RTL-SDR. It's
   // spawn-time state: crossing sources respawns the helper (WidebandEngine.retune).
-  spyserver?: { host: string; port: number; gain?: number; digitalGain?: number; audioBufferMs: number };
+  spyserver?: { host: string; port: number; gain?: number; digitalGain?: number; audioBufferMs: number; amAudioLpfHz?: number };
   // Park on exactly this center with exactly `channels`, which may be none: HF windows
   // are chosen for the band, not fitted around channels.
   fixedCenterHz?: number;

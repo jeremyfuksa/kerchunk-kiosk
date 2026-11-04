@@ -77,6 +77,12 @@ TEST(cli_rtl_index_gain_and_numeric_ranges) {
     kc::Cli c2;
     CHECK(parse({"--am-gain-db", "-6"}, c2, err));
     CHECK_NEAR(c2.eng.am_gain_db, -6, 0);
+    kc::Cli c3;
+    CHECK_NEAR(c3.eng.am_audio_lpf_hz, 0, 0);
+    CHECK(parse({"--am-audio-lpf-hz", "4500"}, c3, err));
+    CHECK_NEAR(c3.eng.am_audio_lpf_hz, 4500, 0);
+    kc::Cli c4;
+    CHECK(!parse({"--am-audio-lpf-hz", "500"}, c4, err));
   }
   const std::vector<std::vector<const char*>> bad = {
       {"--rtl-index", "-1"},

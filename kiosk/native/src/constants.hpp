@@ -18,7 +18,8 @@ inline constexpr double AM_CARRIER_TAU_S = 0.04;   // AM carrier tracker (~40 ms
 // FM speaker audio LPF (after de-emphasis, before 50k->48k). GR parity: nbfm_rx low-passes its
 // audio at 2.7 kHz with a 0.5 kHz transition (gnuradio/analog/nbfm_rx.py). FM discriminator noise
 // rises with frequency, so everything above the voiceband is hiss on a weak signal -- a 20 kHz cut
-// here made weak channels audibly hissier than GR (2026-09-26 A/B, bench hiss-ab). AM bypasses it.
+// here made weak channels audibly hissier than GR (2026-09-26 A/B, bench hiss-ab). AM bypasses it,
+// with an optional filter of its own: --am-audio-lpf-hz (config spyserver.amAudioLpfHz; off for air band).
 // Runtime knob: --audio-lpf-hz (config scan.fmAudioLpfHz).
 inline constexpr double SPEAKER_LPF_HZ = 2700;
 inline constexpr double SPEAKER_LPF_TRANSITION_HZ = 500;

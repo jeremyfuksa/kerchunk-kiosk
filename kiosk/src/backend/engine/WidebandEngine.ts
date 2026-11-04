@@ -584,7 +584,8 @@ export class WidebandEngine implements ScannerEngine {
       ...(spy
         ? ["--spyserver", `${spy.host}:${spy.port}`, "--survey", "--audio-buffer-ms", String(spy.audioBufferMs),
           ...(spy.gain !== undefined ? ["--spyserver-gain", String(spy.gain)] : []),
-          ...(spy.digitalGain !== undefined ? ["--spyserver-digital-gain", String(spy.digitalGain)] : [])]
+          ...(spy.digitalGain !== undefined ? ["--spyserver-digital-gain", String(spy.digitalGain)] : []),
+          ...(spy.amAudioLpfHz !== undefined ? ["--am-audio-lpf-hz", String(spy.amAudioLpfHz)] : [])]
       // Prefer serial (deterministic); fall back to index resolved at spawn.
         : this.rtlSerial
           ? ["--rtl-serial", this.rtlSerial]

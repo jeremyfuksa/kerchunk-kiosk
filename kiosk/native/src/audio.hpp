@@ -2,6 +2,7 @@
 #pragma once
 #include <complex>
 #include <cstdint>
+#include <optional>
 #include <vector>
 
 #include "agc.hpp"
@@ -19,9 +20,10 @@ class SpeakerPath {
   // lpf_hz: speaker audio LPF cutoff (0 < lpf_hz < LANE_RATE/2, else std::invalid_argument).
   // am_gain: linear gain on normalized AM audio (default AM_GAIN; the engine applies --am-gain-db).
   // agc / limiter_*: speaker loudness knobs (the engine applies --agc-* / --limiter-*).
+  // am_lpf_hz: AM audio LPF cutoff, 0 = none (--am-audio-lpf-hz).
   explicit SpeakerPath(double lpf_hz = SPEAKER_LPF_HZ, float am_gain = AM_GAIN, const AgcParams& agc = {},
                        double limiter_ceiling = LIMITER_CEILING, double limiter_release_ms = LIMITER_RELEASE_MS,
-                       double hpf_hz = SPEAKER_HPF_HZ, float ssb_gain = SSB_GAIN);
+                       double hpf_hz = SPEAKER_HPF_HZ, float ssb_gain = SSB_GAIN, double am_lpf_hz = 0);
   void set_source(int lane, Demod d);
   void set_gain(float target);
   void reset();   // hard cut: drops the source and zeroes all state (the next sample may step)
@@ -47,6 +49,7 @@ class SpeakerPath {
   float ssb_gain_;
   Deemphasis de_;
   FirFilter lpf_;
+  std::optional<FirFilter> am_lpf_;
   ButterHighpass hpf_;
   AmEnvelope am_;
   SsbLevel ssb_;
@@ -65,6 +68,7 @@ class SamePath {
  private:
   Deemphasis de_;
   FirFilter lpf_;
+  std::optional<FirFilter> am_lpf_;
   Resampler rs_;
   std::vector<float> a_, b_;
   std::vector<int16_t> tmp_;
