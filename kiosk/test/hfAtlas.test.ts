@@ -13,7 +13,7 @@ const ROMANIA: HitKey = { hz: 11_825_000, lat: 44.75, lon: 26.1, band: "25m" };
 
 describe("bandColor", () => {
   it("band_colour_runs_by_wavelength", () => {
-    expect(HF_BANDS_ORDER).toHaveLength(13);
+    expect(HF_BANDS_ORDER).toHaveLength(12);
     expect(bandColor("120m")).toBe("oklch(.8 .14 20)");
     expect(bandColor("25m")).toBe("oklch(.8 .14 181)");
   });
@@ -154,7 +154,7 @@ describe("pulseFrames", () => {
 describe("legend", () => {
   it("legend_lights_bands_with_traces_and_marks_live", () => {
     const l = legend([row({})], "41m");
-    expect(l).toHaveLength(13);
+    expect(l).toHaveLength(12);
     expect(l.find((x) => x.label === "25")).toMatchObject({ lit: true, live: false, color: bandColor("25m") });
     expect(l.find((x) => x.label === "41")).toMatchObject({ lit: false, live: true });
     expect(l.find((x) => x.label === "120")).toMatchObject({ lit: false, live: false });

@@ -2,7 +2,7 @@
 import { greatCircle, robinson, type LatLon } from "./robinson.js";
 
 /** Longest wave to shortest: red through to violet. */
-export const HF_BANDS_ORDER = ["120m", "90m", "75m", "60m", "49m", "41m", "31m", "25m", "22m", "19m", "16m", "15m", "13m"] as const;
+export const HF_BANDS_ORDER = ["120m", "90m", "60m", "49m", "41m", "31m", "25m", "22m", "19m", "16m", "15m", "13m"] as const;
 const LIVE_TEAL = "var(--kc-glass)";
 const PATH_SEGMENTS = 120;
 
