@@ -263,12 +263,6 @@ export const configSchema = z.object({
     sink: z.string().min(1),
     volume: z.number().int().min(0).max(100),
     muted: z.boolean(),
-    // Remote listening (/api/stream.wav, ROADMAP stretch): when OFF (default)
-    // the helper builds no PCM tee — the post-limiter float->s16 conversion and
-    // fd-write are skipped, saving idle CPU on every box. Opt-in because the
-    // feed is rarely listened to. Toggling it respawns the helper (the tee is a
-    // helper spawn arg).
-    remoteListening: z.boolean().default(false),
     // Which service FAMILIES may own the speaker (spec 2026-10-13 silent
     // chatter; config/family.ts). Everything else is SILENT: it still gets a
     // lane, history and the map, but never the speaker and never scan time
@@ -677,7 +671,7 @@ export function defaultConfig(): Config {
     // noise spikes ~1436, real signal ~2900. 1800 clears the noise spikes with
     // margin while staying below signal, avoiding constant false squelch-opens.
     scan: { sampleRate: 12000, squelchLevel: 1800, gain: "auto", dwellMs: 2000 },
-    audio: { sink: "hdmi:CARD=vc4hdmi0", volume: 70, muted: false, remoteListening: false, audibleFamilies: [...AUDIBLE_FAMILIES_DEFAULT] },
+    audio: { sink: "hdmi:CARD=vc4hdmi0", volume: 70, muted: false, audibleFamilies: [...AUDIBLE_FAMILIES_DEFAULT] },
     channels: [],
   };
 }

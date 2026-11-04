@@ -69,30 +69,23 @@ export function mountShell(root: HTMLElement, live: LiveStore, io: ShellIo): She
   // touched on each paint.
   mini.innerHTML = `<a class="kc-mini__open" href="${hrefFor({ tab: "radio" })}">
       <span class="kc-mini__name"></span><span class="kc-mini__freq" hidden></span></a>
-    <button type="button" class="kc-mini__key" data-act="skip" aria-label="Skip transmission">${ico("skip")}</button>
-    <button type="button" class="kc-mini__key" data-act="listen" disabled>${ico("play")}</button>`;
+    <button type="button" class="kc-mini__key" data-act="skip" aria-label="Skip transmission">${ico("skip")}</button>`;
   mini.querySelector('[data-act="skip"]')!.addEventListener("click", () => {
     io.run(() => api.skip()).catch((e: unknown) => io.toast(e instanceof Error ? e.message : String(e)));
   });
-  mini.querySelector('[data-act="listen"]')!.addEventListener("click", () => live.toggleStream());
   const miniOpen = mini.querySelector<HTMLAnchorElement>(".kc-mini__open")!;
   const miniName = mini.querySelector<HTMLElement>(".kc-mini__name")!;
   const miniFreq = mini.querySelector<HTMLElement>(".kc-mini__freq")!;
-  const miniListen = mini.querySelector<HTMLButtonElement>('[data-act="listen"]')!;
-  let miniPainted: { name: string; freq: string; streaming: boolean; listenEnabled: boolean } | null = null;
+  let miniPainted: { name: string; freq: string } | null = null;
 
   function paintMini(): void {
     // Radio IS the player — no mini-player there.
     mini.hidden = current.tab === "radio";
     if (mini.hidden) return;
     const v = lcdView(live.state);
-    const next = {
-      name: v.name, freq: v.freq, streaming: live.streaming,
-      listenEnabled: live.state.remoteListening || live.streaming,
-    };
+    const next = { name: v.name, freq: v.freq };
     const prev = miniPainted;
-    if (prev && prev.name === next.name && prev.freq === next.freq
-      && prev.streaming === next.streaming && prev.listenEnabled === next.listenEnabled) return;
+    if (prev && prev.name === next.name && prev.freq === next.freq) return;
     miniPainted = next;
 
     if (!prev || prev.name !== next.name) {
@@ -102,13 +95,6 @@ export function mountShell(root: HTMLElement, live: LiveStore, io: ShellIo): She
     if (!prev || prev.freq !== next.freq) {
       miniFreq.hidden = !next.freq;
       miniFreq.textContent = next.freq;
-    }
-    if (!prev || prev.listenEnabled !== next.listenEnabled) {
-      miniListen.disabled = !next.listenEnabled;
-    }
-    if (!prev || prev.streaming !== next.streaming) {
-      miniListen.setAttribute("aria-label", next.streaming ? "Stop listening" : "Listen here");
-      miniListen.innerHTML = ico(next.streaming ? "stop" : "play");
     }
   }
   live.subscribe(paintMini);
