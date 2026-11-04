@@ -105,6 +105,7 @@ At 1366×768, per the prototype:
 - **Station panel:** lower left over the South Pacific, 430 px wide, 28 px from the bottom, on a translucent dark plate with no blur (`rgba(14,14,42,.74)`). It holds the frequency at 68 px, the name at 30 px, one line of details, and the meter. All of `hfView`'s readout data stays, including "Likely", "Muted", and the error and hunting states.
 - **Top left:** "HF · 25m", small and dim.
 - **Clock and weather:** top right, over the map. Stacking it is fine if one line won't fit. Keep the Lucide weather icon that's there today.
+- **Space weather (#342):** under the clock (the operator's pick, 2026-11-04): a red, yellow or green light with solar flux and Kp, then a coral line naming any R or G storm. The light answers "how good are the bands?" (the operator's ask): red at R3 or Kp 7, yellow at R1, Kp 4 or flux under 80, otherwise green. It's a display only and doesn't steer the sweep. Knobs: `display.hf.spaceWeather*`.
 - **Alert banner:** still shows over the stage, as it does today (`.kc-corner` stays). Don't hide it behind the panel.
 
 ## Constraints

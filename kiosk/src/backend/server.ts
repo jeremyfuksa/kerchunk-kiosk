@@ -3,6 +3,7 @@ import { HfController, type HfConfig } from "./hf/controller.js";
 import { HF_DEFAULTS, type HfTune, hasCarrier } from "./hf/sweep.js";
 import { isUtility } from "./hf/schedule.js";
 import type { Candidate, ReceptionLog } from "./hf/receptionLog.js";
+import type { SpaceWeather } from "./spaceWeather.js";
 import { createServer as httpCreateServer, type IncomingMessage, type ServerResponse, type Server } from "node:http";
 import { readFileSync, existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
@@ -74,6 +75,8 @@ export interface ServerDeps {
   aircraftFeed?: AircraftSource;
   /** Live NEXRAD crop for the Weather Glass layer (off when display.radar.enabled is false). */
   radar?: RadarSource;
+  /** NOAA solar flux, Kp and storm scales for the HF wall. */
+  spaceWeather?: SpaceWeather;
   /** GOES GLM lightning for the Weather Glass blooms (off when display.lightning.enabled is false). */
   lightning?: LightningSource;
   /** Directory for Close Call audio clips (#222). Absent (tests that don't
@@ -1516,6 +1519,11 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
     if (method === "GET" && path === "/api/weather") {
       if (!deps.weather) return json(res, 404, { error: "no weather configured" });
       return json(res, 200, await deps.weather.current());
+    }
+
+    if (method === "GET" && path === "/api/space-weather") {
+      if (!deps.spaceWeather) return json(res, 404, { error: "no space weather configured" });
+      return json(res, 200, deps.spaceWeather.current());
     }
 
     if (method === "GET" && path === "/api/status") {

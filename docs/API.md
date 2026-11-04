@@ -162,6 +162,7 @@ additionally removes orphans (recorded on a hit that never filed) and enforces
 | GET | `/api/hf/log` | HF reception log: `{ nights, night, rows }`, `?night=YYYY-MM-DD` (default latest). A row's `playedTs` is when it last played, `null` if never. |
 | GET | `/api/logs` | See above (external consumer). |
 | GET | `/api/weather` | See above (external consumer). |
+| GET | `/api/space-weather` | `{ solarFlux, kp, r, s, g }` from NOAA SWPC, cached `display.hf.spaceWeatherMs` (30 min). Each is a number, or `null` when NOAA hasn't supplied it in the last 6 hours. `r`, `s`, `g` are storm scale levels, 0 = none. |
 | GET | `/api/history` | Hit history; query params `since`, `until`, `freq`, `tag`, `kind`, `limit`. Labels resolved to current channel names. |
 | GET | `/api/history/sites` | Transmitter sites (lat/lon/hits) with current channel names. |
 | DELETE | `/api/history/alerts` | Clear all alert rows → `{ removed }` (hits/stats survive). |

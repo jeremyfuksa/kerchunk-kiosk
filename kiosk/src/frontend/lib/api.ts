@@ -59,7 +59,10 @@ function fetchConfigShared(): Promise<Config> {
 export interface HfCandidate { station: string; itu?: string; country?: string; language?: string; site?: string; lat?: number; lon?: number; powerKw?: number; distanceKm?: number }
 export interface HfStatus { band: string; centerHz: number; listenHz: number | null; loHz?: number; hiHz?: number; candidate?: HfCandidate | null; others?: string[] }
 
+export interface SpaceWeatherNow { solarFlux: number | null; kp: number | null; r: number | null; s: number | null; g: number | null }
+
 export const api = {
+  getSpaceWeather: (signal?: AbortSignal) => fetch("/api/space-weather", { signal }).then(j<SpaceWeatherNow>),
   getConfig: fetchConfigShared,
   putConfig: (cfg: Config) => {
     // Send back the revision this copy was read at. The server refuses a write

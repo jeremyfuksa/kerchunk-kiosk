@@ -24,6 +24,7 @@ import { RadarFeed } from "./radar/RadarFeed.js";
 import { LightningFeed } from "./lightning/LightningFeed.js";
 import { composeLookups, type LookupProvider } from "./lookup.js";
 import { NwsWeather } from "./weather.js";
+import { SpaceWeather } from "./spaceWeather.js";
 import { HistoryStore } from "./history.js";
 import { dirname } from "node:path";
 import type { EngineEvent } from "./engine/ScannerEngine.js";
@@ -335,6 +336,7 @@ const { server, getConfig, bootScanConfig } = createServer({
   hfCandidates: (hz, ts) => schedules.candidates(hz, ts),
   configStore, engine, weatherEngine, activityLog, wsHub, staticDir: STATIC_DIR,
   lookup, weather, history, aircraftFeed, radar, lightning,
+  spaceWeather: new SpaceWeather({ ttlMs: config.display?.hf.spaceWeatherMs ?? 1_800_000 }),
   ccSampleDir: join(dirname(CONFIG_PATH), "cc-samples"),
   selfProtect: true,
   wallHeartbeat: () => wallWatchdog?.beat(),
