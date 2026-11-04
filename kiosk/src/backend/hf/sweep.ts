@@ -3,7 +3,12 @@
 
 export interface HfBand { name: string; loHz: number; hiHz: number }
 export interface HfWindow { centerHz: number; band: string; loHz: number; hiHz: number }
-export interface HfCarrier { hz: number; db: number }
+export interface HfCarrier {
+  hz: number;           // snapped to the raster
+  db: number;
+  peakHz?: number;      // where the peak really is
+  steadyDb?: number;    // about 0 for a steady carrier, higher for voice that comes and goes
+}
 export interface HfTune { centerHz: number; listenHz: number | null; band: string; loHz: number; hiHz: number }
 
 export interface HfOpts {
@@ -11,12 +16,20 @@ export interface HfOpts {
   minListenDb: number;    // a carrier needs this over the floor to reach the speaker
   cooldownMs: number;     // before a station may play again
   fadeMs: number;         // the playing station gone this long = next station
+  carrierSteadyDb: number;   // a carrier is steadier than this...
+  carrierRasterHz: number;   // ...and this close to the raster. Nothing else gets a station name
   isMatched?: (hz: number) => boolean;   // has a schedule entry: plays ahead of the unidentified
 }
 
 export const HF_DEFAULTS: HfOpts = {
   windowMs: 60_000, minListenDb: 15, cooldownMs: 30 * 60_000, fadeMs: 15_000,
+  carrierSteadyDb: 5, carrierRasterHz: 300,   // docs/bench/2026-11-hf-proofs.md
 };
+
+/** A broadcast has a steady carrier on the raster. SSB voice comes and goes, and sits anywhere. */
+export function hasCarrier(c: HfCarrier, o: Pick<HfOpts, "carrierSteadyDb" | "carrierRasterHz">): boolean {
+  return (c.steadyDb ?? 0) < o.carrierSteadyDb && Math.abs((c.peakHz ?? c.hz) - c.hz) <= o.carrierRasterHz;
+}
 
 // Broadcast bands, 120 m to 13 m, minus where they overlap US ham bands: hams overlap each other there,
 // and SSB has no carrier or raster for the survey to find. That drops all of 75 m and 41 m up to 7300 kHz,
@@ -58,6 +71,7 @@ export class HfSweep {
   private windowAt: number;
   private listenHz: number | null = null;
   private listenSeenAt = 0;
+  private listenCarrier = false;
   private readonly playedAt = new Map<number, number>();
 
   constructor(private opts: HfOpts, private readonly windows: readonly HfWindow[], now: number) {
@@ -65,6 +79,9 @@ export class HfSweep {
   }
 
   setOpts(opts: HfOpts): void { this.opts = opts; }
+
+  /** What's playing has shown a carrier. A fade can hide one for a survey, so it stays true until the next station. */
+  listenIsCarrier(): boolean { return this.listenCarrier; }
 
   current(): HfTune {
     const w = this.windows[this.index]!;
@@ -83,14 +100,19 @@ export class HfSweep {
     const carriers = this.inWindow(seen);
 
     if (this.listenHz !== null) {
-      const heard = carriers.some((c) => Math.abs(c.hz - this.listenHz!) <= RASTER_HZ && c.db >= this.opts.minListenDb);
-      if (heard) { this.listenSeenAt = now; return null; }
+      const heard = carriers.filter((c) => Math.abs(c.hz - this.listenHz!) <= RASTER_HZ && c.db >= this.opts.minListenDb);
+      if (heard.length > 0) {
+        this.listenSeenAt = now;
+        if (heard.some((c) => hasCarrier(c, this.opts))) this.listenCarrier = true;
+        return null;
+      }
       if (now - this.listenSeenAt < this.opts.fadeMs) return null;
     }
     const next = this.choose(now, carriers);
-    if (next === this.listenHz) return null;
-    this.listenHz = next;
-    if (next !== null) { this.playedAt.set(next, now); this.listenSeenAt = now; }
+    this.listenCarrier = next !== null && hasCarrier(next, this.opts);
+    if ((next?.hz ?? null) === this.listenHz) return null;
+    this.listenHz = next?.hz ?? null;
+    if (next) { this.playedAt.set(next.hz, now); this.listenSeenAt = now; }
     return this.current();
   }
 
@@ -110,22 +132,26 @@ export class HfSweep {
 
   private next(now: number): HfTune {
     this.listenHz = null;
+    this.listenCarrier = false;
     this.windowAt = now;
     this.index = (this.index + 1) % this.windows.length;
     return this.current();
   }
 
-  private choose(now: number, carriers: readonly HfCarrier[]): number | null {
+  private choose(now: number, carriers: readonly HfCarrier[]): HfCarrier | null {
     const ready = carriers
       .filter((c) => c.db >= this.opts.minListenDb)
       .filter((c) => {
         const at = this.playedAt.get(c.hz);
         return at === undefined || now - at >= this.opts.cooldownMs;
       })
-      .sort((a, b) => {
-        const m = Number(this.opts.isMatched?.(b.hz) ?? false) - Number(this.opts.isMatched?.(a.hz) ?? false);
-        return m || b.db - a.db;
-      });
-    return ready[0]?.hz ?? null;
+      .sort((a, b) => this.rank(b) - this.rank(a) || b.db - a.db);
+    return ready[0] ?? null;
+  }
+
+  /** A carrier plays first, and one with a schedule match ahead of that. */
+  private rank(c: HfCarrier): number {
+    if (!hasCarrier(c, this.opts)) return 0;
+    return this.opts.isMatched?.(c.hz) ? 2 : 1;
   }
 }

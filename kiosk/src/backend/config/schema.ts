@@ -602,6 +602,8 @@ export const configSchema = z.object({
     minListenDb: z.number().min(10).max(60).optional(),
     cooldownMs: z.number().int().min(0).max(24 * 3_600_000).optional(),
     fadeMs: z.number().int().min(5_000).max(300_000).optional(),
+    carrierSteadyDb: z.number().min(0).max(20).optional(),
+    carrierRasterHz: z.number().int().min(0).max(2_500).optional(),
     bands: z.array(z.object({
       name: z.string().min(1).max(20),
       loHz: z.number().int().min(100_000).max(30_000_000),

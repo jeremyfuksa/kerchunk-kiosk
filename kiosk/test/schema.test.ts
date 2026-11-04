@@ -430,6 +430,15 @@ describe("lookup.radioReference config", () => {
   });
 });
 
+describe("hf carrier knobs", () => {
+  it("accepts them in range and refuses them out of range", () => {
+    const c = defaultConfig();
+    expect(configSchema.safeParse({ ...c, hf: { carrierSteadyDb: 4, carrierRasterHz: 400 } }).success).toBe(true);
+    expect(configSchema.safeParse({ ...c, hf: { carrierSteadyDb: -1 } }).success).toBe(false);
+    expect(configSchema.safeParse({ ...c, hf: { carrierRasterHz: 5000 } }).success).toBe(false);
+  });
+});
+
 describe("channel mode", () => {
   it("accepts usb", () => {
     const c = defaultConfig();

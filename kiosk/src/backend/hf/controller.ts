@@ -51,6 +51,8 @@ export class HfController {
 
   current(): HfTune | null { return this.sweep?.current() ?? null; }
 
+  listenIsCarrier(): boolean { return this.sweep?.listenIsCarrier() ?? false; }
+
   /** First window, for callers that need a tune before the sweep starts. */
   firstTune(): HfTune {
     return new HfSweep(this.opts(), hfWindows(this.deps.config()?.bands ?? HF_BANDS_DEFAULT), this.now()).current();

@@ -19,6 +19,33 @@ const log = () => new ReceptionLog({ path: ":memory:" });
 const survey = (l: ReceptionLog, ts: number, hz: number, db: number, cands: Candidate[] = [], windowMs = 60_000) =>
   l.record(ts, "49m", [{ hz, db }], () => cands, windowMs);
 
+describe("ReceptionLog carrier check", () => {
+  const isNamed = (c: { steadyDb?: number }) => (c.steadyDb ?? 0) < 5;
+  const record = (l: ReceptionLog, ts: number, steadyDb: number) =>
+    l.record(ts, "49m", [{ hz: 5_950_000, db: 20, steadyDb }], () => [voa], 60_000, isNamed);
+
+  it("names nothing without a carrier, whatever is scheduled", () => {
+    const l = log();
+    record(l, at(23), 9);
+    expect(l.rows("2026-11-02")).toMatchObject([{ freqHz: 5_950_000, station: null, site: null, others: [] }]);
+  });
+
+  it("names a carrier", () => {
+    const l = log();
+    record(l, at(23), 1);
+    expect(l.rows("2026-11-02")).toMatchObject([{ station: "VOA" }]);
+  });
+
+  it("a named station fading for a survey stays one row", () => {
+    const l = log();
+    record(l, at(23), 1);
+    record(l, at(23, 1), 9);
+    const rows = l.rows("2026-11-02");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ station: "VOA", lastTs: at(23, 1) });
+  });
+});
+
 describe("nightOf", () => {
   it("runs noon to noon, so one night keeps one date", () => {
     expect(nightOf(at(23))).toBe("2026-11-02");

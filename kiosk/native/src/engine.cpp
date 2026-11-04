@@ -247,7 +247,8 @@ void Engine::poll() {
     double floor_db = 0;
     const auto carriers = survey_->take(opt_.survey_db, &floor_db);
     json list = json::array();
-    for (const auto& k : carriers) list.push_back({{"hz", k.hz}, {"db", round1(k.db_above_floor)}});
+    for (const auto& k : carriers) list.push_back({{"hz", k.hz}, {"db", round1(k.db_above_floor)}, {"peakHz", std::llround(k.peak_hz)},
+                                                         {"steadyDb", round1(k.steady_db)}});
     emit_({{"ev", "carriers"}, {"center", center_}, {"floorDb", round1(floor_db)}, {"carriers", list}});
   }
   if (cc_on_ && polls_ % CC_EVERY_POLLS == 0) {

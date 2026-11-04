@@ -278,3 +278,15 @@ Operator listening, kiosk monitoring through the HF+:
 | 3945.00 LSB | static with a ghost of a conversation |
 
 The survey reported this signal as 3945 kHz, because it snaps to the 5 kHz raster. Its unsnapped peak was 3946.338 kHz. LSB on CB channel 38 was not re-checked by ear: no signal to test it on.
+
+## Carrier check calibration (2026-11-03, about 18:45 CST)
+
+One evening, about 15 s of surveys per window. Ham only: 3600–3895, 7125–7195, 14000–14350 kHz. Broadcast: 5900–6200, 7305–7600, 9400–9900, 15100–15800 kHz.
+
+| Rule | Ham peaks called carrier | Broadcast peaks called carrier |
+|---|---|---|
+| steady < 5 dB, within 300 Hz of raster (chosen) | 10 of 54 | 108 of 122 |
+| within 300 Hz of raster alone | 16 of 54 | 111 of 122 |
+| steady < 5 dB alone | 15 of 54 | 116 of 122 |
+
+All 10 ham peaks called carrier are on 3885 and 3890 kHz, where US hams run AM, so 0 of 44 SSB peaks passed. About 1 in 9 broadcast peaks fail in a given survey, mostly weak ones, and go unnamed. Daytime and heavy fading aren't measured.

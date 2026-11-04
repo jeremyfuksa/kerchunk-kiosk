@@ -43,6 +43,42 @@ TEST(survey_finds_each_tone_on_raster) {
   CHECK(has(c, 7300000) && has(c, 7345000) && has(c, 7500000));
 }
 
+namespace {
+// A carrierless voice stand-in: tones across the sideband, on for 200 ms and off for 200 ms.
+void add_ssb(std::vector<sig::cf>& x, double dial, double db) {
+  std::vector<sig::cf> v(x.size(), sig::cf(0, 0));
+  for (int f = 300; f <= 2850; f += 170) sig::add(v, sig::tone(RATE, x.size(), dial + f, amp_for(db) / 3 * (1 + f % 7)));
+  const size_t hop = RATE / 5;
+  for (size_t i = 0; i < x.size(); i++) if ((i / hop) % 2 == 0) x[i] += v[i];
+}
+const kc::Carrier* strongest(const std::vector<kc::Carrier>& c) {
+  const kc::Carrier* b = nullptr;
+  for (auto& k : c) if (!b || k.db_above_floor > b->db_above_floor) b = &k;
+  return b;
+}
+}  // namespace
+
+TEST(survey_reports_where_the_peak_really_is) {
+  auto c = survey(scene({{-5200, 25}}));
+  CHECK(c.size() == 1);
+  if (!c.empty()) CHECK_NEAR(c[0].peak_hz, CENTER - 5200, 200);
+}
+
+TEST(survey_calls_a_steady_carrier_steady) {
+  auto c = survey(scene({{50000, 30}}));
+  CHECK(c.size() == 1);
+  if (!c.empty()) CHECK(c[0].steady_db < 1.0);
+}
+
+TEST(survey_marks_carrierless_voice_as_unsteady) {
+  auto x = sig::noise(N, SIGMA, 7);
+  add_ssb(x, 50000, 25);
+  auto c = survey(x);
+  const auto* k = strongest(c);
+  CHECK(k != nullptr);
+  if (k) CHECK(k->steady_db > 5.0);
+}
+
 TEST(survey_snaps_an_off_raster_carrier) {
   auto c = survey(scene({{-5200, 25}}));
   CHECK(c.size() == 1 && has(c, 7345000));

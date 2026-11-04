@@ -162,7 +162,7 @@ interface HelperEvent {
   ev: string;
   center?: number;
   floorDb?: number;
-  carriers?: Array<{ hz: number; db: number }>;
+  carriers?: Array<{ hz: number; db: number; peakHz?: number; steadyDb?: number }>;
   id?: string | null;
   db?: number;
   freqHz?: number;
