@@ -41,9 +41,9 @@ float AmEnvelope::step(cf x) {
 SsbDemod::SsbDemod()
     : dec_i_(ssb_aa()), dec_q_(ssb_aa()), ch_i_(ssb_ch()), ch_q_(ssb_ch()), int_i_(ssb_aa()), int_q_(ssb_aa()) {}
 
-cf SsbDemod::step(cf x) {
-  // The sideband is centred (LO+HI)/2 below the dial: rotate up by that much so it sits at DC.
-  const cf rot = std::polar(1.0f, (float)ph_);
+cf SsbDemod::step(cf x, Demod side) {
+  // The sideband is centred (LO+HI)/2 from the dial, below it for LSB: rotate it to DC.
+  const cf rot = std::polar(1.0f, side == Demod::Usb ? -(float)ph_ : (float)ph_);
   ph_ += kSsbW;
   if (ph_ > M_PI) ph_ -= 2 * M_PI;
   const cf s = x * rot;
@@ -54,7 +54,7 @@ cf SsbDemod::step(cf x) {
   if (k_ == 0) in = cf(ch_i_.step(di), ch_q_.step(dq)) * (float)SSB_DECIM;
   k_ = (k_ + 1) % SSB_DECIM;
   const cf u(int_i_.step(in.real()), int_q_.step(in.imag()));
-  return u * std::conj(rot);   // back to where it was below the dial
+  return u * std::conj(rot);   // back to where it was
 }
 
 void SsbDemod::reset() {

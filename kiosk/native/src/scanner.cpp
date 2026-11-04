@@ -168,18 +168,18 @@ void Scanner::poll(double now, const std::vector<LaneReading>& r) {
     if (!L.floor_db) L.floor_db = db;
     else if (!L.open) *L.floor_db += (db > *L.floor_db ? FLOOR_ALPHA_UP : FLOOR_ALPHA_DOWN) * (db - *L.floor_db);
   }
-  // Shared floor: the quietest wide lane. An LSB lane meters a ~2.5 kHz sideband (~8 dB under a
+  // Shared floor: the quietest wide lane. An SSB lane meters a ~2.5 kHz sideband (~8 dB under a
   // 16 kHz lane's noise), so it uses only its own floor and stays out of this minimum -- or every
   // AM/FM lane's threshold would drop with it.
   std::optional<double> floor;
   for (const auto& L : lanes_)
-    if (!L.parked() && L.floor_db && L.demod != Demod::Lsb) floor = floor ? std::min(*floor, *L.floor_db) : *L.floor_db;
+    if (!L.parked() && L.floor_db && !is_ssb(L.demod)) floor = floor ? std::min(*floor, *L.floor_db) : *L.floor_db;
 
   for (int i = 0; i < n; i++) {
     LaneState& L = lanes_[i];
     if (L.parked() || !rd[i] || L.background) continue;
-    const bool lsb = L.demod == Demod::Lsb;
-    const std::optional<double> base = lsb ? L.floor_db : floor;
+    const bool ssb = is_ssb(L.demod);
+    const std::optional<double> base = ssb ? L.floor_db : floor;
     if (!base) continue;
     const double open_db = L.open_db.value_or(p_.open_db);
     const double quiet_db = p_.quiet_db;   // decision C: per-channel (GR-scale) quietDb ignored
@@ -207,7 +207,7 @@ void Scanner::poll(double now, const std::vector<LaneReading>& r) {
         T.polls++;
         if ((int)T.above.size() < TX_MAX_SAMPLES) T.above.push_back((float)(db - *base));
         if (r[i].quiet_ready && (int)T.quiet.size() < TX_MAX_SAMPLES) T.quiet.push_back(r[i].quiet_db);
-        if (L.open && L.quiet && !lsb) { T.disc_sum += r[i].disc_mean; T.disc_n++; }
+        if (L.open && L.quiet && !ssb) { T.disc_sum += r[i].disc_mean; T.disc_n++; }
       }
     }
 
@@ -226,11 +226,11 @@ void Scanner::poll(double now, const std::vector<LaneReading>& r) {
     L.carrier = L.carrier ? fast > gate_thresh - GATE_HYST_DB / 2 : fast > gate_thresh + GATE_HYST_DB / 2;
     // SSB has no carrier to hold the gate through a syllable gap: hold it SSB_GATE_HOLD_MS past the
     // last poll that was really above threshold (the lane's hang still decides the close).
-    if (lsb) {
+    if (ssb) {
       if (L.carrier) L.carrier_seen = now;
       else if (L.carrier_seen >= 0 && now - L.carrier_seen <= SSB_GATE_HOLD_MS / 1000.0) L.carrier = true;
     }
-    if (lsb) L.quiet = true;   // SSB has no carrier to quiet the discriminator: energy-only squelch
+    if (ssb) L.quiet = true;   // SSB has no carrier to quiet the discriminator: energy-only squelch
     else if (!r[i].quiet_ready) L.quiet = false;
     else L.quiet = L.quiet ? r[i].quiet_db < quiet_db + QUIET_HYST_DB / 2 : r[i].quiet_db < quiet_db - QUIET_HYST_DB / 2;
     if (audible_ == i) gate_ = L.carrier && L.quiet && L.tone_ok ? 1.f : 0.f;

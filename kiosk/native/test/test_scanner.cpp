@@ -957,6 +957,24 @@ TEST(scanner_lsb_never_wants_tone_and_reports_mode) {
   if (!tx.empty()) CHECK(tx[0]["mode"] == "lsb" && !tx[0].contains("offsetHz"));
 }
 
+TEST(scanner_usb_lane_squelches_like_lsb) {
+  Sim m;
+  auto u = lsb("u");
+  u.mode = "usb";
+  m.s.tune(27e6, {u}, false);           // the only lane: its own floor, as with LSB
+  m.set(0, FLOOR, false);
+  m.run(1.0);
+  m.set(0, KEYED, false);               // noisy quieting: only an energy squelch opens on this
+  m.run(0.3);
+  CHECK(opens_of(m, "u") == 1);
+  CHECK(!m.s.wants_tone(0));
+  m.set(0, FLOOR, false);
+  m.run(3.0);
+  auto tx = m.of("txstat");
+  CHECK(tx.size() == 1);
+  if (!tx.empty()) CHECK(tx[0]["mode"] == "usb" && !tx[0].contains("offsetHz"));
+}
+
 TEST(scanner_txstat_reports_carrier_offset) {
   Sim m;
   m.s.tune(146e6, {ch("a")}, false);

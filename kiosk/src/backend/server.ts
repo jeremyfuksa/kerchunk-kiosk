@@ -1237,7 +1237,7 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
       // the demodulatable ones count.)
       const asDemod = (m: unknown): Channel["mode"] | undefined => {
         const low = typeof m === "string" ? m.toLowerCase() : "";
-        return low === "fm" || low === "nfm" || low === "am" ? low : undefined;
+        return low === "fm" || low === "nfm" || low === "am" || low === "lsb" || low === "usb" ? low : undefined;
       };
       const known = config.channels.find((c) => c.freq === freq)
         ?? (config.discoveries ?? []).find((d) => d.freq === freq);

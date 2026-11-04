@@ -230,6 +230,18 @@ TEST(speaker_lsb_source_plays_the_real_part_not_the_discriminator) {
   CHECK(run(kc::Demod::Fm) < 1e-4);
 }
 
+TEST(speaker_usb_source_plays_the_real_part_like_lsb) {
+  auto x = sig::tone(kc::LANE_RATE, 50'000, 1000, 0.01);
+  std::vector<float> zeros(x.size(), 0.f);
+  kc::SpeakerPath sp;
+  sp.set_source(0, kc::Demod::Usb);
+  sp.set_gain(1.f);
+  std::vector<float> out;
+  for (size_t i = 0; i < x.size(); i += 64)
+    sp.process(x.data() + i, zeros.data() + i, (int)std::min<size_t>(64, x.size() - i), out);
+  CHECK(sig::rms(out.data() + out.size() / 2, out.size() / 2) > 0.05);
+}
+
 TEST(speaker_ssb_gain_scales_lsb_audio) {
   auto x = sig::tone(kc::LANE_RATE, 50'000, -1000, 0.1);
   std::vector<float> zeros(x.size(), 0.f);

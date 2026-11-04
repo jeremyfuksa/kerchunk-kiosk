@@ -430,6 +430,14 @@ describe("lookup.radioReference config", () => {
   });
 });
 
+describe("channel mode", () => {
+  it("accepts usb", () => {
+    const c = defaultConfig();
+    const parsed = configSchema.safeParse({ ...c, channels: [{ id: "u", freq: 3945000, alphaTag: "U", mode: "usb", enabled: true }] });
+    expect(parsed.success).toBe(true);
+  });
+});
+
 describe("retired audio.remoteListening", () => {
   it("still loads a config that has it, and drops it", () => {
     const c = defaultConfig();

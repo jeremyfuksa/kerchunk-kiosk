@@ -138,6 +138,34 @@ TEST(demod_for_maps_modes) {
   CHECK(kc::demod_for("lsb") == kc::Demod::Lsb);
   CHECK(kc::demod_for("nfm") == kc::Demod::Fm && kc::demod_for("fm") == kc::Demod::Fm);
   CHECK(std::string(kc::demod_name(kc::Demod::Lsb)) == "lsb");
+  CHECK(kc::demod_for("usb") == kc::Demod::Usb);
+  CHECK(std::string(kc::demod_name(kc::Demod::Usb)) == "usb");
+  CHECK(kc::is_ssb(kc::Demod::Usb) && kc::is_ssb(kc::Demod::Lsb) && !kc::is_ssb(kc::Demod::Am) && !kc::is_ssb(kc::Demod::Fm));
+}
+
+TEST(ssb_demod_passes_upper_sideband) {
+  // 1 kHz above the dial = a USB voice tone: comes out as a 1 kHz real tone at full level.
+  auto x = sig::tone(LR, 50'000, 1000, 0.3);
+  kc::SsbDemod d;
+  std::vector<float> y;
+  for (auto v : x) y.push_back(d.step(v, kc::Demod::Usb).real());
+  CHECK_NEAR(sig::rms(y.data() + 5000, y.size() - 5000), 0.3 / std::sqrt(2.0), 0.02);
+}
+
+TEST(ssb_demod_usb_rejects_lsb_carrier_and_adjacent_channels) {
+  const auto out = [](double f) {
+    auto x = sig::tone(LR, 50'000, f, 0.3);
+    kc::SsbDemod d;
+    std::vector<float> y;
+    for (auto v : x) y.push_back(d.step(v, kc::Demod::Usb).real());
+    return sig::rms(y.data() + 5000, y.size() - 5000);
+  };
+  const double pass = out(1000);
+  for (double f : {-1000.0, 0.0, 5000.0, 8500.0, -8500.0}) {
+    const double rej = 20 * std::log10(out(f) / pass);
+    if (!(rej < -40)) std::fprintf(stderr, "  usb rejection at %.0f Hz: %.1f dB\n", f, rej);
+    CHECK(rej < -40);
+  }
 }
 
 TEST(ssb_demod_passes_lower_sideband) {

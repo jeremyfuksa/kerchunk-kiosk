@@ -578,6 +578,33 @@ TEST(engine_txstat_offset_hz_reads_a_carrier_offset) {
   CHECK(seen);
 }
 
+namespace {
+const char* USB_AND_FM =
+    R"({"cmd":"tune","centerHz":146000000,"channels":[{"id":"u","freqHz":146050000,"mode":"usb","hangMs":500},)"
+    R"({"id":"f","freqHz":145940000,"hangMs":500}],"closeCall":false,"knownHz":[146050000,145940000]})";
+}  // namespace
+
+TEST(engine_usb_lane_opens_on_upper_sideband_voice_and_speaks) {
+  kc::EngineOptions o; o.rate = RATE;
+  Rig r(o);
+  r.tune(USB_AND_FM);
+  auto x = scene(3.2, 7);
+  burst_two_tone(x, 50'000 + 2600, 1.0, 2.0);   // tones at +1900 / +700 Hz: the upper sideband
+  r.feed(x);
+  CHECK(opened(r, "u"));
+  CHECK(r.pcm_rms(1.3, 1.9) > 0.02);
+}
+
+TEST(engine_usb_lane_ignores_the_lower_sideband) {
+  kc::EngineOptions o; o.rate = RATE;
+  Rig r(o);
+  r.tune(USB_AND_FM);
+  auto x = scene(3.2, 11);
+  burst_two_tone(x, 50'000, 1.0, 2.0);          // tones at -700 / -1900 Hz: the lower sideband
+  r.feed(x);
+  CHECK(!opened(r, "u"));
+}
+
 TEST(engine_lsb_lane_ignores_energy_outside_its_sideband) {
   // A strong signal in the lane but ABOVE the dial (USB / the next channel's sideband) is in the
   // 16 kHz lane yet outside the lower sideband: metering the sideband keeps the lane shut.

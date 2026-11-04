@@ -45,7 +45,7 @@ void SpeakerPath::apply_target(float t) {
   // Level-tracker re-prime on gate open (AM carrier, SSB envelope): after silence the tracker
   // followed the noise, so the first ~40-100 ms of a new transmission would be hugely over-gained.
   if (target_ == 0.f && t > 0.f && cur_ == Demod::Am) am_.reset();
-  if (target_ == 0.f && t > 0.f && cur_ == Demod::Lsb) ssb_.reset();
+  if (target_ == 0.f && t > 0.f && is_ssb(cur_)) ssb_.reset();
   // New transmission: the AGC starts at 0 dB, never with the last talker's gain.
   if (target_ == 0.f && t > 0.f) agc_.reset();
   const bool edge = (gain_ == 0.f && t > 0.f) || t == 0.f;
@@ -118,7 +118,7 @@ void SpeakerPath::process(const cf* x, const float* disc, int n, std::vector<flo
     float a = 0.f;
     if (cur_lane_ >= 0 && x && disc) {
       if (cur_ == Demod::Am) a = am_.step(x[i]) * am_gain_;
-      else if (cur_ == Demod::Lsb) a = ssb_.step(x[i]) * ssb_gain_;   // band-limited already: no FM filters
+      else if (is_ssb(cur_)) a = ssb_.step(x[i]) * ssb_gain_;   // band-limited already: no FM filters
       else a = hpf_.step(lpf_.step(de_.step(disc[i])));
       a = agc_.step(a, agc_frozen);
     }

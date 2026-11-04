@@ -1177,6 +1177,14 @@ describe("monitor demod mode", () => {
     expect(engine.tunes.at(-1)!.channels[0]!.mode).toBe("am");
   });
 
+  it("POST /api/monitor plays the sideband it's asked for", async () => {
+    const { server } = makeApp();
+    for (const mode of ["usb", "lsb"]) {
+      const res = await request(server).post("/api/monitor").send({ freq: 3945000, mode });
+      expect(res.body.monitor.mode).toBe(mode);
+    }
+  });
+
   it("honors an explicit mode and defaults to nfm for unknown frequencies", async () => {
     const { server, engine } = makeApp();
     await request(server).post("/api/monitor").send({ freq: 123450000, mode: "am" });
