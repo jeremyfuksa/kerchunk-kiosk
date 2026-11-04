@@ -13,6 +13,7 @@ export interface HfTune { centerHz: number; listenHz: number | null; band: strin
 
 export interface HfOpts {
   windowMs: number;       // time on each shortwave window
+  emptyWindowMs?: number; // nothing playable for this long ends the window early. Absent = every window runs its full time
   minListenDb: number;    // a carrier needs this over the floor to reach the speaker
   cooldownMs: number;     // before a station may play again
   fadeMs: number;         // the playing station gone this long = next station
@@ -72,6 +73,7 @@ export class HfSweep {
   private listenHz: number | null = null;
   private listenSeenAt = 0;
   private listenCarrier = false;
+  private surveyed = false;
   private readonly playedAt = new Map<number, number>();
 
   constructor(private opts: HfOpts, private readonly windows: readonly HfWindow[], now: number) {
@@ -97,6 +99,7 @@ export class HfSweep {
   /** A survey for the live window. Returns the new tune when the station changes. */
   onCarriers(now: number, centerHz: number, seen: readonly HfCarrier[]): HfTune | null {
     if (centerHz !== this.current().centerHz) return null;
+    this.surveyed = true;
     const carriers = this.inWindow(seen);
 
     if (this.listenHz !== null) {
@@ -118,7 +121,14 @@ export class HfSweep {
 
   /** Time passing. Returns the new tune when the window ends. */
   tick(now: number): HfTune | null {
-    return now - this.windowAt >= this.opts.windowMs ? this.next(now) : null;
+    return now - this.windowAt >= this.opts.windowMs || this.isDead(now) ? this.next(now) : null;
+  }
+
+  /** Only a survey can say a window is empty, and the first one can take 5 s to arrive after a retune.
+   *  Stations in cooldown don't count: playing nothing here for a full window gains nothing. */
+  private isDead(now: number): boolean {
+    const wait = this.opts.emptyWindowMs;
+    return wait !== undefined && this.surveyed && this.listenHz === null && now - Math.max(this.windowAt, this.listenSeenAt) >= wait;
   }
 
   skip(now: number): HfTune { return this.next(now); }
@@ -127,12 +137,14 @@ export class HfSweep {
   resume(now: number): HfTune {
     this.windowAt = now;
     this.listenSeenAt = now;
+    this.surveyed = false;
     return this.current();
   }
 
   private next(now: number): HfTune {
     this.listenHz = null;
     this.listenCarrier = false;
+    this.surveyed = false;
     this.windowAt = now;
     this.index = (this.index + 1) % this.windows.length;
     return this.current();

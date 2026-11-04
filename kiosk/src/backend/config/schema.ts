@@ -607,6 +607,7 @@ export const configSchema = z.object({
   // from hf/sweep.ts. Applies live, except bands, which apply on entering HF mode.
   hf: z.object({
     windowMs: z.number().int().min(10_000).max(3_600_000).optional(),
+    emptyWindowMs: z.number().int().min(10_000).max(3_600_000).optional(),
     minListenDb: z.number().min(10).max(60).optional(),
     cooldownMs: z.number().int().min(0).max(24 * 3_600_000).optional(),
     fadeMs: z.number().int().min(5_000).max(300_000).optional(),
