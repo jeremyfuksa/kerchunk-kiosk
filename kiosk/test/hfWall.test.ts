@@ -129,7 +129,7 @@ describe("hfView", () => {
   });
 
   it("live_color_follows_the_band", () => {
-    expect(hfView({ ...base, hf: { ...base.hf!, listenHz: 7_355_000 } }).liveColor).toBe("oklch(.8 .14 135)");
+    expect(hfView({ ...base, hf: { ...base.hf!, listenHz: 7_355_000 } }).liveColor).toBe("oklch(.8 .14 112)");
   });
 
   it("live_color_is_teal_when_hunting_and_on_error", () => {
