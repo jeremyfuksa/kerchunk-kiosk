@@ -29,19 +29,19 @@ describe("cbView readout", () => {
     expect(cbView(base).readout).toEqual({ state: "never", meta: "CB only · Listening on 32 channels", metaRight: "", num: "", name: "", freq: "" });
   });
 
-  it("live: number, name, frequency, needle at the channel", () => {
+  it("live: number, name, frequency, the live channel", () => {
     const cb = cbReduce(CB_EMPTY, active(19, NOW));
     const v = cbView({ ...base, cb, liveFreq: F(19) });
     expect(v.readout).toMatchObject({ state: "live", meta: "CB only · AM · Live", metaRight: "", num: "19", name: "Highway", freq: "27.1850" });
-    expect(v.needleX).not.toBeNull();
+    expect(v.liveN).toBe(19);
     expect(cbView({ ...base, cb, liveFreq: F(19), muted: true }).readout.metaRight).toBe("Muted");
   });
 
-  it("idle: the last-heard channel stays up with its time; no needle", () => {
+  it("idle: the last-heard channel stays up with its time; nothing live", () => {
     const cb = cbReduce(cbReduce(CB_EMPTY, active(9, NOW - 5 * MIN)), release(9, NOW - 4 * MIN));
     const v = cbView({ ...base, cb });
     expect(v.readout).toEqual({ state: "idle", meta: "CB only · Listening on 32 channels", metaRight: "Last heard T996", num: "9", name: "Emergency", freq: "27.0650" });
-    expect(v.needleX).toBeNull();
+    expect(v.liveN).toBeNull();
   });
 
   it("error wins over everything", () => {
@@ -101,20 +101,18 @@ describe("cbView key", () => {
 });
 
 describe("cbHtml", () => {
-  it("live: dB readout, lit meter, needle, data-state", () => {
+  it("live: dB readout, lit meter, data-state", () => {
     const cb = cbReduce(CB_EMPTY, active(19, NOW));
     const h = cbHtml(cbView({ ...base, cb, liveFreq: F(19) }), -41);
     expect(h).toContain('data-state="live"');
     expect(h).toContain('<span class="kc-cb__db">−41 dB</span>');
-    expect(h).toContain('class="kc-cb__needle"');
     expect(h).toContain('<div class="kc-cb__num">19</div>');
     expect(h).toContain("27.1850 MHz");
   });
 
-  it("never: no number, no needle", () => {
+  it("never: no number", () => {
     const h = cbHtml(cbView(base), null);
     expect(h).not.toContain("kc-cb__num");
-    expect(h).not.toContain("kc-cb__needle");
   });
 
   it("escapes operator names", () => {

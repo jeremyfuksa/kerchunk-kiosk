@@ -106,9 +106,11 @@ export class HitAnimator {
     const color = bandColor(s.band);
     this.lines = [];
     this.glows = [];
+    // The line goes over the horizon like the traces. The mask itself lives in the traces layer.
+    const lineGroup = this.add(this.hitGroup, "g", { mask: "url(#hfLimb)" });
     for (const d of tracePath({ lat: s.lat, lon: s.lon }, home)) {
-      this.glows.push(this.add(this.hitGroup, "path", { d, fill: "none", stroke: color, "stroke-opacity": 0.2, "stroke-width": 8, "stroke-linecap": "round", pathLength: 1 }));
-      this.lines.push(this.add(this.hitGroup, "path", { d, fill: "none", stroke: color, "stroke-width": 2.6, "stroke-linecap": "round", pathLength: 1 }));
+      this.glows.push(this.add(lineGroup, "path", { d, fill: "none", stroke: color, "stroke-opacity": 0.2, "stroke-width": 8, "stroke-linecap": "round", pathLength: 1 }));
+      this.lines.push(this.add(lineGroup, "path", { d, fill: "none", stroke: color, "stroke-width": 2.6, "stroke-linecap": "round", pathLength: 1 }));
     }
     const { x, y } = robinson(s.lat, s.lon);
     const ring = (o: Record<string, string | number>) => this.add(this.hitGroup, "circle", { cx: x, cy: y, r: RING_R, fill: "none", stroke: color, ...o });

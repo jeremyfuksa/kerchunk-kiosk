@@ -137,9 +137,9 @@ const QUIT_GRACE_MS = 500;
 // A helper alive this long is considered healthy; its eventual death starts
 // a fresh failure-escalation window instead of compounding an old one.
 const HEALTHY_AFTER_MS = 10_000;
-// A helper can say "ready" and then stall out (exit 3 after STALL_S, 2 s). It has to
-// outlast that before the UIs are told it recovered.
-export const READY_PROVEN_MS = 3_000;
+// A helper can say "ready" and then stall out (exit 3 after STALL_S, 2 s; SPY_STALL_S, 4 s,
+// on SpyServer). It has to outlast that before the UIs are told it recovered.
+export const READY_PROVEN_MS = 5_000;
 // Helper log forwarding: at most HELPER_LOG_BURST lines per window, so a
 // flapping condition can't flood the journal; the overflow is summarized.
 const HELPER_LOG_BURST = 10;
@@ -162,7 +162,7 @@ interface HelperEvent {
   ev: string;
   center?: number;
   floorDb?: number;
-  carriers?: Array<{ hz: number; db: number }>;
+  carriers?: Array<{ hz: number; db: number; peakHz?: number; steadyDb?: number }>;
   id?: string | null;
   db?: number;
   freqHz?: number;
@@ -606,10 +606,7 @@ export class WidebandEngine implements ScannerEngine {
     // Off => the helper's --audio-fd default (-1) builds no tee, skipping the
     // continuous float->s16 + fd-write. A change respawns the helper
     // (toScanConfig diff), so the tee appears/disappears in lockstep.
-    // Either consumer wants the tee: remote listening drains it live over
-    // /api/stream.wav, Close Call recording drains it into clips. One tee
-    // serves both — the helper has no notion of who is listening.
-    if (cfg.remoteListening || cfg.recordCloseCalls) args.push("--audio-fd", "3");
+    if (cfg.recordCloseCalls) args.push("--audio-fd", "3");
     // SAME decoder: spawn it only on a helper that carries NWR (derived in
     // toScanConfig; set true on the dedicated weather engine). Off => no
     // multimon-ng process and no last-lane tap.
@@ -747,7 +744,7 @@ export class WidebandEngine implements ScannerEngine {
         this.recordActivity(ev.id);
         this.openIds.add(ev.id);
         const ts = this.now();
-        this.emit({ type: "active", channel, freq: channel.freq, ts });
+        this.emit({ type: "active", channel, freq: channel.freq, ts, ...this.unproven() });
         if (typeof ev.db === "number") this.emit({ type: "signal", dbfs: ev.db, ts });
         break;
       }
@@ -757,7 +754,7 @@ export class WidebandEngine implements ScannerEngine {
         this.emit({ type: "release", channelId: ev.id, ts: this.now() });
         if (this.openIds.size === 0) {
           this.holdStartedAt = 0; // hold ended cleanly; next hold clocks fresh
-          this.emit({ type: "idle", ts: this.now() });
+          this.emit({ type: "idle", ts: this.now(), ...this.unproven() });
           // Idle again: dwell restarts from now so a long AUDIBLE hold doesn't
           // cause an instant hop when it closes. A silent close never re-arms
           // (spec 2026-10-13): silent traffic takes no scan time.
@@ -807,7 +804,7 @@ export class WidebandEngine implements ScannerEngine {
         // THIS, not "active" (any of the group's channels opening), so the
         // banner can't hop away from what is actually playing.
         const channel = this.audibleId ? this.findChannel(this.audibleId) : null;
-        this.emit({ type: "audible", channel, ts: this.now() });
+        this.emit({ type: "audible", channel, ts: this.now(), ...this.unproven() });
         break;
       }
       case "power": {
@@ -824,6 +821,12 @@ export class WidebandEngine implements ScannerEngine {
       default:
         break; // tuned is informational
     }
+  }
+
+  // After an exit, until READY_PROVEN_MS passes: traffic that mustn't lift the wall's error, because
+  // a helper that stalls after "ready" (or a held-open monitor or HF lane) plays until it dies again.
+  private unproven(): { unproven?: true } {
+    return this.reportReady ? { unproven: true } : {};
   }
 
   // Is any currently-open lane one the operator can actually hear? Unknown ids
@@ -894,7 +897,7 @@ export class WidebandEngine implements ScannerEngine {
     this.openIds.clear();
     // Consumers (dashboard, admin live, ws) clear their now-playing on idle;
     // the helper's late close used to deliver it, and is now dropped as stale.
-    this.emit({ type: "idle", ts });
+    this.emit({ type: "idle", ts, ...this.unproven() });
   }
 
   private sendSweepTune(centerHz: number): void {
@@ -1255,7 +1258,7 @@ export class WidebandEngine implements ScannerEngine {
   }
 
   /** Subscribe to the live speaker feed (48 kHz mono s16le). Returns an
-   *  unsubscribe. Used by the /stream.wav route for remote listening. */
+   *  unsubscribe. Used by the Close Call recorder. */
   onAudio(listener: (chunk: Buffer) => void): () => void {
     this.audioListeners.add(listener);
     return () => this.audioListeners.delete(listener);

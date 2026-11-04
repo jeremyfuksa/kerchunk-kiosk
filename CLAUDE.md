@@ -192,8 +192,8 @@ do not "simplify" them away:
   against the backend and its helper — and writes its default
   route volume (0.064 → −23.5 dB) over the ALSA `Master` control the backend
   owns, so the admin volume slider and the hardware disagree after every boot.
-- **The engine must always drain the helper's fd-3 audio tee** (feeds
-  `/api/stream.wav`) or the helper blocks.
+- **The engine must always drain the helper's fd-3 audio tee** (feeds Close
+  Call recording) or the helper blocks.
 - **Wideband hold-through is capped** (PR #194) so a stuck-open lane can't
   park the scanner on one window forever.
 - **No `backdrop-filter` blur or full-screen overlays above the animating
@@ -248,8 +248,8 @@ even with green checks.
 
 - **CB mode** (`POST /api/mode {mode:"cb"}`, PR #296): the scanner listens to CB only
   (`config.cb.channels`, names `config.cb.names`), never in the scan rotation or on the
-  map. The kiosk swaps to the CB stage (`dashboard/cbDial.ts` model, `cbView.ts` view,
-  `.cbStage`), pausing the map via `MapHandle.pause()`. Knobs:
+  map. The kiosk swaps to the CB stage, The Horizon (spec 2026-11-03-cb-horizon: `dashboard/cbDial.ts` model,
+  `cbView.ts` text, `cbHorizon.ts` sky and masts, `cbRings.ts` the only moving layer, `.cbStage`), pausing the map via `MapHandle.pause()`. Knobs:
   `display.cb.fadeStepsMin` / `stepTickMs` / `logRows`.
   `config.spyserver` (`host`, `port` 5555, `gain`, `digitalGain`, `audioBufferMs` 500) puts CB on
   the Airspy HF+: window 600 kHz, helper rate 750 kHz, 40 lanes (`SPY_LANES`, so all 40 channels), and
@@ -259,11 +259,13 @@ even with green checks.
   the default set); SSB squelch `cb.ssbOpenDb` / `cb.ssbHangMs` (1500). LSB lanes squelch on
   sideband energy against their own floor, never the shared one (spec 2026-10-15).
 - **HF mode** (`POST /api/mode {mode:"hf"}`, needs `config.spyserver`): `hf/sweep.ts` decides (pure),
+  and its default bands stay out of US ham bands (operator, 2026-11-03; a test holds them to it).
   `hf/controller.ts` drives it. One window at a time on a fixed timer, playing one in-band carrier the
   survey found. It stays on shortwave until the operator changes mode: CB is its own manual mode, never
   an automatic hop (operator, 2026-11-03). Shortwave
   stays out of the activity log and history (`isSharedActivity`), so it doesn't reach jeremyfuksa.com.
-  Knobs: `config.hf` (`windowMs`, `minListenDb`, `cooldownMs`, `fadeMs`, `bands`). Mode survives restarts in `mode.json` beside the config.
+  A station is only named if the survey shows a carrier (`hasCarrier`: steady, on the raster).
+  Knobs: `config.hf` (`windowMs`, `minListenDb`, `cooldownMs`, `fadeMs`, `carrierSteadyDb`, `carrierRasterHz`, `bands`). Mode survives restarts in `mode.json` beside the config.
   The wall is the Atlas (spec 2026-11-03-hf-atlas): `dashboard/greyline.ts` (sky), `atlas.ts` (traces, dots, band colours, hit logic),
   `hitAnim.ts` (the only moving layer), `hfView.ts` (text). Four stacked layers: sky, land and dots, traces, live. A hit must never repaint the
   still ones. Knobs: `display.hf` (`greylineStepMs`, `traceOpacity`, `traceFadeMs`, `hit*Ms`, `zoomMs`), read at page load. The WS event `statusChanged`
@@ -309,10 +311,6 @@ even with green checks.
   Roles bind in `config.radios` (`scan`/`weather`/`adsb`). During a SAME
   break-in, EOM (`NNNN`) resumes scanning after an 8 s grace window
   (`server.ts`), ending the alert hold early when the broadcast stops.
-- **Remote listening is a gate, not just a route.** `/api/stream.wav` 404s
-  unless `config.audio.remoteListening` is true, and the helper only builds
-  its `--audio-fd` PCM tee when it's on — flipping the flag is an engine
-  restart, not just an API change.
 - **Identification chain** for naming discoveries: RepeaterBook (dormant,
   token pending) → MyGMRS → RadioReference → FccProx → BusinessGuess (Google
   Places, deliberately last — it only guesses when the authoritative

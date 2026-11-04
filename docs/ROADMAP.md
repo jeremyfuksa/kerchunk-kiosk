@@ -1036,7 +1036,7 @@ All four highest-return items are now shipped:
    #3; no separate `--role weather` branch was built.
 3. **SHIPPED (lane-fit + PRs #128/#129, feature-tap gating).** Don't run the
    Close Call FFT (gated on `--close-call` by lane-fit), the PCM streaming tee
-   (now opt-in via `audio.remoteListening`, default off — PR #128), or the SAME/
+   (opt-in, default off, PR #128; remote listening itself was removed 2026-11-03, and only Close Call recording builds the tee now), or the SAME/
    multimon-ng decoder (spawned only on a helper that carries NWR — PR #129) when
    those features are inactive. Proven on hardware: `multimon-ng` dropped 2→1
    (the redundant main-helper decoder removed; the weather helper's NWR decoder

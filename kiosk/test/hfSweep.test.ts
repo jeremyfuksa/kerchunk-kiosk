@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { hfWindows, HF_BANDS_DEFAULT, HF_DEFAULTS, HfSweep, type HfOpts } from "../src/backend/hf/sweep.js";
+import { hasCarrier, hfWindows, HF_BANDS_DEFAULT, HF_DEFAULTS, HfSweep, type HfOpts } from "../src/backend/hf/sweep.js";
 
 const opts = (over: Partial<HfOpts> = {}): HfOpts => ({ ...HF_DEFAULTS, ...over });
 const W = [{ centerHz: 5_952_500, band: "49m", loHz: 5_700_000, hiHz: 6_200_000 }, { centerHz: 7_252_500, band: "41m", loHz: 7_200_000, hiHz: 7_600_000 }];
@@ -143,5 +143,57 @@ describe("HfSweep resume", () => {
     expect(s.resume(500_000).centerHz).toBe(before);
     expect(s.tick(559_999)).toBeNull();
     expect(s.tick(560_000)).not.toBeNull();
+  });
+});
+
+describe("default bands stay out of US ham bands", () => {
+  const US_HAM_KHZ = [[1800, 2000], [3500, 4000], [5330, 5407], [7000, 7300], [10100, 10150], [14000, 14350], [18068, 18168], [21000, 21450], [24890, 24990], [28000, 29700]] as const;
+  const RASTER_KHZ = 5;   // a peak just inside a ham band can snap to the channel at its edge
+
+  it("no default band touches one, or the raster channel on its edge", () => {
+    for (const b of HF_BANDS_DEFAULT) {
+      for (const [lo, hi] of US_HAM_KHZ) {
+        expect(b.hiHz < (lo - RASTER_KHZ) * 1000 || b.loHz >= (hi + RASTER_KHZ) * 1000, `${b.name} vs ${lo}-${hi}`).toBe(true);
+      }
+    }
+  });
+});
+
+describe("carrier check", () => {
+  const center = W[0]!.centerHz;
+  const ssb = (hz: number, db: number) => ({ hz, db, peakHz: hz + 1_300, steadyDb: 9 });
+  const steady = (hz: number, db: number) => ({ hz, db, peakHz: hz + 50, steadyDb: 1 });
+
+  it("a carrier is steady and on the raster", () => {
+    expect(hasCarrier(steady(5_950_000, 30), HF_DEFAULTS)).toBe(true);
+    expect(hasCarrier({ hz: 5_950_000, db: 30, peakHz: 5_950_050, steadyDb: 9 }, HF_DEFAULTS)).toBe(false);
+    expect(hasCarrier({ hz: 5_950_000, db: 30, peakHz: 5_951_300, steadyDb: 1 }, HF_DEFAULTS)).toBe(false);
+  });
+
+  it("its limits come from the options", () => {
+    const c = { hz: 5_950_000, db: 30, peakHz: 5_950_500, steadyDb: 6 };
+    expect(hasCarrier(c, { ...HF_DEFAULTS, carrierSteadyDb: 7, carrierRasterHz: 600 })).toBe(true);
+  });
+
+  it("a stronger signal with no carrier doesn't play ahead of a carrier", () => {
+    const s = new HfSweep(opts(), W, 0);
+    expect(s.onCarriers(5_000, center, [ssb(5_950_000, 40), steady(6_000_000, 20)])?.listenHz).toBe(6_000_000);
+  });
+
+  it("a schedule match doesn't lift a signal with no carrier", () => {
+    const s = new HfSweep(opts({ isMatched: (hz) => hz === 5_950_000 }), W, 0);
+    expect(s.onCarriers(5_000, center, [ssb(5_950_000, 40), steady(6_000_000, 20)])?.listenHz).toBe(6_000_000);
+  });
+
+  it("knows whether what's playing has shown a carrier, through a fade and until the next station", () => {
+    const s = new HfSweep(opts(), W, 0);
+    s.onCarriers(5_000, center, [ssb(5_950_000, 40)]);
+    expect(s.listenIsCarrier()).toBe(false);
+    s.onCarriers(10_000, center, [steady(5_950_000, 40)]);
+    expect(s.listenIsCarrier()).toBe(true);
+    s.onCarriers(15_000, center, [ssb(5_950_000, 40)]);
+    expect(s.listenIsCarrier()).toBe(true);
+    s.skip(20_000);
+    expect(s.listenIsCarrier()).toBe(false);
   });
 });

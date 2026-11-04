@@ -125,6 +125,7 @@ export interface HealthInput {
   helperRestartsRecent: number;
   /** Wall-clock ms since the engine last (re)started. */
   msSinceStart: number;
+  sameDown?: boolean;
 }
 
 export interface HealthVerdict {
@@ -138,6 +139,7 @@ export interface HealthVerdict {
  */
 export function classifyHealth(i: HealthInput): HealthVerdict {
   // TROUBLE — the radio is not doing its job.
+  if (i.sameDown) return { verdict: "trouble", reason: "Weather radio is down, so SAME alerts are off." };
   if (i.engineState === "error") return { verdict: "trouble", reason: "Scanner engine error." };
   if (i.engineState === "stopped") return { verdict: "trouble", reason: "Scanner engine stopped." };
   if (i.helperRestartsRecent >= 2) return { verdict: "trouble", reason: "DSP helper keeps crashing." }; // >=2 = crash-loop; a single recovered restart is only STRESSED (below)

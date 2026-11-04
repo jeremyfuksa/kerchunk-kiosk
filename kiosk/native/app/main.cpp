@@ -1,4 +1,4 @@
-// kerchunk-dsp — live SDR helper (RTL-SDR in; ALSA / fd-3 tee / multimon-ng / JSON events out),
+// kerchunk-dsp — live SDR helper (RTL-SDR or SpyServer in; ALSA / fd-3 tee / multimon-ng / JSON events out),
 // plus the replay mode (--iq-file) used by benches and tests.
 #include <csignal>
 #include <sys/resource.h>
@@ -106,7 +106,7 @@ static int run_live(const kc::Cli& c) {
   // `events` and `cmds` are touched by the detached stdin reader, which can outlive this function
   // (it is parked in getline until the parent closes stdin). Deliberately leaked so a late line or
   // EOF after shutdown never touches a destroyed object; the process exits right after we return.
-  // Early returns during init (failure, or g_stop) rely on the locals' destructors: RtlSource and
+  // Early returns during init (failure, or g_stop) rely on the locals' destructors: the source and
   // AlsaSink close their devices; events was never started, so nothing reached stdout.
   auto* events_p = new kc::EventOut(stdout);
   auto* cmds_p = new kc::SpscQueue<kc::Command>(kc::CMD_QUEUE);
@@ -130,7 +130,7 @@ static int run_live(const kc::Cli& c) {
   }
   kc::dsp_thread_init();
   // stdin reader starts now (after FFTW planning) so a quit/EOF during the rest of init -- notably
-  // the <= BUSY_RETRY_S open retry -- is honoured promptly via g_stop, like SIGTERM/SIGINT.
+  // the source's open, with its retry or lookup -- is honoured promptly via g_stop, like SIGTERM/SIGINT.
   std::thread in([events_p, cmds_p] {
     std::string line;
     while (std::getline(std::cin, line)) {
@@ -155,7 +155,7 @@ static int run_live(const kc::Cli& c) {
   kc::DeviceSource& src = *srcp;
   std::string err;
   if (!src.open(err, [] { return g_stop.load(); })) {
-    if (g_stop) return 0;   // asked to stop while waiting for the dongle: a clean exit, not an error
+    if (g_stop) return 0;   // asked to stop while waiting for the radio: a clean exit, not an error
     std::fprintf(stderr, "kerchunk-dsp: %s\n", err.c_str());
     return 1;
   }
@@ -194,12 +194,12 @@ static int run_live(const kc::Cli& c) {
     }
     if (!loop.step()) {
       if (loop.failed()) {
-        std::fprintf(stderr, "kerchunk-dsp: SDR retune failed after %d tries\n", kc::RETUNE_ATTEMPTS);
+        std::fprintf(stderr, "kerchunk-dsp: SDR retune failed\n");   // the source logged why
         rc = 3;
         break;
       }
-      if (src.seconds_since_rx() > kc::STALL_S) {
-        std::fprintf(stderr, "kerchunk-dsp: SDR stalled (no samples for %.1f s)\n", kc::STALL_S);
+      if (src.seconds_since_rx() > src.stall_limit_s()) {
+        std::fprintf(stderr, "kerchunk-dsp: SDR stalled (no samples for %.1f s)\n", src.stall_limit_s());
         rc = 3;
         break;
       }

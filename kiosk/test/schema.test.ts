@@ -18,7 +18,7 @@ describe("configSchema", () => {
     const cfg = {
       version: 1,
       scan: { sampleRate: 12000, squelchLevel: 150, gain: "auto", dwellMs: 2000 },
-      audio: { sink: "hdmi:CARD=vc4hdmi0", volume: 70, muted: false, remoteListening: false, audibleFamilies: ["air", "rail", "marine", "ham", "gmrs"] },
+      audio: { sink: "hdmi:CARD=vc4hdmi0", volume: 70, muted: false, audibleFamilies: ["air", "rail", "marine", "ham", "gmrs"] },
       channels: [
         { id: "ch_001", freq: 145130000, alphaTag: "KC0KW", mode: "nfm", enabled: true },
       ],
@@ -427,6 +427,32 @@ describe("lookup.radioReference config", () => {
       radioReference: { appKey: "k", username: "u", password: "p", countyIds: [1310] },
     };
     expect(configSchema.safeParse(cfg).success).toBe(true);
+  });
+});
+
+describe("hf carrier knobs", () => {
+  it("accepts them in range and refuses them out of range", () => {
+    const c = defaultConfig();
+    expect(configSchema.safeParse({ ...c, hf: { carrierSteadyDb: 4, carrierRasterHz: 400 } }).success).toBe(true);
+    expect(configSchema.safeParse({ ...c, hf: { carrierSteadyDb: -1 } }).success).toBe(false);
+    expect(configSchema.safeParse({ ...c, hf: { carrierRasterHz: 5000 } }).success).toBe(false);
+  });
+});
+
+describe("channel mode", () => {
+  it("accepts usb", () => {
+    const c = defaultConfig();
+    const parsed = configSchema.safeParse({ ...c, channels: [{ id: "u", freq: 3945000, alphaTag: "U", mode: "usb", enabled: true }] });
+    expect(parsed.success).toBe(true);
+  });
+});
+
+describe("retired audio.remoteListening", () => {
+  it("still loads a config that has it, and drops it", () => {
+    const c = defaultConfig();
+    const parsed = configSchema.safeParse({ ...c, audio: { ...c.audio, remoteListening: true } });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect("remoteListening" in parsed.data.audio).toBe(false);
   });
 });
 

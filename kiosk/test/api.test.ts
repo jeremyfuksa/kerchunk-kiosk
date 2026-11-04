@@ -496,26 +496,11 @@ describe("HTTP API", () => {
     expect(second.body).toEqual({ removed: 0, setsResolved: 0 });
   });
 
-  it("GET /api/stream.wav 404s 'remote listening disabled' by default", async () => {
+  it("has no /api/stream.wav route: remote listening is gone", async () => {
     const { server } = makeApp();
     const res = await request(server).get("/api/stream.wav");
     expect(res.status).toBe(404);
-    expect(res.body.error).toBe("remote listening disabled");
-  });
-
-  it("GET /api/stream.wav passes the flag gate once enabled", async () => {
-    const { server, engine } = makeApp();
-    // Hide the fake's audio tee for this test only. The route's success path
-    // is an ENDLESS stream, which supertest cannot await; falling through to
-    // the engine-capability 404 is what proves the remote-listening gate was
-    // passed. (The tee itself exists on FakeEngine so the sample recorder's
-    // wiring can be driven end to end — see the recording suite below.)
-    (engine as { onAudio?: unknown }).onAudio = undefined;
-    const cfg = (await request(server).get("/api/config")).body;
-    await request(server).put("/api/config").send({ ...cfg, audio: { ...cfg.audio, remoteListening: true } });
-    const res = await request(server).get("/api/stream.wav");
-    expect(res.status).toBe(404);
-    expect(res.body.error).toBe("engine has no audio tee");
+    expect(res.body.error).not.toBe("remote listening disabled");
   });
 
   it("broadcasts aircraft snapshots from the feed over the WS hub", () => {
@@ -1190,6 +1175,14 @@ describe("monitor demod mode", () => {
       .send({ freq: 128375000, alphaTag: "MCI ATIS", mode: "am", enabled: true });
     await request(server).post("/api/monitor").send({ freq: 128375000, alphaTag: "ATIS" });
     expect(engine.tunes.at(-1)!.channels[0]!.mode).toBe("am");
+  });
+
+  it("POST /api/monitor plays the sideband it's asked for", async () => {
+    const { server } = makeApp();
+    for (const mode of ["usb", "lsb"]) {
+      const res = await request(server).post("/api/monitor").send({ freq: 3945000, mode });
+      expect(res.body.monitor.mode).toBe(mode);
+    }
   });
 
   it("honors an explicit mode and defaults to nfm for unknown frequencies", async () => {

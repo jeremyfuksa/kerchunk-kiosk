@@ -145,7 +145,7 @@ inline constexpr int AGC_BLOCK = 32;               // gain decision every 32 sam
 inline constexpr double LIMITER_CEILING = 0.7;     // linear; must be <= RAIL
 inline constexpr double LIMITER_RELEASE_MS = 50;
 inline constexpr float AM_GAIN = 0.7f;
-// ---- SSB (LSB) lanes: CB 38 (spec docs/superpowers/specs/2026-10-15-cb-lsb-design.md).
+// ---- SSB lanes (LSB, and USB mirrored): CB 38 (spec docs/superpowers/specs/2026-10-15-cb-lsb-design.md).
 // The lower sideband sits SSB_LO_HZ..SSB_HI_HZ below the dial. SsbDemod shifts its centre to DC,
 // decimates by SSB_DECIM so the sharp channel filter is cheap, low-passes to half the sideband
 // width, interpolates back to LANE_RATE and shifts back.
@@ -188,6 +188,12 @@ inline constexpr double SURVEY_USABLE_HZ = 330000;   // +/- from center: the HF+
 inline constexpr double SURVEY_DC_GUARD_HZ = 1500;   // the receiver's center spike
 inline constexpr double SURVEY_RASTER_HZ = 5000;     // shortwave broadcast raster
 inline constexpr double SURVEY_PEAK_HZ = 7500;       // a carrier tops this neighbourhood either side
+// Unless it's a line beside a stronger station one raster away. Near = under the raster by more than
+// the window's main lobe (+/-4 bins, 1465 Hz), so a neighbour's search doesn't reach the stronger lobe.
+inline constexpr double SURVEY_NEAR_HZ = 3500;
+inline constexpr int SURVEY_LINE_BINS = 5;           // just past the main lobe, 1831 Hz
+inline constexpr double SURVEY_LINE_DB = 6.0;        // above both sides of it; 100 averaged frames vary about 0.4 dB
+inline constexpr double SURVEY_IMAGE_DB = 45.0;      // an edge bin this far under the bin one image outward is the image (filter worst 50.9 dB, test_iq_rate)
 
 // ---- Live I/O (P1c)
 inline constexpr int IQ_BLOCK_BYTES = 48000;       // max 10 ms of u8 IQ at 2.4 Msps (blocks are <= 10 ms at any rate)
@@ -201,6 +207,10 @@ inline constexpr double STALL_S = 2.0;             // no samples this long = SDR
 inline constexpr double BUSY_RETRY_S = 3.0;        // retry rtlsdr_open this long (previous helper releasing)
 inline constexpr double SPY_CONNECT_TIMEOUT_S = 3.0;   // SpyServer connect + handshake
 inline constexpr double SPY_IO_TIMEOUT_S = 0.5;        // socket I/O once streaming; a retune send can't wedge the DSP thread longer
+inline constexpr double SPY_RESOLVE_TIMEOUT_S = 2.0;   // name lookup (mDNS can sit for seconds); the break-in budget is about 2 s
+// Wi-Fi delivers in bursts: largest gap measured 1.82 s, and 2.0 s exits showed up on the wall. Must stay
+// under Node's silence watchdog (DEFAULT_SILENCE_TIMEOUT_MS) and READY_PROVEN_MS must outlast it; test/engineDefaults.test.ts holds both.
+inline constexpr double SPY_STALL_S = 4.0;
 // SpyServer confirms nothing after a retune, but echoes the digital gain in every IQ frame's flags. A
 // retune also steps the gain within a small cycle, so the flip marks new-center data in stream order.
 inline constexpr int SPY_DIGITAL_GAIN_DEFAULT = 32;    // at the server's default u8 is nearly empty (docs/bench/2026-11-hf-proofs.md)

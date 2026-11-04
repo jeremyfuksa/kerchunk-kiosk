@@ -161,9 +161,9 @@ void Engine::on_hop(const cf* lanes, int per, const cf* raw, int raw_n) {
     const LaneState& L = sc_.lane(i);
     if (L.parked()) continue;
     const cf* y = lanes + i * per;
-    if (L.demod == Demod::Lsb) {
+    if (is_ssb(L.demod)) {
       cf* s = ssb_buf_[i].data();
-      for (int d = 0; d < per; d++) s[d] = ssb_[i].step(y[d]);
+      for (int d = 0; d < per; d++) s[d] = ssb_[i].step(y[d], L.demod);
       power_[i].push(s, per);   // the squelch meters the sideband, not the 16 kHz lane
     } else {
       power_[i].push(y, per);
@@ -200,13 +200,13 @@ void Engine::on_hop(const cf* lanes, int per, const cf* raw, int raw_n) {
     const cf* y = lanes + f * per;
     float* db = disc_buf_[f].data();
     for (int d = 0; d < per; d++) db[d] = disc_[f].step(y[d]);
-    if (spk_.feeding_demod() == Demod::Lsb) {
+    if (is_ssb(spk_.feeding_demod())) {
       cf* s = ssb_buf_[f].data();
-      for (int d = 0; d < per; d++) s[d] = ssb_[f].step(y[d]);
+      for (int d = 0; d < per; d++) s[d] = ssb_[f].step(y[d], spk_.feeding_demod());
     }
   }
   if (f >= 0) {
-    const cf* src = spk_.feeding_demod() == Demod::Lsb ? ssb_buf_[f].data() : lanes + f * per;
+    const cf* src = is_ssb(spk_.feeding_demod()) ? ssb_buf_[f].data() : lanes + f * per;
     spk_.process(src, disc_buf_[f].data(), per, out48_);
   } else {
     spk_.process(nullptr, nullptr, per, out48_);
@@ -247,7 +247,8 @@ void Engine::poll() {
     double floor_db = 0;
     const auto carriers = survey_->take(opt_.survey_db, &floor_db);
     json list = json::array();
-    for (const auto& k : carriers) list.push_back({{"hz", k.hz}, {"db", round1(k.db_above_floor)}});
+    for (const auto& k : carriers) list.push_back({{"hz", k.hz}, {"db", round1(k.db_above_floor)}, {"peakHz", std::llround(k.peak_hz)},
+                                                         {"steadyDb", round1(k.steady_db)}});
     emit_({{"ev", "carriers"}, {"center", center_}, {"floorDb", round1(floor_db)}, {"carriers", list}});
   }
   if (cc_on_ && polls_ % CC_EVERY_POLLS == 0) {

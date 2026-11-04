@@ -1,5 +1,6 @@
 import { cbChannels, cbDefaultChannels } from "../src/backend/config/cb.js";
 import { describe, it, expect, beforeAll } from "vitest";
+import { initialState, reduce } from "../src/frontend/dashboard/dashboard.js";
 import { join } from "node:path";
 import { chmodSync, mkdtempSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -1139,7 +1140,7 @@ describe("PCM tee gating", () => {
     expect(lines(args)[0]).toContain("--audio-fd");
   });
 
-  it("does not build the PCM tee when neither remote listening nor recording is on", async () => {
+  it("does not build the PCM tee when recording is off", async () => {
     const args = tmpFile("args");
     const { engine } = makeEngine({ FAKE_WB_ARGS_FILE: args });
     await engine.start(cfg([VHF_A]));
@@ -1597,7 +1598,11 @@ describe("SpyServer source", () => {
 
   it("a retune across sources during restart backoff spawns now and cancels the timer", async () => {
     const args = tmpFile("args");
-    const { engine, events } = makeEngine({ FAKE_WB_ARGS_FILE: args, FAKE_WB_MODE: "nodevice" }, { restartDelayMs: 1500 });
+    const dir = mkdtempSync(join(tmpdir(), "wb-"));
+    const wrapper = join(dir, "helper.sh");
+    // The new source must stay up: a failing helper's own exit would clear the old timer and hide a leak.
+    writeFileSync(wrapper, `#!/bin/bash\ncase "$*" in *--spyserver*) echo "$*" >> "${args}"; exit 1;; esac\nexec "${FAKE}" "$@"\n`, { mode: 0o755 });
+    const { engine, events } = makeEngine({ FAKE_WB_ARGS_FILE: args }, { helperCmd: [wrapper], restartDelayMs: 1000 });
     await engine.start(spyCfg());
     // start() itself reports "starting" once; the second one is the exit going into backoff.
     expect(await waitFor(() => events.filter((e) => e.type === "status" && e.state === "starting").length >= 2, 1000)).toBe(true);
@@ -1605,10 +1610,11 @@ describe("SpyServer source", () => {
     await engine.retune(rtlCfg());
     expect(await waitFor(() => lines(args).length === 2, 700)).toBe(true);
     expect(lines(args)[1]).not.toContain("--spyserver");
-    expect(events.slice(mark).filter(isLoud)).toEqual([]);
+    await new Promise((r) => setTimeout(r, 1100));   // past the backoff, engine still running
+    expect(lines(args)).toHaveLength(2);
+    // It never got warm, so its first warm-up may finish. It must not restart.
+    expect(events.slice(mark).filter((e) => (e.type === "warmup" && e.phase === "booting") || (e.type === "status" && e.state === "stopped"))).toEqual([]);
     await engine.stop();
-    await new Promise((r) => setTimeout(r, 400));
-    expect(lines(args)).toHaveLength(2);   // the backoff timer didn't fire a third spawn
   });
 
   it("quick source switches leave one child, on the last source", async () => {
@@ -1644,7 +1650,7 @@ describe("SpyServer source", () => {
     writeFileSync(up, "");
     expect(await waitFor(running, READY_PROVEN_MS + 2000)).toBe(true);
     await engine.stop();
-  });
+  }, READY_PROVEN_MS + 5000);
 
   it("a retune across sources clears an old source's error once the new helper is ready", async () => {
     const dir = mkdtempSync(join(tmpdir(), "wb-"));
@@ -1659,7 +1665,7 @@ describe("SpyServer source", () => {
     // It never got warm, so its first warm-up may finish. It must not restart.
     expect(events.slice(mark).filter((e) => (e.type === "warmup" && e.phase === "booting") || (e.type === "status" && e.state === "stopped"))).toEqual([]);
     await engine.stop();
-  });
+  }, READY_PROVEN_MS + 5000);
 
   it("a helper that says ready and then dies doesn't report running, so the error doesn't blink", async () => {
     const { engine, events } = makeEngine({ FAKE_WB_MODE: "crash" }, { restartDelayMs: 20, maxRestartDelayMs: 40 });
@@ -1669,6 +1675,56 @@ describe("SpyServer source", () => {
     await new Promise((r) => setTimeout(r, 800));
     await engine.stop();
     expect(events.slice(mark).filter((e) => e.type === "status" && e.state === "running")).toEqual([]);
+  });
+
+  it("a helper that says ready, plays and dies never lifts the wall's error", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "wb-"));
+    const wrapper = join(dir, "helper.sh");
+    const id = VHF_A.id;
+    writeFileSync(wrapper, `#!/bin/bash
+echo '{"ev":"ready"}'
+read line
+echo '{"ev":"open","id":"${id}","db":-3}'
+echo '{"ev":"audible","id":"${id}"}'
+sleep 0.05
+echo '{"ev":"close","id":"${id}"}'
+echo '{"ev":"audible","id":null}'
+exit 3
+`, { mode: 0o755 });
+    const { engine, events } = makeEngine({}, { helperCmd: [wrapper], restartDelayMs: 20, maxRestartDelayMs: 40 });
+    await engine.start(cfg([VHF_A]));
+    await new Promise((r) => setTimeout(r, 1000));
+    await engine.stop();
+    const after = events.slice(events.findIndex((e) => e.type === "error"));
+    expect(after.filter((e) => e.type === "active").length).toBeGreaterThan(1);   // it did play, each cycle
+    let wall = initialState();
+    const blinks = after.filter((e) => { wall = reduce(wall, e); return wall.error === null; });
+    expect(blinks).toEqual([]);
+  });
+
+  it("once a recovered helper has proved itself, its traffic clears a stale error again", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "wb-"));
+    const up = join(dir, "up");
+    const wrapper = join(dir, "helper.sh");
+    writeFileSync(wrapper, `#!/bin/bash\n[ -f "${up}" ] || exit 1\nexec "${FAKE}" "$@"\n`, { mode: 0o755 });
+    const script = `sleep:${READY_PROVEN_MS + 200}\n{"ev":"open","id":"${VHF_A.id}","db":-3}\n{"ev":"audible","id":"${VHF_A.id}"}`;
+    const { engine, events } = makeEngine({ FAKE_WB_SCRIPT: script }, { helperCmd: [wrapper], restartDelayMs: 20, maxRestartDelayMs: 40, silenceTimeoutMs: READY_PROVEN_MS + 5000 });
+    await engine.start(cfg([VHF_A]));
+    expect(await waitFor(() => events.some((e) => e.type === "error"), 2000)).toBe(true);
+    writeFileSync(up, "");
+    expect(await waitFor(() => events.some((e) => e.type === "active"), READY_PROVEN_MS + 2000)).toBe(true);
+    await engine.stop();
+    const active = events.find((e) => e.type === "active")!;
+    expect(reduce({ ...initialState(), error: "stale" }, active).error).toBeNull();
+  }, READY_PROVEN_MS + 5000);
+
+  it("a first start's traffic isn't marked unproven", async () => {
+    const script = `{"ev":"open","id":"${VHF_A.id}","db":-3}`;
+    const { engine, events } = makeEngine({ FAKE_WB_SCRIPT: script });
+    await engine.start(cfg([VHF_A]));
+    expect(await waitFor(() => events.some((e) => e.type === "active"), 2000)).toBe(true);
+    await engine.stop();
+    expect(reduce({ ...initialState(), error: "stale" }, events.find((e) => e.type === "active")!).error).toBeNull();
   });
 
   it("a healthy retune across sources sends no status, so a playing channel stays on the wall", async () => {
@@ -1682,7 +1738,7 @@ describe("SpyServer source", () => {
     await new Promise((r) => setTimeout(r, READY_PROVEN_MS + 200));
     await engine.stop();
     expect(events.slice(mark).filter((e) => e.type === "status" && e.state === "running")).toEqual([]);
-  });
+  }, READY_PROVEN_MS + 5000);
 
   it("the old source's backoff timer can't fire a second helper after a retune across sources", async () => {
     const args = tmpFile("args");

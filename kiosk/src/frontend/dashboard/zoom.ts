@@ -1,6 +1,7 @@
 // The zoom between map mode and HF (spec 2026-11-03-hf-atlas): a staged illusion, because the two pictures are
 // far apart in scale. Only transforms, opacity and filter, for under two seconds, and the Google map's camera never moves.
 import { tracesSvg, type AtlasDot, type AtlasTrace } from "./atlas.js";
+import { LIMB_MASK, limbMaskSvg } from "./greyline.js";
 
 export type ZoomDirection = "out" | "in";
 
@@ -86,7 +87,7 @@ export function atlasSnapshotSvg(i: SnapshotInput): string {
   const traces = tracesSvg(i.traces, i.traceOpacity).replaceAll("var(--kc-glass)", i.colors.glass);
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${i.width}" height="${i.height}" viewBox="${i.viewBox}">${i.sky}`
     + `<path d="${land}" fill="${i.colors.land}" fill-opacity="0.72" stroke="${i.colors.border}" stroke-opacity="0.2" stroke-width="0.7"/>`
-    + `<g fill="${i.colors.dot}">${dots}</g>${traces}`
+    + `<g fill="${i.colors.dot}">${dots}</g>${limbMaskSvg()}<g ${LIMB_MASK}>${traces}</g>`
     + `<circle cx="${i.home.x.toFixed(1)}" cy="${i.home.y.toFixed(1)}" r="6" fill="${i.colors.dot}"/></svg>`;
 }
 

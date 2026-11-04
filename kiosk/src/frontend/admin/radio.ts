@@ -16,7 +16,7 @@ import { api } from "../lib/api.js";
 import { esc, fmtFreq } from "../lib/format.js";
 import { lockoutFreqIn } from "../lib/lockout.js";
 import { ico, type IconName } from "./ui/icons.js";
-import { emptyState, group, key, switchRow } from "./ui/kit.js";
+import { emptyState, group, key } from "./ui/kit.js";
 import { dbText, lcd, meterLit } from "../faceplate/lcd.js";
 import { lcdKey, lcdView, type LiveState } from "./live.js";
 import { POLL_MS } from "./poller.js";
@@ -97,7 +97,6 @@ export function mountRadio(ctx: Ctx): void {
         <div id="kcHealth" class="kc-healthStrip" hidden></div>
         <div id="kcLcd" role="status" aria-live="polite" aria-atomic="true"></div>
         <div class="kc-keys">
-          ${key({ id: "kcListen", label: "Listen here", icon: "play", variant: "primary", wide: true })}
           ${key({ id: "kcSkip", label: "Skip", icon: "skip", title: "Force-close the current transmission" })}
           ${key({ id: "kcWeather", label: "Weather", icon: "weather", title: "Park the radio on the NOAA weather channel" })}
           ${key({ id: "kcHf", label: "HF", icon: "hf", title: "Sweep shortwave on the HF radio until you change it (the scan stops)" })}
@@ -110,7 +109,6 @@ export function mountRadio(ctx: Ctx): void {
           <input id="kcVol" type="range" min="0" max="100" />
           <button type="button" class="kc-key" id="kcMute" aria-pressed="false"></button>
         </div>
-        ${switchRow({ id: "kcRemote", label: "Remote listening", hint: "Stream the speaker to this browser — restarts scanning", checked: false })}
         ${group("Recently heard", `<div id="kcRecent">${emptyState("Loading…")}</div>`)}
       </div>
       <div class="kc-radio__side">
@@ -128,7 +126,6 @@ export function mountRadio(ctx: Ctx): void {
 
   const $ = <T extends HTMLElement>(sel: string): T => el.querySelector<T>(sel)!;
   const lcdHost = $("#kcLcd");
-  const listen = $<HTMLButtonElement>("#kcListen");
   const weather = $<HTMLButtonElement>("#kcWeather");
   const hfKey = $<HTMLButtonElement>("#kcHf");
   const cb = $<HTMLButtonElement>("#kcCb");
@@ -137,7 +134,6 @@ export function mountRadio(ctx: Ctx): void {
   const vol = $<HTMLInputElement>("#kcVol");
   const volPct = $("#kcVolPct");
   const mute = $<HTMLButtonElement>("#kcMute");
-  const remote = $<HTMLInputElement>("#kcRemote");
 
   // ── In-place painting helpers
   const faces = new WeakMap<HTMLElement, string>();
@@ -173,19 +169,9 @@ export function mountRadio(ctx: Ctx): void {
     if (dbEl) setText(dbEl, dbText(s.dbfs));
   }
 
-  // ── Stream: owned by LiveStore (shared with the mini-player)
-  function paintListen(s: LiveState): void {
-    setDisabled(listen, !s.remoteListening && !live.streaming);
-    setAttr(listen, "title", s.remoteListening ? "Listen to the live speaker feed in this browser" : "Turn on remote listening to stream the feed");
-    if (live.streaming) face(listen, "stop", "Stop listening"); else face(listen, "play", "Listen here");
-  }
-  listen.addEventListener("click", () => live.toggleStream());
-
-  let remoteBusy = false; // confirm dialog / save in flight for the switch
   function paint(s: LiveState): void {
     const v = lcdView(s);
     paintLcd(s);
-    paintListen(s);
     if (s.monitoring) {
       face(weather, "stop", "Resume scan");
       setDisabled(weather, false);
@@ -208,7 +194,6 @@ export function mountRadio(ctx: Ctx): void {
     // to "Muted" reads as the opposite action to a screen reader).
     setAttr(mute, "aria-pressed", String(s.muted));
     face(mute, s.muted ? "volumeOff" : "volume", "Mute");
-    if (!remoteBusy && document.activeElement !== remote && remote.checked !== s.remoteListening) remote.checked = s.remoteListening;
   }
   live.subscribe(paint);
   vol.addEventListener("blur", () => paint(live.state));
@@ -280,23 +265,6 @@ export function mountRadio(ctx: Ctx): void {
   vol.addEventListener("input", () => { volPct.textContent = `${vol.value}%`; });
   vol.addEventListener("change", () => { const v = Number(vol.value); live.set({ volume: v }); poller.run(() => api.setVolume(v)).catch(say); });
   mute.addEventListener("click", () => { const m = !live.state.muted; live.set({ muted: m }); poller.run(() => api.setMuted(m)).catch(say); });
-  remote.addEventListener("change", async () => {
-    const on = remote.checked;
-    remoteBusy = true;
-    try {
-      if (!await dialogs.confirm({
-        title: on ? "Turn on remote listening?" : "Turn off remote listening?",
-        message: "The scanner restarts briefly to rebuild its audio tap.",
-        confirmLabel: on ? "Turn on" : "Turn off",
-      })) { remote.checked = !on; return; }
-      await poller.run(async () => {
-        const cfg = await api.getConfig();
-        await api.putConfig({ ...cfg, audio: { ...cfg.audio, remoteListening: on } });
-      });
-      live.set({ remoteListening: on });
-    } catch (e) { remote.checked = !on; say(e); }
-    finally { remoteBusy = false; paint(live.state); }
-  });
 
   // ── Recently heard
   const recent = $("#kcRecent");

@@ -1,6 +1,6 @@
 import type { ModeStore } from "./modeStore.js";
 import { HfController, type HfConfig } from "./hf/controller.js";
-import type { HfTune } from "./hf/sweep.js";
+import { HF_DEFAULTS, type HfTune, hasCarrier } from "./hf/sweep.js";
 import { isUtility } from "./hf/schedule.js";
 import type { Candidate, ReceptionLog } from "./hf/receptionLog.js";
 import { createServer as httpCreateServer, type IncomingMessage, type ServerResponse, type Server } from "node:http";
@@ -192,7 +192,7 @@ export function toScanConfig(
     fmAudioHpfHz: cfg.scan.fmAudioHpfHz,
     // Speaker AGC + limiter knobs (config.audio). In the scan config so the
     // PUT handler's scanChanged diff respawns the helper when one changes —
-    // the same path audio.remoteListening takes. Volume/mute are NOT here, so
+    // like recordCloseCalls. Volume/mute are NOT here, so
     // they stay live (amixer) with no respawn.
     speakerAgc: {
       agcTargetDb: cfg.audio.agcTargetDb,
@@ -227,11 +227,10 @@ export function toScanConfig(
     ...(hfWindow && hfTune ? { fixedCenterHz: hfTune.centerHz } : {}),
     closeCallDb: cfg.scan.closeCallDb,
     lockoutHz: cfg.scan.lockoutHz,
-    // PCM tee gate: the helper builds --audio-fd when remote listening OR
-    // close call recording wants it. recordCloseCalls is deliberately part of
+    // PCM tee gate: the helper builds --audio-fd when close call recording
+    // wants it. recordCloseCalls is deliberately part of
     // scan config (not audio) so the PUT handler's scanChanged diff restarts
     // the engine when the operator flips it — required to (re)build the tee.
-    remoteListening: cfg.audio.remoteListening,
     recordCloseCalls: cfg.scan.recordCloseCalls === true,
     // SAME gate: decode only on a helper that actually carries NWR. toScanConfig
     // injects the wx_same background channel into the main scan only when there
@@ -315,7 +314,8 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
     },
     onSurvey: (tune, carriers) => logSafely(() => {
       const now = Date.now();
-      deps.receptionLog?.record(now, tune.band, carriers, deps.hfCandidates ?? (() => []));
+      deps.receptionLog?.record(now, tune.band, carriers, deps.hfCandidates ?? (() => []), config.hf?.windowMs ?? HF_DEFAULTS.windowMs,
+        (c) => hasCarrier(c, { ...HF_DEFAULTS, ...(config.hf as HfConfig | undefined) }));
       // A row can appear while the station plays (a schedule slot turns over, or noon): it played too.
       if (tune.listenHz !== null) deps.receptionLog?.markOnSpeaker(now, tune.listenHz);
     }),
@@ -324,7 +324,7 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
   engine.on((ev) => { if (mode === "hf") hf.onEngineEvent(ev); });
   if (mode === "hf") hf.start();
   const hfStatus = (t: HfTune) => {
-    const cands = t.listenHz !== null ? deps.hfCandidates?.(t.listenHz, Date.now()) ?? [] : [];
+    const cands = t.listenHz !== null && hf.listenIsCarrier() ? deps.hfCandidates?.(t.listenHz, Date.now()) ?? [] : [];
     return { ...t, candidate: cands[0] ?? null, others: cands.slice(1).map((c) => c.station) };
   };
   // Called only for the operator's own choices: a SAME break-in's "weather" is temporary.
@@ -445,10 +445,16 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
   // The dedicated weather engine's failures feed the SAME health signal — a
   // crash-looping SAME/NWR helper is a weather-safety problem and must not stay
   // invisible while /api/system otherwise reads healthy.
+  // With a weather radio configured the scanner doesn't decode SAME, so this helper down means no
+  // alerts in any mode. "running" only comes once a respawned helper has proven itself.
+  let sameDown = false;
   deps.weatherEngine?.on((ev) => {
     if (ev.type === "error") {
+      sameDown = true;
       recentErrors.push(ev.ts);
       console.error(`[weather-engine] ${ev.message ?? ev.code ?? "error"}`);
+    } else if (ev.type === "status" && (ev.state === "running" || ev.state === "stopped")) {
+      sameDown = false;
     }
   });
   function helperRestartsRecent(nowMs: number): number {
@@ -911,7 +917,7 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
   // (helper teardown/spawn on hardware) mid-request, and a second
   // mutation landing inside that window can interleave stop/start into two
   // concurrent start() calls — two helpers contending for the SDR. GETs
-  // (including the long-lived /stream.wav) stay concurrent.
+  // stay concurrent.
   let mutation: Promise<unknown> = Promise.resolve();
 
   const server = httpCreateServer(async (req, res) => {
@@ -1238,7 +1244,7 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
       // the demodulatable ones count.)
       const asDemod = (m: unknown): Channel["mode"] | undefined => {
         const low = typeof m === "string" ? m.toLowerCase() : "";
-        return low === "fm" || low === "nfm" || low === "am" ? low : undefined;
+        return low === "fm" || low === "nfm" || low === "am" || low === "lsb" || low === "usb" ? low : undefined;
       };
       const known = config.channels.find((c) => c.freq === freq)
         ?? (config.discoveries ?? []).find((d) => d.freq === freq);
@@ -1280,6 +1286,7 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
             warmed,
             safetyMode,
             helperRestartsRecent: helperRestartsRecent(nowMs),
+            sameDown,
             msSinceStart: nowMs - engineStartedAt,
           })
         : // Near-unreachable: SystemStats.start() takes a synchronous first sample
@@ -1357,35 +1364,6 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
       const freq = discoveryFreq(decodeURIComponent(sampleDel[1]));
       if (freq === null || !ccStore.delete(freq)) return json(res, 404, { error: "no sample" });
       return json(res, 200, { ok: true });
-    }
-
-    if (method === "GET" && path === "/api/stream.wav") {
-      // Remote listening (ROADMAP stretch): the live speaker feed as an
-      // endless WAV. 48 kHz mono s16 = ~94 KB/s — trivial on the LAN.
-      if (!config.audio.remoteListening) {
-        return json(res, 404, { error: "remote listening disabled" });
-      }
-      const onAudio = (engine as { onAudio?: (l: (c: Buffer) => void) => () => void }).onAudio?.bind(engine);
-      if (!onAudio) return json(res, 404, { error: "engine has no audio tee" });
-      const hdr = Buffer.alloc(44);
-      hdr.write("RIFF", 0); hdr.writeUInt32LE(0xffffffff, 4); hdr.write("WAVE", 8);
-      hdr.write("fmt ", 12); hdr.writeUInt32LE(16, 16); hdr.writeUInt16LE(1, 20);
-      hdr.writeUInt16LE(1, 22); hdr.writeUInt32LE(48000, 24);
-      hdr.writeUInt32LE(48000 * 2, 28); hdr.writeUInt16LE(2, 32); hdr.writeUInt16LE(16, 34);
-      hdr.write("data", 36); hdr.writeUInt32LE(0xffffffff, 40);
-      res.writeHead(200, {
-        "Content-Type": "audio/wav",
-        "Cache-Control": "no-store",
-        Connection: "close",
-      });
-      res.write(hdr);
-      const unsub = onAudio((chunk) => {
-        // Slow client: drop chunks rather than buffer unboundedly — live
-        // audio has no business being seconds behind.
-        if (res.writableLength < 256 * 1024) res.write(chunk);
-      });
-      req.on("close", unsub);
-      return;
     }
 
     if (method === "POST" && path === "/api/kiosk/reload") {
@@ -1557,6 +1535,8 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
         // warns before a reboot. `mode === "weather"` can't tell a break-in
         // from an operator-selected weather mode.
         breakIn,
+        // The weather radio's helper keeps failing, so no SAME alerts in any mode.
+        sameDown,
         // When this backend process started. The admin's system-action watcher
         // compares it across a restart/reboot to know a *new* process is up.
         startedAt: STARTED_AT,

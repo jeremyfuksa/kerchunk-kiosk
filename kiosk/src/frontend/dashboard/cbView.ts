@@ -35,7 +35,7 @@ export interface CbReadout {
 }
 export interface CbTick { n: number; x: number; core: boolean; monitored: boolean; step: FadeStep; label: boolean }
 export interface CbLogRow { label: string; when: string; live: boolean }
-export interface CbView { key: string; readout: CbReadout; ticks: CbTick[]; needleX: number | null; log: CbLogRow[] }
+export interface CbView { key: string; readout: CbReadout; ticks: CbTick[]; liveN: number | null; heard: number; log: CbLogRow[] }
 
 const clock = (ts: number): string => new Date(ts).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 
@@ -79,12 +79,10 @@ export function cbView(i: CbViewInput): CbView {
     return { label: cbLabel(r.n, i.names), when, live };
   });
 
-  const needleX = liveN === null ? null : dialX(freqOf(liveN));
-  const key = JSON.stringify([readout, ticks.map((k) => `${k.n}.${k.step}.${+k.monitored}.${+k.label}`), needleX, log]);
-  return { key, readout, ticks, needleX, log };
+  const live = readout.state === "live" ? liveN : null;
+  const key = JSON.stringify([readout, ticks.map((k) => `${k.n}.${k.step}.${+k.monitored}.${+k.label}`), live, log]);
+  return { key, readout, ticks, liveN: live, heard: i.cb.log.length, log };
 }
-
-const pct = (x: number): string => `${(x * 100).toFixed(2)}%`;
 
 export function cbHtml(v: CbView, signalDb: number | null): string {
   const r = v.readout;
@@ -98,13 +96,8 @@ export function cbHtml(v: CbView, signalDb: number | null): string {
     + (r.num ? `<div class="kc-cb__num">${esc(r.num)}</div>` : "")
     + `<div class="kc-cb__sub"><b>${esc(r.name)}</b><span>${r.freq ? `${esc(r.freq)} MHz` : ""}</span></div>`
     + `<div class="kc-cb__seg" aria-hidden="true">${seg}</div></div>`;
-  const ticks = v.ticks.map((k) =>
-    `<i class="kc-cb__tick${k.core ? " is-core" : ""}${k.monitored ? "" : " is-off"}" data-step="${k.step}" style="left:${pct(k.x)}"></i>`
-    + (k.label ? `<b class="kc-cb__lab${k.core ? " is-core" : ""}${k.step >= 3 ? " is-hot" : ""}" style="left:${pct(k.x)}">${k.n}</b>` : ""),
-  ).join("");
-  const needle = v.needleX === null ? "" : `<i class="kc-cb__needle" style="left:${pct(v.needleX)}"></i>`;
   const rows = v.log.map((l) => `<div class="kc-cb__row${l.live ? " is-live" : ""}"><span>${esc(l.label)}</span><i>${esc(l.when)}</i></div>`).join("");
-  return `<div class="kc-cb__tag">CB mode</div>${readout}`
+  return `<div class="kc-cb__tag">CB</div>${readout}`
     + `<section class="kc-cb__log"><h2>Heard on CB</h2>${rows}</section>`
-    + `<div class="kc-cb__dial" aria-hidden="true"><div class="kc-cb__scale">${ticks}${needle}</div></div>`;
+    + `<div class="kc-cb__band">Heard on CB ${v.heard}</div>`;
 }

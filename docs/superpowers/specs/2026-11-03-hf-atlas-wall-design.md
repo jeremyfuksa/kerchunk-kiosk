@@ -20,7 +20,7 @@ The wall is a passive 1366×768 display, seen across a room, on a machine with a
 
 - Automatic SSB. The operator raised it during this design, and it's a separate project.
 - Other surfaces. Map mode, CB's stage, admin and the `/api/status`, `/api/logs` and `/api/weather` shapes don't change.
-- Fixing the Robinson break at the antimeridian. Paths end at the globe's rim and continue from the opposite rim. The visible rim makes that read as going around the world.
+- Removing the Robinson break at the antimeridian. A path leaves one rim and comes back in from the other. The operator asked that it "go over the edge of the earth and then fade", so each side carries on past the rim along its curve and fades out in space.
 
 ## Anti-goals
 

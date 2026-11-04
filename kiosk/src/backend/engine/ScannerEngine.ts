@@ -89,13 +89,9 @@ export interface ScanConfig {
   // Close Call speaker gate (spec 2026-10-13): audible [lo, hi] Hz ranges,
   // sent on every tune. Absent = every CC hit audible.
   ccAudibleHz?: Array<[number, number]>;
-  // Remote listening: when true the wideband helper builds the PCM streaming
-  // tee (--audio-fd) that /api/stream.wav drains. Off => no tee, no idle cost.
-  remoteListening?: boolean;
-  // Close Call sample recording: when true the wideband helper builds the same
-  // fd-3 PCM tee remote listening uses, so the server can record a clip at each
-  // Close Call hit. Independent of remoteListening — recording must not require
-  // exposing /api/stream.wav.
+  // Close Call sample recording: when true the wideband helper builds the
+  // fd-3 PCM tee, so the server can record a clip at each Close Call hit.
+  // Off => no tee, no idle cost.
   recordCloseCalls?: boolean;
   // SAME decode wanted on THIS helper: true exactly when it carries NWR
   // (derived in toScanConfig / set by the dedicated weather engine). Gates the
@@ -122,22 +118,24 @@ export interface AircraftTarget {
 }
 
 export type EngineEvent =
-  | { type: "active"; channel: Channel; freq: number; ts: number }
+  // `unproven` on active, audible and idle: from a helper that has yet to outlast a stall, so it
+  // doesn't prove the engine recovered. The wall keeps its error up until status "running".
+  | { type: "active"; channel: Channel; freq: number; ts: number; unproven?: true }
   // Which channel OWNS THE SPEAKER right now (null = silence). Distinct from
   // "active": the wideband engine monitors many channels at once, so several
   // can be active while exactly one is audible (first-active-wins hold).
   // RtlFmEngine never emits this — there, active IS audible.
-  | { type: "audible"; channel: Channel | null; ts: number }
+  | { type: "audible"; channel: Channel | null; ts: number; unproven?: true }
   // Per-channel squelch close (idle fires only when ALL channels close) —
   // lets history pair openings with closings for durations.
   | { type: "release"; channelId: string; ts: number }
-  | { type: "idle"; ts: number }
+  | { type: "idle"; ts: number; unproven?: true }
   // Close Call discovery: strong RF on a non-configured frequency in the
   // tuned window. The server persists it as a disabled channel; any audio
   // from it arrives via normal active/audible events (synthesized channel).
   | { type: "closecall"; freqHz: number; ts: number }
   // The helper's carrier survey of the live window (SpyServer helpers, about every 5 s).
-  | { type: "carriers"; centerHz: number; floorDb: number; carriers: Array<{ hz: number; db: number }>; ts: number }
+  | { type: "carriers"; centerHz: number; floorDb: number; carriers: Array<{ hz: number; db: number; peakHz?: number; steadyDb?: number }>; ts: number }
   // Median received RF power over one closed transmission (helper telemetry)
   // — feeds the ERP estimator (channel.rfDb -> location.powerWatts).
   | { type: "rf"; channelId: string; db: number; ts: number }

@@ -115,6 +115,24 @@ export function globeOutline(): string {
   return `M${pts.join("L")}Z`;
 }
 
+const LIMB_REACH = 80;   // how far past the rim a path takes to fade out, in map units
+const LIMB_STEPS = 16;
+export const LIMB_MASK = 'mask="url(#hfLimb)"';
+let limbMask = "";
+
+/** Shows all of the globe and fades what's past the rim, so a path goes over the horizon and then fades. Stacked
+ *  strokes, not a blur: a mask gets re-rastered with its layer. */
+export function limbMaskSvg(): string {
+  if (limbMask) return limbMask;
+  const outline = globeOutline();
+  let strokes = "";
+  for (let i = LIMB_STEPS; i > 0; i--) {
+    strokes += `<path d="${outline}" stroke="#fff" stroke-opacity="0.2" stroke-width="${(2 * LIMB_REACH * (i / LIMB_STEPS)).toFixed(1)}"/>`;
+  }
+  limbMask = `<mask id="hfLimb" maskUnits="userSpaceOnUse" x="-100" y="-100" width="2200" height="1300"><rect x="-100" y="-100" width="2200" height="1300" fill="#000"/><g fill="none">${strokes}</g><path d="${outline}" fill="#fff"/></mask>`;
+  return limbMask;
+}
+
 export function greylineDue(lastTs: number, now: number, stepMs: number): boolean {
   return now - lastTs >= stepMs;
 }
@@ -136,7 +154,7 @@ function halo(outline: string, color: string, reach: number, steps: number, opac
   return out;
 }
 
-function stars(): string {
+export function starsSvg(): string {
   let seed = 7;
   const rnd = (): number => {   // mulberry32: the same sky on every load
     seed = (seed + 0x6d2b79f5) | 0;
@@ -163,7 +181,7 @@ export function skySvg(ts: number): string {
   return `<defs><linearGradient id="hfDay" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#14505c"/><stop offset="1" stop-color="#0f3a4c"/></linearGradient>`
     + `<radialGradient id="hfSun"><stop offset="0" stop-color="#2fb7a6" stop-opacity=".45"/><stop offset="1" stop-color="#2fb7a6" stop-opacity="0"/></radialGradient>`
     + `<clipPath id="hfGlobe"><path d="${outline}"/></clipPath></defs>`
-    + `<rect x="-100" y="-100" width="2200" height="1300" fill="#04050d"/>${stars()}`
+    + `<rect x="-100" y="-100" width="2200" height="1300" fill="#04050d"/>${starsSvg()}`
     + `<g fill="none">${halo(outline, "#5a78e6", 85, 18, 0.02)}${halo(outline, "#7fd0ee", 24, 12, 0.028)}</g>`
     + `<g clip-path="url(#hfGlobe)"><rect x="-100" y="-100" width="2200" height="1300" fill="url(#hfDay)"/>`
     + `<g id="hfGreyline">${greylineSvg(ts)}</g></g>`;

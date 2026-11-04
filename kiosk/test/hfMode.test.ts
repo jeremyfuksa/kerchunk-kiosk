@@ -87,6 +87,20 @@ describe("POST /api/mode hf", () => {
     expect(s.hf).toMatchObject({ band: "120m", centerHz: FIRST, listenHz: null });
   });
 
+  it("status says when the weather radio is down, until it's proven back", async () => {
+    dir = mkdtempSync(join(tmpdir(), "khf-"));
+    const weatherEngine = new FakeEngine();
+    const { server } = createServer({
+      configStore: new ConfigStore(join(dir, "config.json")), engine: new FakeEngine(), weatherEngine,
+      activityLog: new ActivityLog(10), wsHub: new WsHub(), staticDir: dir,
+    });
+    expect((await request(server).get("/api/status")).body.sameDown).toBe(false);
+    weatherEngine.emitError("failed to open RTL-SDR");
+    expect((await request(server).get("/api/status")).body.sameDown).toBe(true);
+    weatherEngine.emitRunning();
+    expect((await request(server).get("/api/status")).body.sameDown).toBe(false);
+  });
+
   it("status has no hf block outside HF mode", async () => {
     const { server } = await app();
     expect((await request(server).get("/api/status")).body.hf).toBeUndefined();
@@ -123,6 +137,27 @@ describe("POST /api/mode hf", () => {
     expect(s.hf.listenHz).toBe(2_350_000);     // matched plays ahead of the stronger unidentified
     expect(s.hf.candidate).toMatchObject({ station: "Radio X" });
     expect(s.hf.others).toEqual(["Other"]);
+    await request(server).post("/api/mode").send({ mode: "scan" });
+  });
+
+  it("status names nothing for a signal with no carrier, even with a schedule match", async () => {
+    dir = mkdtempSync(join(tmpdir(), "khf-"));
+    const engine = new FakeEngine();
+    const { server } = createServer({
+      configStore: new ConfigStore(join(dir, "config.json")), engine, activityLog: new ActivityLog(10),
+      wsHub: new WsHub(), staticDir: dir,
+      hfCandidates: () => [{ station: "Radio X", country: "Y" }],
+    });
+    const c = (await request(server).get("/api/config")).body;
+    await request(server).put("/api/config").send({ ...c, spyserver: { host: "airspy.local" } });
+    await request(server).post("/api/channels").send({ freq: 145_130_000, alphaTag: "S", mode: "nfm", enabled: true });
+    await request(server).post("/api/scan/start");
+    await request(server).post("/api/mode").send({ mode: "hf" });
+    engine.emitCarriers(2_397_500, [{ hz: 2_350_000, db: 30, peakHz: 2_351_300, steadyDb: 9 }]);
+    const s = (await request(server).get("/api/status")).body;
+    expect(s.hf.listenHz).toBe(2_350_000);
+    expect(s.hf.candidate).toBeNull();
+    expect(s.hf.others).toEqual([]);
     await request(server).post("/api/mode").send({ mode: "scan" });
   });
 

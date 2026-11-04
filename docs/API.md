@@ -38,6 +38,7 @@ What the scanner is doing right now.
   "muted": false,            // speaker mute (doesn't restart the engine, so it's polled)
   "warmed": true,            // false until the engine's first warm sweep completes
   "breakIn": false,          // true only while a SAME break-in holds the scanner on NWR
+  "sameDown": false,         // true while the weather radio's helper keeps failing: no SAME alerts in any mode
   "startedAt": 1753480000000 // epoch ms this backend *process* started
 }
 ```
@@ -81,7 +82,7 @@ the cache has gone stale (>2 h):
 
 Verified against the route registrations in `server.ts`. Errors are JSON
 (`{ "error": "..." }`); unknown `/api/` paths 404. Non-GET requests run one
-at a time (mutation chain); GETs — including the long-lived `/api/stream.wav`
+at a time (mutation chain); GETs
 — run concurrently.
 
 ### Config & channels
@@ -122,19 +123,17 @@ these appear under `GET /api/config`):
 | POST | `/api/scan/start` / `/api/scan/stop` | Start/stop the engine → `{ state }`. |
 | POST | `/api/scan/skip` | Hop off the current channel (optional `{ holdoffSeconds }`). |
 | POST | `/api/mode` | `{ mode: "scan" \| "weather" \| "cb" \| "hf" }` (weather requires a configured weather channel). `cb` = CB-only listening: the scanner tunes just the CB channels in `config.cb.channels` (default: as many as one window holds — `scan.lanesPerGroup` — with channels 6, 9 and 19 and every LSB channel of `config.cb.modes` — 38 by default — always in; AM except those LSB channels, always audible, no Close Call); hits land in history tagged `cb` with no location. `hf` sweeps shortwave through SpyServer until the mode changes (400 without `config.spyserver`); `/api/status` then adds `hf: { band, centerHz, loHz, hiHz, listenHz, candidate, others }` (candidate = likely station, from schedules), and `POST /api/scan/skip` moves on. With `config.spyserver` set, CB listens through the Airspy HF+ on SpyServer. A SAME break-in preempts CB and returns to CB. The chosen mode, including a direct tune, survives a restart (`mode.json` beside the config); a break-in is never saved. |
-| POST | `/api/monitor` | Park on one frequency: `{ freq, mode?, alphaTag? }` → monitor mode. |
+| POST | `/api/monitor` | Park on one frequency: `{ freq, mode?, alphaTag? }` (`mode`: `fm`, `nfm`, `am`, `lsb`, `usb`) → monitor mode. |
 | POST | `/api/monitor/stop` | Back to scanning. |
 | POST | `/api/audio/volume` | `{ percent: 0–100 }` → amixer + persisted config. |
 | POST | `/api/audio/mute` | `{ muted: boolean }`. |
-| GET | `/api/stream.wav` | Endless 48 kHz mono s16 WAV of the live speaker feed. **Gated:** `404` unless `config.audio.remoteListening` is true. Slow clients get chunks dropped, not buffered. |
 
 ### Close Call audio samples
 
 A short clip of each Close Call hit, so a discovery can be triaged by ear
 instead of by retuning the live radio at a frequency that is usually quiet.
-Recording is gated on `config.scan.recordCloseCalls` (default off) — which,
-like `audio.remoteListening`, makes the helper build its fd-3 PCM tee, so
-flipping it restarts the engine. Either flag alone is enough to build the tee.
+Recording is gated on `config.scan.recordCloseCalls` (default off), which makes
+the helper build its fd-3 PCM tee, so flipping it restarts the engine.
 
 Clips are stored on disk keyed by **frequency** (`<stateDir>/cc-samples/<freqHz>.wav`),
 because a frequency's first hit is recorded before it has earned a discovery
@@ -200,7 +199,7 @@ additionally removes orphans (recorded on a hit that never filed) and enforces
 One JSON message per event, `EngineEvent` union
 (`kiosk/src/backend/engine/ScannerEngine.ts`): `active`, `audible`,
 `release`, `idle`, `closecall`, `rf`, `tone`, `same`, `signal`, `tuned`,
-`alert`, `aircraft`, `radar`, `lightning`, `status`, `statusChanged` (the mode or HF station changed: poll `/api/status`), `warmup`, `reload`, `error`. `tone`
+`alert`, `aircraft`, `radar`, `lightning`, `status`, `statusChanged` (the mode or HF station changed: poll `/api/status`), `warmup`, `reload`, `error`. `active`, `audible` and `idle` may carry `unproven: true`: they come from a helper restarted after a failure that hasn't yet outlasted a stall, so they don't clear an error (`status` `running` does). `tone`
 (`{ channelId, ctcssHz?, dcs? }`) is the CTCSS tone and/or DCS code heard on
 an open FM channel, once per transmission; `dcs` is in its on-air normal form
 (`"047N"` for a `023I` transmitter — the two are identical on air). The server
