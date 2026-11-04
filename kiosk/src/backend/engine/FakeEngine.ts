@@ -74,7 +74,7 @@ export class FakeEngine implements ScannerEngine {
   updateScheduling(s: Pick<ScanConfig, "autoDwell" | "priorityRevisit">): void { this.schedulingUpdates.push(s); }
   lastHoldoff: number | undefined;
   skip(holdoffSeconds?: number): void { this.skips++; this.lastHoldoff = holdoffSeconds; }
-  emitCarriers(centerHz: number, carriers: Array<{ hz: number; db: number }>, floorDb = -10): void {
+  emitCarriers(centerHz: number, carriers: Array<{ hz: number; db: number; peakHz?: number; steadyDb?: number }>, floorDb = -10): void {
     this.emit({ type: "carriers", centerHz, floorDb, carriers, ts: nextTs() });
   }
   emitSame(raw: string): void {

@@ -66,20 +66,23 @@ export class ReceptionLog {
   }
 
   /** One survey of one window. `candidates` lists the schedule matches, likeliest first. Sightings
-   *  further apart than `windowMs` can't be one visit to the window, so they're another pass. */
-  record(ts: number, band: string, carriers: ReadonlyArray<{ hz: number; db: number }>, candidates: (hz: number, ts: number) => readonly Candidate[], windowMs: number): void {
+   *  further apart than `windowMs` can't be one visit to the window, so they're another pass.
+   *  `nameable` is the carrier check: a signal failing it gets no name, and joins whatever row that frequency
+   *  already has tonight, since a named station can fail it for a survey as it fades. */
+  record<C extends { hz: number; db: number }>(ts: number, band: string, carriers: readonly C[], candidates: (hz: number, ts: number) => readonly Candidate[], windowMs: number, nameable: (c: C) => boolean = () => true): void {
     const night = nightOf(ts);
     this.db.exec("BEGIN");
     try {
     for (const c of carriers) {
-      const cands = candidates(c.hz, ts);
+      const named = nameable(c);
+      const cands = named ? candidates(c.hz, ts) : [];
       const top = cands[0] ?? null;
       const others = cands.slice(1).map((o) => o.station);
       const row = this.db.prepare(`
         SELECT id, peak_db, last_ts, passes, others FROM reception
-        WHERE night = ? AND ABS(freq_hz - ?) <= ? AND station IS ?
+        WHERE night = ? AND ABS(freq_hz - ?) <= ? AND (? OR station IS ?)
         ORDER BY last_ts DESC LIMIT 1
-      `).get(night, c.hz, SAME_STATION_HZ, top?.station ?? null) as { id: number; peak_db: number; last_ts: number; passes: number; others: string } | undefined;
+      `).get(night, c.hz, SAME_STATION_HZ, named ? 0 : 1, top?.station ?? null) as { id: number; peak_db: number; last_ts: number; passes: number; others: string } | undefined;
       if (row) {
         this.db.prepare("UPDATE reception SET last_ts = ?, peak_db = ?, passes = ?, others = ? WHERE id = ?").run(
           ts, Math.max(row.peak_db, c.db), ts - row.last_ts > windowMs ? row.passes + 1 : row.passes,

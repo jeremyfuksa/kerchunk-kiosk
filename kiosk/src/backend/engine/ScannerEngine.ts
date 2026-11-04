@@ -135,7 +135,7 @@ export type EngineEvent =
   // from it arrives via normal active/audible events (synthesized channel).
   | { type: "closecall"; freqHz: number; ts: number }
   // The helper's carrier survey of the live window (SpyServer helpers, about every 5 s).
-  | { type: "carriers"; centerHz: number; floorDb: number; carriers: Array<{ hz: number; db: number }>; ts: number }
+  | { type: "carriers"; centerHz: number; floorDb: number; carriers: Array<{ hz: number; db: number; peakHz?: number; steadyDb?: number }>; ts: number }
   // Median received RF power over one closed transmission (helper telemetry)
   // — feeds the ERP estimator (channel.rfDb -> location.powerWatts).
   | { type: "rf"; channelId: string; db: number; ts: number }

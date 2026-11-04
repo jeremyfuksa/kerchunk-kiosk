@@ -1,6 +1,6 @@
 import type { ModeStore } from "./modeStore.js";
 import { HfController, type HfConfig } from "./hf/controller.js";
-import { HF_DEFAULTS, type HfTune } from "./hf/sweep.js";
+import { HF_DEFAULTS, type HfTune, hasCarrier } from "./hf/sweep.js";
 import { isUtility } from "./hf/schedule.js";
 import type { Candidate, ReceptionLog } from "./hf/receptionLog.js";
 import { createServer as httpCreateServer, type IncomingMessage, type ServerResponse, type Server } from "node:http";
@@ -314,7 +314,8 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
     },
     onSurvey: (tune, carriers) => logSafely(() => {
       const now = Date.now();
-      deps.receptionLog?.record(now, tune.band, carriers, deps.hfCandidates ?? (() => []), config.hf?.windowMs ?? HF_DEFAULTS.windowMs);
+      deps.receptionLog?.record(now, tune.band, carriers, deps.hfCandidates ?? (() => []), config.hf?.windowMs ?? HF_DEFAULTS.windowMs,
+        (c) => hasCarrier(c, { ...HF_DEFAULTS, ...(config.hf as HfConfig | undefined) }));
       // A row can appear while the station plays (a schedule slot turns over, or noon): it played too.
       if (tune.listenHz !== null) deps.receptionLog?.markOnSpeaker(now, tune.listenHz);
     }),
@@ -323,7 +324,7 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
   engine.on((ev) => { if (mode === "hf") hf.onEngineEvent(ev); });
   if (mode === "hf") hf.start();
   const hfStatus = (t: HfTune) => {
-    const cands = t.listenHz !== null ? deps.hfCandidates?.(t.listenHz, Date.now()) ?? [] : [];
+    const cands = t.listenHz !== null && hf.listenIsCarrier() ? deps.hfCandidates?.(t.listenHz, Date.now()) ?? [] : [];
     return { ...t, candidate: cands[0] ?? null, others: cands.slice(1).map((c) => c.station) };
   };
   // Called only for the operator's own choices: a SAME break-in's "weather" is temporary.
