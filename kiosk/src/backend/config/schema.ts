@@ -41,8 +41,8 @@ export const channelObjectSchema = z.object({
   id: z.string().min(1),
   freq: z.number().int().positive(),
   alphaTag: z.string(),
-  // lsb: CB-generated channels only (config/cb.ts); the admin editor doesn't offer it.
-  mode: z.enum(["fm", "nfm", "am", "lsb"]),
+  // lsb, usb: generated channels and direct tunes only; the admin editor doesn't offer them.
+  mode: z.enum(["fm", "nfm", "am", "lsb", "usb"]),
   enabled: z.boolean(),
   // Audibility: an enabled channel with audible:false gets
   // a DSP lane (hits land in history/Recent/map) but never owns the speaker.

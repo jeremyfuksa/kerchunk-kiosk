@@ -145,7 +145,7 @@ inline constexpr int AGC_BLOCK = 32;               // gain decision every 32 sam
 inline constexpr double LIMITER_CEILING = 0.7;     // linear; must be <= RAIL
 inline constexpr double LIMITER_RELEASE_MS = 50;
 inline constexpr float AM_GAIN = 0.7f;
-// ---- SSB (LSB) lanes: CB 38 (spec docs/superpowers/specs/2026-10-15-cb-lsb-design.md).
+// ---- SSB lanes (LSB, and USB mirrored): CB 38 (spec docs/superpowers/specs/2026-10-15-cb-lsb-design.md).
 // The lower sideband sits SSB_LO_HZ..SSB_HI_HZ below the dial. SsbDemod shifts its centre to DC,
 // decimates by SSB_DECIM so the sharp channel filter is cheap, low-passes to half the sideband
 // width, interpolates back to LANE_RATE and shifts back.
