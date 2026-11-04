@@ -12,6 +12,7 @@ import { greylineDue, greylineSvg, skySvg, stagePx, STAGE_VIEWBOX } from "./grey
 import { atlasSnapshotSvg, paintSnapshot, runZoom, zoomFor, type ZoomDirection, hfLogWanted } from "./zoom.js";
 import { HF_WALL_DEFAULTS, HitAnimator } from "./hitAnim.js";
 import { miller } from "./miller.js";
+import { spaceWeatherHtml } from "./spaceWeatherView.js";
 import { mountActivityMap } from "../map/map.js";
 import { fromDeg, setWind } from "../lib/wind.js";
 import { cornerView, sentenceCase, meterFill, METER_SEGMENTS } from "./cornerView.js";
@@ -171,6 +172,7 @@ export function renderDashboard(root: HTMLElement): void {
         <div id="wx" class="kc-wx"></div>
         <div id="clockDate" class="kc-clock__date"></div>
         <div id="sameDown" class="kc-clock__sameDown" hidden>SAME alerts off: weather radio down</div>
+        <div id="hfSpace" class="kc-space"></div>
       </header>
       <div class="kc-stage">
         <div id="corner" class="kc-corner">
@@ -192,7 +194,7 @@ export function renderDashboard(root: HTMLElement): void {
   // collide every 10 s, and the appliance has been observed to deadlock on 2+
   // concurrent requests (see CLAUDE.md). One ticker now runs them strictly one
   // at a time. Cadences are the knobs.
-  const POLL_MS = { status: 5_000, risk: 10_000, weather: 600_000 };
+  const POLL_MS = { status: 5_000, risk: 10_000, weather: 600_000, spaceWeather: 60_000 };
   const POLL_TICK_MS = 1_000;
   const poller = createPoller();
 
@@ -320,6 +322,17 @@ export function renderDashboard(root: HTMLElement): void {
     }).catch(() => { /* the list fills next window */ });
   }, Number.POSITIVE_INFINITY);
 
+  const hfSpaceEl = root.querySelector<HTMLElement>("#hfSpace")!;
+  let hfSpaceKey = "";
+  // NOAA is behind a cache on the backend, so this is cheap. It's only asked while the Atlas is showing.
+  poller.poll("spaceWeather", () => {
+    if (!hfOn) return Promise.resolve();
+    return api.getSpaceWeather().then((sw) => {
+      const html = spaceWeatherHtml(sw, hfOpts);
+      if (html !== hfSpaceKey) { hfSpaceKey = html; hfSpaceEl.innerHTML = html; }
+    }).catch(() => { /* the last line stands until the next poll */ });
+  }, POLL_MS.spaceWeather);
+
   function redrawGreyline(): void {
     const now = Date.now();
     if (!greylineDue(hfGreylineAt, now, hfOpts.greylineStepMs)) return;
@@ -393,6 +406,7 @@ export function renderDashboard(root: HTMLElement): void {
         svg.removeAttribute("height");
       }
       poller.request("hfHeard");
+      poller.request("spaceWeather");
       if (zoom === "out") {
         dashEl.classList.add("hfZoomWait");   // the map stays up until the picture is ready
         zoomWhenReady("out", Promise.resolve(), () => {

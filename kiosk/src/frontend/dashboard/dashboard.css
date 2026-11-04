@@ -323,3 +323,10 @@ html[data-page="dashboard"] .dash.hfStage .kc-clock__time { font-size: 26px; }
 html[data-page="dashboard"] .dash.hfStage .kc-wx { font-size: 15px; margin-top: 2px; }
 html[data-page="dashboard"] .dash.hfStage .kc-clock__date { font-size: 12px; margin-top: 0; }
 html[data-page="dashboard"] .dash.hfStage .kc-clock__sameDown { font-size: 12px; margin-top: 2px; }
+html[data-page="dashboard"] .kc-space { display: none; }
+html[data-page="dashboard"] .dash.hfStage .kc-space { display: block; margin-top: 3px; font-size: 13px; font-weight: 600; color: var(--kc-dim); font-variant-numeric: tabular-nums; }
+html[data-page="dashboard"] .kc-space__light { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; }
+html[data-page="dashboard"] .kc-space__light[data-cond="good"] { background: var(--kc-ok); }
+html[data-page="dashboard"] .kc-space__light[data-cond="fair"] { background: var(--kc-k-warning); }
+html[data-page="dashboard"] .kc-space__light[data-cond="poor"] { background: var(--kc-k-poor); }
+html[data-page="dashboard"] .kc-space__storms { color: var(--kc-coral); }

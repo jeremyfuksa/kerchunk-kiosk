@@ -110,6 +110,7 @@
   --kc-k-head: 7rem;           /* service head: the height of name + frequency */
   --kc-k-alert-title: 3.1rem;  /* weather alert card title */
   --kc-k-warning: #f2b84b;     /* the wall says something's down */
+  --kc-k-poor: #f0483e;        /* the band light at its worst: coral reads pink on a small dot */
   --kc-k-weather: 2.25rem;     /* current conditions under the clock: icon + temperature */
   --kc-k-glass-error: 2.6rem;  /* the error text on the wall glass (smaller than a channel name) */
   --kc-grow-ms: 420ms;         /* pill → glass on a hit */

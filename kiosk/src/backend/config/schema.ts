@@ -412,6 +412,12 @@ export const configSchema = z.object({
       pulseMs: z.number().int().min(300).max(20_000).default(2_000),
       // How old NOAA's solar flux, Kp and storm scales may get before the next wall poll fetches them again.
       spaceWeatherMs: z.number().int().min(900_000).max(21_600_000).default(1_800_000),
+      // The space weather line under the clock, and when its light turns yellow or red.
+      // NOAA's R scale also drives it: R1 and R2 yellow, R3 and up red.
+      spaceWeatherShow: z.boolean().default(true),
+      spaceWeatherFairKp: z.number().min(0).max(9).default(4),
+      spaceWeatherPoorKp: z.number().min(0).max(9).default(7),
+      spaceWeatherFairFlux: z.number().min(0).max(400).default(80),
     }).prefault({}),
     // Weather Glass layer (frontend/map/glassLayer.ts). Reaches the wall on
     // its next load: PUT /api/config, then POST /api/kiosk/reload.

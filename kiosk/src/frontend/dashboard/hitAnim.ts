@@ -12,6 +12,7 @@ const LINE_STEPS = 40;
 const EASE_OUT = "cubic-bezier(.33,1,.68,1)";
 
 export const HF_WALL_DEFAULTS = {
+  spaceWeatherShow: true, spaceWeatherFairKp: 4, spaceWeatherPoorKp: 7, spaceWeatherFairFlux: 80,
   greylineStepMs: 300_000, traceOpacity: 0.34, traceFadeMs: 21_600_000, hitGrowMs: 900, hitLineDelayMs: 550, hitLineMs: 2_000, hitPingMs: 800, hitFadeMs: 700, zoomMs: 1_500, pulseEveryMs: 4_500, pulseMs: 2_000,
 };
 export type HfWallOpts = typeof HF_WALL_DEFAULTS;
