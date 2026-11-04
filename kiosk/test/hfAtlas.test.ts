@@ -15,7 +15,7 @@ describe("bandColor", () => {
   it("band_colour_runs_by_wavelength", () => {
     expect(HF_BANDS_ORDER).toHaveLength(12);
     expect(bandColor("120m")).toBe("oklch(.8 .14 20)");
-    expect(bandColor("25m")).toBe("oklch(.8 .14 181)");
+    expect(bandColor("25m")).toBe("oklch(.8 .14 158)");
   });
   it("unlisted_band_and_null_are_live_teal", () => {
     expect(bandColor("11m")).toBe("var(--kc-glass)");
