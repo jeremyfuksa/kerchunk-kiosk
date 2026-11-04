@@ -67,7 +67,6 @@
   --kc-hf-plate: rgba(14, 14, 42, 0.74);
   --kc-hf-bandbg: rgba(9, 9, 28, 0.86);
   --kc-hf-details: #ccd1d9;
-  --kc-hf-hairline: rgba(230, 233, 238, 0.22);
   --kc-hf-zoom-at: 50% 50%;         /* home on the stage; zoom.ts sets it */
   --kc-hf-haze: rgba(150, 190, 240, 0.95);
   --kc-hf-haze-edge: rgba(70, 90, 170, 0.75);

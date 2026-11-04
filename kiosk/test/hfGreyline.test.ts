@@ -85,12 +85,8 @@ describe("framing", () => {
   it("the pole's flat line and the high Arctic are off the top, so traces leave rather than flatten", () => {
     expect(y0).toBeGreaterThan(robinson(82, 0).y);
   });
-  it("the flat south edge is hidden behind the reception band", () => {
-    const southPx = (robinson(-90, 0).y - y0) * pxPerUnit;
-    expect(southPx).toBeGreaterThanOrEqual(708);
-  });
-  it("most of the empty southern sea sits behind the reception band", () => {
-    expect((robinson(-75, 0).y - y0) * pxPerUnit).toBeLessThanOrEqual(715);
+  it("the flat south edge is off the bottom of the screen", () => {
+    expect((robinson(-90, 0).y - y0) * pxPerUnit).toBeGreaterThanOrEqual(768);
   });
   it("every landmass stays on screen, New Zealand and Hawaii included", () => {
     expect(robinson(-47, 178).x).toBeLessThan(x0 + w);

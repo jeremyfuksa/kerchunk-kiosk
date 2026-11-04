@@ -12,7 +12,6 @@ export interface HitKey { hz: number; lat: number; lon: number; band: string }
 export type HitChange = "none" | "start" | "end" | "replace";
 export interface AtlasDot { x: number; y: number; r: number; opacity: number }
 export interface AtlasTrace { key: string; color: string; segments: string[]; level: number }
-export interface LegendEntry { label: string; color: string; lit: boolean; live: boolean }
 
 export function bandColor(band: string | null): string {
   const i = HF_BANDS_ORDER.indexOf(band as typeof HF_BANDS_ORDER[number]);
@@ -135,11 +134,6 @@ export function tracesSvg(traces: readonly AtlasTrace[], opacity: number): strin
     brighter += ds.map(({ d }) => `<path d="${d}"/>`).join("");
   }
   return out;
-}
-
-export function legend(rows: readonly AtlasRow[], liveBand: string | null): LegendEntry[] {
-  const traced = new Set(rows.filter((r) => r.onSpeaker && located(r)).map((r) => r.band));
-  return HF_BANDS_ORDER.map((b) => ({ label: b.slice(0, -1), color: bandColor(b), lit: traced.has(b), live: b === liveBand }));
 }
 
 export function hitChange(prev: HitKey | null, next: HitKey | null): HitChange {
