@@ -197,3 +197,86 @@ describe("carrier check", () => {
     expect(s.listenIsCarrier()).toBe(false);
   });
 });
+
+describe("HfSweep leaving a dead window early", () => {
+  const dead = (): HfSweep => new HfSweep(opts({ emptyWindowMs: 20_000 }), W, 0);
+
+  it("waits out the whole window when the setting is absent", () => {
+    const s = new HfSweep(opts(), W, 0);
+    s.onCarriers(5_000, W[0]!.centerHz, []);
+    expect(s.tick(59_000)).toBeNull();
+    expect(s.tick(60_000)?.centerHz).toBe(W[1]!.centerHz);
+  });
+
+  it("moves on once a surveyed window has had nothing playable for that long", () => {
+    const s = dead();
+    s.onCarriers(5_000, W[0]!.centerHz, []);
+    expect(s.tick(19_000)).toBeNull();
+    expect(s.tick(20_000)?.centerHz).toBe(W[1]!.centerHz);
+  });
+
+  it("never calls a window empty before its first survey", () => {
+    const s = dead();
+    expect(s.tick(25_000)).toBeNull();
+    s.onCarriers(26_000, W[0]!.centerHz, []);
+    expect(s.tick(26_000)?.centerHz).toBe(W[1]!.centerHz);
+  });
+
+  it("doesn't count a survey still reporting the last window", () => {
+    const s = dead();
+    s.onCarriers(5_000, W[1]!.centerHz, []);
+    expect(s.tick(25_000)).toBeNull();
+  });
+
+  it("starts the next window with no survey to its name", () => {
+    const s = dead();
+    s.onCarriers(5_000, W[0]!.centerHz, []);
+    s.tick(20_000);
+    expect(s.tick(45_000)).toBeNull();
+  });
+
+  it("gives a station on the speaker the rest of its window", () => {
+    const s = dead();
+    s.onCarriers(5_000, W[0]!.centerHz, [car(5_950_000, 40)]);
+    for (let t = 10_000; t < 60_000; t += 5_000) {
+      s.onCarriers(t, W[0]!.centerHz, [car(5_950_000, 40)]);
+      expect(s.tick(t)).toBeNull();
+    }
+    expect(s.tick(60_000)?.centerHz).toBe(W[1]!.centerHz);
+  });
+
+  it("holds a fading station until the fade timer gives up on it", () => {
+    const s = dead();
+    s.onCarriers(5_000, W[0]!.centerHz, [car(5_950_000, 40)]);
+    s.onCarriers(10_000, W[0]!.centerHz, []);
+    expect(s.tick(19_000)).toBeNull();
+    s.onCarriers(20_000, W[0]!.centerHz, []);
+    expect(s.current().listenHz).toBeNull();   // 15 s fade from the last sighting at 5 s
+    expect(s.tick(24_000)).toBeNull();
+    expect(s.tick(25_000)?.centerHz).toBe(W[1]!.centerHz);
+  });
+
+  it("counts a carrier under minListenDb as nothing playable", () => {
+    const s = dead();
+    s.onCarriers(5_000, W[0]!.centerHz, [car(5_950_000, 14)]);
+    expect(s.tick(20_000)?.centerHz).toBe(W[1]!.centerHz);
+  });
+
+  it("counts a window of only cooled-down stations as dead", () => {
+    const s = new HfSweep(opts({ emptyWindowMs: 20_000 }), [W[0]!], 0);
+    s.onCarriers(5_000, W[0]!.centerHz, [car(5_950_000, 40)]);
+    s.tick(60_000);   // one window, so this returns to it with 5950 still in cooldown
+    s.onCarriers(65_000, W[0]!.centerHz, [car(5_950_000, 40)]);
+    expect(s.current().listenHz).toBeNull();
+    expect(s.tick(80_000)?.centerHz).toBe(W[0]!.centerHz);
+  });
+
+  it("restarts the wait after a break-in, and wants a new survey", () => {
+    const s = dead();
+    s.onCarriers(5_000, W[0]!.centerHz, []);
+    s.resume(15_000);
+    expect(s.tick(35_000)).toBeNull();
+    s.onCarriers(36_000, W[0]!.centerHz, []);
+    expect(s.tick(36_000)?.centerHz).toBe(W[1]!.centerHz);
+  });
+});

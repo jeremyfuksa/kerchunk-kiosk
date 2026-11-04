@@ -265,7 +265,7 @@ even with green checks.
   an automatic hop (operator, 2026-11-03). Shortwave
   stays out of the activity log and history (`isSharedActivity`), so it doesn't reach jeremyfuksa.com.
   A station is only named if the survey shows a carrier (`hasCarrier`: steady, on the raster).
-  Knobs: `config.hf` (`windowMs`, `minListenDb`, `cooldownMs`, `fadeMs`, `carrierSteadyDb`, `carrierRasterHz`, `bands`). Mode survives restarts in `mode.json` beside the config.
+  Knobs: `config.hf` (`windowMs`, `emptyWindowMs` (absent = every window runs its full time), `minListenDb`, `cooldownMs`, `fadeMs`, `carrierSteadyDb`, `carrierRasterHz`, `bands`). Mode survives restarts in `mode.json` beside the config.
   The wall is the Atlas (spec 2026-11-03-hf-atlas), Miller centred on home (`dashboard/miller.ts`; `world.svg` is generated to match by `scripts/gen-atlas-land.mjs`, so changing one means regenerating it): `dashboard/greyline.ts` (sky), `atlas.ts` (traces, dots, band colours, hit logic),
   `hitAnim.ts` (the only moving layer), `hfView.ts` (text). Four stacked layers: sky, land and dots, traces, live. A hit must never repaint the
   still ones. Space weather (`spaceWeather.ts`, `GET /api/space-weather`, `dashboard/spaceWeatherView.ts`) sits under the clock with a band-condition light; display only, it never steers the sweep. Knobs: `display.hf` (`spaceWeatherMs`, `spaceWeatherShow`, `spaceWeatherFairKp`, `spaceWeatherPoorKp`, `spaceWeatherFairFlux`, `greylineStepMs`, `traceOpacity`, `traceFadeMs`, `hit*Ms`, `zoomMs`), read at page load. The WS event `statusChanged`
@@ -273,7 +273,7 @@ even with green checks.
   Pulses on the live trace animate transforms and opacity only. The zoom to and from map mode (`dashboard/zoom.ts`) also animates
   `filter: blur()`, only while it runs, and it moves one flat canvas picture of the Atlas, never the live layers: scaling those left
   the landing part-painted. The zoom never moves the Google map's camera.
-  Reception log: `hf/receptionLog.ts`, its own `reception.db` (never pruned), admin Log tab, `GET /api/hf/log`.
+  Reception log: `hf/receptionLog.ts`, its own `reception.db` (never pruned), admin Log tab, `GET /api/hf/log`. Its `window_visit` table records every stay on a window, empty ones too, for #341.
   Schedules: `hf/schedule.ts` + `scheduleStore.ts` fetch EiBi (HTTP only, its cert is expired), Aoki and HFCC
   daily into `schedules/` beside the config, keeping the last good copy. Runtime only, never in the repo:
   Aoki and HFCC state no redistribution terms. Station names are always "likely".

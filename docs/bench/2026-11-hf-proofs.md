@@ -290,3 +290,21 @@ One evening, about 15 s of surveys per window. Ham only: 3600–3895, 7125–719
 | steady < 5 dB alone | 15 of 54 | 116 of 122 |
 
 All 10 ham peaks called carrier are on 3885 and 3890 kHz, where US hams run AM, so 0 of 44 SSB peaks passed. About 1 in 9 broadcast peaks fail in a given survey, mostly weak ones, and go unnamed. Daytime and heavy fading aren't measured.
+
+## Leaving a dead window early (#340), 2026-11-04
+
+Two 30-minute runs on the kiosk around local noon, one after the other, on the Airspy HF+ through SpyServer. Surveys logged from the WS stream, so no extra HTTP clients.
+
+| | Full windows, 11:35 to 12:05 | `hf.emptyWindowMs` 20000, 12:06 to 12:36 |
+| --- | --- | --- |
+| Full loop of 14 windows | about 13.4 min | about 8.2 min |
+| Window stays | 32 (6 with nothing over `minListenDb`) | 51 (11 by the same test) |
+| Mean stay on a dead window | 57 s | 20 s by the visit log |
+| Frequencies heard | 48 | 48 |
+| Stations played | 17 | 21 |
+| Frequencies with a station name | 39 | 32 |
+| Package temperature, mean and max | 50.1, 79 °C (a native build ran on the box) | 48.3, 55 °C |
+
+Dead in daytime: 120 m, 90 m, 49 m, 41 m, 15 m and 13 m. Helper at 28.5% of a core at the end of the second run, no helper exits, and speaker underrun in the range already noted above.
+
+Result: **partial.** It's measurably faster and plays more. These are different half-hours, so the lower named count isn't explained: the schedule shifts, and noon fell in the first run. Windows with only cooled-down stations also leave at 20 s, which means fewer surveys on those. The issue asks for a dead-band evening, which this isn't. Next: compare a full night's rows in `reception.db` with the earlier nights (991 on 2026-11-03).
