@@ -58,6 +58,10 @@ export class ReceptionLog {
         lat REAL, lon REAL, power_kw REAL, distance_km REAL, others TEXT NOT NULL DEFAULT '[]'
       );
       CREATE INDEX IF NOT EXISTS reception_night ON reception (night, freq_hz);
+      CREATE TABLE IF NOT EXISTS window_visit (
+        id INTEGER PRIMARY KEY, started_ts INTEGER NOT NULL, ended_ts INTEGER NOT NULL,
+        center_hz INTEGER NOT NULL, band TEXT NOT NULL, surveys INTEGER NOT NULL, playable INTEGER NOT NULL
+      );
     `);
     const columns = this.db.prepare("PRAGMA table_info(reception)").all() as Array<{ name: string }>;
     if (!columns.some((c) => c.name === "played_ts")) {
@@ -101,6 +105,12 @@ export class ReceptionLog {
       this.db.exec("ROLLBACK");
       throw e;
     }
+  }
+
+  /** A row per stay on a window, because `reception` only holds what was heard: an empty visit looks like no visit. */
+  recordVisit(v: { centerHz: number; band: string; startedAt: number; endedAt: number; surveys: number; playable: boolean }): void {
+    this.db.prepare("INSERT INTO window_visit (started_ts, ended_ts, center_hz, band, surveys, playable) VALUES (?, ?, ?, ?, ?, ?)")
+      .run(v.startedAt, v.endedAt, v.centerHz, v.band, v.surveys, v.playable ? 1 : 0);
   }
 
   /** The most recent row for this frequency tonight was on the speaker. */

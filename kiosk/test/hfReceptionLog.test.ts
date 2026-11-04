@@ -214,6 +214,17 @@ describe("HF mode logging", () => {
     await request(server).post("/api/mode").send({ mode: "scan" });
   });
 
+  it("logs a window's visit when the sweep leaves it, even with nothing heard", async () => {
+    const { server, engine, receptionLog } = await app();
+    const visit = vi.spyOn(receptionLog, "recordVisit");
+    const center = engine.tunes.at(-1)!.fixedCenterHz!;
+    engine.emitCarriers(center, []);
+    await request(server).post("/api/scan/skip");
+    expect(visit).toHaveBeenCalledTimes(1);
+    expect(visit.mock.calls[0]![0]).toMatchObject({ centerHz: center, surveys: 1, playable: false });
+    await request(server).post("/api/mode").send({ mode: "scan" });
+  });
+
   it("a station whose schedule row appears after it took the speaker still counts as played", async () => {
     let cands: Candidate[] = [];
     const { server, engine } = await app(() => cands);
@@ -280,5 +291,21 @@ describe("HF mode logging", () => {
       l.close();
     }
     rmSync(dir, { recursive: true });
+  });
+});
+
+describe("ReceptionLog window visits", () => {
+  it("keeps a row for a visit that heard nothing", () => {
+    const dir = mkdtempSync(join(tmpdir(), "kc-visits-"));
+    try {
+      const path = join(dir, "reception.db");
+      const l = new ReceptionLog({ path });
+      l.recordVisit({ centerHz: 5_952_500, band: "49m", startedAt: 1_000, endedAt: 21_000, surveys: 3, playable: false });
+      l.close();
+      const db = new DatabaseSync(path);
+      expect(db.prepare("SELECT started_ts, ended_ts, center_hz, band, surveys, playable FROM window_visit").all())
+        .toEqual([{ started_ts: 1_000, ended_ts: 21_000, center_hz: 5_952_500, band: "49m", surveys: 3, playable: 0 }]);
+      db.close();
+    } finally { rmSync(dir, { recursive: true }); }
   });
 });

@@ -322,6 +322,7 @@ export function createServer(deps: ServerDeps): { server: Server; getConfig: () 
       // A row can appear while the station plays (a schedule slot turns over, or noon): it played too.
       if (tune.listenHz !== null) deps.receptionLog?.markOnSpeaker(now, tune.listenHz);
     }),
+    onVisit: (visit) => logSafely(() => deps.receptionLog?.recordVisit(visit)),
     ...(deps.hfCandidates ? { isMatched: (hz: number) => deps.hfCandidates!(hz, Date.now()).some((c) => !isUtility(c)) } : {}),
   });
   engine.on((ev) => { if (mode === "hf") hf.onEngineEvent(ev); });
