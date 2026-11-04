@@ -55,7 +55,7 @@ One colour per band in wavelength order, from red at 120 m to violet at 13 m: `o
 
 A band from `config.hf.bands` that isn't in this list uses the live teal, `--kc-glass`. So do hunting and errors.
 
-The frequency, meter, reception needle, source ring, live line, home ring and transmitter country tint all take the live band's colour.
+The frequency, meter, source ring, live line, home ring and transmitter country tint all take the live band's colour.
 
 ## The hit
 
@@ -75,7 +75,7 @@ A wall that loads or reloads while a station is playing draws the line and ring 
 ### Traces
 
 - A faded trace is the path in its band's colour at opacity 0.34 (tune on the wall), with all traces faded together as one group: only the live station is at full brightness, and overlaps can't add up.
-- **Fading over time:** the operator later asked for traces to "disappear slowly over time so it's not so crowded. but very slowly." A trace dims in 12 steps and is gone 6 hours after its station last played (`display.hf.traceFadeMs`). Playing again resets it. It changes only on the 5-minute greyline timer, so nothing moves between steps. Each dimmer age is cut away under every brighter one, so overlaps still can't add up. Dots stay until noon, and the legend still lights any band that played tonight.
+- **Fading over time:** the operator later asked for traces to "disappear slowly over time so it's not so crowded. but very slowly." A trace dims in 12 steps and is gone 6 hours after its station last played (`display.hf.traceFadeMs`). Playing again resets it. It changes only on the 5-minute greyline timer, so nothing moves between steps. Each dimmer age is cut away under every brighter one, so overlaps still can't add up. Dots stay until noon.
 - **Clearing:** a listening night runs noon to noon (`nightOf`). When `/api/hf/log`'s latest night changes, the traces and dots show only the new night.
 - **Source of truth:** rows from `/api/hf/log` with `onSpeaker` true and a location, one trace per site and band. They survive a reload, a restart and a trip through another mode, and they're drawn with no animation. The live station's trace appears when it fades, not before.
 - Last night's real data gave 74 traces. A full noon-to-noon run could give more, so check legibility with the heaviest log available.
@@ -91,7 +91,7 @@ A wall that loads or reloads while a station is playing draws the line and ring 
 The operator asked for switching between UHF and HF to look like zooming out of the local map to the global one, and back. Scan mode's map and the Atlas are different pictures at very different scales, so it's a staged illusion and not a real camera move:
 
 - **Out to HF:** about 1.5 s, eased (tune). The local map shrinks and the Atlas settles from about 8× around home to full size, fading in on top of the map while the map is still large, so the map's edges never show. Mid-move it passes through the atmosphere, at the operator's request so it doesn't read as a scaling rectangle: both pictures blur, and a blue haze with faint streaks radiating from home peaks over the swap.
-- **A flat picture, not the live stage:** the zoom moves one canvas picture of the Atlas, painted once before it starts, with the real stage finished underneath. Scaling the live layers left the landing part-painted, which the operator saw. The picture has no text or reception band, so those appear when it lands.
+- **A flat picture, not the live stage:** the zoom moves one canvas picture of the Atlas, painted once before it starts, with the real stage finished underneath. Scaling the live layers left the landing part-painted, which the operator saw. The picture has no text, so that appears when it lands.
 - **Back to the map:** the reverse. The Atlas scales up around home and fades into the local map.
 - **The Google map must not move.** No camera moves or zoom calls: its layer is transformed as a still, because camera moves are what drove heat before (`CLAUDE.md`, "the kiosk camera stays still"). Pause it once it's hidden, as today. Coming back, it has to be drawn before the zoom starts, so hold on the Atlas until it's ready.
 - **It starts when the wall learns of the change.** The wall only polls `/api/status` every 5 s (`dashboard.ts`), so add a WebSocket event for a mode change, or the zoom can start up to 5 s after the button press, and after the audio has already changed.
@@ -103,12 +103,10 @@ The heat proof below includes several of these.
 
 At 1366×768, per the prototype:
 
-- **Map:** larger than the screen, centred, 1830 map units across the 1366 px. The top of the screen is about 81°N, so the flat pole line and the high Arctic are off screen: the operator rejected traces flattening along that line. The reception band hides everything south of about 75°S, because the operator found too much empty southern sea. New Zealand's east coast limits how large it can go.
-- **Station panel:** lower left over the South Pacific, 430 px wide, 66 px from the bottom, on a translucent dark plate with no blur (`rgba(14,14,42,.74)`). It holds the frequency at 68 px, the name at 30 px, one line of details, and the meter. All of `hfView`'s readout data stays, including "Likely", "Muted", and the error and hunting states.
+- **Map:** larger than the screen, centred, 1800 map units across the 1366 px. The bottom stops short of Robinson's flat south edge. The top of the screen is past 82°N, so the flat pole line and the high Arctic are off screen: the operator rejected traces flattening along that line. New Zealand's east coast limits how large it can go. A reception band along the bottom used to hide the far south; the operator removed it (#331).
+- **Station panel:** lower left over the South Pacific, 430 px wide, 28 px from the bottom, on a translucent dark plate with no blur (`rgba(14,14,42,.74)`). It holds the frequency at 68 px, the name at 30 px, one line of details, and the meter. All of `hfView`'s readout data stays, including "Likely", "Muted", and the error and hunting states.
 - **Top left:** "HF · 25m", small and dim.
 - **Clock and weather:** top right, inside the corner of space and clear of the globe's rim. The prototype's one line crosses the rim, and the operator agreed to moving it. Stacking it is fine if one line won't fit. Keep the Lucide weather icon that's there today.
-- **Reception band:** a full-width dark band along the bottom (`rgba(9,9,28,.86)`), which also hides the globe's flat south edge. Left: the band legend. Right: "Heard tonight N" and the last three stations, dim, on one line. Under them: the reception strip, reduced to a hairline with short ticks and the needle.
-- **Band legend:** the 13 band numbers in their colours at 13 px. Bands with traces are lit, the rest at 30% opacity, and the live band is underlined.
 - **Alert banner:** still shows over the stage, as it does today (`.kc-corner` stays). Don't hide it behind the panel.
 
 ## Constraints

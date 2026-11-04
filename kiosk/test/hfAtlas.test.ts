@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { robinson } from "../src/frontend/dashboard/robinson.js";
-import { atlasDots, atlasTraces, bandColor, traceLevel, TRACE_STEPS, hitAction, hitChange, legend, tracePath, HF_BANDS_ORDER, type AtlasRow, type HitKey } from "../src/frontend/dashboard/atlas.js";
+import { atlasDots, atlasTraces, bandColor, traceLevel, TRACE_STEPS, hitAction, hitChange, tracePath, HF_BANDS_ORDER, type AtlasRow, type HitKey } from "../src/frontend/dashboard/atlas.js";
 import { readFileSync } from "node:fs";
 import { lineKeyframes, pulseFrames, tracePoints, tracesSvg } from "../src/frontend/dashboard/atlas.js";
 import { configSchema, defaultConfig } from "../src/backend/config/schema.js";
@@ -148,19 +148,6 @@ describe("pulseFrames", () => {
   it("tracePoints splits where tracePath does", () => {
     expect(tracePoints({ lat: -38.8, lon: 176.4 }, HOME)).toHaveLength(2);
     expect(tracePoints({ lat: 44.75, lon: 26.1 }, HOME)).toHaveLength(1);
-  });
-});
-
-describe("legend", () => {
-  it("legend_lights_bands_with_traces_and_marks_live", () => {
-    const l = legend([row({})], "41m");
-    expect(l).toHaveLength(12);
-    expect(l.find((x) => x.label === "25")).toMatchObject({ lit: true, live: false, color: bandColor("25m") });
-    expect(l.find((x) => x.label === "41")).toMatchObject({ lit: false, live: true });
-    expect(l.find((x) => x.label === "120")).toMatchObject({ lit: false, live: false });
-  });
-  it("a logged station that didn't play doesn't light its band", () => {
-    expect(legend([row({ onSpeaker: false })], null).find((x) => x.label === "25")?.lit).toBe(false);
   });
 });
 

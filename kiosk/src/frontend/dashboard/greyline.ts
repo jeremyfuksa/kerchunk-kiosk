@@ -3,10 +3,10 @@
 import { robinson } from "./robinson.js";
 import { subsolar, sunAltitude, type SubPoint } from "./sun.js";
 
-/** The 1366×768 stage in map units. The top is about 81°N, so paths over the Arctic run off the screen instead
- *  of squashing along Robinson's flat pole line. The band hides everything south of about 75°S, and New Zealand
- *  sets how large this can go. */
-const STAGE = { x: 70.7, y: 10, w: 1830, h: 1029 };
+/** The 1366×768 stage in map units, centred on the globe. The top is past 82°N, so paths over the Arctic run off
+ *  the screen instead of squashing along Robinson's flat pole line. The bottom stops just short of the flat line
+ *  at the south pole. */
+const STAGE = { x: 85.7, y: 8, w: 1800, h: 1012 };
 export const STAGE_VIEWBOX = `${STAGE.x} ${STAGE.y} ${STAGE.w} ${STAGE.h}`;
 
 /** Map units to pixels on a stage this wide. */

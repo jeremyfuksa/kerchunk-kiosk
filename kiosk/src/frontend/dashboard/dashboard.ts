@@ -296,7 +296,6 @@ export function renderDashboard(root: HTMLElement): void {
     if (mapShouldRun(cbOn, hfOn)) mapHandle?.resume(); else mapHandle?.pause();
   }
   let hf: HfStatus | null = null;
-  let hfCarriers: ReadonlyArray<{ hz: number; db: number }> = [];
   let hfLog: HfHeard[] = [];
   let hfBand = "";
   let hfListenHz: number | null = null;
@@ -426,7 +425,7 @@ export function renderDashboard(root: HTMLElement): void {
   }
 
   function paintHf(): void {
-    const v = hfView({ hf, carriers: hfCarriers, error: state.error, muted, signalDb: state.signalDb, log: hfLog });
+    const v = hfView({ hf, error: state.error, muted, signalDb: state.signalDb });
     if (v.key !== hfKey) {
       hfKey = v.key;
       hfEl.style.setProperty("--kc-hf-live", v.liveColor);
@@ -565,7 +564,7 @@ export function renderDashboard(root: HTMLElement): void {
         setHfStage(s.mode === "hf", zoom);
         const hfWas = JSON.stringify(hf);
         hf = s.hf ?? null;
-        if (hf && hf.band !== hfBand) { hfBand = hf.band; hfCarriers = []; poller.request("hfHeard"); }
+        if (hf && hf.band !== hfBand) { hfBand = hf.band; poller.request("hfHeard"); }
         if ((hf?.listenHz ?? null) !== hfListenHz) { hfListenHz = hf?.listenHz ?? null; poller.request("hfHeard"); }
         if (JSON.stringify(hf) !== hfWas) schedule();
         if (wm !== state.warmed) state = { ...state, warmed: wm };
@@ -799,7 +798,6 @@ export function renderDashboard(root: HTMLElement): void {
   new ReconnectingWs(`${proto}://${location.host}/ws`, (ev) => {
     if (ev.type === "reload") { location.reload(); return; }
     if (ev.type === "warmup") sawWarmupEvent = true; // WS now owns `warmed`
-    if (ev.type === "carriers" && hf && ev.centerHz === hf.centerHz) { hfCarriers = ev.carriers; schedule(); }
     state = reduce(state, ev);
     cb = cbReduce(cb, ev);
     // Mode, mute and break-in can change on these: re-poll status through the
