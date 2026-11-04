@@ -308,3 +308,11 @@ Two 30-minute runs on the kiosk around local noon, one after the other, on the A
 Dead in daytime: 120 m, 90 m, 49 m, 41 m, 15 m and 13 m. Helper at 28.5% of a core at the end of the second run, no helper exits, and speaker underrun in the range already noted above.
 
 Result: **partial.** It's measurably faster and plays more. These are different half-hours, so the lower named count isn't explained: the schedule shifts, and noon fell in the first run. Windows with only cooled-down stations also leave at 20 s, which means fewer surveys on those. The issue asks for a dead-band evening, which this isn't. Next: compare a full night's rows in `reception.db` with the earlier nights (991 on 2026-11-03).
+
+## AM audio low-pass (#328), 2026-11-04
+
+By ear on the kiosk's speaker, parked on 9395 kHz (WRMI, about 27 dB over the floor), switching `spyserver.amAudioLpfHz` between 4500 and off each minute by the wall clock. The operator's verdict: the cutoff is "slightly better". Only this one station and cutoff were judged. Helper CPU wasn't compared, though the filter is the same size as the FM speaker filter and runs on the speaker lane only. The native tests hold a 1 kHz tone unchanged and 7 kHz at least 40 dB down.
+
+Set to 4500 on the kiosk. CB on the HF+ shares the helper, so it gets the filter too. It hasn't been judged by ear on CB.
+
+A synchronous detector and noise reduction, the issue's other candidates, weren't tried.
