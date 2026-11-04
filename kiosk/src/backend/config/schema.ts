@@ -410,6 +410,8 @@ export const configSchema = z.object({
       // A dot running the live trace from transmitter to home. 0 = off.
       pulseEveryMs: z.number().int().min(0).max(60_000).default(4_500),
       pulseMs: z.number().int().min(300).max(20_000).default(2_000),
+      // How old NOAA's solar flux, Kp and storm scales may get before the next wall poll fetches them again.
+      spaceWeatherMs: z.number().int().min(900_000).max(21_600_000).default(1_800_000),
     }).prefault({}),
     // Weather Glass layer (frontend/map/glassLayer.ts). Reaches the wall on
     // its next load: PUT /api/config, then POST /api/kiosk/reload.
