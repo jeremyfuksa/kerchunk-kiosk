@@ -102,6 +102,33 @@ TEST(speaker_am_reprimes_on_open) {
   CHECK_NEAR(sig::rms(out.data() + 4800, out.size() - 4800), 0.5 / std::sqrt(2.0) * kc::AM_GAIN, 0.04);
 }
 
+// A carrier modulated by one tone, through the AM speaker path. RMS of the settled audio.
+static double am_tone_rms(double am_lpf_hz, double tone_hz) {
+  kc::SpeakerPath sp(kc::SPEAKER_LPF_HZ, kc::AM_GAIN, flat_agc(), kc::LIMITER_CEILING, kc::LIMITER_RELEASE_MS,
+                     kc::SPEAKER_HPF_HZ, kc::SSB_GAIN, am_lpf_hz);
+  sp.set_source(0, kc::Demod::Am);
+  sp.set_gain(1.0f);
+  std::vector<sig::cf> x(kc::LANE_RATE);
+  for (size_t i = 0; i < x.size(); i++) x[i] = sig::cf((float)(0.2 * (1 + 0.5 * std::sin(2 * M_PI * tone_hz * i / kc::LANE_RATE))), 0.f);
+  auto out = run(sp, x, 0);
+  return sig::rms(out.data() + 4800, out.size() - 4800);
+}
+
+TEST(speaker_am_lpf_cuts_hiss_and_keeps_voice) {
+  const double voice = am_tone_rms(4500, 1000), hiss = am_tone_rms(4500, 7000);
+  CHECK_NEAR(voice, am_tone_rms(0, 1000), 0.01);    // the voice band is untouched
+  CHECK(hiss < am_tone_rms(0, 7000) * 0.01);        // at least 40 dB down at 7 kHz
+}
+
+TEST(speaker_am_lpf_leaves_fm_alone) {
+  kc::SpeakerPath a = flat_path(), b(kc::SPEAKER_LPF_HZ, kc::AM_GAIN, flat_agc(), kc::LIMITER_CEILING, kc::LIMITER_RELEASE_MS,
+                                     kc::SPEAKER_HPF_HZ, kc::SSB_GAIN, 1500);
+  auto x = sig::fm_tone(kc::LANE_RATE, kc::LANE_RATE, 0, 2000, 3000, 0.3);
+  for (auto* sp : {&a, &b}) { sp->set_source(0, kc::Demod::Fm); sp->set_gain(1.0f); }
+  auto oa = run(a, x, 0), ob = run(b, x, 0);
+  CHECK(oa == ob);
+}
+
 TEST(same_path_rate_and_scale) {
   kc::SamePath sp;
   std::vector<float> disc(kc::LANE_RATE);

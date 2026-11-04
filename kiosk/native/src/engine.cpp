@@ -11,7 +11,7 @@ using nlohmann::json;
 Engine::Engine(const EngineOptions& o, Emit emit, Pcm speaker, Pcm tee, Pcm same)
     : opt_(o), emit_(std::move(emit)), speaker_(std::move(speaker)), tee_(std::move(tee)), same_(std::move(same)),
       ch_(o.rate), sc_(o.squelch, [this](const json& j) { emit_(j); }, o.lanes), spk_(o.speaker_lpf_hz, (float)(AM_GAIN * std::pow(10.0, o.am_gain_db / 20.0)), o.agc, o.limiter_ceiling,
-           o.limiter_release_ms, o.speaker_hpf_hz, (float)(SSB_GAIN * std::pow(10.0, o.ssb_gain_db / 20.0))),
+           o.limiter_release_ms, o.speaker_hpf_hz, (float)(SSB_GAIN * std::pow(10.0, o.ssb_gain_db / 20.0)), o.am_audio_lpf_hz),
       power_(o.lanes), disc_(o.lanes), quiet_(o.lanes), sub_(o.lanes), ctcss_(o.lanes), dcs_(o.lanes), dcs_seen_(o.lanes, -1.0),
       sub_buf_(SubaudioDecimator::max_out(Channelizer::kLaneSamplesPerHop)),
       disc_buf_(o.lanes, std::vector<float>(Channelizer::kLaneSamplesPerHop)),

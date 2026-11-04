@@ -251,7 +251,7 @@ even with green checks.
   map. The kiosk swaps to the CB stage, The Horizon (spec 2026-11-03-cb-horizon: `dashboard/cbDial.ts` model,
   `cbView.ts` text, `cbHorizon.ts` sky and masts, `cbRings.ts` the only moving layer, `.cbStage`), pausing the map via `MapHandle.pause()`. Knobs:
   `display.cb.fadeStepsMin` / `stepTickMs` / `logRows`.
-  `config.spyserver` (`host`, `port` 5555, `gain`, `digitalGain`, `audioBufferMs` 500) puts CB on
+  `config.spyserver` (`host`, `port` 5555, `gain`, `digitalGain`, `audioBufferMs` 500, `amAudioLpfHz` for AM on this path; air band never gets it) puts CB on
   the Airspy HF+: window 600 kHz, helper rate 750 kHz, 40 lanes (`SPY_LANES`, so all 40 channels), and
   `--audio-buffer-ms` for Wi-Fi bursts, so audio plays about 500 ms behind the wall. Absent = CB on the scan radio.
   `POST /api/monitor` below 30 MHz uses it too (no SAME break-in, as with any monitor).
