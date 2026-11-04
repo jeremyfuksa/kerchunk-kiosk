@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { hasCarrier, hfWindows, HF_BANDS_DEFAULT, HF_DEFAULTS, HfSweep, type HfOpts } from "../src/backend/hf/sweep.js";
+import { hasCarrier, hfWindows, HF_BANDS_DEFAULT, HF_DEFAULTS, HfSweep, type HfOpts, type HfVisit } from "../src/backend/hf/sweep.js";
 
 const opts = (over: Partial<HfOpts> = {}): HfOpts => ({ ...HF_DEFAULTS, ...over });
 const W = [{ centerHz: 5_952_500, band: "49m", loHz: 5_700_000, hiHz: 6_200_000 }, { centerHz: 7_252_500, band: "41m", loHz: 7_200_000, hiHz: 7_600_000 }];
@@ -278,5 +278,62 @@ describe("HfSweep leaving a dead window early", () => {
     expect(s.tick(35_000)).toBeNull();
     s.onCarriers(36_000, W[0]!.centerHz, []);
     expect(s.tick(36_000)?.centerHz).toBe(W[1]!.centerHz);
+  });
+});
+
+describe("HfSweep visits", () => {
+  const visits = (o: Partial<HfOpts> = {}) => {
+    const seen: HfVisit[] = [];
+    return { seen, sweep: new HfSweep(opts({ ...o, onVisit: (v) => seen.push(v) }), W, 1_000) };
+  };
+
+  it("reports a stay when the window ends, counting only its own surveys", () => {
+    const { seen, sweep } = visits();
+    sweep.onCarriers(6_000, W[0]!.centerHz, [car(5_950_000, 40)]);
+    sweep.onCarriers(11_000, W[0]!.centerHz, []);
+    sweep.onCarriers(12_000, W[1]!.centerHz, []);
+    sweep.tick(61_000);
+    expect(seen).toEqual([{ centerHz: W[0]!.centerHz, band: "49m", startedAt: 1_000, endedAt: 61_000, surveys: 2, playable: true }]);
+  });
+
+  it("calls a window with nothing over minListenDb not playable", () => {
+    const { seen, sweep } = visits();
+    sweep.onCarriers(6_000, W[0]!.centerHz, [car(5_950_000, 14)]);
+    sweep.tick(61_000);
+    expect(seen[0]?.playable).toBe(false);
+  });
+
+  it("ignores carriers outside the band", () => {
+    const { seen, sweep } = visits();
+    sweep.onCarriers(6_000, W[0]!.centerHz, [car(5_650_000, 40)]);
+    sweep.tick(61_000);
+    expect(seen[0]?.playable).toBe(false);
+  });
+
+  it("calls a station in cooldown playable: the band has it even if the sweep won't replay it", () => {
+    const s: HfVisit[] = [];
+    const sweep = new HfSweep(opts({ onVisit: (v) => s.push(v) }), [W[0]!], 0);
+    sweep.onCarriers(5_000, W[0]!.centerHz, [car(5_950_000, 40)]);
+    sweep.tick(60_000);
+    sweep.onCarriers(65_000, W[0]!.centerHz, [car(5_950_000, 40)]);
+    expect(sweep.current().listenHz).toBeNull();
+    sweep.tick(120_000);
+    expect(s[1]).toMatchObject({ surveys: 1, playable: true });
+  });
+
+  it("stays quiet about a visit no survey saw", () => {
+    const { seen, sweep } = visits();
+    sweep.tick(61_000);
+    expect(seen).toEqual([]);
+  });
+
+  it("splits a stay around a break-in", () => {
+    const { seen, sweep } = visits();
+    sweep.onCarriers(6_000, W[0]!.centerHz, []);
+    sweep.endVisit(8_000);
+    sweep.resume(30_000);
+    sweep.onCarriers(35_000, W[0]!.centerHz, []);
+    sweep.tick(90_000);
+    expect(seen.map((v) => [v.startedAt, v.endedAt])).toEqual([[1_000, 8_000], [30_000, 90_000]]);
   });
 });

@@ -10,6 +10,8 @@ export interface HfCarrier {
   steadyDb?: number;    // about 0 for a steady carrier, higher for voice that comes and goes
 }
 export interface HfTune { centerHz: number; listenHz: number | null; band: string; loHz: number; hiHz: number }
+/** One stay on one window. `playable` looks at the band, not the sweep's cooldowns: a station just played is still there. */
+export interface HfVisit { centerHz: number; band: string; startedAt: number; endedAt: number; surveys: number; playable: boolean }
 
 export interface HfOpts {
   windowMs: number;       // time on each shortwave window
@@ -20,6 +22,7 @@ export interface HfOpts {
   carrierSteadyDb: number;   // a carrier is steadier than this...
   carrierRasterHz: number;   // ...and this close to the raster. Nothing else gets a station name
   isMatched?: (hz: number) => boolean;   // has a schedule entry: plays ahead of the unidentified
+  onVisit?: (visit: HfVisit) => void;    // a stay on a window has ended. Only ones with a survey say anything
 }
 
 export const HF_DEFAULTS: HfOpts = {
@@ -73,7 +76,8 @@ export class HfSweep {
   private listenHz: number | null = null;
   private listenSeenAt = 0;
   private listenCarrier = false;
-  private surveyed = false;
+  private surveys = 0;
+  private playable = false;
   private readonly playedAt = new Map<number, number>();
 
   constructor(private opts: HfOpts, private readonly windows: readonly HfWindow[], now: number) {
@@ -99,8 +103,9 @@ export class HfSweep {
   /** A survey for the live window. Returns the new tune when the station changes. */
   onCarriers(now: number, centerHz: number, seen: readonly HfCarrier[]): HfTune | null {
     if (centerHz !== this.current().centerHz) return null;
-    this.surveyed = true;
     const carriers = this.inWindow(seen);
+    this.surveys++;
+    if (carriers.some((c) => c.db >= this.opts.minListenDb)) this.playable = true;
 
     if (this.listenHz !== null) {
       const heard = carriers.filter((c) => Math.abs(c.hz - this.listenHz!) <= RASTER_HZ && c.db >= this.opts.minListenDb);
@@ -128,24 +133,33 @@ export class HfSweep {
    *  Stations in cooldown don't count: playing nothing here for a full window gains nothing. */
   private isDead(now: number): boolean {
     const wait = this.opts.emptyWindowMs;
-    return wait !== undefined && this.surveyed && this.listenHz === null && now - Math.max(this.windowAt, this.listenSeenAt) >= wait;
+    return wait !== undefined && this.surveys > 0 && this.listenHz === null && now - Math.max(this.windowAt, this.listenSeenAt) >= wait;
   }
 
   skip(now: number): HfTune { return this.next(now); }
 
   /** After a break-in: the same window, with its timer restarted. */
   resume(now: number): HfTune {
-    this.windowAt = now;
+    this.endVisit(now);
     this.listenSeenAt = now;
-    this.surveyed = false;
     return this.current();
   }
 
+  /** The radio is going elsewhere. Reports the stay so far, and the next one starts counting from now. */
+  endVisit(now: number): void {
+    if (this.surveys > 0) {
+      const w = this.windows[this.index]!;
+      this.opts.onVisit?.({ centerHz: w.centerHz, band: w.band, startedAt: this.windowAt, endedAt: now, surveys: this.surveys, playable: this.playable });
+    }
+    this.surveys = 0;
+    this.playable = false;
+    this.windowAt = now;
+  }
+
   private next(now: number): HfTune {
+    this.endVisit(now);
     this.listenHz = null;
     this.listenCarrier = false;
-    this.surveyed = false;
-    this.windowAt = now;
     this.index = (this.index + 1) % this.windows.length;
     return this.current();
   }

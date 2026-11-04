@@ -1,16 +1,18 @@
 // Drives HfSweep from real time and engine events. It only decides; `apply` does the tuning.
 import type { EngineEvent } from "../engine/ScannerEngine.js";
-import { HF_BANDS_DEFAULT, HF_DEFAULTS, HfSweep, hfWindows, type HfBand, type HfCarrier, type HfOpts, type HfTune } from "./sweep.js";
+import { HF_BANDS_DEFAULT, HF_DEFAULTS, HfSweep, hfWindows, type HfBand, type HfCarrier, type HfOpts, type HfTune, type HfVisit } from "./sweep.js";
 
 const TICK_MS = 1_000;
 
-export type HfConfig = Partial<Omit<HfOpts, "isMatched">> & { bands?: HfBand[] };
+export type HfConfig = Partial<Omit<HfOpts, "isMatched" | "onVisit">> & { bands?: HfBand[] };
 
 export interface HfControllerDeps {
   config: () => HfConfig | undefined;
   apply: (tune: HfTune) => void;
   /** Every survey, for the reception log. */
   onSurvey?: (tune: HfTune, carriers: readonly HfCarrier[], floorDb: number) => void;
+  /** A stay on a window has ended, for the reception log. */
+  onVisit?: (visit: HfVisit) => void;
   isMatched?: (hz: number) => boolean;
   now?: () => number;
 }
@@ -26,7 +28,7 @@ export class HfController {
 
   private opts(): HfOpts {
     const { bands: _bands, ...knobs } = this.deps.config() ?? {};
-    return { ...HF_DEFAULTS, ...knobs, ...(this.deps.isMatched ? { isMatched: this.deps.isMatched } : {}) };
+    return { ...HF_DEFAULTS, ...knobs, ...(this.deps.isMatched ? { isMatched: this.deps.isMatched } : {}), ...(this.deps.onVisit ? { onVisit: this.deps.onVisit } : {}) };
   }
 
   /** Starts over on the first window. The caller tunes to current(). */
@@ -36,12 +38,16 @@ export class HfController {
   }
 
   stop(): void {
+    this.sweep?.endVisit(this.now());
     this.disarm();
     this.sweep = null;
   }
 
   /** A SAME break-in has the radio. */
-  pause(): void { this.disarm(); }
+  pause(): void {
+    this.sweep?.endVisit(this.now());
+    this.disarm();
+  }
 
   /** Same window, timer restarted. The caller tunes to current(). */
   resume(): void {
