@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { robinson } from "../src/frontend/dashboard/robinson.js";
+import { miller } from "../src/frontend/dashboard/miller.js";
 import { atlasDots, atlasTraces, bandColor, traceLevel, TRACE_STEPS, hitAction, hitChange, tracePath, HF_BANDS_ORDER, type AtlasRow, type HitKey } from "../src/frontend/dashboard/atlas.js";
 import { readFileSync } from "node:fs";
 import { lineKeyframes, pulseFrames, tracePoints, tracesSvg } from "../src/frontend/dashboard/atlas.js";
@@ -56,37 +56,24 @@ describe("atlasTraces", () => {
   it("the live station hides only its own site and band", () => {
     expect(atlasTraces([row({ band: "31m" })], HOME, ROMANIA, TS, DAY)).toHaveLength(1);
   });
-  it("path_across_the_antimeridian_has_two_segments", () => {
-    expect(tracePath({ lat: -38.8, lon: 176.4 }, HOME)).toHaveLength(2);
-    expect(tracePath({ lat: 44.75, lon: 26.1 }, HOME)).toHaveLength(1);
+  it("no path from home breaks, anywhere on Earth", () => {
+    for (let lat = -80; lat <= 80; lat += 10) for (let lon = -175; lon <= 175; lon += 10) {
+      expect(tracePath({ lat, lon }, { lat: 39.29, lon: -94.5 })).toHaveLength(1);
+    }
   });
-  it("a path over the antimeridian carries on past the rim, on both sides", () => {
-    const rimX = (y: number, lon: number): number => {
-      let best = robinson(0, lon);
-      for (let lat = -90; lat <= 90; lat += 0.25) {
-        const p = robinson(lat, lon);
-        if (Math.abs(p.y - y) < Math.abs(best.y - y)) best = p;
-      }
-      return best.x;
-    };
-    const [east, west] = tracePoints({ lat: -38.8, lon: 176.4 }, HOME) as [{ x: number; y: number }[], { x: number; y: number }[]];
-    const out = east.at(-1)!;
-    const back = west[0]!;
-    expect(out.x).toBeGreaterThan(rimX(out.y, 180) + 30);
-    expect(back.x).toBeLessThan(rimX(back.y, -180) - 30);
+  it("a path that does cross the seam is split, not drawn across the map", () => {
+    expect(tracePath({ lat: 10, lon: 80 }, { lat: 10, lon: 95 })).toHaveLength(2);
   });
-  it("it still starts at the transmitter and ends at home", () => {
+  it("it starts at the transmitter and ends at home", () => {
     const tx = { lat: -38.8, lon: 176.4 };
     const runs = tracePoints(tx, HOME);
-    expect(runs[0]![0]!.x).toBeCloseTo(robinson(tx.lat, tx.lon).x, 3);
-    expect(runs.at(-1)!.at(-1)!.x).toBeCloseTo(robinson(HOME.lat, HOME.lon).x, 3);
-  });
-  it("a path that stays on the map is untouched", () => {
-    expect(tracePoints({ lat: 44.75, lon: 26.1 }, HOME)[0]).toHaveLength(121);
+    expect(runs[0]![0]!.x).toBeCloseTo(miller(tx.lat, tx.lon).x, 3);
+    expect(runs.at(-1)!.at(-1)!.x).toBeCloseTo(miller(HOME.lat, HOME.lon).x, 3);
   });
   it("a path starts at the transmitter", () => {
     const [first] = tracePath({ lat: 0, lon: 0 }, HOME);
-    expect(first).toMatch(/^M985\.7 501\.9/);
+    const p = miller(0, 0);
+    expect(first!.startsWith(`M${p.x.toFixed(1)} ${p.y.toFixed(1)}`)).toBe(true);
   });
 });
 
@@ -105,18 +92,6 @@ describe("still layers", () => {
     const src = readFileSync("src/frontend/dashboard/dashboard.ts", "utf8");
     expect(src).toContain('<svg id="hfDots" class="kc-hf__layer"');
     expect(src).not.toMatch(/hfLandEl\.querySelector\("svg"\)\?\.insertAdjacentHTML/);
-  });
-});
-
-describe("pulses past the rim", () => {
-  it("dim as they go out over the horizon and brighten coming back", () => {
-    const run = (x0: number, n: number) => Array.from({ length: n }, (_, i) => ({ x: x0 + i * 14, y: 0 }));
-    const f = pulseFrames([run(0, 80), run(5000, 80)], (p) => p);
-    const out = f.slice(68, 80).map((k) => k.opacity);
-    expect(out.at(0)!).toBeGreaterThan(out.at(-2)!);
-    for (let i = 1; i < out.length; i++) expect(out[i]!).toBeLessThanOrEqual(out[i - 1]!);
-    const back = f.slice(80, 92).map((k) => k.opacity);
-    for (let i = 1; i < back.length; i++) expect(back[i]!).toBeGreaterThanOrEqual(back[i - 1]!);
   });
 });
 
@@ -144,10 +119,6 @@ describe("pulseFrames", () => {
     expect(f[jump]!.opacity).toBe(0);
     expect(f[jump - 1]!.opacity).toBe(0);
     expect(f[jump - 1]!.offset).toBe(f[jump]!.offset);
-  });
-  it("tracePoints splits where tracePath does", () => {
-    expect(tracePoints({ lat: -38.8, lon: 176.4 }, HOME)).toHaveLength(2);
-    expect(tracePoints({ lat: 44.75, lon: 26.1 }, HOME)).toHaveLength(1);
   });
 });
 

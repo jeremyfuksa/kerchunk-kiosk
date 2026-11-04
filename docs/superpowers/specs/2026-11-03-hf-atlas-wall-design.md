@@ -20,22 +20,22 @@ The wall is a passive 1366×768 display, seen across a room, on a machine with a
 
 - Automatic SSB. The operator raised it during this design, and it's a separate project.
 - Other surfaces. Map mode, CB's stage, admin and the `/api/status`, `/api/logs` and `/api/weather` shapes don't change.
-- Removing the Robinson break at the antimeridian. A path leaves one rim and comes back in from the other. The operator asked that it "go over the edge of the earth and then fade", so each side carries on past the rim along its curve and fades out in space.
+- A path breaking at the seam was first a non-goal here. #338 removed the break by centring the map on home: a short great circle from home can't reach the opposite meridian.
 
 ## Anti-goals
 
 - Standing animation: no twinkling, drifting or breathing. See "Do-not-undo invariants" in `CLAUDE.md`.
 - A visible flat edge on the twilight bands.
-- A rim that looks like a stroked outline.
-- Glow on top of the globe.
+- A hard line at the edge of the map where a band stops.
+- Glow on top of the map.
 
 ## The picture
 
 Back to front:
 
-1. **Space.** Near-black (`#04050d`) with about 520 still stars of varied size and brightness, seeded so they don't change between loads. They show only outside the globe.
-2. **Atmosphere.** A thin blue halo behind the globe only, falling off smoothly into space with no hard line. The prototype stacks strokes of the outline: `#5a78e6` reaching 85 map units in 18 steps at opacity 0.02, plus `#7fd0ee` reaching 24 in 12 steps at 0.028. The operator approved this strength after asking twice for less, so don't raise it without asking.
-3. **Globe.** The sky is clipped to the Robinson outline of `world.svg` (`robinson()` at longitude ±180). The prototype shows the whole globe. The final framing is under "Layout".
+1. **Map frame.** Miller, centred on home, full bleed (#338: the operator picked it from a mockup, 2026-11-04). It replaced a Robinson globe floating in space, along with its stars, halo, rim and limb mask. The seam falls at about 85.5°E, so East Asia sits on the left and Europe on the right, and China crosses the seam.
+2. **Land source.** `scripts/gen-atlas-land.mjs` draws `world.svg` from Natural Earth 1:50m (public domain) to the numbers in `dashboard/miller.ts`, one shape per country with its ISO code as `id`. It runs by hand; the wall has no d3 dependency.
+3. **Fixed to home.** The map's centre is a constant, because the appliance doesn't move. Moving it means regenerating the land.
 4. **Greyline.** The real day and night for the current time, as flat stepped bands with no blur. Day is teal (`#14505c` to `#0f3a4c`) with a soft glow around the point under the sun. Bands at sun altitudes −0.8°, −3°, −6°, −9°, −12° and −14° are `#5b3f7f`, `#4c3580`, `#3a2c78`, `#2a2466`, `#1c1c50` and `#14163c`. It's computed from the clock with no network, and it redraws on a slow timer with no visible motion between redraws.
 5. **Land.** Near-black (`#07080f`, opacity 0.72), with hairline borders (`#c9cfd8`, opacity 0.2).
 6. **Tonight's sites.** A quiet dot for every located site in tonight's log, whether it played or not, brighter and larger with stronger `peakDb`.
@@ -45,9 +45,7 @@ Back to front:
 
 ### Band edges
 
-The bands must never show a flat edge. The operator rejected the true shape, where the night stops in a flat line above a sunlit polar cap. The prototype steepens the curve south of 35°S, multiplying the distance past that latitude by 6, so that every band runs off the bottom of the globe. That means the shading is deliberately not true in the far south, and the operator knows that.
-
-The prototype only shows November. In June the same flattening happens at the top, where far more land sits, including the northern US and Europe. Handle both hemispheres, and check a solstice and an equinox in each direction. Keep the distortion as far from land as you can while meeting the no-flat-edge rule. If no setting works in June, stop and show the operator.
+The bands draw the true terminator, with no steepening. Straight meridians make it a wave near the solstices and nearly square near the equinoxes. Night that reaches a pole runs off the stage, and the poles are off the map, so no band ends in a flat line. Robinson needed a steepening hack to get this; Miller doesn't.
 
 ### Band colours
 
@@ -63,7 +61,7 @@ A hit is the speaker moving to a new station that has a location: `hf.listenHz` 
 
 1. A flash at the transmitter, about 300 ms.
 2. A ring grows out of it over 900 ms, eased, with a bright rim and two fading rings behind it, then holds still. This mirrors the UHF front in `map/glassShaders.ts`, but it's drawn in SVG, because the HF stage doesn't load Google's map or its GL context.
-3. From 550 ms, the line leaves the ring and travels the great-circle path to home over 2000 ms, eased. A path crossing the antimeridian draws its two parts one after the other, and the total duration stays the same.
+3. From 550 ms, the line leaves the ring and travels the great-circle path to home over 2000 ms, eased. A path crossing the seam, which a path from home can't, draws its two parts one after the other, and the total duration stays the same.
 4. It lands with a small ring at home, about 800 ms.
 5. The line and source ring stay bright and still while the station plays. Slight pulses run along the line from the transmitter to home, the operator's idea: a soft dot in the band's colour, a 2 s trip every 4.5 s (`display.hf.pulseEveryMs`, 0 = off; `pulseMs`). It's a small compositor layer, so nothing repaints, and it needs a heat comparison against the plain Atlas.
 6. **When the scan moves on,** meaning `listenHz` changes or clears or the window ends, the ring fades out and the line fades over about 700 ms to a faded trace.
@@ -103,10 +101,10 @@ The heat proof below includes several of these.
 
 At 1366×768, per the prototype:
 
-- **Map:** larger than the screen, centred, 1800 map units across the 1366 px. The bottom stops short of Robinson's flat south edge. The top of the screen is past 82°N, so the flat pole line and the high Arctic are off screen: the operator rejected traces flattening along that line. New Zealand's east coast limits how large it can go. A reception band along the bottom used to hide the far south; the operator removed it (#331).
+- **Map:** the whole of it, 1800 map units across the 1366 px, about 80°N to 76°S. Home is in the middle.
 - **Station panel:** lower left over the South Pacific, 430 px wide, 28 px from the bottom, on a translucent dark plate with no blur (`rgba(14,14,42,.74)`). It holds the frequency at 68 px, the name at 30 px, one line of details, and the meter. All of `hfView`'s readout data stays, including "Likely", "Muted", and the error and hunting states.
 - **Top left:** "HF · 25m", small and dim.
-- **Clock and weather:** top right, inside the corner of space and clear of the globe's rim. The prototype's one line crosses the rim, and the operator agreed to moving it. Stacking it is fine if one line won't fit. Keep the Lucide weather icon that's there today.
+- **Clock and weather:** top right, over the map. Stacking it is fine if one line won't fit. Keep the Lucide weather icon that's there today.
 - **Alert banner:** still shows over the stage, as it does today (`.kc-corner` stays). Don't hide it behind the panel.
 
 ## Constraints

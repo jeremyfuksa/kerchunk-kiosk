@@ -9,7 +9,7 @@ export const CB_VIEWBOX = "0 0 1366 768";
 const GROUND_Y = 628;
 const MAST_LEFT = 50;
 const MAST_RIGHT = 1316;
-const STAR_SCALE = 0.683;   // the stars are laid out for the Atlas's 2000-wide map
+const STAR_SCALE = 0.683;   // the stars are laid out 2000 wide
 
 /** Top to horizon. The Atlas's day teal and twilight bands, plus how much of the stars show. */
 const SKIES: Record<CbSkyState, { stops: readonly string[]; stars: number }> = {

@@ -1,27 +1,28 @@
+import { readFileSync } from "node:fs";
 import { describe, it, expect } from "vitest";
-import { greatCircle, robinson } from "../src/frontend/dashboard/robinson.js";
+import { fromCenter, greatCircle, MAP_H, MAP_W, miller } from "../src/frontend/dashboard/miller.js";
 import { ituToIso2 } from "../src/frontend/dashboard/ituCountry.js";
 import { hfView, hfHtml, mapShouldRun, type HfViewInput } from "../src/frontend/dashboard/hfView.js";
 
-describe("robinson", () => {
-  it("matches the calibration measured for this map", () => {
-    expect(robinson(0, 0).x).toBeCloseTo(985.7, 1);
-    expect(robinson(0, 0).y).toBeCloseTo(501.94, 1);
-    // X = PLEN(40) * -94.58, Y = PDFE(40), from the Robinson table.
-    expect(robinson(40, -94.58).x).toBeCloseTo(985.7 + 5.6579 * 0.9216 * -94.58, 1);
-    expect(robinson(40, -94.58).y).toBeCloseTo(501.94 - 518.393 * 0.4958, 1);
-    expect(robinson(-40, 10).y).toBeCloseTo(501.94 + 518.393 * 0.4958, 1);
+describe("miller", () => {
+  it("puts the map's centre longitude in the middle, and the two edges at its seam", () => {
+    expect(miller(0, -94.5).x).toBeCloseTo(MAP_W / 2, 6);
+    expect(miller(0, -94.5 + 179.99).x).toBeGreaterThan(MAP_W - 1);
+    expect(miller(0, -94.5 - 179.99).x).toBeLessThan(1);
+    expect(fromCenter(85.5)).toBe(-180);
   });
-  it("interpolates between table rows and stays on the map", () => {
-    const y = robinson(42.5, 0).y;
-    expect(y).toBeLessThan(robinson(40, 0).y);
-    expect(y).toBeGreaterThan(robinson(45, 0).y);
-    for (const [lat, lon] of [[90, 180], [-90, -180], [0, 180], [0, -180]] as const) {
-      const p = robinson(lat, lon);
-      expect(p.x).toBeGreaterThanOrEqual(-40);   // the calibration runs a little past the map at the dateline
-      expect(p.x).toBeLessThanOrEqual(2010);
-      expect(Number.isFinite(p.y)).toBe(true);
-    }
+  it("has straight meridians, so a longitude keeps its x at every latitude", () => {
+    expect(miller(70, 30).x).toBe(miller(-60, 30).x);
+  });
+  it("frames about 80N to 76S", () => {
+    expect(miller(82, 0).y).toBeLessThan(0);
+    expect(miller(78, 0).y).toBeGreaterThan(0);
+    expect(miller(-74, 0).y).toBeLessThan(MAP_H);
+    expect(miller(-78, 0).y).toBeGreaterThan(MAP_H);
+  });
+  it("is finite at the poles", () => {
+    expect(Number.isFinite(miller(90, 0).y)).toBe(true);
+    expect(Number.isFinite(miller(-90, 0).y)).toBe(true);
   });
 });
 
@@ -161,3 +162,16 @@ describe("hfView", () => {
   });
 });
 
+
+describe("the land file", () => {
+  const svg = readFileSync(new URL("../src/frontend/dashboard/world.svg", import.meta.url), "utf8");
+  it("is drawn to the map's own frame", () => {
+    expect(svg).toContain(`viewBox="0 0 ${MAP_W} ${MAP_H}"`);
+  });
+  it("has a shape to tint for the countries that broadcast most, France and Norway included", () => {
+    for (const iso of ["US", "CN", "RU", "FR", "NO", "GB", "DE", "TW", "CU", "JP"]) expect(svg).toContain(`id="${iso}"`);
+  });
+  it("stays small enough to paint on this box", () => {
+    expect(svg.length).toBeLessThan(400_000);
+  });
+});

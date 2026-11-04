@@ -15,14 +15,6 @@ export function ituToIso2(itu: string | undefined): string | null {
   return itu ? ITU_ISO[itu] ?? null : null;
 }
 
-// Countries drawn as several paths carry a class in world.svg instead of an id.
-const ISO_CLASS: Readonly<Record<string, string>> = {
-  AO: "Angola", AR: "Argentina", AU: "Australia", AZ: "Azerbaijan", CA: "Canada", CL: "Chile", CN: "China", DK: "Denmark",
-  FJ: "Fiji", FR: "France", GB: "United Kingdom", GR: "Greece", ID: "Indonesia", IT: "Italy", JP: "Japan", MY: "Malaysia",
-  NO: "Norway", NZ: "New Zealand", OM: "Oman", PG: "Papua New Guinea", PH: "Philippines", RU: "Russian Federation", TR: "Turkey", US: "United States",
-};
-
 export function countrySelector(iso: string): string {
-  const name = ISO_CLASS[iso];
-  return name ? `path[class="${name}"]` : `path[id="${iso}"]`;
+  return `path[id="${iso}"]`;
 }

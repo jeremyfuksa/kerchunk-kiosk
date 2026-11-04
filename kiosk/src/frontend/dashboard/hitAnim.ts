@@ -2,7 +2,7 @@
 // 2026-11-03-hf-atlas). Only this layer moves, so a hit never repaints the map under it.
 import { bandColor, lineKeyframes, pulseFrames, tracePath, tracePoints, type HitKey } from "./atlas.js";
 import { stagePx } from "./greyline.js";
-import { robinson, type LatLon } from "./robinson.js";
+import { miller, type LatLon } from "./miller.js";
 
 const NS = "http://www.w3.org/2000/svg";
 const RING_R = 52;
@@ -112,7 +112,7 @@ export class HitAnimator {
       this.glows.push(this.add(lineGroup, "path", { d, fill: "none", stroke: color, "stroke-opacity": 0.2, "stroke-width": 8, "stroke-linecap": "round", pathLength: 1 }));
       this.lines.push(this.add(lineGroup, "path", { d, fill: "none", stroke: color, "stroke-width": 2.6, "stroke-linecap": "round", pathLength: 1 }));
     }
-    const { x, y } = robinson(s.lat, s.lon);
+    const { x, y } = miller(s.lat, s.lon);
     const ring = (o: Record<string, string | number>) => this.add(this.hitGroup, "circle", { cx: x, cy: y, r: RING_R, fill: "none", stroke: color, ...o });
     this.rings = {
       halo: ring({ "stroke-opacity": 0.22, "stroke-width": 12 }),
@@ -134,7 +134,7 @@ export class HitAnimator {
     if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     const o = this.opts();
     const color = bandColor(s.band);
-    const { x, y } = robinson(s.lat, s.lon);
+    const { x, y } = miller(s.lat, s.lon);
     const grow = { duration: o.hitGrowMs, easing: EASE_OUT, fill: "both" as const };
     const from = RING_R * 0.08;
     const run = (el: Element, frames: Keyframe[], timing: KeyframeAnimationOptions): void => { this.anims.push(el.animate(frames, timing)); };
@@ -169,7 +169,7 @@ export class HitAnimator {
       draw(this.glows[i]!, frames, timing);
     });
 
-    const homeXy = robinson(home.lat, home.lon);
+    const homeXy = miller(home.lat, home.lon);
     const ping = this.add(this.hitGroup, "circle", { cx: homeXy.x, cy: homeXy.y, r: 6, fill: "none", stroke: color, "stroke-width": 2.4, "stroke-opacity": 0 });
     extras.push(ping);
     run(ping, [{ r: "6px", strokeOpacity: 1 }, { r: "32px", strokeOpacity: 0 }], {
