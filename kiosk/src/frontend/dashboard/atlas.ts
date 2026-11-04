@@ -1,5 +1,5 @@
 // What the Atlas draws from the night's log and the current station (spec 2026-11-03-hf-atlas). Pure.
-import { greatCircle, robinson, type LatLon } from "./robinson.js";
+import { greatCircle, MAP_W, miller, type LatLon } from "./miller.js";
 
 /** Longest wave to shortest: red through to violet. */
 export const HF_BANDS_ORDER = ["120m", "90m", "60m", "49m", "41m", "31m", "25m", "22m", "19m", "16m", "15m", "13m"] as const;
@@ -36,7 +36,7 @@ export function atlasDots(rows: readonly AtlasRow[]): AtlasDot[] {
     if (!had || r.peakDb > had.db) best.set(k, { lat: r.lat, lon: r.lon, db: r.peakDb });
   }
   return [...best.values()].map((s) => {
-    const { x, y } = robinson(s.lat, s.lon);
+    const { x, y } = miller(s.lat, s.lon);
     const db = Math.min(s.db, 50);
     return { x, y, r: 3 + db / 12, opacity: 0.25 + db / 90 };
   });
@@ -44,43 +44,18 @@ export function atlasDots(rows: readonly AtlasRow[]): AtlasDot[] {
 
 export interface MapPoint { x: number; y: number }
 
-const PAST_RIM_STEPS = 8;
-const PAST_RIM_STEP = 14;   // map units: well past where the limb mask has faded it out
-const PAST_RIM = PAST_RIM_STEPS * PAST_RIM_STEP;
-
-/** Carries a run on from its last point, along the curve it was already on. */
-function pastRim(run: readonly MapPoint[]): MapPoint[] {
-  const a = run.at(-3) ?? run[0]!;
-  const b = run.at(-2) ?? run[0]!;
-  const c = run.at(-1)!;
-  let heading = Math.atan2(c.y - b.y, c.x - b.x);
-  const turn = run.length < 3 ? 0 : heading - Math.atan2(b.y - a.y, b.x - a.x);
-  let { x, y } = c;
-  const out: MapPoint[] = [];
-  for (let i = 0; i < PAST_RIM_STEPS; i++) {
-    heading += turn;
-    x += PAST_RIM_STEP * Math.cos(heading);
-    y += PAST_RIM_STEP * Math.sin(heading);
-    out.push({ x, y });
-  }
-  return out;
-}
-
-/** The great circle in map units, one run per side of the antimeridian, from the first point to the second. Where a
- *  path reaches the rim it carries on into space, for the limb mask to fade: over the horizon, then gone. */
+/** The great circle in map units, from the first point to the second. A path from home can't reach the map's seam;
+ *  one that starts elsewhere can, so it's split there rather than drawn across the whole map. */
 export function tracePoints(from: LatLon, to: LatLon): MapPoint[][] {
   const out: MapPoint[][] = [[]];
-  let prev: LatLon | null = null;
-  for (const p of greatCircle(from, to, PATH_SEGMENTS)) {
-    if (prev !== null && Math.abs(p.lon - prev.lon) > 180) out.push([]);
-    out.at(-1)!.push(robinson(p.lat, p.lon));
+  let prev: MapPoint | null = null;
+  for (const c of greatCircle(from, to, PATH_SEGMENTS)) {
+    const p = miller(c.lat, c.lon);
+    if (prev !== null && Math.abs(p.x - prev.x) > MAP_W / 2) out.push([]);
+    out.at(-1)!.push(p);
     prev = p;
   }
-  return out.map((run, r) => {
-    const before = r > 0 ? pastRim([...run].reverse()).reverse() : [];
-    const after = r < out.length - 1 ? pastRim(run) : [];
-    return [...before, ...run, ...after];
-  });
+  return out;
 }
 
 export function tracePath(from: LatLon, to: LatLon): string[] {
@@ -178,15 +153,11 @@ export function pulseFrames(runs: readonly MapPoint[][], toPx: (p: MapPoint) => 
   const frames: Array<{ offset: number; opacity: number; transform: string }> = [];
   let done = 0;
   runs.forEach((run, r) => {
-    let fromStart = 0;
-    const runLen = run.slice(1).reduce((n, _, i) => n + seglen(run, i + 1), 0);
     run.forEach((p, i) => {
-      if (i > 0) { done += seglen(run, i); fromStart += seglen(run, i); }
+      if (i > 0) done += seglen(run, i);
       const offset = Math.min(1, done / total);
       const atJump = (r > 0 && i === 0) || (r < runs.length - 1 && i === run.length - 1);
-      // Past the rim it fades with the line, over the same stretch.
-      const toJump = Math.min(r > 0 ? fromStart : Infinity, r < runs.length - 1 ? runLen - fromStart : Infinity);
-      const opacity = atJump ? 0 : PULSE_OPACITY * Math.min(1, offset / PULSE_FADE, (1 - offset) / PULSE_FADE, toJump / PAST_RIM);
+      const opacity = atJump ? 0 : PULSE_OPACITY * Math.min(1, offset / PULSE_FADE, (1 - offset) / PULSE_FADE);
       const px = toPx(p);
       frames.push({ offset, opacity, transform: `translate(${px.x.toFixed(1)}px,${px.y.toFixed(1)}px)` });
     });

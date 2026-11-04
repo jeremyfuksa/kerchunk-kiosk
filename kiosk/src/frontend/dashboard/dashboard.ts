@@ -8,10 +8,10 @@ import { hfHtml, hfView, mapShouldRun, type HfHeard, type HfView } from "./hfVie
 import { countrySelector } from "./ituCountry.js";
 import worldSvg from "./world.svg?raw";
 import { atlasDots, atlasTraces, hitAction, traceKey, tracesSvg, type HitKey } from "./atlas.js";
-import { greylineDue, greylineSvg, skySvg, stagePx, STAGE_VIEWBOX, LIMB_MASK, limbMaskSvg } from "./greyline.js";
+import { greylineDue, greylineSvg, skySvg, stagePx, STAGE_VIEWBOX } from "./greyline.js";
 import { atlasSnapshotSvg, paintSnapshot, runZoom, zoomFor, type ZoomDirection, hfLogWanted } from "./zoom.js";
 import { HF_WALL_DEFAULTS, HitAnimator } from "./hitAnim.js";
-import { robinson } from "./robinson.js";
+import { miller } from "./miller.js";
 import { mountActivityMap } from "../map/map.js";
 import { fromDeg, setWind } from "../lib/wind.js";
 import { cornerView, sentenceCase, meterFill, METER_SEGMENTS } from "./cornerView.js";
@@ -340,7 +340,7 @@ export function renderDashboard(root: HTMLElement): void {
   function atlasPicture(): Promise<void> {
     const css = getComputedStyle(root);
     const color = (name: string): string => css.getPropertyValue(name).trim();
-    const home = robinson(hfHome.lat, hfHome.lon);
+    const home = miller(hfHome.lat, hfHome.lon);
     const { clientWidth: width, clientHeight: height } = hfEl;
     const svg = atlasSnapshotSvg({
       sky: skySvg(Date.now()), world: worldSvg, dots: atlasDots(hfLog), traces: atlasTraces(hfLog, hfHome, null, hfGreylineAt, hfOpts.traceFadeMs),
@@ -350,7 +350,7 @@ export function renderDashboard(root: HTMLElement): void {
     return paintSnapshot(hfSnapEl, svg, width, height);
   }
   function startZoom(direction: ZoomDirection, after: () => void): void {
-    const origin = stagePx(robinson(hfHome.lat, hfHome.lon), hfEl.clientWidth);
+    const origin = stagePx(miller(hfHome.lat, hfHome.lon), hfEl.clientWidth);
     hfSnapEl.hidden = false;
     const run = runZoom(direction, hfSnapEl, root.querySelector<HTMLElement>("#mapBase")!, root.querySelector<HTMLElement>("#hfHaze")!, origin, hfOpts.zoomMs);
     dashEl.classList.add("hfZoom");
@@ -468,8 +468,8 @@ export function renderDashboard(root: HTMLElement): void {
     const tracesKey = `${hfOpts.traceOpacity}|${hfHome.lat},${hfHome.lon}|${traces.map((t) => `${t.key}@${t.level}`).join(";")}`;
     if (tracesKey !== hfTracesKey) {
       hfTracesKey = tracesKey;
-      const home = robinson(hfHome.lat, hfHome.lon);
-      hfTracesEl.innerHTML = `${limbMaskSvg()}<g ${LIMB_MASK}>${tracesSvg(traces, hfOpts.traceOpacity)}</g>`
+      const home = miller(hfHome.lat, hfHome.lon);
+      hfTracesEl.innerHTML = tracesSvg(traces, hfOpts.traceOpacity)
         + `<circle class="kc-hf__qth" cx="${home.x.toFixed(1)}" cy="${home.y.toFixed(1)}" r="6"/>`;
     }
   }

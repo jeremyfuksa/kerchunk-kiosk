@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { subsolar, sunAltitude } from "../src/frontend/dashboard/sun.js";
-import { robinson } from "../src/frontend/dashboard/robinson.js";
-import { greylineDue, STAGE_VIEWBOX, GREYLINE_BANDS, nightEdges, nightBandPath, nightInterval, skySvg, greylineSvg, globeOutline, limbMaskSvg, LIMB_MASK } from "../src/frontend/dashboard/greyline.js";
+import { CENTER_LON, MAP_H, MAP_W, miller } from "../src/frontend/dashboard/miller.js";
+import { greylineDue, STAGE_VIEWBOX, GREYLINE_BANDS, nightEdges, nightBandPath, nightInterval, skySvg, greylineSvg } from "../src/frontend/dashboard/greyline.js";
 
 const NOV = Date.UTC(2026, 10, 3, 9, 11);
 const JUNE = Date.UTC(2026, 5, 21, 12, 0);
@@ -38,27 +38,23 @@ describe("night bands", () => {
   it("night_band_exists_at_the_equinox", () => {
     for (const b of GREYLINE_BANDS) expect(nightBandPath(b.alt, { lat: 0, lon: 0 })).toMatch(/^M/);
   });
-  it("bands_bleed_past_the_stage_in_november", () => {
-    for (const b of GREYLINE_BANDS) {
-      const e = nightEdges(b.alt, sub.lon - 180, sub)!;
-      expect(e.lower).toBeGreaterThanOrEqual(1069);
-    }
-  });
-  it("bands_bleed_past_the_globe_in_june", () => {
+  it("night reaching a pole runs off the stage, so no band ends in a line at the frame", () => {
+    for (const b of GREYLINE_BANDS) expect(nightEdges(b.alt, sub.lon - 180, sub)!.upper).toBeLessThan(0);   // November: the north
     const s = subsolar(JUNE);
-    for (const b of GREYLINE_BANDS) {
-      const e = nightEdges(b.alt, s.lon - 180, s)!;
-      expect(e.upper).toBeLessThanOrEqual(-17);
-    }
+    for (const b of GREYLINE_BANDS) expect(nightEdges(b.alt, s.lon - 180, s)!.lower).toBeGreaterThan(MAP_H);
+  });
+  it("the edge is the true terminator, a real wave at the solstice", () => {
+    const ys = Array.from({ length: 180 }, (_, i) => nightEdges(-0.8, i * 2 - 180, subsolar(JUNE)))
+      .flatMap((e) => (e ? [e.upper, e.lower] : [])).filter((y) => y > 0 && y < MAP_H);
+    expect(Math.max(...ys) - Math.min(...ys)).toBeGreaterThan(200);
   });
   it("sky_is_stable_between_calls", () => {
     expect(skySvg(NOV)).toBe(skySvg(NOV));
-    const stars = (s: string) => s.slice(0, s.indexOf('id="hfGreyline"'));
-    expect(stars(skySvg(NOV))).toBe(stars(skySvg(JUNE)));
+    const still = (s: string) => s.slice(0, s.indexOf('id="hfGreyline"'));
+    expect(still(skySvg(NOV))).toBe(still(skySvg(JUNE)));
   });
-  it("the sky holds the redrawable greyline, inside the globe", () => {
+  it("the sky holds the redrawable greyline", () => {
     expect(skySvg(NOV)).toContain(greylineSvg(NOV));
-    expect(globeOutline()).toMatch(/^M.*Z$/);
   });
   it("uses the spec's six bands", () => {
     expect(GREYLINE_BANDS.map((b) => b.alt)).toEqual([-0.8, -3, -6, -9, -12, -14]);
@@ -81,20 +77,12 @@ function inPath(d: string, px: number, py: number): boolean {
 
 describe("framing", () => {
   const [x0, y0, w, h] = STAGE_VIEWBOX.split(" ").map(Number) as [number, number, number, number];
-  const pxPerUnit = 1366 / w;
-  it("the pole's flat line and the high Arctic are off the top, so traces leave rather than flatten", () => {
-    expect(y0).toBeGreaterThan(robinson(82, 0).y);
-  });
-  it("the flat south edge is off the bottom of the screen", () => {
-    expect((robinson(-90, 0).y - y0) * pxPerUnit).toBeGreaterThanOrEqual(768);
-  });
-  it("every landmass stays on screen, New Zealand and Hawaii included", () => {
-    expect(robinson(-47, 178).x).toBeLessThan(x0 + w);
-    expect(robinson(21, -160).x).toBeGreaterThan(x0);
-  });
-  it("keeps the wall's shape and centres the globe", () => {
+  it("shows the whole map, in the wall's shape", () => {
+    expect([x0, y0, w, h]).toEqual([0, 0, MAP_W, MAP_H]);
     expect(h / w).toBeCloseTo(768 / 1366, 2);
-    expect(x0 + w / 2).toBeCloseTo(robinson(0, 0).x, 0);
+  });
+  it("has home in the middle", () => {
+    expect(miller(39.29, CENTER_LON).x).toBeCloseTo(w / 2, 6);
   });
 });
 
@@ -102,8 +90,9 @@ describe("band shape", () => {
   it("a band at the map's edge doesn't cover daylight inside the rim", () => {
     const s = subsolar(Date.UTC(2026, 2, 20, 18));   // terminator on the antimeridian
     const d = nightBandPath(-0.8, s);
-    expect(inPath(d, 150, 500)).toBe(false);          // the equator near 147 W, afternoon there
-    expect(inPath(d, 1500, 500)).toBe(true);          // the equator near 91 E, night there
+    const at = (lon: number) => { const p = miller(0, lon); return [p.x, p.y] as const; };
+    expect(inPath(d, ...at(-147))).toBe(false);       // afternoon there
+    expect(inPath(d, ...at(91))).toBe(true);          // night there
   });
 });
 
@@ -114,17 +103,3 @@ describe("greylineDue", () => {
   });
 });
 
-describe("limb mask", () => {
-  it("shows everything on the globe, and fades what's past the rim", () => {
-    const m = limbMaskSvg();
-    expect(m).toContain(`<mask id="hfLimb"`);
-    expect(LIMB_MASK).toBe('mask="url(#hfLimb)"');
-    expect(m).toMatch(/<rect [^>]*fill="#000"/);
-    expect(m).toContain(`<path d="${globeOutline()}" fill="#fff"/>`);
-    expect(m).toContain('stroke="#fff"');
-    expect(m.lastIndexOf(`fill="#fff"`)).toBeGreaterThan(m.lastIndexOf('stroke="#fff"'));
-  });
-  it("is the same string every call, so a layer never repaints for it", () => {
-    expect(limbMaskSvg()).toBe(limbMaskSvg());
-  });
-});

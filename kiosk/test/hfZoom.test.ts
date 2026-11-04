@@ -100,11 +100,6 @@ describe("atlasSnapshotSvg", () => {
     expect(svg).not.toContain("var(");
     expect(svg).toContain('stroke="#5fd4c3"');
   });
-  it("fades its traces at the rim like the live stage", () => {
-    const svg = atlasSnapshotSvg(input);
-    expect(svg).toContain('<mask id="hfLimb"');
-    expect(svg.indexOf('mask="url(#hfLimb)"')).toBeLessThan(svg.indexOf("M7 7L8 8"));
-  });
   it("draws sky, then every land path, then dots, then traces, then home", () => {
     const svg = atlasSnapshotSvg(input);
     const order = ['url(#x)', 'M1 1L2 2Z M3 3L4 4Z', 'cx="5.0"', 'M7 7L8 8', 'cx="9.0"'].map((t) => svg.indexOf(t));
