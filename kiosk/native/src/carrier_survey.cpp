@@ -9,7 +9,7 @@
 namespace kc {
 
 CarrierSurvey::CarrierSurvey(int rate)
-    : rate_(rate), every_(rate / CC_FPS), since_(rate / CC_FPS), win_(CC_FFT), acc_(CC_FFT, 0.f) {
+    : rate_(rate), every_(rate / CC_FPS), since_(rate / CC_FPS), win_(CC_FFT), acc_(CC_FFT, 0.f), acc_log_(CC_FFT, 0.f) {
   for (int i = 0; i < CC_FFT; i++) {
     const double r = 2 * M_PI * i / (CC_FFT - 1);
     win_[i] = (float)(0.35875 - 0.48829 * std::cos(r) + 0.14128 * std::cos(2 * r) - 0.01168 * std::cos(3 * r));
@@ -22,6 +22,7 @@ CarrierSurvey::CarrierSurvey(int rate)
 void CarrierSurvey::reset(double center_hz) {
   center_ = center_hz;
   std::fill(acc_.begin(), acc_.end(), 0.f);
+  std::fill(acc_log_.begin(), acc_log_.end(), 0.f);
   frames_ = 0;
   fill_ = 0;
   since_ = every_;
@@ -40,7 +41,9 @@ void CarrierSurvey::push_raw(const cf* x, int n) {
       fftwf_execute(plan_.get());
       for (int k = 0; k < CC_FFT; k++) {
         const int s = (k + CC_FFT / 2) % CC_FFT;   // fftshift: DC at the center bin
-        acc_[s] += out_[k][0] * out_[k][0] + out_[k][1] * out_[k][1];
+        const float p = out_[k][0] * out_[k][0] + out_[k][1] * out_[k][1];
+        acc_[s] += p;
+        acc_log_[s] += 10 * std::log10(p + 1e-20f);
       }
       frames_++;
       fill_ = 0;
@@ -53,7 +56,10 @@ std::vector<Carrier> CarrierSurvey::take(double min_db, double* floor_db_out) {
   if (frames_ == 0) return found;
   std::vector<double> db(CC_FFT);
   for (int k = 0; k < CC_FFT; k++) db[k] = 10 * std::log10(acc_[k] / frames_ + 1e-20);
+  std::vector<double> steady(CC_FFT);
+  for (int k = 0; k < CC_FFT; k++) steady[k] = db[k] - acc_log_[k] / frames_;
   std::fill(acc_.begin(), acc_.end(), 0.f);
+  std::fill(acc_log_.begin(), acc_log_.end(), 0.f);
   frames_ = 0;
 
   std::vector<double> sorted = db;
@@ -71,7 +77,7 @@ std::vector<Carrier> CarrierSurvey::take(double min_db, double* floor_db_out) {
   const int image_w = (int)std::lround(image_hz / binw);
   const int image_from = (int)((SURVEY_USABLE_HZ - image_hz) / binw);
 
-  std::map<long long, double> best;   // one entry per raster channel
+  std::map<long long, Carrier> best;   // one entry per raster channel
   for (int k = dc - span; k <= dc + span; k++) {
     if (std::abs(k - dc) <= dcw || db[k] - floor < min_db) continue;
     // A carrier is the top of its neighbourhood, so an AM station's sidebands don't count as stations.
@@ -99,10 +105,12 @@ std::vector<Carrier> CarrierSurvey::take(double min_db, double* floor_db_out) {
     const double hz = center_ + (k - dc) * binw;
     const long long snapped = std::llround(hz / SURVEY_RASTER_HZ) * (long long)SURVEY_RASTER_HZ;
     auto it = best.find(snapped);
-    if (it == best.end() || db[k] - floor > it->second) best[snapped] = db[k] - floor;
+    if (it == best.end() || db[k] - floor > it->second.db_above_floor) {
+      best[snapped] = {snapped, db[k] - floor, hz, steady[k]};
+    }
   }
   found.reserve(best.size());
-  for (const auto& b : best) found.push_back({b.first, b.second});
+  for (const auto& b : best) found.push_back(b.second);
   return found;
 }
 }  // namespace kc
